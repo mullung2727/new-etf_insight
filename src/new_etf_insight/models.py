@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 DART_BASE_URL = "https://dart.fss.or.kr"
@@ -14,8 +14,6 @@ class FilingCandidate:
     corp_name: str
     report_nm: str
     dart_url: str
-    filter_reasons: list[str] = field(default_factory=list)
-    pdf_url: str | None = None
 
 
 @dataclass(frozen=True)

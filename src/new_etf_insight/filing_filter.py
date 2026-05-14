@@ -5,13 +5,7 @@ from typing import Any
 from new_etf_insight.models import DART_VIEW_URL, FilingCandidate
 
 
-INCLUDE_REPORT_KEYWORDS = (
-    "투자설명서(집합투자증권",
-    "증권신고서(집합투자증권",
-    "일괄신고서(집합투자증권",
-    "상장지수투자신탁",
-    "상장지수 집합투자기구",
-)
+INCLUDE_KEYWORD = "상장지수투자신탁"
 EXCLUDE_REPORT_KEYWORDS = (
     "파생결합증권",
     "상장지수증권",
@@ -24,17 +18,11 @@ EXCLUDE_REPORT_KEYWORDS = (
 )
 
 
-def candidate_reasons(filing: dict[str, Any]) -> list[str]:
-    report_name = str(filing.get("report_nm", ""))
-    excluded = [keyword for keyword in EXCLUDE_REPORT_KEYWORDS if keyword in report_name]
-    if excluded:
-        return []
-
-    return [keyword for keyword in INCLUDE_REPORT_KEYWORDS if keyword in report_name]
-
-
 def is_candidate_filing(filing: dict[str, Any]) -> bool:
-    return bool(candidate_reasons(filing))
+    report_name = str(filing.get("report_nm", ""))
+    if any(keyword in report_name for keyword in EXCLUDE_REPORT_KEYWORDS):
+        return False
+    return INCLUDE_KEYWORD in report_name and "주식" in report_name
 
 
 def matches_candidate_query(filing: dict[str, Any], query: str | None) -> bool:
@@ -56,5 +44,4 @@ def to_candidate(filing: dict[str, Any]) -> FilingCandidate:
         corp_name=str(filing.get("corp_name", "")),
         report_nm=str(filing.get("report_nm", "")),
         dart_url=DART_VIEW_URL.format(rcept_no=rcept_no),
-        filter_reasons=candidate_reasons(filing),
     )

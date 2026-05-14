@@ -1,36 +1,16 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from datetime import date, timedelta
 from typing import Any
 
 import requests
 from dotenv import load_dotenv
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
-from new_etf_insight.models import DART_BASE_URL, FilingCandidate
-from new_etf_insight.pdf_finder import extract_dcm_no, extract_pdf_links, pick_primary_pdf_link
+from new_etf_insight.models import FilingCandidate
 
 
 LIST_API_URL = "https://opendart.fss.or.kr/api/list.json"
-
-
-def request_session() -> requests.Session:
-    session = requests.Session()
-    retry = Retry(
-        total=3,
-        connect=3,
-        read=3,
-        backoff_factor=0.5,
-        status_forcelist=(429, 500, 502, 503, 504),
-        allowed_methods=("GET",),
-    )
-    session.mount("https://", HTTPAdapter(max_retries=retry))
-    session.mount("http://", HTTPAdapter(max_retries=retry))
-    session.headers.update({"User-Agent": "Mozilla/5.0"})
-    return session
 
 
 def get_api_key() -> str:
@@ -93,26 +73,3 @@ def fetch_all_filings(
     return filings, last_payload
 
 
-def fetch_text(url: str) -> str:
-    try:
-        response = request_session().get(url, timeout=30)
-        response.raise_for_status()
-        return response.text
-    except requests.RequestException:
-        result = subprocess.run(
-            ["curl", "-fsSL", "-A", "Mozilla/5.0", url],
-            check=True,
-            capture_output=True,
-        )
-        return result.stdout.decode("utf-8", errors="replace")
-
-
-def find_pdf_url(candidate: FilingCandidate) -> str | None:
-    page_html = fetch_text(candidate.dart_url)
-    dcm_no = extract_dcm_no(page_html)
-    if not dcm_no:
-        return None
-
-    download_page_url = f"{DART_BASE_URL}/pdf/download/main.do?rcp_no={candidate.rcept_no}&dcm_no={dcm_no}"
-    download_html = fetch_text(download_page_url)
-    return pick_primary_pdf_link(extract_pdf_links(download_html, DART_BASE_URL))
