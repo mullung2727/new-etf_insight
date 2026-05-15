@@ -3,6 +3,7 @@ name = "new-etf-insight"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "langgraph>=1.2.0",
     "pypdf>=6.11.0",
     "python-dotenv>=1.2.2",
     "requests>=2.34.1",
