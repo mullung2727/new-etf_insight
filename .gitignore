@@ -21,6 +21,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 artifacts/
+downloads/
 
 # Python
 __pycache__/
@@ -36,6 +37,8 @@ env/
 .ruff_cache/
 .coverage
 htmlcov/
+etl/runs/
+etl/current_graph.png
 
 # Tooling
 .superpowers/
