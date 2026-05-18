@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import tempfile
 from pathlib import Path
 from typing import TypedDict
 import argparse
@@ -12,6 +10,7 @@ import argparse
 from langgraph.graph import END, StateGraph
 
 from new_etf_insight.dart_viewer import fetch_dart_viewer_text
+from new_etf_insight.llm import generate_json
 from new_etf_insight.pdf_text import extract_pdf_text
 
 
@@ -53,7 +52,7 @@ def review_correction_filing(filing: dict) -> dict:
     )
 
     return json.loads(
-        call_codex(
+        call_llm(
             prompt,
             output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
         )
@@ -70,11 +69,20 @@ def update_record_from_correction(existing_record: dict, filing: dict, review: d
     )
 
     return json.loads(
-        call_codex(
+        call_llm(
             prompt,
             output_schema_path=CORRECTION_UPDATE_SCHEMA_PATH,
         )
     )
+
+def call_llm(
+    prompt: str,
+    *,
+    search: bool = False,
+    output_schema_path: Path = SUMMARY_SCHEMA_PATH,
+) -> str:
+    return generate_json(prompt, search=search, output_schema_path=output_schema_path)
+
 
 def call_codex(
     prompt: str,
@@ -82,48 +90,7 @@ def call_codex(
     search: bool = False,
     output_schema_path: Path = SUMMARY_SCHEMA_PATH,
 ) -> str:
-    """
-    Codex CLI를 호출하는 단일 어댑터.
-
-    - search=False: PDF 내부 추출용. 웹검색 없이 실행한다.
-    - search=True: 외부 리서치용. Codex live web search를 켠다.
-    - output_schema_path: Codex 최종 응답에 강제할 JSON Schema 경로다.
-
-    중요:
-    - LangGraph 노드에서 subprocess를 직접 흩뿌리지 말고 이 함수만 호출한다.
-    - 나중에 OpenAI API나 다른 LLM으로 바꾸고 싶으면 이 함수만 교체한다.
-    - --search는 exec 옵션이 아니라 codex 전역 옵션이므로 "codex --search ... exec" 순서로 넣는다.
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        output_path = Path(tmpdir) / "codex_last_message.txt"
-
-        command = ["codex"]
-
-        if search:
-            command.append("--search")
-
-        command.extend(
-            [
-                "-a",
-                "never",
-                "exec",
-                "--sandbox",
-                "read-only",
-                "--output-schema",
-                str(output_schema_path),
-                "--output-last-message",
-                str(output_path),
-                prompt,
-            ]
-        )
-
-        subprocess.run(
-            command,
-            check=True,
-            text=True,
-        )
-
-        return output_path.read_text(encoding="utf-8").strip()
+    return call_llm(prompt, search=search, output_schema_path=output_schema_path)
 
 
 def make_summary_prompt(state: State) -> State:
@@ -135,11 +102,11 @@ def make_summary_prompt(state: State) -> State:
         "prompt": prompt,
     }
 
-def call_codex_node(state: State) -> State:
+def call_llm_node(state: State) -> State:
     """
-    LLM이 필요한 지점에서만 call_codex를 호출한다.
+    LLM이 필요한 지점에서만 provider adapter를 호출한다.
     """
-    codex_output = call_codex(state["prompt"])
+    codex_output = call_llm(state["prompt"])
 
     return {
         **state,
@@ -213,7 +180,7 @@ def research_external_holdings(state: State) -> State:
         return state
 
     research_result = json.loads(
-        call_codex(
+        call_llm(
             state["research_prompt"],
             search=True,
             output_schema_path=EXTERNAL_RESEARCH_SCHEMA_PATH,
@@ -254,13 +221,13 @@ def build_graph():
 
     graph.add_node("load_pdf_text", load_pdf_text)
     graph.add_node("make_summary_prompt", make_summary_prompt)
-    graph.add_node("call_codex", call_codex_node)
+    graph.add_node("call_llm", call_llm_node)
     graph.add_node("parse_summary_json", parse_summary_json)
 
     graph.set_entry_point("load_pdf_text")
     graph.add_edge("load_pdf_text", "make_summary_prompt")
-    graph.add_edge("make_summary_prompt", "call_codex")
-    graph.add_edge("call_codex", "parse_summary_json")
+    graph.add_edge("make_summary_prompt", "call_llm")
+    graph.add_edge("call_llm", "parse_summary_json")
     graph.add_node("finalize_pdf_result", finalize_pdf_result)
     graph.add_node("prepare_external_research", prepare_external_research)
     graph.add_node("research_external_holdings", research_external_holdings)

@@ -8,9 +8,12 @@ from scripts.collect_etf_candidates import download_candidate_pdfs, should_downl
 from scripts.pdf_langgraph.pdf_analysis_langgraph import (
     CORRECTION_REVIEW_SCHEMA_PATH,
     CORRECTION_UPDATE_SCHEMA_PATH,
+    call_codex,
+    call_llm,
     review_correction_filing,
     update_record_from_correction,
 )
+from new_etf_insight.llm import generate_json, get_provider
 from new_etf_insight.dart_pdf import (
     build_pdf_download_main_url,
     extract_pdf_download_dcm_no,
@@ -25,6 +28,8 @@ from new_etf_insight.dart_viewer import (
 from new_etf_insight.daily_pipeline import run_daily_pipeline
 from new_etf_insight.etf_classifier import classify_pre_listing_equity_etf
 from new_etf_insight.filing_filter import is_candidate_filing, matches_candidate_query, to_candidate
+from new_etf_insight.llm.codex_provider import CodexProvider
+from new_etf_insight.llm.openclaw_provider import OpenClawProvider
 
 
 
@@ -188,17 +193,17 @@ class CorrectionReviewTest(unittest.TestCase):
                 return_value="정정사항\n정정사유\n정 정 전\n정 정 후",
             ) as fetch_text,
             patch(
-                "scripts.pdf_langgraph.pdf_analysis_langgraph.call_codex",
+                "scripts.pdf_langgraph.pdf_analysis_langgraph.call_llm",
                 return_value='{"needs_update": true, "reason": "투자전략 정정"}',
-            ) as call_codex_mock,
+            ) as call_llm_mock,
         ):
             result = review_correction_filing(filing)
 
         fetch_text.assert_called_once_with("20260429000103")
-        call_codex_mock.assert_called_once()
-        self.assertEqual(call_codex_mock.call_args.kwargs["output_schema_path"], CORRECTION_REVIEW_SCHEMA_PATH)
-        self.assertIn("타임폴리오자산운용", call_codex_mock.call_args.args[0])
-        self.assertIn("정정사항", call_codex_mock.call_args.args[0])
+        call_llm_mock.assert_called_once()
+        self.assertEqual(call_llm_mock.call_args.kwargs["output_schema_path"], CORRECTION_REVIEW_SCHEMA_PATH)
+        self.assertIn("타임폴리오자산운용", call_llm_mock.call_args.args[0])
+        self.assertIn("정정사항", call_llm_mock.call_args.args[0])
         self.assertEqual(result, {"needs_update": True, "reason": "투자전략 정정"})
 
     def test_updates_record_from_correction_with_schema_limited_codex_call(self) -> None:
@@ -224,18 +229,125 @@ class CorrectionReviewTest(unittest.TestCase):
                 return_value="정정사항\n정정 전\n정정 후",
             ) as fetch_text,
             patch(
-                "scripts.pdf_langgraph.pdf_analysis_langgraph.call_codex",
+                "scripts.pdf_langgraph.pdf_analysis_langgraph.call_llm",
                 return_value='{"route":"correction_updated","summary":{"fund_name":"수정 ETF"},"research_prompt":""}',
-            ) as call_codex_mock,
+            ) as call_llm_mock,
         ):
             result = update_record_from_correction(existing_record, filing, review)
 
         fetch_text.assert_called_once_with("20260429000103")
-        call_codex_mock.assert_called_once()
-        self.assertEqual(call_codex_mock.call_args.kwargs["output_schema_path"], CORRECTION_UPDATE_SCHEMA_PATH)
-        self.assertIn("기존 ETF", call_codex_mock.call_args.args[0])
-        self.assertIn("투자전략 변경", call_codex_mock.call_args.args[0])
+        call_llm_mock.assert_called_once()
+        self.assertEqual(call_llm_mock.call_args.kwargs["output_schema_path"], CORRECTION_UPDATE_SCHEMA_PATH)
+        self.assertIn("기존 ETF", call_llm_mock.call_args.args[0])
+        self.assertIn("투자전략 변경", call_llm_mock.call_args.args[0])
         self.assertEqual(result["summary"]["fund_name"], "수정 ETF")
+
+
+class LlmProviderTest(unittest.TestCase):
+    def test_defaults_to_codex_provider(self) -> None:
+        self.assertIsInstance(get_provider(), CodexProvider)
+
+    def test_selects_openclaw_provider(self) -> None:
+        with patch.dict("os.environ", {"ETF_LLM_PROVIDER": "openclaw"}):
+            self.assertIsInstance(get_provider(), OpenClawProvider)
+
+    def test_generate_json_uses_selected_provider(self) -> None:
+        with patch("new_etf_insight.llm.get_provider") as get_provider_mock:
+            provider = get_provider_mock.return_value
+            provider.generate_json.return_value = '{"ok": true}'
+
+            result = generate_json("prompt", output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH, provider_name="openclaw")
+
+        get_provider_mock.assert_called_once_with("openclaw")
+        provider.generate_json.assert_called_once_with(
+            "prompt",
+            output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
+            search=False,
+        )
+        self.assertEqual(result, '{"ok": true}')
+
+    def test_call_codex_alias_uses_generic_llm_call(self) -> None:
+        with patch("scripts.pdf_langgraph.pdf_analysis_langgraph.call_llm", return_value='{"ok": true}') as call_llm_mock:
+            result = call_codex("prompt", output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH)
+
+        call_llm_mock.assert_called_once_with(
+            "prompt",
+            search=False,
+            output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
+        )
+        self.assertEqual(result, '{"ok": true}')
+
+    def test_call_llm_uses_provider_adapter(self) -> None:
+        with patch("scripts.pdf_langgraph.pdf_analysis_langgraph.generate_json", return_value='{"ok": true}') as generate_mock:
+            result = call_llm("prompt", output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH, search=True)
+
+        generate_mock.assert_called_once_with(
+            "prompt",
+            search=True,
+            output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
+        )
+        self.assertEqual(result, '{"ok": true}')
+
+    def test_codex_provider_builds_existing_command(self) -> None:
+        with (
+            patch("new_etf_insight.llm.codex_provider.subprocess.run") as run_mock,
+            patch("new_etf_insight.llm.codex_provider.tempfile.TemporaryDirectory") as tempdir_mock,
+        ):
+            tempdir_mock.return_value.__enter__.return_value = "/tmp/llm"
+            Path("/tmp/llm").mkdir(parents=True, exist_ok=True)
+            Path("/tmp/llm/codex_last_message.txt").write_text('{"ok": true}', encoding="utf-8")
+
+            result = CodexProvider().generate_json(
+                "prompt",
+                output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
+                search=True,
+            )
+
+        command = run_mock.call_args.args[0]
+        self.assertEqual(command[:2], ["codex", "--search"])
+        self.assertIn("--output-schema", command)
+        self.assertIn(str(CORRECTION_REVIEW_SCHEMA_PATH), command)
+        self.assertEqual(command[-1], "prompt")
+        self.assertEqual(result, '{"ok": true}')
+
+    def test_openclaw_provider_requires_command(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "OPENCLAW_LLM_COMMAND"):
+                OpenClawProvider().generate_json("prompt", output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH)
+
+    def test_openclaw_provider_runs_configured_command_with_prompt_stdin(self) -> None:
+        command_template = "openclaw llm --schema {output_schema_path} --out {output_path} --search {search}"
+        with (
+            patch.dict("os.environ", {"OPENCLAW_LLM_COMMAND": command_template}, clear=True),
+            patch("new_etf_insight.llm.openclaw_provider.subprocess.run") as run_mock,
+            patch("new_etf_insight.llm.openclaw_provider.tempfile.TemporaryDirectory") as tempdir_mock,
+        ):
+            tempdir_mock.return_value.__enter__.return_value = "/tmp/openclaw-llm"
+            Path("/tmp/openclaw-llm").mkdir(parents=True, exist_ok=True)
+            Path("/tmp/openclaw-llm/openclaw_last_message.txt").write_text('{"ok": true}', encoding="utf-8")
+
+            result = OpenClawProvider().generate_json(
+                "prompt",
+                output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
+                search=True,
+            )
+
+        run_mock.assert_called_once_with(
+            [
+                "openclaw",
+                "llm",
+                "--schema",
+                str(CORRECTION_REVIEW_SCHEMA_PATH),
+                "--out",
+                "/tmp/openclaw-llm/openclaw_last_message.txt",
+                "--search",
+                "true",
+            ],
+            check=True,
+            input="prompt",
+            text=True,
+        )
+        self.assertEqual(result, '{"ok": true}')
 
 
 class CollectEtfCandidatesScriptTest(unittest.TestCase):
