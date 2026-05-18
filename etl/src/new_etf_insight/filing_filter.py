@@ -41,6 +41,7 @@ def to_candidate(filing: dict[str, Any]) -> FilingCandidate:
     return FilingCandidate(
         rcept_no=rcept_no,
         rcept_dt=str(filing.get("rcept_dt", "")),
+        corp_code=str(filing.get("corp_code", "")),
         corp_name=str(filing.get("corp_name", "")),
         report_nm=str(filing.get("report_nm", "")),
         dart_url=DART_VIEW_URL.format(rcept_no=rcept_no),

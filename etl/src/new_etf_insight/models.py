@@ -11,6 +11,7 @@ DART_VIEW_URL = "https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
 class FilingCandidate:
     rcept_no: str
     rcept_dt: str
+    corp_code: str
     corp_name: str
     report_nm: str
     dart_url: str

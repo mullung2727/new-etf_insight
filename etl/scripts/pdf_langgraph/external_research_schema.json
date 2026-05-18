@@ -1,0 +1,64 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "holdings_found",
+    "weights_found",
+    "source_url",
+    "source_name",
+    "source_type",
+    "as_of_date",
+    "items",
+    "missing_info"
+  ],
+  "properties": {
+    "holdings_found": {
+      "type": "boolean"
+    },
+    "weights_found": {
+      "type": "boolean"
+    },
+    "source_url": {
+      "type": ["string", "null"]
+    },
+    "source_name": {
+      "type": ["string", "null"]
+    },
+    "source_type": {
+      "type": ["string", "null"],
+      "enum": [
+        "index_page",
+        "pcf",
+        "manager_page",
+        "disclosure",
+        "other",
+        null
+      ]
+    },
+    "as_of_date": {
+      "type": ["string", "null"]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "weight"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "weight": {
+            "type": ["string", "number", "null"]
+          }
+        }
+      }
+    },
+    "missing_info": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

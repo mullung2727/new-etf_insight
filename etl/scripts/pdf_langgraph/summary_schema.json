@@ -1,0 +1,91 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "is_pre_listing_etf",
+    "fund_name",
+    "asset_manager",
+    "index",
+    "holdings",
+    "keywords",
+    "trend_summary",
+    "missing_info"
+  ],
+  "properties": {
+    "is_pre_listing_etf": {
+      "type": "boolean"
+    },
+    "fund_name": {
+      "type": ["string", "null"]
+    },
+    "asset_manager": {
+      "type": ["string", "null"]
+    },
+    "index": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "provider", "description"],
+      "properties": {
+        "name": {
+          "type": ["string", "null"]
+        },
+        "provider": {
+          "type": ["string", "null"]
+        },
+        "description": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "holdings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available_in_pdf", "summary", "items", "where_to_find_more"],
+      "properties": {
+        "available_in_pdf": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": ["string", "null"]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "weight"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "weight": {
+                "type": ["string", "number", "null"]
+              }
+            }
+          }
+        },
+        "where_to_find_more": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trend_summary": {
+      "type": ["string", "null"]
+    },
+    "missing_info": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

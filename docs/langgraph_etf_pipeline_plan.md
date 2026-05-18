@@ -3,41 +3,42 @@
 ## 전제
 
 - 목표는 신규 ETF 투자설명서 PDF에서 쓸 만한 정보를 구조화하고, PDF에 없는 정보는 추종지수/운용사/PCF 같은 외부 출처로 보강하는 파이프라인을 만드는 것이다.
-- PDF 전체를 매번 LLM에 그대로 넣는 방식은 토큰 낭비가 크고, 누락/오탐 가능성이 높다.
+- 초기에는 PDF 전체 텍스트를 LLM에 그대로 넣어 목표 스키마를 채운다.
+- 페이지 분리, 섹션 라우팅, RAG는 처음부터 넣지 않는다. 전체 PDF 방식에서 토큰, 속도, 비용, 누락 문제가 확인되면 후속 최적화 옵션으로 검토한다.
 - 최종적으로는 LangGraph로 상태, 분기, 반복, 재시도 흐름을 관리한다.
-- 다만 초기에는 Codex 구독형 UI를 사람이 직접 쓰는 흐름을 전제로 한다.
-- Codex 구독형은 일반적인 API provider처럼 LangGraph 런타임에서 안정적으로 직접 호출하기 어렵다고 보고, 처음에는 "프롬프트 파일 생성 -> 사람이 Codex에 입력 -> 결과 JSON 저장" 방식으로 시작한다.
+- 초기에는 Codex CLI의 `codex exec`를 LangGraph 노드에서 자동 호출하는 흐름을 전제로 한다.
+- `codex exec` 호출부는 단일 어댑터로 분리해서, 나중에 OpenAI API나 다른 LLM 호출 방식으로 바꿀 수 있게 한다.
 - 나중에 API 키를 쓰게 되면 같은 노드 인터페이스에 OpenAI API 호출을 붙일 수 있게 LLM 호출부를 분리한다.
 
 ## 전체 방향
 
 ```text
-Phase -2. Codex 구독형 Hello World 파이프라인
+Phase -2. Codex exec Hello World 파이프라인
 Phase -1. PDF 통요약 LangGraph 파이프라인
 Phase 0. 목표 스키마 초안
-Phase 1. PDF 텍스트/페이지 추출
-Phase 2. 섹션/페이지 라우팅
-Phase 3. PDF 기반 정보 추출 프롬프트 생성
-Phase 4. LangGraph 상태 그래프 도입
-Phase 5. 외부 리서치 후보 URL 추출
-Phase 6. 외부 리서치 결과 병합
-Phase 7. 배치 실행/저장
+Phase 1. 전체 PDF 기반 목표 스키마 추출
+Phase 2. 구성종목 비중 존재 여부 분기
+Phase 3. 외부 리서치 후보 URL 추출
+Phase 4. 외부 리서치 결과 병합
+Phase 5. 배치 실행/결과 저장
+Phase 6. 추출 품질 평가
+Phase 7. 페이지 분리/RAG 최적화 여부 결정
 ```
 
-## Phase -2. Codex 구독형 Hello World 파이프라인
+## Phase -2. Codex exec Hello World 파이프라인
 
 ### 목적
 
 - LangGraph 자체가 프로젝트에서 정상 실행되는지 아주 작게 확인한다.
-- Codex 구독형을 직접 API처럼 호출하지 않고도, 사람이 Codex에 넣을 입력과 사람이 붙여 넣을 출력을 파이프라인 단계로 다룰 수 있는지 확인한다.
+- LangGraph 노드에서 `codex exec`를 자동 호출하고 JSON 결과를 파싱할 수 있는지 확인한다.
 
 ### 러프 흐름
 
 ```text
 start
 -> build_prompt
--> wait_for_manual_codex_result
--> save_result
+-> call_codex_exec
+-> parse_json_result
 ```
 
 ### 입력
@@ -52,9 +53,9 @@ start
 
 ```json
 {
-  "prompt_path": "artifacts/prompts/hello_world.md",
-  "manual_result_path": "artifacts/manual_results/hello_world.json",
-  "final": {
+  "prompt": "...",
+  "codex_output": "...",
+  "result": {
     "message": "..."
   }
 }
@@ -62,8 +63,8 @@ start
 
 ### 완료 기준
 
-- LangGraph 그래프를 실행하면 Codex에 넣을 프롬프트 파일이 생성된다.
-- 사람이 Codex 결과를 JSON 파일로 저장하면 다음 실행에서 그 결과를 읽어 최종 결과로 만든다.
+- LangGraph 그래프를 실행하면 `codex exec`가 자동 호출된다.
+- Codex 출력이 JSON으로 파싱되어 최종 결과가 된다.
 - 이 단계에서는 PDF, DART, 외부 리서치를 다루지 않는다.
 
 ## Phase -1. PDF 통요약 LangGraph 파이프라인
@@ -71,7 +72,7 @@ start
 ### 목적
 
 - 복잡한 섹션 라우팅 전에, PDF 하나를 읽고 전체 텍스트를 요약 프롬프트로 만드는 최소 흐름을 확인한다.
-- 이 단계는 일부러 단순하게 만든다. 토큰 효율이 나쁘더라도 LangGraph와 Codex 수동 루프가 실제로 굴러가는지 보는 용도다.
+- 이 단계는 일부러 단순하게 만든다. 토큰 효율이 나쁘더라도 LangGraph와 `codex exec` 자동 호출이 실제로 굴러가는지 보는 용도다.
 
 ### 러프 흐름
 
@@ -79,8 +80,8 @@ start
 start
 -> load_pdf_text
 -> build_summary_prompt
--> wait_for_manual_codex_summary
--> save_summary
+-> call_codex_exec
+-> parse_summary_json
 ```
 
 ### 입력
@@ -97,17 +98,21 @@ start
 {
   "pdf_path": "downloads/pdfs/20260429000012_11352014.pdf",
   "page_count": 56,
-  "prompt_path": "artifacts/prompts/20260429000012_summary.md",
-  "summary_path": "artifacts/manual_results/20260429000012_summary.json"
+  "prompt": "...",
+  "codex_output": "...",
+  "summary": {
+    "summary": "..."
+  }
 }
 ```
 
 ### 완료 기준
 
 - PDF 텍스트를 읽는다.
-- Codex에 붙여넣을 요약 프롬프트 파일을 만든다.
-- 사람이 Codex에서 요약 결과를 받아 JSON으로 저장하면 파이프라인이 그 결과를 읽는다.
-- 이 단계에서는 정확한 구조화 추출보다 "수동 Codex 루프가 가능한가"만 본다.
+- PDF 전체 텍스트를 포함한 요약 프롬프트를 만든다.
+- `codex exec`를 자동 호출한다.
+- Codex 출력 JSON을 파싱해 요약 결과로 만든다.
+- 이 단계에서는 정확한 구조화 추출보다 "`codex exec` 자동 호출로 PDF 요약 루프가 가능한가"만 본다.
 
 ## Phase 0. 목표 스키마 초안
 
@@ -151,140 +156,94 @@ start
 - "PDF 한 개 결과를 저장할 수 있겠다" 싶은 최소 JSON 구조를 정한다.
 - `null` 처리 규칙과 출처 페이지 기록 규칙을 정한다.
 
-## Phase 1. PDF 텍스트/페이지 추출
+## Phase 1. 전체 PDF 기반 목표 스키마 추출
 
 ### 목적
 
-- PDF 전체를 LLM에 바로 던지지 않고 페이지별 텍스트로 분리한다.
+- PDF 전체 텍스트를 `codex exec`에 전달해 목표 JSON 스키마를 채운다.
+- 페이지 분리나 섹션 라우팅 없이, 먼저 통째 추출 품질을 확인한다.
 
 ### 산출물 후보
 
-- `etl/src/new_etf_insight/pdf_pages.py`
+- `etl/scripts/pdf_langgraph/pdf_analysis_langgraph.py`
+- `etl/scripts/pdf_langgraph/summary_schema.json`
 
 ### 입력
 
-```text
-../downloads/pdfs/20260429000012_11352014.pdf
+```json
+{
+  "pdf_path": "../downloads/pdfs/20260429000012_11352014.pdf"
+}
 ```
 
 ### 출력
 
 ```json
-[
-  {"page": 1, "text": "..."},
-  {"page": 2, "text": "..."}
-]
-```
-
-### 완료 기준
-
-- 페이지 수와 페이지별 텍스트 길이를 확인할 수 있다.
-- 페이지별 텍스트를 파일로 캐시할 수 있다.
-
-## Phase 2. 섹션/페이지 라우팅
-
-### 목적
-
-- 필요한 페이지 후보만 찾는다.
-- 처음에는 LLM 없이 키워드 매칭으로 시작한다.
-
-### 산출물 후보
-
-- `etl/src/new_etf_insight/section_locator.py`
-
-### 출력 예시
-
-```json
 {
-  "basic_info_pages": [1, 4, 9],
-  "strategy_pages": [14, 19, 20],
-  "fee_pages": [4, 33],
-  "index_pages": [4, 14, 19],
-  "risk_pages": [4, 20, 21]
+  "is_pre_listing_etf": true,
+  "fund_name": "...",
+  "asset_manager": "...",
+  "index": {
+    "name": "...",
+    "provider": "...",
+    "description": "..."
+  },
+  "holdings": {
+    "available_in_pdf": false,
+    "summary": null,
+    "items": [],
+    "where_to_find_more": []
+  },
+  "keywords": [],
+  "trend_summary": "...",
+  "missing_info": []
 }
 ```
 
 ### 완료 기준
 
-- 테스트 PDF에서 기초지수/투자전략 페이지가 잘 잡힌다.
+- PDF 경로를 입력으로 받아 실행할 수 있다.
+- PDF 전체 텍스트를 기반으로 `summary_schema.json` 형식의 JSON을 출력한다.
+- PDF에 없는 내용은 추측하지 않고 `null`, 빈 배열, `missing_info`로 남긴다.
 
-## Phase 3. PDF 기반 정보 추출 프롬프트 생성
-
-### 목적
-
-- Codex에 붙여넣을 수 있는 짧고 정확한 프롬프트 패키지를 만든다.
-
-### 산출물 후보
-
-- `etl/src/new_etf_insight/prompt_builder.py`
-
-### 입력
-
-- 페이지별 텍스트
-- 섹션 라우팅 결과
-- 목표 JSON 스키마
-
-### 출력
-
-```text
-../artifacts/prompts/20260429000012_pdf_extract.md
-```
-
-### 프롬프트 규칙
-
-- PDF 전체가 아니라 관련 페이지만 포함한다.
-- 원하는 JSON 스키마를 포함한다.
-- 모르면 `null`로 둔다.
-- 각 값에 `source_pages`를 붙인다.
-- PDF 안에 없는 구성종목은 추측하지 않는다.
-
-### 완료 기준
-
-- Codex에 프롬프트 하나를 넣으면 구조화 결과 초안을 받을 수 있다.
-
-## Phase 4. LangGraph 상태 그래프 도입
+## Phase 2. 구성종목 비중 존재 여부 분기
 
 ### 목적
 
-- 지금까지 만든 함수들을 노드로 연결한다.
+- PDF 추출 결과의 `holdings.available_in_pdf`를 기준으로 LangGraph 분기를 만든다.
+- PDF에 구성종목과 비중이 있으면 외부 검색 없이 저장 가능한 결과로 보낸다.
+- PDF에 구성종목과 비중이 없으면 `holdings.where_to_find_more`를 근거로 외부 리서치 단계로 보낸다.
 
 ### 산출물 후보
 
-- `etl/src/new_etf_insight/etf_graph.py`
+- `etl/scripts/pdf_langgraph/pdf_analysis_langgraph.py`
 
-### 상태 예시
-
-```python
-class EtfState(TypedDict):
-    pdf_path: str
-    pages: list[dict]
-    sections: dict
-    prompt_path: str
-    extracted: dict
-    needs_external_research: bool
-    external_sources: list[dict]
-    final_record: dict
-```
-
-### 초기 그래프
+### 분기 흐름
 
 ```text
-load_pdf
--> locate_sections
--> build_pdf_extract_prompt
--> stop_for_manual_llm
+extract_from_pdf
+-> route_holdings
+
+route_holdings:
+  holdings.available_in_pdf == true
+    -> finalize_pdf_result
+
+  holdings.available_in_pdf == false
+    -> build_external_research_targets
 ```
 
 ### 완료 기준
 
-- LangGraph 실행으로 PDF에서 프롬프트 파일까지 생성된다.
-- 이 단계에서도 자동 LLM 호출은 하지 않는다.
+- `holdings.available_in_pdf=true`면 외부 검색 없이 다음 저장 단계로 보낼 수 있다.
+- `holdings.available_in_pdf=false`면 외부 리서치 후보 추출 단계로 보낸다.
+- `where_to_find_more`가 비어 있으면 `missing_info`에 외부 검색 단서 부족을 남긴다.
 
-## Phase 5. 외부 리서치 후보 URL 추출
+## Phase 3. 외부 리서치 후보 URL 추출
 
 ### 목적
 
-- PDF에서 기초지수명, URL, ISIN 같은 리서치 힌트를 뽑는다.
+- PDF 안에 구성종목과 비중이 없을 때만 실행한다.
+- `holdings.where_to_find_more`, 지수명, 운용사명, ETF명, PCF 단서를 바탕으로 외부 검색 후보를 만든다.
 
 ### 산출물 후보
 
@@ -303,9 +262,11 @@ load_pdf
 
 ### 완료 기준
 
-- 테스트 PDF에서 `DE000SL0JYE7`와 Solactive URL을 추출한다.
+- `where_to_find_more`에 있는 구체적 단서를 우선 사용한다.
+- PDF의 지수명, 지수 산출기관, ETF명, 운용사명을 검색 힌트로 정리한다.
+- 단서가 부족하면 외부 검색을 억지로 진행하지 않고 부족 사유를 남긴다.
 
-## Phase 6. 외부 리서치 결과 병합
+## Phase 4. 외부 리서치 결과 병합
 
 ### 목적
 
@@ -330,11 +291,12 @@ load_pdf
 - 구성종목이 없으면 `needs_external_research=true`로 표시한다.
 - 외부 구성종목 JSON이 있으면 `holdings.items`에 병합한다.
 
-## Phase 7. 배치 실행/저장
+## Phase 5. 배치 실행/결과 저장
 
 ### 목적
 
 - `../downloads/pdfs/*.pdf`를 반복 처리한다.
+- 개별 PDF 추출 결과와 외부 리서치 필요 여부를 파일로 저장한다.
 
 ### 산출물 후보
 
@@ -344,15 +306,70 @@ load_pdf
 
 ```text
 ../artifacts/extracted_etfs/{rcept_no}.json
-../artifacts/prompts/{rcept_no}_pdf_extract.md
 ```
 
 ### 완료 기준
 
-- 20260429 PDF들에 대해 프롬프트와 초기 JSON을 생성한다.
+- 20260429 PDF들에 대해 JSON 결과를 생성한다.
+- 실패한 PDF는 실패 이유와 파일 경로를 남긴다.
+- 외부 리서치가 필요한 PDF와 필요 없는 PDF가 구분되어 저장된다.
+
+## Phase 6. 추출 품질 평가
+
+### 목적
+
+- 통째 PDF 추출 방식과 구성종목 분기 방식이 실제로 충분한지 확인한다.
+- 어떤 필드가 잘 뽑히고, 어떤 필드가 누락/환각/불안정한지 기록한다.
+
+### 산출물 후보
+
+- `../artifacts/extracted_etfs/evaluation.md`
+
+### 입력
+
+- PDF 추출 JSON들
+- 원본 PDF
+
+### 출력
+
+- 필드별 품질 메모
+- 누락/오탐 사례
+- 외부 리서치 분기 정확도
+- 다음 단계에서 보강할 항목
+
+### 완료 기준
+
+- 최소 3~5개 PDF 결과를 보고 현재 방식 유지 여부를 판단한다.
+- 성능, 비용, 누락 문제가 크지 않으면 페이지 분리/RAG 없이 다음 단계로 간다.
+
+## Phase 7. 페이지 분리/RAG 최적화 여부 결정
+
+### 목적
+
+- 전체 PDF 방식에서 문제가 확인될 때만 페이지 분리, 섹션 라우팅, RAG 중 하나를 검토한다.
+- 이 단계는 필수 구현 단계가 아니라 성능/품질 개선 옵션이다.
+
+### 검토 조건
+
+- PDF 길이 때문에 `codex exec`가 실패하거나 너무 느리다.
+- 비용 또는 토큰 사용량이 감당하기 어렵다.
+- 긴 문서 중간의 핵심 필드가 반복적으로 누락된다.
+- 출처 페이지 기록이 제품 요구사항으로 확정된다.
+
+### 옵션
+
+- 페이지별 텍스트 추출
+- 키워드 기반 넓은 후보 페이지 선정
+- LLM 기반 페이지 선택
+- 벡터 검색/RAG
+
+### 완료 기준
+
+- 문제가 명확하지 않으면 구현하지 않는다.
+- 필요성이 확인되면 별도 phase로 쪼개서 설계한다.
 
 ## 당장 다음 작업
 
-1. Phase -2: Codex 구독형 Hello World 파이프라인을 만든다.
-2. Phase -1: PDF 통요약 LangGraph 파이프라인을 만든다.
-3. 두 단계가 실제로 돌아가는 걸 확인한 뒤 Phase 0 스키마를 조정한다.
+1. Phase 1: PDF 경로를 입력으로 받아 전체 PDF 기반 목표 스키마 JSON을 출력한다.
+2. Phase 2: `holdings.available_in_pdf` 기준 LangGraph 분기를 만든다.
+3. Phase 3: PDF에 비중이 없을 때 `where_to_find_more` 기반 외부 리서치 후보를 만든다.

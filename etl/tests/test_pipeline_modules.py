@@ -1,15 +1,30 @@
+import json
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.collect_etf_candidates import download_candidate_pdfs, should_download_pdf
+from scripts.pdf_langgraph.pdf_analysis_langgraph import (
+    CORRECTION_REVIEW_SCHEMA_PATH,
+    CORRECTION_UPDATE_SCHEMA_PATH,
+    review_correction_filing,
+    update_record_from_correction,
+)
 from new_etf_insight.dart_pdf import (
     build_pdf_download_main_url,
     extract_pdf_download_dcm_no,
     extract_prospectus_file_url,
 )
+from new_etf_insight.dart_viewer import (
+    ViewerSection,
+    build_etf_key,
+    extract_fund_code,
+    fetch_dart_viewer_text,
+)
+from new_etf_insight.daily_pipeline import run_daily_pipeline
 from new_etf_insight.etf_classifier import classify_pre_listing_equity_etf
-from new_etf_insight.filing_filter import is_candidate_filing, matches_candidate_query
+from new_etf_insight.filing_filter import is_candidate_filing, matches_candidate_query, to_candidate
 
 
 
@@ -69,6 +84,19 @@ class FilingFilterTest(unittest.TestCase):
             )
         )
 
+    def test_candidate_keeps_corp_code(self) -> None:
+        candidate = to_candidate(
+            {
+                "rcept_no": "20260429000010",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "투자설명서(집합투자증권)",
+            }
+        )
+
+        self.assertEqual(candidate.corp_code, "00104500")
+
 
 class EtfClassifierTest(unittest.TestCase):
     def test_detects_pre_listing_equity_etf(self) -> None:
@@ -108,6 +136,108 @@ class DartPdfTest(unittest.TestCase):
         )
 
 
+class DartViewerTest(unittest.TestCase):
+    def test_extracts_fund_code(self) -> None:
+        text = "1. 집합투자기구 명칭 : KB RISE 현대차고정피지컬AI (펀드코드 : ET942 )"
+
+        self.assertEqual(extract_fund_code(text), "ET942")
+
+    def test_extracts_fund_code_with_spaced_label(self) -> None:
+        text = "집합투자기구 명칭 : 테스트 ETF (펀드 코드：ej669)"
+
+        self.assertEqual(extract_fund_code(text), "EJ669")
+
+    def test_extracts_fund_code_from_table_text(self) -> None:
+        text = "집합투자기구 명칭(종류형 명칭) 펀드코드 한화 PLUS 은채권혼합증권상장지수투자신탁 EU027"
+
+        self.assertEqual(extract_fund_code(text), "EU027")
+
+    def test_builds_etf_key(self) -> None:
+        self.assertEqual(build_etf_key("00104500", "et942"), "00104500_ET942")
+
+    def test_fetch_dart_viewer_text_joins_section_texts(self) -> None:
+        sections = [
+            ViewerSection("20260429000103", "1", "1", "0", "10", "dart4.xsd"),
+            ViewerSection("20260429000103", "1", "2", "10", "10", "dart4.xsd"),
+            ViewerSection("20260429000103", "1", "3", "20", "10", "dart4.xsd"),
+        ]
+
+        with (
+            patch("new_etf_insight.dart_viewer.fetch_dart_main_html", return_value="main html"),
+            patch("new_etf_insight.dart_viewer.extract_viewer_sections", return_value=sections),
+            patch(
+                "new_etf_insight.dart_viewer.fetch_viewer_section_text",
+                side_effect=["정 정 신 고", "", "정정사항"],
+            ),
+        ):
+            self.assertEqual(fetch_dart_viewer_text("20260429000103"), "정 정 신 고\n정정사항")
+
+
+class CorrectionReviewTest(unittest.TestCase):
+    def test_reviews_correction_filing_with_schema_limited_codex_call(self) -> None:
+        filing = {
+            "rcept_no": "20260429000103",
+            "rcept_dt": "20260429",
+            "corp_name": "타임폴리오자산운용",
+            "report_nm": "[기재정정]투자설명서(집합투자증권)",
+        }
+
+        with (
+            patch(
+                "scripts.pdf_langgraph.pdf_analysis_langgraph.fetch_dart_viewer_text",
+                return_value="정정사항\n정정사유\n정 정 전\n정 정 후",
+            ) as fetch_text,
+            patch(
+                "scripts.pdf_langgraph.pdf_analysis_langgraph.call_codex",
+                return_value='{"needs_update": true, "reason": "투자전략 정정"}',
+            ) as call_codex_mock,
+        ):
+            result = review_correction_filing(filing)
+
+        fetch_text.assert_called_once_with("20260429000103")
+        call_codex_mock.assert_called_once()
+        self.assertEqual(call_codex_mock.call_args.kwargs["output_schema_path"], CORRECTION_REVIEW_SCHEMA_PATH)
+        self.assertIn("타임폴리오자산운용", call_codex_mock.call_args.args[0])
+        self.assertIn("정정사항", call_codex_mock.call_args.args[0])
+        self.assertEqual(result, {"needs_update": True, "reason": "투자전략 정정"})
+
+    def test_updates_record_from_correction_with_schema_limited_codex_call(self) -> None:
+        existing_record = {
+            "route": "pdf_holdings_available",
+            "summary": {"fund_name": "기존 ETF", "keywords": ["기존"]},
+            "research_prompt": "",
+            "source": {"rcept_no": "20260429000001"},
+            "first_rcept_dt": "20260401",
+            "revision_count": 0,
+        }
+        filing = {
+            "rcept_no": "20260429000103",
+            "rcept_dt": "20260429",
+            "corp_name": "타임폴리오자산운용",
+            "report_nm": "[기재정정]투자설명서(집합투자증권)",
+        }
+        review = {"needs_update": True, "reason": "투자전략 변경"}
+
+        with (
+            patch(
+                "scripts.pdf_langgraph.pdf_analysis_langgraph.fetch_dart_viewer_text",
+                return_value="정정사항\n정정 전\n정정 후",
+            ) as fetch_text,
+            patch(
+                "scripts.pdf_langgraph.pdf_analysis_langgraph.call_codex",
+                return_value='{"route":"correction_updated","summary":{"fund_name":"수정 ETF"},"research_prompt":""}',
+            ) as call_codex_mock,
+        ):
+            result = update_record_from_correction(existing_record, filing, review)
+
+        fetch_text.assert_called_once_with("20260429000103")
+        call_codex_mock.assert_called_once()
+        self.assertEqual(call_codex_mock.call_args.kwargs["output_schema_path"], CORRECTION_UPDATE_SCHEMA_PATH)
+        self.assertIn("기존 ETF", call_codex_mock.call_args.args[0])
+        self.assertIn("투자전략 변경", call_codex_mock.call_args.args[0])
+        self.assertEqual(result["summary"]["fund_name"], "수정 ETF")
+
+
 class CollectEtfCandidatesScriptTest(unittest.TestCase):
     def test_should_download_pdf_only_for_stock_reports(self) -> None:
         self.assertTrue(should_download_pdf({"report_nm": "투자설명서(집합투자증권)(ETF(주식))"}))
@@ -135,6 +265,134 @@ class CollectEtfCandidatesScriptTest(unittest.TestCase):
                 }
             ],
         )
+
+
+class DailyPipelineTest(unittest.TestCase):
+    def test_creates_record_with_etf_key_path(self) -> None:
+        candidates = [
+            {
+                "rcept_no": "20260429000012",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "투자설명서(집합투자증권)(ETF(주식))",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            records_dir = base_dir / "records"
+            pdf_dir = base_dir / "pdfs"
+
+            with (
+                patch("new_etf_insight.daily_pipeline.collect_candidates", return_value=candidates),
+                patch("new_etf_insight.daily_pipeline.fetch_fund_code_from_dart_viewer", return_value="ET942"),
+                patch(
+                    "new_etf_insight.daily_pipeline.download_representative_prospectus_pdf",
+                    return_value=pdf_dir / "20260429000012_1.pdf",
+                ),
+                patch(
+                    "new_etf_insight.daily_pipeline.analyze_pdf",
+                    return_value={"route": "pdf_holdings_available", "summary": {}, "research_prompt": ""},
+                ),
+            ):
+                result = run_daily_pipeline("20260429", "20260429", records_dir, pdf_dir)
+                record = json.loads((records_dir / "00104500_ET942.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(result["results"][0]["action"], "created")
+        self.assertEqual(result["results"][0]["etf_key"], "00104500_ET942")
+        self.assertEqual(record["source"]["rcept_no"], "20260429000012")
+        self.assertEqual(record["first_rcept_dt"], "20260429")
+        self.assertEqual(record["revision_count"], 0)
+
+    def test_skips_correction_when_review_says_no_update(self) -> None:
+        candidates = [
+            {
+                "rcept_no": "20260429000103",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "[기재정정]투자설명서(집합투자증권)(ETF(주식))",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            records_dir = base_dir / "records"
+            records_dir.mkdir()
+            record_path = records_dir / "00104500_ET942.json"
+            record_path.write_text('{"source": {"rcept_no": "20260429000012"}}', encoding="utf-8")
+
+            with (
+                patch("new_etf_insight.daily_pipeline.collect_candidates", return_value=candidates),
+                patch("new_etf_insight.daily_pipeline.fetch_fund_code_from_dart_viewer", return_value="ET942"),
+                patch(
+                    "new_etf_insight.daily_pipeline.review_correction_filing",
+                    return_value={"needs_update": False, "reason": "핵심 필드 변경 없음"},
+                ),
+                patch("new_etf_insight.daily_pipeline.analyze_pdf") as analyze_pdf_mock,
+            ):
+                result = run_daily_pipeline("20260429", "20260429", records_dir, base_dir / "pdfs")
+
+        analyze_pdf_mock.assert_not_called()
+        self.assertEqual(result["results"][0]["action"], "skipped")
+
+    def test_updates_correction_without_pdf_reanalysis(self) -> None:
+        candidates = [
+            {
+                "rcept_no": "20260429000103",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "[기재정정]투자설명서(집합투자증권)(ETF(주식))",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            records_dir = base_dir / "records"
+            records_dir.mkdir()
+            record_path = records_dir / "00104500_ET942.json"
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "route": "pdf_holdings_available",
+                        "summary": {"fund_name": "기존 ETF"},
+                        "research_prompt": "",
+                        "source": {"rcept_no": "20260429000012"},
+                        "first_rcept_dt": "20260412",
+                        "revision_count": 0,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("new_etf_insight.daily_pipeline.collect_candidates", return_value=candidates),
+                patch("new_etf_insight.daily_pipeline.fetch_fund_code_from_dart_viewer", return_value="ET942"),
+                patch(
+                    "new_etf_insight.daily_pipeline.review_correction_filing",
+                    return_value={"needs_update": True, "reason": "투자전략 변경"},
+                ),
+                patch(
+                    "new_etf_insight.daily_pipeline.update_record_from_correction",
+                    return_value={"route": "correction_updated", "summary": {"fund_name": "수정 ETF"}, "research_prompt": ""},
+                ) as update_record_mock,
+                patch("new_etf_insight.daily_pipeline.download_representative_prospectus_pdf") as download_mock,
+                patch("new_etf_insight.daily_pipeline.analyze_pdf") as analyze_pdf_mock,
+            ):
+                result = run_daily_pipeline("20260429", "20260429", records_dir, base_dir / "pdfs")
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+
+        update_record_mock.assert_called_once()
+        download_mock.assert_not_called()
+        analyze_pdf_mock.assert_not_called()
+        self.assertEqual(result["results"][0]["action"], "updated")
+        self.assertEqual(record["summary"]["fund_name"], "수정 ETF")
+        self.assertEqual(record["first_rcept_dt"], "20260412")
+        self.assertEqual(record["revision_count"], 1)
+        self.assertEqual(record["source"]["rcept_no"], "20260429000103")
 
 
 if __name__ == "__main__":

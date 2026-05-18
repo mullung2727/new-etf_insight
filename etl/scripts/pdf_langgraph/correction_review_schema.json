@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "needs_update",
+    "reason"
+  ],
+  "properties": {
+    "needs_update": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string"
+    }
+  }
+}
