@@ -346,6 +346,7 @@ class LlmProviderTest(unittest.TestCase):
             check=True,
             input="prompt",
             text=True,
+            encoding="utf-8",
         )
         self.assertEqual(result, '{"ok": true}')
 
@@ -448,6 +449,104 @@ class DailyPipelineTest(unittest.TestCase):
 
         analyze_pdf_mock.assert_not_called()
         self.assertEqual(result["results"][0]["action"], "skipped")
+
+    def test_skips_existing_non_correction_record_without_overwrite(self) -> None:
+        candidates = [
+            {
+                "rcept_no": "20260429000012",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "투자설명서(집합투자증권)(ETF(주식))",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            records_dir = base_dir / "records"
+            records_dir.mkdir()
+            record_path = records_dir / "00104500_ET942.json"
+            original = {"source": {"rcept_no": "20260429000012"}, "summary": {"fund_name": "기존 ETF"}}
+            record_path.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+
+            with (
+                patch("new_etf_insight.daily_pipeline.collect_candidates", return_value=candidates),
+                patch("new_etf_insight.daily_pipeline.fetch_fund_code_from_dart_viewer", return_value="ET942"),
+                patch("new_etf_insight.daily_pipeline.download_representative_prospectus_pdf") as download_mock,
+                patch("new_etf_insight.daily_pipeline.analyze_pdf") as analyze_pdf_mock,
+            ):
+                result = run_daily_pipeline("20260429", "20260429", records_dir, base_dir / "pdfs")
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+
+        download_mock.assert_not_called()
+        analyze_pdf_mock.assert_not_called()
+        self.assertEqual(result["results"][0]["action"], "skipped")
+        self.assertEqual(result["results"][0]["reason"], "existing_record")
+        self.assertEqual(record, original)
+
+    def test_skips_existing_same_correction_record_without_review(self) -> None:
+        candidates = [
+            {
+                "rcept_no": "20260429000103",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "[기재정정]투자설명서(집합투자증권)(ETF(주식))",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            records_dir = base_dir / "records"
+            records_dir.mkdir()
+            record_path = records_dir / "00104500_ET942.json"
+            original = {"source": {"rcept_no": "20260429000103"}, "summary": {"fund_name": "기존 정정 ETF"}}
+            record_path.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+
+            with (
+                patch("new_etf_insight.daily_pipeline.collect_candidates", return_value=candidates),
+                patch("new_etf_insight.daily_pipeline.fetch_fund_code_from_dart_viewer", return_value="ET942"),
+                patch("new_etf_insight.daily_pipeline.review_correction_filing") as review_mock,
+                patch("new_etf_insight.daily_pipeline.analyze_pdf") as analyze_pdf_mock,
+            ):
+                result = run_daily_pipeline("20260429", "20260429", records_dir, base_dir / "pdfs")
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+
+        review_mock.assert_not_called()
+        analyze_pdf_mock.assert_not_called()
+        self.assertEqual(result["results"][0]["action"], "skipped")
+        self.assertEqual(result["results"][0]["reason"], "existing_record")
+        self.assertEqual(record, original)
+
+    def test_skips_correction_without_existing_record(self) -> None:
+        candidates = [
+            {
+                "rcept_no": "20260429000103",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "[기재정정]투자설명서(집합투자증권)(ETF(주식))",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            records_dir = base_dir / "records"
+
+            with (
+                patch("new_etf_insight.daily_pipeline.collect_candidates", return_value=candidates),
+                patch("new_etf_insight.daily_pipeline.fetch_fund_code_from_dart_viewer", return_value="ET942"),
+                patch("new_etf_insight.daily_pipeline.review_correction_filing") as review_mock,
+                patch("new_etf_insight.daily_pipeline.download_representative_prospectus_pdf") as download_mock,
+                patch("new_etf_insight.daily_pipeline.analyze_pdf") as analyze_pdf_mock,
+            ):
+                result = run_daily_pipeline("20260429", "20260429", records_dir, base_dir / "pdfs")
+
+        review_mock.assert_not_called()
+        download_mock.assert_not_called()
+        analyze_pdf_mock.assert_not_called()
+        self.assertEqual(result["results"][0]["action"], "skipped")
+        self.assertEqual(result["results"][0]["reason"], "correction_without_existing_record")
 
     def test_updates_correction_without_pdf_reanalysis(self) -> None:
         candidates = [

@@ -49,6 +49,16 @@ def run_daily_pipeline(
             "etf_key": etf_key,
         }
 
+        previous_record = _read_json(record_path) if record_path.exists() else {}
+        previous_rcept_no = str(previous_record.get("source", {}).get("rcept_no", ""))
+        if previous_rcept_no == rcept_no:
+            results.append(_skipped_result(rcept_no, etf_key, "existing_record"))
+            continue
+
+        if is_correction_source(filing) and not record_path.exists():
+            results.append(_skipped_result(rcept_no, etf_key, "correction_without_existing_record"))
+            continue
+
         if is_correction_source(filing) and record_path.exists():
             review = review_correction_filing(filing)
             if not review["needs_update"]:
@@ -73,6 +83,10 @@ def run_daily_pipeline(
             )
             continue
 
+        if record_path.exists():
+            results.append(_skipped_result(rcept_no, etf_key, "existing_record"))
+            continue
+
         _save_pdf_analysis(filing, record_path, pdf_dir)
         results.append(
             {
@@ -88,6 +102,15 @@ def run_daily_pipeline(
         "end": end,
         "candidate_count": len(candidates),
         "results": results,
+    }
+
+
+def _skipped_result(rcept_no: str, etf_key: str, reason: str) -> dict[str, str]:
+    return {
+        "rcept_no": rcept_no,
+        "etf_key": etf_key,
+        "action": "skipped",
+        "reason": reason,
     }
 
 
@@ -149,7 +172,7 @@ def _build_source(filing: dict[str, Any], pdf_path: Path) -> dict[str, str]:
         "report_nm": str(filing.get("report_nm", "")),
         "fund_code": str(filing.get("fund_code", "")),
         "etf_key": str(filing.get("etf_key", "")),
-        "pdf_path": str(pdf_path),
+        "pdf_path": pdf_path.as_posix(),
     }
 
 

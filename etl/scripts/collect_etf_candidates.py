@@ -37,7 +37,7 @@ def download_candidate_pdfs(candidates: list[dict[str, Any]], pdf_dir: Path) -> 
                 "rcept_no": str(candidate.get("rcept_no", "")),
                 "corp_name": str(candidate.get("corp_name", "")),
                 "report_nm": str(candidate.get("report_nm", "")),
-                "pdf_path": str(pdf_path),
+                "pdf_path": pdf_path.as_posix(),
             }
         )
     return downloads

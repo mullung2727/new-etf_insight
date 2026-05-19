@@ -23,16 +23,17 @@ class OpenClawProvider:
             output_path = Path(tmpdir) / "openclaw_last_message.txt"
             command_text = command_template.format(
                 output_schema_path=str(output_schema_path),
-                output_path=str(output_path),
+                output_path=output_path.as_posix(),
                 search="true" if search else "false",
             )
-            command = shlex.split(command_text)
+            command = shlex.split(command_text, posix=(os.name != "nt"))
 
             subprocess.run(
                 command,
                 check=True,
                 input=prompt,
                 text=True,
+                encoding="utf-8",
             )
 
             return output_path.read_text(encoding="utf-8").strip()

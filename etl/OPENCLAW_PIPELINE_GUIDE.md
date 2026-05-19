@@ -14,7 +14,9 @@
 ## 필수 환경
 
 - 작업 디렉터리는 `etl`이다.
+- `.env`는 **repo 루트(`new-etf_insight/.env`)**에 둔다.
 - `.env`에 `DART_API_KEY`가 있어야 한다.
+- OpenClaw provider를 쓸 때는 `.env`에 `ETF_LLM_PROVIDER`, `OPENCLAW_LLM_COMMAND`를 함께 둔다.
 - Python 의존성은 `uv`로 실행한다.
 - 생성 결과는 `etl/runs/...` 아래에 둔다. 이 경로는 Git 관리 대상이 아니다.
 
@@ -29,6 +31,12 @@ export ETF_LLM_PROVIDER=openclaw
 export OPENCLAW_LLM_COMMAND='openclaw llm --schema {output_schema_path} --out {output_path} --search {search}'
 ```
 
+Windows에서는 일반적으로 아래처럼 `.cmd`를 쓰는 편이 안정적이다.
+
+```bash
+export OPENCLAW_LLM_COMMAND='openclaw.cmd llm --schema {output_schema_path} --out {output_path} --search {search}'
+```
+
 `OPENCLAW_LLM_COMMAND`는 서버의 실제 OpenClaw 명령에 맞게 조정한다.
 
 명령 템플릿에는 아래 placeholder를 사용할 수 있다.
@@ -39,6 +47,11 @@ export OPENCLAW_LLM_COMMAND='openclaw llm --schema {output_schema_path} --out {o
 
 OpenClaw 명령은 프롬프트를 `stdin`으로 받아야 한다.
 OpenClaw 명령은 최종 JSON만 `{output_path}`에 UTF-8 텍스트로 써야 한다.
+
+### Windows 인코딩 주의
+
+Windows 기본 인코딩(cp949)에서는 프롬프트 내 일부 유니코드 문자가 `UnicodeEncodeError`를 유발할 수 있다.
+OpenClaw provider 구현에서 `subprocess.run(..., text=True, encoding="utf-8")` 형태로 UTF-8을 명시해 stdin/stdout 인코딩을 고정한다.
 
 ## 실행 예시
 
