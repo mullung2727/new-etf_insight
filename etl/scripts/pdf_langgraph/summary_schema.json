@@ -6,6 +6,7 @@
     "fund_name",
     "asset_manager",
     "index",
+    "market_exposure",
     "holdings",
     "keywords",
     "trend_summary",
@@ -34,6 +35,20 @@
         },
         "description": {
           "type": ["string", "null"]
+        }
+      }
+    },
+    "market_exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_country", "evidence"],
+      "properties": {
+        "primary_country": {
+          "type": "string",
+          "enum": ["KR", "US", "CN", "HK", "JP", "IN", "VN", "GLOBAL", "MIXED", "UNKNOWN"]
+        },
+        "evidence": {
+          "type": "string"
         }
       }
     },

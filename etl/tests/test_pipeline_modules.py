@@ -8,6 +8,7 @@ from scripts.collect_etf_candidates import download_candidate_pdfs, should_downl
 from scripts.pdf_langgraph.pdf_analysis_langgraph import (
     CORRECTION_REVIEW_SCHEMA_PATH,
     CORRECTION_UPDATE_SCHEMA_PATH,
+    SUMMARY_SCHEMA_PATH,
     call_codex,
     call_llm,
     review_correction_filing,
@@ -179,6 +180,19 @@ class DartViewerTest(unittest.TestCase):
 
 
 class CorrectionReviewTest(unittest.TestCase):
+    def test_summary_schemas_require_market_exposure(self) -> None:
+        for schema_path in (SUMMARY_SCHEMA_PATH, CORRECTION_UPDATE_SCHEMA_PATH):
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            summary_schema = schema["properties"]["summary"] if schema_path == CORRECTION_UPDATE_SCHEMA_PATH else schema
+            market_exposure = summary_schema["properties"]["market_exposure"]
+
+            self.assertIn("market_exposure", summary_schema["required"])
+            self.assertEqual(market_exposure["required"], ["primary_country", "evidence"])
+            self.assertEqual(
+                market_exposure["properties"]["primary_country"]["enum"],
+                ["KR", "US", "CN", "HK", "JP", "IN", "VN", "GLOBAL", "MIXED", "UNKNOWN"],
+            )
+
     def test_reviews_correction_filing_with_schema_limited_codex_call(self) -> None:
         filing = {
             "rcept_no": "20260429000103",

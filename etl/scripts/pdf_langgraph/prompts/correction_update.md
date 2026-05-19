@@ -14,7 +14,9 @@
 - 따라서 이 값들을 새로 계산하려고 하지 마라.
 - PDF를 다시 분석하지 않는다.
 - 정정 사유, 정정 전/후 내용이 기존 summary의 핵심 필드에 영향을 주는 경우에만 수정한다.
-- 핵심 필드는 ETF명, 운용사, 기초지수, 투자전략, 구성종목, 비중, 키워드, 테마/트렌드 요약, missing_info다.
+- 핵심 필드는 ETF명, 운용사, 기초지수, 기초자산 상장 국가, 투자전략, 구성종목, 비중, 키워드, 테마/트렌드 요약, missing_info다.
+- market_exposure.primary_country는 KR, US, CN, HK, JP, IN, VN, GLOBAL, MIXED, UNKNOWN 중 하나만 사용한다.
+- market_exposure.evidence는 ETF명, 지수명, 정정 본문 중 판단 근거를 한 문장으로 짧게 적는다.
 
 기존 ETF 분석 JSON:
 {existing_record}

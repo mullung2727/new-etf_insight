@@ -17,10 +17,16 @@ index에는 인덱스명, 산출기관, 인덱스 설명만 적어라.
 인덱스 설명에는 구성종목 선정 기준, 비중 산정 방식, 리밸런싱 주기처럼 PDF에서 확인되는 지수 방법론을 요약해라.
 구성종목 추가 확인처는 index가 아니라 holdings.where_to_find_more에만 적어라.
 
+market_exposure에는 기초자산의 주된 상장 국가를 짧게 적어라.
+primary_country 값은 KR, US, CN, HK, JP, IN, VN, GLOBAL, MIXED, UNKNOWN 중 하나만 사용해라.
+단일 국가가 명확하면 해당 국가를 쓰고, 여러 국가가 명확히 섞이면 MIXED, 전세계/글로벌이면 GLOBAL, 판단이 어려우면 UNKNOWN을 써라.
+evidence에는 ETF명, 지수명, PDF 설명 중 판단 근거를 한 문장으로 짧게 적어라.
+
 - is_pre_listing_etf: PDF가 신규 상장예정 ETF 투자설명서인지 여부
 - fund_name: ETF 이름
 - asset_manager: 운용사
 - index: 추종 인덱스 정보
+- market_exposure: 기초자산 주된 상장 국가와 짧은 근거
 - holdings: 구성종목 확인 가능 여부와 구성종목 정보
 - keywords: ETF 테마를 설명하는 주요 키워드
 - trend_summary: 신규 상장예정 ETF 관점에서 본 테마/트렌드 요약
