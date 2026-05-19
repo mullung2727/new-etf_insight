@@ -8,6 +8,7 @@ from scripts.collect_etf_candidates import download_candidate_pdfs, should_downl
 from scripts.pdf_langgraph.pdf_analysis_langgraph import (
     CORRECTION_REVIEW_SCHEMA_PATH,
     CORRECTION_UPDATE_SCHEMA_PATH,
+    EXTERNAL_RESEARCH_SCHEMA_PATH,
     SUMMARY_SCHEMA_PATH,
     call_codex,
     call_llm,
@@ -192,6 +193,22 @@ class CorrectionReviewTest(unittest.TestCase):
                 market_exposure["properties"]["primary_country"]["enum"],
                 ["KR", "US", "CN", "HK", "JP", "IN", "VN", "GLOBAL", "MIXED", "UNKNOWN"],
             )
+
+    def test_holding_item_schemas_include_ticker_and_exchange(self) -> None:
+        for schema_path in (SUMMARY_SCHEMA_PATH, CORRECTION_UPDATE_SCHEMA_PATH):
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            summary_schema = schema["properties"]["summary"] if schema_path == CORRECTION_UPDATE_SCHEMA_PATH else schema
+            item_schema = summary_schema["properties"]["holdings"]["properties"]["items"]["items"]
+
+            self.assertEqual(item_schema["required"], ["name", "ticker", "exchange", "weight"])
+            self.assertEqual(item_schema["properties"]["ticker"]["type"], ["string", "null"])
+            self.assertEqual(item_schema["properties"]["exchange"]["type"], ["string", "null"])
+
+        external_schema = json.loads(EXTERNAL_RESEARCH_SCHEMA_PATH.read_text(encoding="utf-8"))
+        item_schema = external_schema["properties"]["items"]["items"]
+        self.assertEqual(item_schema["required"], ["name", "ticker", "exchange", "weight"])
+        self.assertEqual(item_schema["properties"]["ticker"]["type"], ["string", "null"])
+        self.assertEqual(item_schema["properties"]["exchange"]["type"], ["string", "null"])
 
     def test_reviews_correction_filing_with_schema_limited_codex_call(self) -> None:
         filing = {

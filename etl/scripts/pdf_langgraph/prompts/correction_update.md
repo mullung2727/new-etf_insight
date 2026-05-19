@@ -17,6 +17,7 @@
 - 핵심 필드는 ETF명, 운용사, 기초지수, 기초자산 상장 국가, 투자전략, 구성종목, 비중, 키워드, 테마/트렌드 요약, missing_info다.
 - market_exposure.primary_country는 KR, US, CN, HK, JP, IN, VN, GLOBAL, MIXED, UNKNOWN 중 하나만 사용한다.
 - market_exposure.evidence는 ETF명, 지수명, 정정 본문 중 판단 근거를 한 문장으로 짧게 적는다.
+- holdings.items의 ticker와 exchange는 정정 본문이나 기존 record에서 확인되는 경우에만 유지/수정하고, 추측하지 않는다.
 
 기존 ETF 분석 JSON:
 {existing_record}

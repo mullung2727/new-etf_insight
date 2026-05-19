@@ -7,6 +7,8 @@ PDF에 없는 내용은 추측하지 마.
 구성종목은 PDF에 없을 수 있다.
 PDF에 개별 구성종목명과 비중이 없으면 추측하지 말고 holdings.available_in_pdf를 false로 둬라.
 holdings.items에는 PDF에 명시된 개별 구성종목만 넣어라.
+구성종목의 ticker와 exchange는 PDF에 명시된 경우에만 적고, 명시되지 않으면 null로 둬라.
+종목명만 보고 ticker나 exchange를 추측하지 마라.
 
 holdings.where_to_find_more에는 구성종목을 직접 확인할 가능성이 높은 구체적 출처만 적어라.
 단순한 운용사 메인 홈페이지, 금융기관 메인 홈페이지, 거래소/협회 메인 페이지처럼 탐색 범위가 넓은 일반 사이트는 넣지 마라.

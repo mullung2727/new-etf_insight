@@ -43,10 +43,16 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "weight"],
+        "required": ["name", "ticker", "exchange", "weight"],
         "properties": {
           "name": {
             "type": "string"
+          },
+          "ticker": {
+            "type": ["string", "null"]
+          },
+          "exchange": {
+            "type": ["string", "null"]
           },
           "weight": {
             "type": ["string", "number", "null"]
