@@ -548,6 +548,46 @@ class DailyPipelineTest(unittest.TestCase):
         self.assertEqual(result["results"][0]["action"], "skipped")
         self.assertEqual(result["results"][0]["reason"], "correction_without_existing_record")
 
+    def test_skips_correction_at_least_60_days_after_first_rcept(self) -> None:
+        candidates = [
+            {
+                "rcept_no": "20260531000103",
+                "rcept_dt": "20260531",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "[기재정정]투자설명서(집합투자증권)(ETF(주식))",
+            }
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            records_dir = base_dir / "records"
+            records_dir.mkdir()
+            record_path = records_dir / "00104500_ET942.json"
+            original = {
+                "source": {"rcept_no": "20260401000012"},
+                "first_rcept_dt": "20260401",
+                "summary": {"fund_name": "기존 ETF"},
+            }
+            record_path.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+
+            with (
+                patch("new_etf_insight.daily_pipeline.collect_candidates", return_value=candidates),
+                patch("new_etf_insight.daily_pipeline.fetch_fund_code_from_dart_viewer", return_value="ET942"),
+                patch("new_etf_insight.daily_pipeline.review_correction_filing") as review_mock,
+                patch("new_etf_insight.daily_pipeline.update_record_from_correction") as update_record_mock,
+                patch("new_etf_insight.daily_pipeline.analyze_pdf") as analyze_pdf_mock,
+            ):
+                result = run_daily_pipeline("20260531", "20260531", records_dir, base_dir / "pdfs")
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+
+        review_mock.assert_not_called()
+        update_record_mock.assert_not_called()
+        analyze_pdf_mock.assert_not_called()
+        self.assertEqual(result["results"][0]["action"], "skipped")
+        self.assertEqual(result["results"][0]["reason"], "correction_after_60_days")
+        self.assertEqual(record, original)
+
     def test_updates_correction_without_pdf_reanalysis(self) -> None:
         candidates = [
             {

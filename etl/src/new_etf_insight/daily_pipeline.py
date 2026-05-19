@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,14 @@ def run_daily_pipeline(
             continue
 
         if is_correction_source(filing) and record_path.exists():
+            days_since_first_rcept = _days_between(
+                str(previous_record.get("first_rcept_dt", "")),
+                str(filing.get("rcept_dt", "")),
+            )
+            if days_since_first_rcept is not None and days_since_first_rcept >= 60:
+                results.append(_skipped_result(rcept_no, etf_key, "correction_after_60_days"))
+                continue
+
             review = review_correction_filing(filing)
             if not review["needs_update"]:
                 results.append(
@@ -112,6 +121,15 @@ def _skipped_result(rcept_no: str, etf_key: str, reason: str) -> dict[str, str]:
         "action": "skipped",
         "reason": reason,
     }
+
+
+def _days_between(begin: str, end: str) -> int | None:
+    try:
+        begin_dt = datetime.strptime(begin, "%Y%m%d")
+        end_dt = datetime.strptime(end, "%Y%m%d")
+    except ValueError:
+        return None
+    return (end_dt - begin_dt).days
 
 
 def _save_pdf_analysis(
