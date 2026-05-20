@@ -1,5 +1,9 @@
 # Project Instructions
 
+## Skills
+
+- When running or debugging the ETF batch pipeline, first read `skills/new-etf-insight-batch/SKILL.md`.
+
 이 문서는 `new-etf-insight` 프로젝트에서 Codex가 항상 따라야 하는 최상위 작업 지침이다.
 코드 수정, 설계, 테스트, 응답 방식은 반드시 이 문서를 우선한다.
 
