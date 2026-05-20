@@ -8,6 +8,7 @@ from typing import Any
 from new_etf_insight.batch_collect import collect_candidates
 from new_etf_insight.dart_pdf import download_representative_prospectus_pdf
 from new_etf_insight.dart_viewer import build_etf_key, fetch_fund_code_from_dart_viewer
+from scripts.build_db import sync_to_db
 from scripts.pdf_langgraph.pdf_analysis_langgraph import (
     analyze_pdf,
     is_correction_source,
@@ -106,11 +107,17 @@ def run_daily_pipeline(
             }
         )
 
+    runs_dir = records_dir.parent.parent
+    db_path = runs_dir.parent / "db" / "etf_insight.duckdb"
+    synced = sync_to_db(runs_dir, db_path)
+
     return {
         "begin": begin,
         "end": end,
         "candidate_count": len(candidates),
         "results": results,
+        "db_synced": synced,
+        "db_path": str(db_path),
     }
 
 

@@ -38,7 +38,10 @@ env/
 .coverage
 htmlcov/
 etl/runs/
+etl/db/
 etl/current_graph.png
+bash.exe.stackdump
+etl/bash.exe.stackdump
 
 # Tooling
 .superpowers/
