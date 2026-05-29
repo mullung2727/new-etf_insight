@@ -10,7 +10,13 @@ function defaultBegin(): string {
 }
 
 interface PageProps {
-  searchParams: Promise<{ begin?: string; end?: string; country?: string }>;
+  searchParams: Promise<{
+    begin?: string;
+    end?: string;
+    country?: string;
+    theme_status?: string;
+    theme_bucket?: string;
+  }>;
 }
 
 export default async function Home({ searchParams }: PageProps) {
@@ -18,9 +24,11 @@ export default async function Home({ searchParams }: PageProps) {
   const begin = params.begin ?? defaultBegin();
   const end = params.end ?? undefined;
   const country = params.country ?? undefined;
+  const themeStatus = params.theme_status ?? undefined;
+  const themeBucket = params.theme_bucket ?? undefined;
 
   const [etfs, countries] = await Promise.all([
-    getEtfList({ begin, end, country }),
+    getEtfList({ begin, end, country, themeStatus, themeBucket }),
     getCountries(),
   ]);
 

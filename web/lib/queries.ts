@@ -1,14 +1,24 @@
 import { query } from "./db";
 
+function parseJsonArray<T>(value: unknown, fallback: T[] = []): T[] {
+  if (typeof value !== "string") return fallback;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
 export interface EtfListItem {
   etf_key: string;
   fund_name: string | null;
   asset_manager: string | null;
   index_name: string | null;
   primary_country: string | null;
+  theme_status: string | null;
+  theme_bucket: string | null;
+  structure_tags: string[] | null;
+  classification_confidence: number | null;
   first_rcept_dt: string | null;
   is_pre_listing_etf: boolean | null;
   revision_count: number | null;
+  has_holdings: boolean;
 }
 
 export interface EtfDetail extends EtfListItem {
@@ -17,6 +27,7 @@ export interface EtfDetail extends EtfListItem {
   index_description: string | null;
   holdings_available_in_pdf: boolean | null;
   holdings_summary: string | null;
+  classification_evidence: string | null;
   keywords: string[] | null;
   trend_summary: string | null;
   missing_info: string[] | null;
@@ -47,28 +58,55 @@ export interface StatsSummary {
   with_any_holdings: number;
 }
 
+async function getEtfRecordColumns(): Promise<Set<string>> {
+  const rows = await query<{ name: string }>("PRAGMA table_info('etf_records')");
+  return new Set(rows.map((row) => row.name));
+}
+
 export async function getEtfList(params: {
   begin?: string;
   end?: string;
   country?: string;
+  themeStatus?: string;
+  themeBucket?: string;
   preListingOnly?: boolean;
 }): Promise<EtfListItem[]> {
-  return query<EtfListItem>(
+  const columns = await getEtfRecordColumns();
+  const hasThemeColumns = columns.has("theme_status") && columns.has("theme_bucket");
+  const themeSelect = hasThemeColumns
+    ? "theme_status, theme_bucket, structure_tags, classification_confidence,"
+    : "NULL AS theme_status, NULL AS theme_bucket, '[]' AS structure_tags, NULL AS classification_confidence,";
+  const themeWhere = hasThemeColumns
+    ? `AND ($theme_status IS NULL OR theme_status = $theme_status)
+       AND ($theme_bucket IS NULL OR theme_bucket = $theme_bucket)`
+    : "";
+  const queryParams: Record<string, string | boolean | null | undefined> = {
+    begin: params.begin ?? null,
+    end: params.end ?? null,
+    country: params.country ?? null,
+    pre_listing: params.preListingOnly ?? null,
+  };
+  if (hasThemeColumns) {
+    queryParams.theme_status = params.themeStatus || null;
+    queryParams.theme_bucket = params.themeBucket || null;
+  }
+  const rows = await query<EtfListItem>(
     `SELECT etf_key, fund_name, asset_manager, index_name,
-            primary_country, first_rcept_dt, is_pre_listing_etf, revision_count
-     FROM etf_records
+            primary_country, ${themeSelect} first_rcept_dt, is_pre_listing_etf, revision_count,
+            EXISTS(SELECT 1 FROM etf_holdings h WHERE h.etf_key = r.etf_key) AS has_holdings
+     FROM etf_records r
      WHERE ($begin IS NULL OR first_rcept_dt >= $begin)
        AND first_rcept_dt <= COALESCE($end, STRFTIME('%Y%m%d', CURRENT_DATE))
        AND ($country IS NULL OR primary_country = $country)
+       ${themeWhere}
        AND ($pre_listing IS NULL OR is_pre_listing_etf = $pre_listing)
      ORDER BY first_rcept_dt DESC`,
-    {
-      begin: params.begin ?? null,
-      end: params.end ?? null,
-      country: params.country ?? null,
-      pre_listing: params.preListingOnly ?? null,
-    }
+    queryParams
   );
+  return rows.map((row) => {
+    row.structure_tags = parseJsonArray(row.structure_tags);
+    return row;
+  });
 }
 
 export async function getEtfDetail(etfKey: string): Promise<EtfDetail | null> {
@@ -78,13 +116,14 @@ export async function getEtfDetail(etfKey: string): Promise<EtfDetail | null> {
   );
   const row = rows[0] ?? null;
   if (!row) return null;
-  // JSON columns come back as strings — parse them
-  if (typeof row.keywords === "string") {
-    try { row.keywords = JSON.parse(row.keywords); } catch { row.keywords = []; }
-  }
-  if (typeof row.missing_info === "string") {
-    try { row.missing_info = JSON.parse(row.missing_info); } catch { row.missing_info = []; }
-  }
+  row.theme_status ??= null;
+  row.theme_bucket ??= null;
+  row.structure_tags ??= [];
+  row.classification_confidence ??= null;
+  row.classification_evidence ??= null;
+  row.keywords = parseJsonArray(row.keywords);
+  row.structure_tags = parseJsonArray(row.structure_tags);
+  row.missing_info = parseJsonArray(row.missing_info);
   return row;
 }
 
@@ -143,6 +182,41 @@ export async function getStatsSummary(params: {
       end: params.end ?? null,
       country: params.country ?? null,
     }
+  );
+  return rows[0] ?? { total_etfs: 0, with_any_holdings: 0 };
+}
+
+export async function getHoldingsStatsByKeys(keys: string[]): Promise<HoldingStat[]> {
+  if (keys.length === 0) return [];
+  const ph = keys.map((_, i) => `$k${i}`).join(", ");
+  const params = Object.fromEntries(keys.map((k, i) => [`k${i}`, k]));
+  return query<HoldingStat>(
+    `SELECT
+       h.name,
+       ROUND(AVG(TRY_CAST(REPLACE(REPLACE(h.weight, '%', ''), ' ', '') AS DOUBLE)), 2) AS avg_weight,
+       CAST(COUNT(DISTINCT h.etf_key) AS INTEGER) AS etf_count
+     FROM etf_holdings h
+     WHERE h.etf_key IN (${ph})
+       AND h.weight IS NOT NULL
+     GROUP BY h.name
+     ORDER BY avg_weight DESC
+     LIMIT 20`,
+    params
+  );
+}
+
+export async function getStatsSummaryByKeys(keys: string[]): Promise<StatsSummary> {
+  if (keys.length === 0) return { total_etfs: 0, with_any_holdings: 0 };
+  const ph = keys.map((_, i) => `$k${i}`).join(", ");
+  const params = Object.fromEntries(keys.map((k, i) => [`k${i}`, k]));
+  const rows = await query<StatsSummary>(
+    `SELECT
+       CAST(COUNT(DISTINCT r.etf_key) AS INTEGER) AS total_etfs,
+       CAST(COUNT(DISTINCT h.etf_key) AS INTEGER) AS with_any_holdings
+     FROM etf_records r
+     LEFT JOIN etf_holdings h ON r.etf_key = h.etf_key
+     WHERE r.etf_key IN (${ph})`,
+    params
   );
   return rows[0] ?? { total_etfs: 0, with_any_holdings: 0 };
 }

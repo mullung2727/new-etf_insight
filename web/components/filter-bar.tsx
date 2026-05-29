@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { THEME_STATUSES, THEME_BUCKETS } from "@/lib/formatters";
 import {
   Select,
   SelectContent,
@@ -38,13 +39,17 @@ interface FilterBarProps {
   countries: string[];
 }
 
+
 export function FilterBar({ countries }: FilterBarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const formRef = useRef<HTMLFormElement>(null);
 
   const begin = toInputDate(searchParams.get("begin"));
   const end = toOptionalInputDate(searchParams.get("end"));
   const [country, setCountry] = useState(searchParams.get("country") ?? "");
+  const [themeStatus, setThemeStatus] = useState(searchParams.get("theme_status") ?? "");
+  const [themeBucket, setThemeBucket] = useState(searchParams.get("theme_bucket") ?? "");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,11 +60,26 @@ export function FilterBar({ countries }: FilterBarProps) {
     if (formBegin) params.set("begin", toQueryDate(formBegin));
     if (formEnd) params.set("end", toQueryDate(formEnd));
     if (country) params.set("country", country);
+    if (themeStatus) params.set("theme_status", themeStatus);
+    if (themeBucket) params.set("theme_bucket", themeBucket);
     router.push(`?${params.toString()}`);
   }
 
+  function handleReset() {
+    setCountry("");
+    setThemeStatus("");
+    setThemeBucket("");
+    if (formRef.current) {
+      const beginInput = formRef.current.elements.namedItem("begin") as HTMLInputElement | null;
+      const endInput = formRef.current.elements.namedItem("end") as HTMLInputElement | null;
+      if (beginInput) beginInput.value = defaultBegin();
+      if (endInput) endInput.value = "";
+    }
+    router.push("?");
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
+    <form ref={formRef} onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
       <div className="flex flex-col gap-1">
         <label htmlFor="begin" className="text-xs text-muted-foreground">
           시작일
@@ -100,7 +120,40 @@ export function FilterBar({ countries }: FilterBarProps) {
           </SelectContent>
         </Select>
       </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted-foreground">테마 여부</label>
+        <Select value={themeStatus} onValueChange={(value) => setThemeStatus(value ?? "")}>
+          <SelectTrigger className="w-32">
+            <SelectValue placeholder="전체" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">전체</SelectItem>
+            {THEME_STATUSES.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-muted-foreground">테마 그룹</label>
+        <Select value={themeBucket} onValueChange={(value) => setThemeBucket(value ?? "")}>
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="전체" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">전체</SelectItem>
+            {THEME_BUCKETS.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <Button type="submit">조회</Button>
+      <Button type="button" variant="outline" onClick={handleReset}>초기화</Button>
     </form>
   );
 }

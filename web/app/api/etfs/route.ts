@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
         begin: s.get("begin") ?? undefined,
         end: s.get("end") ?? undefined,
         country: s.get("country") ?? undefined,
+        themeStatus: s.get("theme_status") ?? undefined,
+        themeBucket: s.get("theme_bucket") ?? undefined,
         preListingOnly: s.get("pre_listing") === "true" ? true : undefined,
       }),
       getCountries(),

@@ -9,7 +9,7 @@ test("list page loads and shows ETF rows", async ({ page }) => {
 
 test("list page shows table headers", async ({ page }) => {
   await page.goto("/");
-  for (const header of ["펀드명", "운용사", "지수명", "국가", "최초 공시일"]) {
+  for (const header of ["펀드명", "운용사", "지수명", "국가", "테마", "최초 공시일", "구성종목"]) {
     await expect(page.getByRole("columnheader", { name: header })).toBeVisible();
   }
 });
@@ -24,7 +24,7 @@ test("date filter changes URL and updates list", async ({ page }) => {
 
 test("country filter updates URL", async ({ page }) => {
   await page.goto("/");
-  const select = page.locator('[data-slot="select-trigger"]');
+  const select = page.locator('[data-slot="select-trigger"]').first();
   await select.click();
   const options = page.locator('[data-slot="select-item"]');
   const count = await options.count();
