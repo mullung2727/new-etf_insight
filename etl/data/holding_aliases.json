@@ -1,0 +1,298 @@
+{
+  "aliases": [
+    {
+      "name": "크래프톤",
+      "ticker": "259960",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["KRAFTON"]
+    },
+    {
+      "name": "넷마블",
+      "ticker": "251270",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["NETMARBLE"]
+    },
+    {
+      "name": "펄어비스",
+      "ticker": "263750",
+      "exchange": "KOSDAQ",
+      "source": "manual_alias",
+      "aliases": ["PEARL ABYSS"]
+    },
+    {
+      "name": "더블유게임즈",
+      "ticker": "192080",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["DOUBLEUGAMES", "DOUBLEU GAMES"]
+    },
+    {
+      "name": "카카오게임즈",
+      "ticker": "293490",
+      "exchange": "KOSDAQ",
+      "source": "manual_alias",
+      "aliases": ["KAKAO GAMES"]
+    },
+    {
+      "name": "NC",
+      "ticker": "036570",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["NCSOFT"]
+    },
+    {
+      "name": "더존비즈온",
+      "ticker": "012510",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["DOUZONE BIZON"]
+    },
+    {
+      "name": "LG에너지솔루션",
+      "ticker": "373220",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["LG ENERGY SOLUTION"]
+    },
+    {
+      "name": "삼성SDI",
+      "ticker": "006400",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["SAMSUNG SDI"]
+    },
+    {
+      "name": "POSCO홀딩스",
+      "ticker": "005490",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["POSCO", "POSCO HOLDINGS"]
+    },
+    {
+      "name": "삼성바이오로직스",
+      "ticker": "207940",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["SAMSUNG BIOLOGICS"]
+    },
+    {
+      "name": "SK하이닉스",
+      "ticker": "000660",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["SK HYNIX"]
+    },
+    {
+      "name": "삼성전자",
+      "ticker": "005930",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["SAMSUNG ELECTRONICS"]
+    },
+    {
+      "name": "한화솔루션",
+      "ticker": "009830",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["HANWHA SOLUTIONS"]
+    },
+    {
+      "name": "한화",
+      "ticker": "000880",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["HANWHA"]
+    },
+    {
+      "name": "현대차",
+      "ticker": "005380",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["HYUNDAI MOTOR"]
+    },
+    {
+      "name": "LG화학",
+      "ticker": "051910",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["LG CHEM"]
+    },
+    {
+      "name": "동진쎄미켐",
+      "ticker": "005290",
+      "exchange": "KOSDAQ",
+      "source": "manual_alias",
+      "aliases": ["DONGJIN SEMICHEM"]
+    },
+    {
+      "name": "삼성전기",
+      "ticker": "009150",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["SAMSUNG ELECTRO MECHANICS"]
+    },
+    {
+      "name": "씨에스윈드",
+      "ticker": "112610",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["CS WIND"]
+    },
+    {
+      "name": "셀트리온",
+      "ticker": "068270",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["CELLTRION"]
+    },
+    {
+      "name": "SK이노베이션",
+      "ticker": "096770",
+      "exchange": "KOSPI",
+      "source": "manual_alias",
+      "aliases": ["SK INNOVATION"]
+    },
+    {
+      "name": "Meta Platforms",
+      "ticker": "META",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["META PLATFORMS"]
+    },
+    {
+      "name": "Palantir Technologies",
+      "ticker": "PLTR",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["PALANTIR TECHNOLOGIES"]
+    },
+    {
+      "name": "Arm Holdings",
+      "ticker": "ARM",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["ARM HOLDINGS"]
+    },
+    {
+      "name": "AppLovin",
+      "ticker": "APP",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["APPLOVIN"]
+    },
+    {
+      "name": "CrowdStrike Holdings",
+      "ticker": "CRWD",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["CROWDSTRIKE", "CROWDSTRIKE HOLDINGS"]
+    },
+    {
+      "name": "ASML Holding",
+      "ticker": "ASML",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["ASML", "ASML HOLDING", "ASML HOLDING NV", "ASML HOLDING NV ADR"]
+    },
+    {
+      "name": "Shopify",
+      "ticker": "SHOP",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["SHOPIFY"]
+    },
+    {
+      "name": "Comcast",
+      "ticker": "CMCSA",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["COMCAST"]
+    },
+    {
+      "name": "PDD Holdings",
+      "ticker": "PDD",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["PDD", "PDD HOLDINGS"]
+    },
+    {
+      "name": "Constellation Energy",
+      "ticker": "CEG",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["CONSTELLATION ENERGY"]
+    },
+    {
+      "name": "Marriott International",
+      "ticker": "MAR",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["MARRIOTT INTERNATIONAL"]
+    },
+    {
+      "name": "Mondelez International",
+      "ticker": "MDLZ",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["MONDELEZ INTERNATIONAL"]
+    },
+    {
+      "name": "Warner Bros Discovery",
+      "ticker": "WBD",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["WARNER BROS DISCOVERY"]
+    },
+    {
+      "name": "Datadog",
+      "ticker": "DDOG",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["DATADOG"]
+    },
+    {
+      "name": "Airbnb",
+      "ticker": "ABNB",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["AIRBNB"]
+    },
+    {
+      "name": "Strategy",
+      "ticker": "MSTR",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["STRATEGY"]
+    },
+    {
+      "name": "Workday",
+      "ticker": "WDAY",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["WORKDAY"]
+    },
+    {
+      "name": "Cognizant Technology Solutions",
+      "ticker": "CTSH",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["COGNIZANT TECHNOLOGY SOLUTIONS"]
+    },
+    {
+      "name": "Charter Communications",
+      "ticker": "CHTR",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["CHARTER COMMUNICATIONS"]
+    },
+    {
+      "name": "Atlassian",
+      "ticker": "TEAM",
+      "exchange": "NASDAQ",
+      "source": "manual_alias",
+      "aliases": ["ATLASSIAN"]
+    }
+  ]
+}

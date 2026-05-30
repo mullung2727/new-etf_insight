@@ -12,6 +12,9 @@ from scripts.pdf_langgraph.pdf_analysis_langgraph import (
     SUMMARY_SCHEMA_PATH,
     call_codex,
     call_llm,
+    enrich_missing_holding_identifiers,
+    extract_classification_hints,
+    normalize_summary,
     review_correction_filing,
     update_record_from_correction,
 )
@@ -27,9 +30,19 @@ from new_etf_insight.dart_viewer import (
     extract_fund_code,
     fetch_dart_viewer_text,
 )
-from new_etf_insight.daily_pipeline import run_daily_pipeline
+from new_etf_insight.daily_pipeline import run_daily_pipeline, run_period_as_daily_runs
 from new_etf_insight.etf_classifier import classify_pre_listing_equity_etf
 from new_etf_insight.filing_filter import is_candidate_filing, matches_candidate_query, to_candidate
+from new_etf_insight.holding_backfill import backfill_weighted_missing_identifiers
+from new_etf_insight.holding_identifier import (
+    HoldingIdentifierResolver,
+    SecurityMasterItem,
+    compact_holding_key,
+    load_holding_aliases,
+    normalize_holding_name,
+    parse_nasdaq_listed,
+    parse_other_listed,
+)
 from new_etf_insight.llm.codex_provider import CodexProvider
 from new_etf_insight.llm.openclaw_provider import OpenClawProvider
 
@@ -180,7 +193,274 @@ class DartViewerTest(unittest.TestCase):
             self.assertEqual(fetch_dart_viewer_text("20260429000103"), "정 정 신 고\n정정사항")
 
 
+class HoldingIdentifierTest(unittest.TestCase):
+    def test_normalizes_common_stock_suffixes(self) -> None:
+        self.assertEqual(normalize_holding_name("NVIDIA Corporation Common Stock"), "NVIDIA")
+
+    def test_compact_key_ignores_spacing_punctuation_and_company_suffixes(self) -> None:
+        self.assertEqual(compact_holding_key("Kakao Games Corp."), "KAKAOGAMES")
+        self.assertEqual(compact_holding_key("KakaoGames, Inc."), "KAKAOGAMES")
+        self.assertEqual(compact_holding_key("Alphabet Inc-CL A"), "ALPHABETA")
+        self.assertEqual(compact_holding_key("Sandisk Corp/DE"), "SANDISK")
+
+    def test_compact_key_match_enriches_english_name_variants(self) -> None:
+        resolver = HoldingIdentifierResolver()
+        resolver._kr_master = [SecurityMasterItem(name="KakaoGames", ticker="293490", exchange="KOSDAQ")]
+
+        result = resolver.enrich_items(
+            [{"name": "Kakao Games Corp.", "ticker": None, "exchange": None, "weight": "2"}],
+            primary_country="KR",
+        )
+
+        self.assertEqual(result[0]["ticker"], "293490")
+        self.assertEqual(result[0]["exchange"], "KOSDAQ")
+
+    def test_loads_holding_aliases_by_compact_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            alias_path = Path(tmpdir) / "aliases.json"
+            alias_path.write_text(
+                json.dumps(
+                    {
+                        "aliases": [
+                            {
+                                "name": "크래프톤",
+                                "ticker": "259960",
+                                "exchange": "KOSPI",
+                                "source": "manual_alias",
+                                "aliases": ["KRAFTON"],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            aliases = load_holding_aliases(alias_path)
+
+        self.assertEqual(aliases["KRAFTON"].ticker, "259960")
+        self.assertEqual(aliases["KRAFTON"].source, "manual_alias")
+
+    def test_alias_match_enriches_english_to_korean_security(self) -> None:
+        resolver = HoldingIdentifierResolver()
+        resolver._kr_master = []
+        resolver._us_master = []
+        resolver._aliases = {
+            "KRAFTON": SecurityMasterItem(
+                name="크래프톤",
+                ticker="259960",
+                exchange="KOSPI",
+                source="manual_alias",
+            )
+        }
+
+        result = resolver.enrich_items(
+            [{"name": "KRAFTON, Inc.", "ticker": None, "exchange": None, "weight": "26.86%"}],
+            primary_country="KR",
+        )
+
+        self.assertEqual(result[0]["ticker"], "259960")
+        self.assertEqual(result[0]["exchange"], "KOSPI")
+
+    def test_parses_nasdaq_listed_rows(self) -> None:
+        rows = parse_nasdaq_listed(
+            "Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares\n"
+            "NVDA|NVIDIA Corporation - Common Stock|Q|N|N|100|N|N\n"
+            "TEST|Test Issue Inc. - Common Stock|Q|Y|N|100|N|N\n"
+            "File Creation Time: test\n"
+        )
+
+        self.assertEqual(rows, [SecurityMasterItem(name="NVIDIA Corporation - Common Stock", ticker="NVDA", exchange="NASDAQ")])
+
+    def test_parses_other_listed_rows(self) -> None:
+        rows = parse_other_listed(
+            "ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol\n"
+            "A|Agilent Technologies, Inc. Common Stock|N|A|N|100|N|A\n"
+        )
+
+        self.assertEqual(rows, [SecurityMasterItem(name="Agilent Technologies, Inc. Common Stock", ticker="A", exchange="NYSE")])
+
+    def test_enriches_kr_holding_from_cached_master(self) -> None:
+        resolver = HoldingIdentifierResolver(bas_dd="20260430")
+        resolver._kr_master = [SecurityMasterItem(name="삼성전자", ticker="005930", exchange="KOSPI")]
+
+        result = resolver.enrich_items(
+            [{"name": "삼성전자", "ticker": None, "exchange": None, "weight": "10"}],
+            primary_country="KR",
+        )
+
+        self.assertEqual(result[0]["ticker"], "005930")
+        self.assertEqual(result[0]["exchange"], "KOSPI")
+
+    def test_enriches_us_holding_from_cached_master(self) -> None:
+        resolver = HoldingIdentifierResolver()
+        resolver._us_master = [SecurityMasterItem(name="NVIDIA Corporation Common Stock", ticker="NVDA", exchange="NASDAQ")]
+
+        result = resolver.enrich_items(
+            [{"name": "NVIDIA", "ticker": None, "exchange": None, "weight": "10"}],
+            primary_country="US",
+        )
+
+        self.assertEqual(result[0]["ticker"], "NVDA")
+        self.assertEqual(result[0]["exchange"], "NASDAQ")
+
+    def test_keeps_existing_identifier_values(self) -> None:
+        resolver = HoldingIdentifierResolver()
+
+        result = resolver.enrich_items(
+            [{"name": "NVIDIA", "ticker": "NVDA", "exchange": "NASDAQ", "weight": "10"}],
+            primary_country="US",
+        )
+
+        self.assertEqual(result[0]["ticker"], "NVDA")
+        self.assertEqual(result[0]["exchange"], "NASDAQ")
+
+    def test_fetches_master_once_per_resolver(self) -> None:
+        resolver = HoldingIdentifierResolver(bas_dd="20260430")
+        with patch(
+            "new_etf_insight.holding_identifier.fetch_krx_master",
+            return_value=[SecurityMasterItem(name="삼성전자", ticker="005930", exchange="KOSPI")],
+        ) as fetch_master:
+            resolver.enrich_items([{"name": "삼성전자", "ticker": None, "exchange": None}], primary_country="KR")
+            resolver.enrich_items([{"name": "삼성전자", "ticker": None, "exchange": None}], primary_country="KR")
+
+        fetch_master.assert_called_once_with("20260430")
+
+    def test_langgraph_enrichment_node_updates_missing_identifiers(self) -> None:
+        resolver = HoldingIdentifierResolver()
+        resolver._kr_master = [SecurityMasterItem(name="삼성전자", ticker="005930", exchange="KOSPI")]
+        state = {
+            "summary": {
+                "market_exposure": {"primary_country": "KR"},
+                "holdings": {
+                    "items": [{"name": "삼성전자", "ticker": None, "exchange": None, "weight": "10"}],
+                },
+            },
+            "holding_identifier_resolver": resolver,
+        }
+
+        result = enrich_missing_holding_identifiers(state)
+
+        item = result["summary"]["holdings"]["items"][0]
+        self.assertEqual(item["ticker"], "005930")
+        self.assertEqual(item["exchange"], "KOSPI")
+
+
+class HoldingBackfillTest(unittest.TestCase):
+    def test_backfills_weighted_missing_identifiers_in_existing_record_json(self) -> None:
+        resolver = HoldingIdentifierResolver()
+        resolver._kr_master = [SecurityMasterItem(name="삼성전자", ticker="005930", exchange="KOSPI")]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            records_dir = Path(tmpdir) / "runs" / "20260430" / "records"
+            records_dir.mkdir(parents=True)
+            record_path = records_dir / "001_ET001.json"
+            record_path.write_text(
+                json.dumps(
+                    {
+                        "source": {"etf_key": "001_ET001"},
+                        "summary": {
+                            "fund_name": "테스트 ETF",
+                            "market_exposure": {"primary_country": "KR"},
+                            "holdings": {
+                                "items": [
+                                    {"name": "삼성전자", "ticker": None, "exchange": None, "weight": "10%"},
+                                    {"name": "현금", "ticker": None, "exchange": None, "weight": None},
+                                ]
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            report_path = Path(tmpdir) / "report.json"
+            report = backfill_weighted_missing_identifiers(
+                Path(tmpdir) / "runs",
+                report_path=report_path,
+                resolver=resolver,
+            )
+            updated = json.loads(record_path.read_text(encoding="utf-8"))
+            report_exists = report_path.exists()
+
+        item = updated["summary"]["holdings"]["items"][0]
+        self.assertEqual(item["ticker"], "005930")
+        self.assertEqual(item["exchange"], "KOSPI")
+        self.assertEqual(item["identifier_source"], "security_master_exact")
+        self.assertEqual(report["candidate_count"], 1)
+        self.assertEqual(report["updated_count"], 1)
+        self.assertEqual(report["unresolved_count"], 0)
+        self.assertTrue(report_exists)
+
+    def test_reports_unresolved_weighted_identifier_without_overwriting_dry_run(self) -> None:
+        resolver = HoldingIdentifierResolver()
+        resolver._us_master = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            records_dir = Path(tmpdir) / "records"
+            records_dir.mkdir()
+            record_path = records_dir / "001_ET001.json"
+            original = {
+                "source": {"etf_key": "001_ET001"},
+                "summary": {
+                    "market_exposure": {"primary_country": "US"},
+                    "holdings": {"items": [{"name": "Unknown Corp", "ticker": None, "exchange": None, "weight": "5%"}]},
+                },
+            }
+            record_path.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+
+            report = backfill_weighted_missing_identifiers(records_dir, dry_run=True, resolver=resolver)
+            unchanged = json.loads(record_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(unchanged, original)
+        self.assertEqual(report["candidate_count"], 1)
+        self.assertEqual(report["updated_count"], 0)
+        self.assertEqual(report["unresolved_count"], 1)
+        self.assertEqual(report["unresolved"][0]["name"], "Unknown Corp")
+
+
 class CorrectionReviewTest(unittest.TestCase):
+    def test_extracts_classification_hints_without_final_classification(self) -> None:
+        hints = extract_classification_hints(
+            "집합투자기구 명칭: 테스트 AI반도체 액티브 ETF\n"
+            "기초지수: FnGuide AI 반도체 지수\n"
+            "커버드콜 전략은 사용하지 않습니다."
+        )
+
+        self.assertIn("액티브", hints["detected_keywords"]["active_terms"])
+        self.assertIn("FnGuide", hints["detected_keywords"]["index_provider_terms"])
+        self.assertIn("AI", hints["detected_keywords"]["theme_terms"])
+        self.assertIn("반도체", hints["detected_keywords"]["theme_terms"])
+        self.assertIn("힌트", hints["note"])
+
+    def test_summary_schemas_require_theme_classification(self) -> None:
+        expected_statuses = ["theme", "mixed", "non_theme", "unknown"]
+        expected_buckets = [
+            "technology",
+            "energy_materials",
+            "healthcare",
+            "industrial_defense",
+            "consumer_demographic",
+            "finance_income",
+            "country_macro",
+            "digital_asset",
+            "none",
+            "unknown",
+        ]
+        for schema_path in (SUMMARY_SCHEMA_PATH, CORRECTION_UPDATE_SCHEMA_PATH):
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            summary_schema = schema["properties"]["summary"] if schema_path == CORRECTION_UPDATE_SCHEMA_PATH else schema
+            theme_schema = summary_schema["properties"]["theme_classification"]
+
+            self.assertIn("theme_classification", summary_schema["required"])
+            self.assertEqual(
+                theme_schema["required"],
+                ["theme_status", "theme_bucket", "structure_tags", "confidence", "evidence"],
+            )
+            self.assertEqual(theme_schema["properties"]["theme_status"]["enum"], expected_statuses)
+            self.assertEqual(theme_schema["properties"]["theme_bucket"]["enum"], expected_buckets)
+
     def test_summary_schemas_require_market_exposure(self) -> None:
         for schema_path in (SUMMARY_SCHEMA_PATH, CORRECTION_UPDATE_SCHEMA_PATH):
             schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -209,6 +489,53 @@ class CorrectionReviewTest(unittest.TestCase):
         self.assertEqual(item_schema["required"], ["name", "ticker", "exchange", "weight"])
         self.assertEqual(item_schema["properties"]["ticker"]["type"], ["string", "null"])
         self.assertEqual(item_schema["properties"]["exchange"]["type"], ["string", "null"])
+
+    def test_normalizes_lightweight_summary_issues(self) -> None:
+        summary, warnings = normalize_summary(
+            {
+                "keywords": None,
+                "missing_info": None,
+                "theme_classification": {
+                    "theme_status": "non_theme",
+                    "theme_bucket": "technology",
+                    "structure_tags": None,
+                    "confidence": 1.2,
+                    "evidence": "test",
+                },
+                "holdings": {
+                    "available_in_pdf": True,
+                    "items": [{"name": "NVIDIA", "ticker": "", "exchange": " ", "weight": "10%"}],
+                    "where_to_find_more": None,
+                },
+            }
+        )
+
+        self.assertEqual(summary["keywords"], [])
+        self.assertEqual(summary["missing_info"], [])
+        self.assertEqual(summary["theme_classification"]["theme_bucket"], "none")
+        self.assertEqual(summary["theme_classification"]["structure_tags"], [])
+        self.assertEqual(summary["theme_classification"]["confidence"], 1)
+        self.assertIsNone(summary["holdings"]["items"][0]["ticker"])
+        self.assertIsNone(summary["holdings"]["items"][0]["exchange"])
+        self.assertIn("non_theme_bucket_normalized_to_none", warnings)
+        self.assertIn("holding_ticker_blank_normalized_to_null", warnings)
+
+    def test_normalizes_theme_bucket_none_for_theme(self) -> None:
+        summary, warnings = normalize_summary(
+            {
+                "theme_classification": {
+                    "theme_status": "theme",
+                    "theme_bucket": "none",
+                    "structure_tags": [],
+                    "confidence": -0.1,
+                    "evidence": "test",
+                },
+            }
+        )
+
+        self.assertEqual(summary["theme_classification"]["theme_bucket"], "unknown")
+        self.assertEqual(summary["theme_classification"]["confidence"], 0)
+        self.assertIn("theme_bucket_none_normalized_to_unknown", warnings)
 
     def test_reviews_correction_filing_with_schema_limited_codex_call(self) -> None:
         filing = {
@@ -261,7 +588,13 @@ class CorrectionReviewTest(unittest.TestCase):
             ) as fetch_text,
             patch(
                 "scripts.pdf_langgraph.pdf_analysis_langgraph.call_llm",
-                return_value='{"route":"correction_updated","summary":{"fund_name":"수정 ETF"},"research_prompt":""}',
+                return_value=(
+                    '{"route":"correction_updated",'
+                    '"summary":{"fund_name":"수정 ETF","keywords":null,'
+                    '"theme_classification":{"theme_status":"theme","theme_bucket":"none",'
+                    '"structure_tags":[],"confidence":0.5,"evidence":"test"}},'
+                    '"research_prompt":""}'
+                ),
             ) as call_llm_mock,
         ):
             result = update_record_from_correction(existing_record, filing, review)
@@ -272,6 +605,9 @@ class CorrectionReviewTest(unittest.TestCase):
         self.assertIn("기존 ETF", call_llm_mock.call_args.args[0])
         self.assertIn("투자전략 변경", call_llm_mock.call_args.args[0])
         self.assertEqual(result["summary"]["fund_name"], "수정 ETF")
+        self.assertEqual(result["summary"]["keywords"], [])
+        self.assertEqual(result["summary"]["theme_classification"]["theme_bucket"], "unknown")
+        self.assertIn("theme_bucket_none_normalized_to_unknown", result["validation_warnings"])
 
 
 class LlmProviderTest(unittest.TestCase):
@@ -412,6 +748,41 @@ class CollectEtfCandidatesScriptTest(unittest.TestCase):
 
 
 class DailyPipelineTest(unittest.TestCase):
+    def test_period_run_uses_daily_output_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runs_dir = Path(tmpdir) / "runs"
+
+            with patch("new_etf_insight.daily_pipeline.run_daily_pipeline") as run_daily:
+                run_daily.side_effect = [
+                    {"begin": "20260429", "end": "20260429", "results": []},
+                    {"begin": "20260430", "end": "20260430", "results": []},
+                ]
+
+                result = run_period_as_daily_runs("20260429", "20260430", runs_dir)
+
+        self.assertEqual(run_daily.call_count, 2)
+        self.assertEqual(
+            run_daily.call_args_list[0].args,
+            (
+                "20260429",
+                "20260429",
+                runs_dir / "20260429" / "records",
+                runs_dir / "20260429" / "pdfs",
+            ),
+        )
+        self.assertEqual(
+            run_daily.call_args_list[1].args,
+            (
+                "20260430",
+                "20260430",
+                runs_dir / "20260430" / "records",
+                runs_dir / "20260430" / "pdfs",
+            ),
+        )
+        self.assertEqual(result["begin"], "20260429")
+        self.assertEqual(result["end"], "20260430")
+        self.assertEqual(len(result["daily_results"]), 2)
+
     def test_creates_record_with_etf_key_path(self) -> None:
         candidates = [
             {
@@ -438,11 +809,12 @@ class DailyPipelineTest(unittest.TestCase):
                 patch(
                     "new_etf_insight.daily_pipeline.analyze_pdf",
                     return_value={"route": "pdf_holdings_available", "summary": {}, "research_prompt": ""},
-                ),
+                ) as analyze_pdf_mock,
             ):
                 result = run_daily_pipeline("20260429", "20260429", records_dir, pdf_dir)
                 record = json.loads((records_dir / "00104500_ET942.json").read_text(encoding="utf-8"))
 
+        self.assertIsInstance(analyze_pdf_mock.call_args.kwargs["holding_identifier_resolver"], HoldingIdentifierResolver)
         self.assertEqual(result["results"][0]["action"], "created")
         self.assertEqual(result["results"][0]["etf_key"], "00104500_ET942")
         self.assertEqual(record["source"]["rcept_no"], "20260429000012")

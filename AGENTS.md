@@ -3,6 +3,7 @@
 ## Skills
 
 - When running or debugging the ETF batch pipeline, first read `skills/new-etf-insight-batch/SKILL.md`.
+- When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
 
 이 문서는 `new-etf-insight` 프로젝트에서 Codex가 항상 따라야 하는 최상위 작업 지침이다.
 코드 수정, 설계, 테스트, 응답 방식은 반드시 이 문서를 우선한다.
@@ -29,6 +30,8 @@
 - 사용자가 명시적으로 긴 설명, 상세 분석, 전체 계획을 요청하지 않으면 핵심만 답한다.
 - 추가 설명이 필요하면 본문에 길게 쓰지 말고, 마지막에 2~3줄로 요약한다.
 - 요약 끝에는 사용자가 원할 때만 이어서 설명할 수 있게 확인 질문을 붙인다.
+- 한 턴에 사용자가 조치해야 할 사항이 여러 개면, 첫 번째 것만 제시하고 완료 확인 후 다음으로 넘어간다.
+- 구현 완료 후 "다음 단계는 X입니다. 진행할까요?" 형식으로 멈추고 사용자 응답을 기다린다.
 
 ## 코드 수정 규칙
 

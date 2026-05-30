@@ -1,0 +1,80 @@
+import { apiGet, apiGetOrNull } from "./api-client";
+
+export interface EtfListItem {
+  etf_key: string;
+  fund_name: string | null;
+  asset_manager: string | null;
+  index_name: string | null;
+  primary_country: string | null;
+  theme_status: string | null;
+  theme_bucket: string | null;
+  structure_tags: string[] | null;
+  classification_confidence: number | null;
+  first_rcept_dt: string | null;
+  is_pre_listing_etf: boolean | null;
+  revision_count: number | null;
+  has_holdings: boolean;
+}
+
+export interface EtfDetail extends EtfListItem {
+  route: string | null;
+  index_provider: string | null;
+  index_description: string | null;
+  holdings_available_in_pdf: boolean | null;
+  holdings_summary: string | null;
+  classification_evidence: string | null;
+  keywords: string[] | null;
+  trend_summary: string | null;
+  missing_info: string[] | null;
+  rcept_no: string | null;
+  rcept_dt: string | null;
+  corp_code: string | null;
+  corp_name: string | null;
+  report_nm: string | null;
+  fund_code: string | null;
+  pdf_path: string | null;
+}
+
+export interface Holding {
+  name: string;
+  ticker: string | null;
+  exchange: string | null;
+  weight: string | null;
+}
+
+export interface HoldingStat {
+  name: string;
+  avg_weight: number;
+  etf_count: number;
+}
+
+export interface StatsSummary {
+  total_etfs: number;
+  with_any_holdings: number;
+}
+
+export const getEtfList = (params: {
+  begin?: string; end?: string; country?: string;
+  themeStatus?: string; themeBucket?: string; preListingOnly?: boolean;
+}) =>
+  apiGet<EtfListItem[]>("/etfs", {
+    begin: params.begin, end: params.end, country: params.country,
+    theme_status: params.themeStatus, theme_bucket: params.themeBucket,
+    pre_listing_only: params.preListingOnly,
+  });
+
+export const getEtfDetail = (etfKey: string) =>
+  apiGetOrNull<EtfDetail>(`/etfs/${encodeURIComponent(etfKey)}`);
+
+export const getEtfHoldings = (etfKey: string) =>
+  apiGet<Holding[]>(`/etfs/${encodeURIComponent(etfKey)}/holdings`);
+
+export const getHoldingsStatsByKeys = (keys: string[]) =>
+  keys.length === 0 ? Promise.resolve([]) :
+  apiGet<HoldingStat[]>("/stats/holdings", { etf_keys: keys });
+
+export const getStatsSummaryByKeys = (keys: string[]) =>
+  keys.length === 0 ? Promise.resolve({ total_etfs: 0, with_any_holdings: 0 }) :
+  apiGet<StatsSummary>("/stats/summary", { etf_keys: keys });
+
+export const getCountries = () => apiGet<string[]>("/countries");

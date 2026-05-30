@@ -1,0 +1,16 @@
+[project]
+name = "etf-insight-api"
+version = "0.1.0"
+description = "FastAPI backend serving ETF insight DuckDB data + MCP"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "duckdb>=1.1.0",
+    "fastapi-mcp>=0.3",
+    "pydantic>=2.9",
+    "python-dotenv>=1.0",
+]
+
+[tool.uv]
+package = false

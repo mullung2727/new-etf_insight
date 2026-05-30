@@ -1,0 +1,17 @@
+[project]
+name = "etf-insight-broker"
+version = "0.1.0"
+description = "Kiwoom REST API — FastAPI + MCP gateway (quotes, balance, orders, condition search)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "fastapi-mcp>=0.3",
+    "httpx>=0.27",
+    "pydantic>=2.9",
+    "python-dotenv>=1.0",
+    "websockets>=13.0",
+]
+
+[tool.uv]
+package = false

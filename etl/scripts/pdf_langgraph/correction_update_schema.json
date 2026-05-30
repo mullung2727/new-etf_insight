@@ -19,6 +19,7 @@
         "asset_manager",
         "index",
         "market_exposure",
+        "theme_classification",
         "holdings",
         "keywords",
         "trend_summary",
@@ -58,6 +59,56 @@
             "primary_country": {
               "type": "string",
               "enum": ["KR", "US", "CN", "HK", "JP", "IN", "VN", "GLOBAL", "MIXED", "UNKNOWN"]
+            },
+            "evidence": {
+              "type": "string"
+            }
+          }
+        },
+        "theme_classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["theme_status", "theme_bucket", "structure_tags", "confidence", "evidence"],
+          "properties": {
+            "theme_status": {
+              "type": "string",
+              "enum": ["theme", "mixed", "non_theme", "unknown"]
+            },
+            "theme_bucket": {
+              "type": "string",
+              "enum": [
+                "technology",
+                "energy_materials",
+                "healthcare",
+                "industrial_defense",
+                "consumer_demographic",
+                "finance_income",
+                "country_macro",
+                "digital_asset",
+                "none",
+                "unknown"
+              ]
+            },
+            "structure_tags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "passive",
+                  "single_stock",
+                  "covered_call",
+                  "leveraged_inverse",
+                  "bond_mixed",
+                  "monthly_distribution",
+                  "currency_hedged"
+                ]
+              }
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
             },
             "evidence": {
               "type": "string"

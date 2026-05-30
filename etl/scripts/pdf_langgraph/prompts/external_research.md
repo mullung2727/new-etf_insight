@@ -12,6 +12,8 @@
 - 구성종목명과 비중을 직접 확인하지 못하면 추측하지 마라.
 - ticker와 exchange는 같은 출처에서 직접 확인한 경우에만 적어라.
 - ticker나 exchange를 확인하지 못하면 null로 둬라.
+- 구성종목이 예금, 현금, 선물, TRS, 스왑, 장외파생, 담보, 지수 포지션처럼 상장 주식/ETF/ADR이 아닌 항목이면 ticker와 exchange가 null이어도 정상이다.
+- 상장 주식/ETF/ADR인데 출처에서 ticker나 exchange를 확인할 수 없는 경우에만 missing_info에 식별자 확인 필요성을 적어라.
 
 검색 대상:
 - ETF명: {fund_name}
@@ -49,5 +51,6 @@
 - source_url을 모르면 null로 둬라. 그리고 holdings_found는 false가 됨.
 - items에는 직접 확인한 구성종목만 넣어라.
 - items의 ticker와 exchange는 직접 확인한 값만 넣고, 종목명만 보고 추측하지 마라.
-- 확인하지 못한 정보는 missing_info에 적을 것.
+- ticker나 exchange가 null이라는 이유만으로 모든 구성종목을 missing_info에 넣지 마라.
+- 확인하지 못한 중요한 정보만 missing_info에 적을 것.
 - 절대로 임의로 값을 넣지 말고 검색된 결과에 근거가 있는 경우만 구성족목을 명시하라.

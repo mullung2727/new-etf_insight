@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS etf_records (
     index_provider      VARCHAR,
     index_description   VARCHAR,
     primary_country     VARCHAR,
+    theme_status        VARCHAR,
+    theme_bucket        VARCHAR,
+    structure_tags      JSON,
+    classification_confidence DOUBLE,
+    classification_evidence VARCHAR,
     holdings_available_in_pdf BOOLEAN,
     holdings_summary    VARCHAR,
     keywords            JSON,
@@ -76,6 +81,20 @@ def _load_records(runs_dir: Path) -> dict[str, dict]:
 def _ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(_CREATE_ETF_RECORDS)
     con.execute(_CREATE_ETF_HOLDINGS)
+    existing_columns = {
+        row[1]
+        for row in con.execute("PRAGMA table_info('etf_records')").fetchall()
+    }
+    migrations = {
+        "theme_status": "ALTER TABLE etf_records ADD COLUMN theme_status VARCHAR",
+        "theme_bucket": "ALTER TABLE etf_records ADD COLUMN theme_bucket VARCHAR",
+        "structure_tags": "ALTER TABLE etf_records ADD COLUMN structure_tags JSON",
+        "classification_confidence": "ALTER TABLE etf_records ADD COLUMN classification_confidence DOUBLE",
+        "classification_evidence": "ALTER TABLE etf_records ADD COLUMN classification_evidence VARCHAR",
+    }
+    for column, statement in migrations.items():
+        if column not in existing_columns:
+            con.execute(statement)
 
 
 def _upsert_record(con: duckdb.DuckDBPyConnection, etf_key: str, record: dict) -> None:
@@ -84,11 +103,42 @@ def _upsert_record(con: duckdb.DuckDBPyConnection, etf_key: str, record: dict) -
     index = summary.get("index", {})
     holdings = summary.get("holdings", {})
     market_exposure = summary.get("market_exposure") or {}
+    theme_classification = summary.get("theme_classification") or {}
 
     con.execute(
         """
-        INSERT OR REPLACE INTO etf_records VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+        INSERT OR REPLACE INTO etf_records (
+            etf_key,
+            route,
+            is_pre_listing_etf,
+            fund_name,
+            asset_manager,
+            index_name,
+            index_provider,
+            index_description,
+            primary_country,
+            theme_status,
+            theme_bucket,
+            structure_tags,
+            classification_confidence,
+            classification_evidence,
+            holdings_available_in_pdf,
+            holdings_summary,
+            keywords,
+            trend_summary,
+            missing_info,
+            rcept_no,
+            rcept_dt,
+            corp_code,
+            corp_name,
+            report_nm,
+            fund_code,
+            pdf_path,
+            first_rcept_dt,
+            revision_count,
+            db_updated_at
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
         )
         """,
         [
@@ -101,6 +151,11 @@ def _upsert_record(con: duckdb.DuckDBPyConnection, etf_key: str, record: dict) -
             index.get("provider"),
             index.get("description"),
             market_exposure.get("primary_country"),
+            theme_classification.get("theme_status"),
+            theme_classification.get("theme_bucket"),
+            json.dumps(theme_classification.get("structure_tags") or [], ensure_ascii=False),
+            theme_classification.get("confidence"),
+            theme_classification.get("evidence"),
             holdings.get("available_in_pdf"),
             holdings.get("summary"),
             json.dumps(summary.get("keywords") or [], ensure_ascii=False),

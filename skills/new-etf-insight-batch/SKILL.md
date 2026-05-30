@@ -37,7 +37,7 @@ $env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -c "from pathlib import Path; 
 Replace `BEGIN` and `END` with `YYYYMMDD` dates.
 
 ```powershell
-$env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -c "from pathlib import Path; from new_etf_insight.daily_pipeline import run_daily_pipeline; print(run_daily_pipeline('BEGIN', 'END', Path('runs/BEGIN-END/records'), Path('runs/BEGIN-END/pdfs')))"
+$env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -c "from pathlib import Path; from new_etf_insight.daily_pipeline import run_period_as_daily_runs; print(run_period_as_daily_runs('BEGIN', 'END', Path('runs')))"
 ```
 
 ## Smoke Test Batch
