@@ -31,7 +31,7 @@ export default function TradingPage() {
 
         {/* RIGHT: condition search */}
         <div className="overflow-y-auto min-h-0">
-          <ConditionPanel onSymbolSelect={(s) => handleSymbolSelect(s)} />
+          <ConditionPanel onSymbolSelect={handleSymbolSelect} />
         </div>
     </div>
   );

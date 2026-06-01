@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { brokerClient, type OrderResult } from "@/lib/broker-client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,9 @@ export function OrderForm({ symbol: initSymbol = "", price: initPrice = 0 }: Ord
   const [result, setResult] = useState<OrderResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => { setSymbol(initSymbol); }, [initSymbol]);
+  useEffect(() => { if (initPrice > 0) setPrice(String(initPrice)); }, [initPrice]);
 
   const numPrice = parseInt(price.replace(/,/g, ""), 10) || 0;
   const numQty = parseInt(qty, 10) || 0;
