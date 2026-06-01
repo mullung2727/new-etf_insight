@@ -48,6 +48,7 @@ etl/bash.exe.stackdump
 .superpowers/
 .claude/settings.local.json
 .playwright-mcp/
+.mcp.json
 
 # OS/editor
 .DS_Store
