@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/etfs", label: "ETF 분석" },
   { href: "/trading", label: "트레이딩" },
+  { href: "/notes", label: "투자노트" },
 ];
 
 export function Nav() {

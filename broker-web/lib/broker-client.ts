@@ -19,10 +19,28 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail ?? `PATCH ${path} → ${res.status}`);
+  }
+  return res.json();
+}
+
 async function del<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
   return res.json();
+}
+
+async function del204(path: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
 }
 
 // --- Types ---
@@ -70,6 +88,64 @@ export interface OrderResult {
   message: string;
 }
 
+// --- Notes types ---
+
+export type NoteStatus = "open" | "partial" | "closed";
+export type EventType = "buy" | "add_buy" | "partial_sell" | "sell";
+
+export interface Note {
+  uid: string;
+  symbol: string;
+  status: NoteStatus;
+  target_price: number | null;
+  holding_period: string | null;
+  buy_reason: string | null;
+  memo: string | null;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoteEvent {
+  id: number;
+  note_uid: string;
+  event_type: EventType;
+  price: number;
+  qty: number;
+  executed_at: string;
+  memo: string | null;
+  created_at: string;
+}
+
+export interface NoteDetail extends Note {
+  events: NoteEvent[];
+}
+
+export interface NoteCreate {
+  symbol: string;
+  target_price?: number | null;
+  holding_period?: string | null;
+  buy_reason?: string | null;
+  memo?: string | null;
+  user_id?: string;
+}
+
+export interface NoteUpdate {
+  status?: NoteStatus;
+  target_price?: number | null;
+  holding_period?: string | null;
+  buy_reason?: string | null;
+  memo?: string | null;
+}
+
+export interface EventCreate {
+  event_type: EventType;
+  price: number;
+  qty: number;
+  executed_at: string;
+  memo?: string | null;
+}
+
 // --- API calls ---
 
 export const brokerClient = {
@@ -82,4 +158,21 @@ export const brokerClient = {
   placeOrder: (req: OrderRequest) => post<OrderResult>("/orders", req),
   cancelOrder: (orderNo: string, symbol: string, qty = 0) =>
     del<OrderResult>(`/orders/${orderNo}?symbol=${symbol}&qty=${qty}`),
+
+  // notes
+  listNotes: (params?: { symbol?: string; status?: NoteStatus }) => {
+    const q = new URLSearchParams();
+    if (params?.symbol) q.set("symbol", params.symbol);
+    if (params?.status) q.set("status", params.status);
+    const qs = q.toString();
+    return get<Note[]>(`/notes${qs ? `?${qs}` : ""}`);
+  },
+  getNote: (uid: string) => get<NoteDetail>(`/notes/${uid}`),
+  createNote: (req: NoteCreate) => post<Note>("/notes", req),
+  updateNote: (uid: string, req: NoteUpdate) => patch<NoteDetail>(`/notes/${uid}`, req),
+  deleteNote: (uid: string) => del204(`/notes/${uid}`),
+  addNoteEvent: (uid: string, req: EventCreate) =>
+    post<NoteEvent>(`/notes/${uid}/events`, req),
+  deleteNoteEvent: (uid: string, eventId: number) =>
+    del204(`/notes/${uid}/events/${eventId}`),
 };
