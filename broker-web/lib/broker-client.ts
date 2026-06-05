@@ -55,8 +55,13 @@ export interface Holding {
   stk_cd?: string;
   stk_nm?: string;
   cur_prc?: string;
-  evlt_pl?: string;
+  pur_pric?: string;
+  rmnd_qty?: string;
+  evltv_prft?: string;
   prft_rt?: string;
+  pur_amt?: string;
+  evlt_amt?: string;
+  poss_rt?: string;
   [key: string]: unknown;
 }
 
@@ -67,6 +72,16 @@ export interface BalanceData {
   tot_prft_rt?: string;
   acnt_evlt_remn_indv_tot?: Holding[];
   [key: string]: unknown;
+}
+
+export interface DepositData {
+  entr?: string;
+  ord_alow_amt?: string;
+  [key: string]: unknown;
+}
+
+export interface Settings {
+  env: "paper" | "real";
 }
 
 export interface ConditionItem {
@@ -152,12 +167,16 @@ export const brokerClient = {
   getQuote: (symbol: string) => get<Quote>(`/quotes/${symbol}`),
   getOrderbook: (symbol: string) => get<Record<string, unknown>>(`/quotes/${symbol}/orderbook`),
   getBalance: () => get<BalanceData>("/account/balance"),
-  getDeposit: () => get<Record<string, unknown>>("/account/deposit"),
+  getDeposit: () => get<DepositData>("/account/deposit"),
   listConditions: () => get<ConditionItem[]>("/conditions"),
   runCondition: (seq: string) => get<Record<string, unknown>>(`/conditions/${seq}/run`),
   placeOrder: (req: OrderRequest) => post<OrderResult>("/orders", req),
   cancelOrder: (orderNo: string, symbol: string, qty = 0) =>
     del<OrderResult>(`/orders/${orderNo}?symbol=${symbol}&qty=${qty}`),
+
+  // settings
+  getSettings: () => get<Settings>("/settings"),
+  updateSettings: (env: "paper" | "real") => post<Settings>("/settings", { env }),
 
   // notes
   listNotes: (params?: { symbol?: string; status?: NoteStatus }) => {

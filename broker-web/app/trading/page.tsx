@@ -15,23 +15,21 @@ export default function TradingPage() {
   };
 
   return (
-    <div className="grid grid-cols-[320px_1fr_320px] gap-4 p-6 h-[calc(100vh-57px)] overflow-hidden">
-        {/* LEFT: account */}
-        <div className="overflow-y-auto min-h-0">
-          <AccountPanel />
-        </div>
-
-        {/* CENTER: quote + order */}
+    <div className="grid grid-cols-[1fr_3fr] gap-4 p-6 h-[calc(100vh-57px)] overflow-hidden">
+        {/* LEFT: quote + order + condition stacked */}
         <div className="flex flex-col gap-6 overflow-y-auto min-h-0">
           <QuoteCard onSymbolSelect={handleSymbolSelect} />
           <div className="border-t border-border pt-4">
             <OrderForm symbol={symbol} price={price} />
           </div>
+          <div className="border-t border-border pt-4">
+            <ConditionPanel onSymbolSelect={handleSymbolSelect} />
+          </div>
         </div>
 
-        {/* RIGHT: condition search */}
+        {/* RIGHT: account (wider for holdings) */}
         <div className="overflow-y-auto min-h-0">
-          <ConditionPanel onSymbolSelect={handleSymbolSelect} />
+          <AccountPanel />
         </div>
     </div>
   );

@@ -46,7 +46,13 @@ export function OrderForm({ symbol: initSymbol = "", price: initPrice = 0 }: Ord
       });
       setResult(r);
     } catch (e) {
-      setError(String(e));
+      const msg = String(e);
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        setError("서버 연결 실패");
+      } else {
+        // Strip leading "Error: " prefix; 422 detail is already clean
+        setError(msg.replace(/^Error:\s*/, ""));
+      }
     } finally {
       setLoading(false);
     }
