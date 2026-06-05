@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { BrokerStatus } from "./broker-status";
 
 const links = [
   { href: "/etfs", label: "ETF 분석" },
@@ -36,6 +37,7 @@ export function Nav() {
           ))}
         </nav>
       </div>
+      <BrokerStatus />
     </header>
   );
 }
