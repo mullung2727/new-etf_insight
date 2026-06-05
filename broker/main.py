@@ -13,8 +13,23 @@ from routers import conditions as conditions_router
 from routers import notes as notes_router
 from routers import orders as orders_router
 from routers import quotes as quotes_router
+from routers import settings as settings_router
+
+from contextlib import asynccontextmanager
+from kiwoom.ws.manager import KiwoomWSManager
+from routers import events as events_router
+
+
 
 load_dotenv()
+
+_ws_manager = KiwoomWSManager()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _ws_manager.start()
+    yield
+    await _ws_manager.stop()
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -31,6 +46,7 @@ app = FastAPI(
     title="Kiwoom Broker API",
     description="키움증권 REST API gateway — REST + MCP (SSE).",
     version="0.1.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -48,6 +64,8 @@ app.include_router(account_router.router)
 app.include_router(orders_router.router)
 app.include_router(conditions_router.router)
 app.include_router(notes_router.router)
+app.include_router(settings_router.router)
+app.include_router(events_router.router)
 
 mcp = FastApiMCP(
     app,

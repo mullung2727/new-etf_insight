@@ -22,6 +22,7 @@ TR_ORDERBOOK = "ka10004"    # 주식호가요청 → EP_MRKCOND
 # --- Account (계좌) ---
 TR_BALANCE = "kt00018"      # 계좌평가잔고내역요청 → EP_ACNT
 TR_DEPOSIT = "kt00001"      # 예수금상세현황요청 → EP_ACNT
+TR_SETTLED_BALANCE = "kt00005"  # 체결잔고요청 (예수금D+0/D+1/D+2 + 보유종목) → EP_ACNT
 
 # --- Orders (주문) ---
 TR_ORDER_BUY = "kt10000"    # 주식 매수주문 → EP_ORDR
@@ -33,3 +34,10 @@ TR_ORDER_CANCEL = "kt10003" # 주식 취소주문 → EP_ORDR
 WS_LOGIN = "LOGIN"
 WS_CONDITION_LIST = "CNSRLST"  # 조건검색 목록조회 (ka10171)
 WS_CONDITION_REQ = "CNSRREQ"   # 조건검색 단발요청 (ka10172)
+
+# --- Realtime subscription (실시간 등록/해제) ---
+WS_REG = "REG"        # 실시간 등록
+WS_REMOVE = "REMOVE"  # 실시간 해제
+
+# --- Realtime channel ids (실시간 항목 type) ---
+RT_FILL = "00"        # 주문체결
