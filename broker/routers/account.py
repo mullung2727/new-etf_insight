@@ -22,7 +22,7 @@ def get_balance() -> Any:
 @router.get(
     "/deposit",
     operation_id="get_deposit",
-    summary="예수금 상세 조회",
+    summary="예수금 상세 조회 (kt00001)",
 )
 def get_deposit() -> Any:
     """주문 가능 현금(예수금) 상세를 반환한다."""

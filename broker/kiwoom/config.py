@@ -68,8 +68,20 @@ class Config:
         return self.env == "paper"
 
 
+_runtime_env: str | None = None
+
+
+def set_runtime_env(env: str) -> None:
+    global _runtime_env
+    _runtime_env = env
+
+
+def get_current_env() -> str:
+    return _runtime_env or os.getenv("KIWOOM_ENV", "paper").strip().lower()
+
+
 def load_config() -> Config:
-    env = os.getenv("KIWOOM_ENV", "paper").strip().lower()
+    env = get_current_env()
     if env not in _HOSTS:
         raise RuntimeError(f"KIWOOM_ENV must be 'paper' or 'real', got: {env!r}")
 
