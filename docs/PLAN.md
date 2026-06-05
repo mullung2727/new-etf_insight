@@ -23,7 +23,7 @@ api/                          (로컬 broker에서 직접 실행)
   ETF 데이터 게이트웨이
   투자 정보 확장 예정
 
-web/
+broker-web/
   Next.js 대시보드
   ETF 분석 / 투자 정보 시각화
 ```
@@ -53,7 +53,7 @@ Claude가 두 MCP를 동시에 들고 정보 기반 매매 판단.
 - 현재: ETF 목록/상세/구성종목/통계
 - 확장: 투자 시그널, 시세 요약, 포트폴리오 분석 등
 
-### web/ — 대시보드 ✅ 운영중 (일부 미완)
+### broker-web/ — 대시보드 ✅ 운영중 (일부 미완)
 - ETF 목록 / 상세 / 구성종목 통계
 - 미완: 목록 페이지에 구성종목 비중 통합 (현재 /stats 분리)
 
@@ -68,8 +68,7 @@ Claude가 두 MCP를 동시에 들고 정보 기반 매매 판단.
 
 1. **투자 정보 소스 추가** — api/에 붙임 (뉴스, 재무, 수급 등 공개 데이터)
 2. **broker v2** — 조건검색 실시간 구독 + 전략 기반 자동주문 워커
-3. **web 트레이딩 뷰** — broker를 FastAPI+fastapi-mcp로 전환, 로컬 web/에서 수동매매 UI 추가. LLM 매매(MCP)와 수동 매매(web) 동시 지원
-4. **멀티 증권사** — broker/ 구조를 다른 증권사 REST API에도 적용 가능
+3. **broker-web 트레이딩 뷰** — broker를 FastAPI+fastapi-mcp로 전환, 로컬 broker-web/에서 수동매매 UI 추가. LLM 매매(MCP)와 수동 매매(web) 동시 지원
 
 ---
 
