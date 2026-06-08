@@ -10,6 +10,7 @@ const links = [
   { href: "/trading", label: "트레이딩" },
   { href: "/notes", label: "투자노트" },
   { href: "/financial", label: "재무제표" },
+  { href: "/watchlist", label: "watchlist" },
 ];
 
 export function Nav() {
