@@ -51,6 +51,17 @@ export interface Quote {
   raw: Record<string, unknown>;
 }
 
+export interface DailyCandle {
+  dt: string;
+  open_pric: string;
+  high_pric: string;
+  low_pric: string;
+  cur_prc: string;
+  trde_qty: string;
+  pred_pre: string;
+  [key: string]: unknown;
+}
+
 export interface Holding {
   stk_cd?: string;
   stk_nm?: string;
@@ -166,6 +177,8 @@ export interface EventCreate {
 export const brokerClient = {
   getQuote: (symbol: string) => get<Quote>(`/quotes/${symbol}`),
   getOrderbook: (symbol: string) => get<Record<string, unknown>>(`/quotes/${symbol}/orderbook`),
+  getDailyChart: (symbol: string, baseDt?: string) =>
+    get<DailyCandle[]>(`/quotes/${symbol}/daily${baseDt ? `?base_dt=${baseDt}` : ""}`),
   getBalance: () => get<BalanceData>("/account/balance"),
   getDeposit: () => get<DepositData>("/account/deposit"),
   listConditions: () => get<ConditionItem[]>("/conditions"),

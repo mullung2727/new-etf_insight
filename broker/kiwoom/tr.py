@@ -12,12 +12,14 @@ from __future__ import annotations
 # --- REST endpoints (grouped by domain path) ---
 EP_STKINFO = "/api/dostk/stkinfo"  # 종목 정보/시세
 EP_MRKCOND = "/api/dostk/mrkcond"  # 시세/호가
+EP_CHART = "/api/dostk/chart"      # 차트 (일/주/월봉)
 EP_ACNT = "/api/dostk/acnt"        # 계좌 (잔고/예수금)
 EP_ORDR = "/api/dostk/ordr"        # 주문 (매수/매도/정정/취소)
 
 # --- Quotes (시세) ---
 TR_STOCK_INFO = "ka10001"   # 주식기본정보요청 (현재가 포함) → EP_STKINFO
 TR_ORDERBOOK = "ka10004"    # 주식호가요청 → EP_MRKCOND
+TR_DAILY_CHART = "ka10081"  # 주식일봉차트조회요청 → EP_CHART
 
 # --- Account (계좌) ---
 TR_BALANCE = "kt00018"      # 계좌평가잔고내역요청 → EP_ACNT

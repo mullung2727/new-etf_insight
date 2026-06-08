@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter
@@ -27,3 +28,14 @@ def get_quote(symbol: str) -> Any:
 def get_orderbook(symbol: str) -> Any:
     """6자리 종목코드의 매수/매도 호가 잔량을 반환한다."""
     return quotes.get_orderbook(symbol)
+
+
+@router.get(
+    "/{symbol}/daily",
+    operation_id="get_daily_chart",
+    summary="주식 일봉차트 조회",
+)
+def get_daily_chart(symbol: str, base_dt: str | None = None) -> Any:
+    """6자리 종목코드의 일봉 배열을 반환한다. base_dt(YYYYMMDD) 기본값=오늘."""
+    base = base_dt or datetime.now().strftime("%Y%m%d")
+    return quotes.get_daily_chart(symbol, base)
