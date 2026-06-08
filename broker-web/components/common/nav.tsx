@@ -9,6 +9,7 @@ const links = [
   { href: "/etfs", label: "ETF 분석" },
   { href: "/trading", label: "트레이딩" },
   { href: "/notes", label: "투자노트" },
+  { href: "/financial", label: "재무제표" },
 ];
 
 export function Nav() {
