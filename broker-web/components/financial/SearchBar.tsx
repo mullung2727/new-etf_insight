@@ -59,13 +59,18 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
       setCorpCode("");
       setActiveIndex(-1);
 
-      if (value.length < 1) {
+      const q = value.trim();
+      if (q.length < 1) {
         setSuggestions([]);
         setShowDropdown(false);
         return;
       }
 
-      const filtered = allCorps.filter((c) => c.corp_name.includes(value)).slice(0, 10);
+      // 기업명 부분일치 OR 종목코드 부분일치. 종목코드 정확매칭을 최상단으로.
+      const filtered = allCorps
+        .filter((c) => c.corp_name.includes(q) || c.stock_code.includes(q))
+        .sort((a, b) => Number(b.stock_code === q) - Number(a.stock_code === q))
+        .slice(0, 10);
       setSuggestions(filtered);
       setShowDropdown(filtered.length > 0);
     },
@@ -154,7 +159,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
         {/* 기업 검색 입력 */}
         <div className="flex-1 min-w-0 relative">
           <label className="block text-primary/60 text-[9px] tracking-[0.2em] mb-[6px] uppercase">
-            기업명
+            기업명 / 종목코드
           </label>
           <div className="relative">
             <input
@@ -164,7 +169,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
               onChange={(e) => handleQueryChange(e.target.value)}
               onKeyDown={handleKeyDown}
               onFocus={() => query && suggestions.length > 0 && setShowDropdown(true)}
-              placeholder="삼성전자, SK하이닉스..."
+              placeholder="삼성전자, 005930..."
               autoComplete="off"
               style={{
                 width: "100%",
