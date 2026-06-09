@@ -214,7 +214,8 @@ CREATE TABLE llm_scores (
   - **차트는 키움 ka10081 유지**(옵션 A 결정). `/ohlcv`는 미사용·보관.
   - `fetchScore`: `/watchlist/scores/{baseDate}`에서 `ticker===code` 필터 → llm_score 패널 추가
     (score/category/reason_summary/final_opinion). 기준일은 기존 헤더에 이미 표시됨.
-- 검증: `npx tsc --noEmit` 통과(EXIT=0), stock_data.json 참조 0. (런타임은 next dev 금지 → 미실행)
+- 검증: `npx tsc --noEmit` 통과(EXIT=0), stock_data.json 참조 0. **런타임 e2e 통과**(next dev :3000 + api :8000 + broker :8001, Playwright):
+  목록 6일 렌더, 종목 클릭→키움 캔들차트 정상, llm_score 패널 조건부 표시(066430=86점 표시 / 004100=미스코어 숨김), 콘솔 에러 0.
 
 ---
 

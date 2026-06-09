@@ -2,6 +2,11 @@ import Link from "next/link";
 import { brokerClient, type DailyCandle } from "@/lib/broker-client";
 import { apiGet } from "@/lib/api-client";
 import CandleChart from "@/components/watchlist/ChartLoader";
+import BaseDatePicker from "@/components/watchlist/BaseDatePicker";
+
+// 차트 윈도우: 기준일 앞 15거래일 ~ 뒤 20거래일
+const DAYS_BEFORE = 15;
+const DAYS_AFTER = 20;
 
 type LlmScore = {
   date: string;
@@ -11,6 +16,11 @@ type LlmScore = {
   category: string | null;
   reason_summary: string | null;
   final_opinion: string | null;
+};
+
+type ChartResult = {
+  candles: DailyCandle[];
+  markerDate: string; // 실제 마커가 찍히는 거래일(휴장 기준일이면 근사)
 };
 
 async function fetchScore(
@@ -30,31 +40,32 @@ function yyyymmdd(date: Date): string {
   return date.toISOString().slice(0, 10).replace(/-/g, "");
 }
 
-function subtractDays(dateStr: string, days: number): string {
-  const d = new Date(
-    +dateStr.slice(0, 4),
-    +dateStr.slice(4, 6) - 1,
-    +dateStr.slice(6, 8)
-  );
-  d.setDate(d.getDate() - days);
-  return yyyymmdd(d);
-}
-
 function formatDate(raw: string): string {
   return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
 }
 
+/**
+ * ka10081은 base_dt 이전(과거)만 반환 → base_dt=오늘로 받아 최신까지 확보한 뒤,
+ * 받은 캔들 배열(=실제 거래일 달력)에서 기준일 앞 15 ~ 뒤 20거래일을 잘라 쓴다.
+ * 기준일이 최근이라 뒤 20일치가 없으면 배열 끝까지(=가장 최근 데이터).
+ */
 async function fetchChart(
   code: string,
-  baseDate: string,
-  startDate: string,
-  endDate: string
-): Promise<DailyCandle[] | null> {
+  baseDate: string
+): Promise<ChartResult | null> {
   try {
-    const all = await brokerClient.getDailyChart(code, baseDate);
-    return all
-      .filter((item) => item.dt >= startDate && item.dt <= endDate)
+    const all = (await brokerClient.getDailyChart(code, yyyymmdd(new Date())))
+      .slice()
       .sort((a, b) => a.dt.localeCompare(b.dt));
+    if (all.length === 0) return { candles: [], markerDate: baseDate };
+
+    // 기준일(휴장이면 그 이후 첫 거래일) 위치. 기준일이 데이터보다 미래면 마지막으로 클램프.
+    let baseIdx = all.findIndex((c) => c.dt >= baseDate);
+    if (baseIdx === -1) baseIdx = all.length - 1;
+
+    const start = Math.max(0, baseIdx - DAYS_BEFORE);
+    const end = Math.min(all.length, baseIdx + DAYS_AFTER + 1);
+    return { candles: all.slice(start, end), markerDate: all[baseIdx].dt };
   } catch (err) {
     console.error(`${code} 차트 조회 에러:`, err);
     return null;
@@ -72,13 +83,15 @@ export default async function ChartPage({
   const { date, name } = await searchParams;
 
   const baseDate = date ?? yyyymmdd(new Date());
-  const startDate = subtractDays(baseDate, 14);
-  const endDate = yyyymmdd(new Date());
 
-  const [data, score] = await Promise.all([
-    fetchChart(code, baseDate, startDate, endDate),
+  const [chart, score] = await Promise.all([
+    fetchChart(code, baseDate),
     fetchScore(code, baseDate),
   ]);
+
+  const candles = chart?.candles ?? [];
+  const rangeStart = candles.length > 0 ? candles[0].dt : null;
+  const rangeEnd = candles.length > 0 ? candles[candles.length - 1].dt : null;
 
   return (
     <div className="fin-scope min-h-screen bg-background font-terminal">
@@ -97,13 +110,22 @@ export default async function ChartPage({
             </h1>
             <span className="text-xs text-white/50">{code}</span>
           </div>
-          <p className="text-[13px] text-white/40 tracking-[0.15em] border-l-2 border-primary/30 pl-3">
-            기준일 {formatDate(baseDate)} · {formatDate(startDate)} — {formatDate(endDate)}
-          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <BaseDatePicker code={code} baseDate={baseDate} name={name} />
+            <p className="text-[13px] text-white/40 tracking-[0.15em] border-l-2 border-primary/30 pl-3">
+              기준일 {formatDate(baseDate)}
+              {rangeStart && rangeEnd && (
+                <span className="text-white/30">
+                  {" · "}
+                  {formatDate(rangeStart)} — {formatDate(rangeEnd)}
+                </span>
+              )}
+            </p>
+          </div>
         </div>
 
-        {data && data.length > 0 ? (
-          <CandleChart data={data} baseDate={baseDate} />
+        {candles.length > 0 ? (
+          <CandleChart data={candles} baseDate={chart!.markerDate} />
         ) : (
           <div className="text-center py-20 text-[11px] tracking-[0.2em] text-white/15">
             데이터를 불러올 수 없습니다
