@@ -7,6 +7,8 @@ the TS side as well — the BFF relies on a 1:1 JSON shape.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -65,3 +67,36 @@ class HoldingStat(_Base):
 class StatsSummary(_Base):
     total_etfs: int
     with_any_holdings: int
+
+
+class LlmScore(_Base):
+    """One row of llm_scores (watchlist.duckdb). Mirrors the 16-column table."""
+
+    date: str
+    ticker: str
+    name: str | None = None
+    ratio: float | None = None
+    today_volume: int | None = None
+    avg5_volume: int | None = None
+    trading_value: int | None = None
+    close: int | None = None
+    score: int | None = None
+    category: str | None = None
+    reason_summary: str | None = None
+    final_opinion: str | None = None
+    evidence_board: str | None = None
+    evidence_news: str | None = None
+    evidence_web: str | None = None
+    sources: Any | None = None
+
+
+class OhlcvCandle(_Base):
+    """One daily candle from krx_ohlcv.duckdb (ohlcv table)."""
+
+    date: str
+    open: int | None = None
+    high: int | None = None
+    low: int | None = None
+    close: int | None = None
+    volume: int | None = None
+    trading_value: int | None = None

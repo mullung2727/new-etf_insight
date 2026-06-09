@@ -1,6 +1,30 @@
 import Link from "next/link";
 import { brokerClient, type DailyCandle } from "@/lib/broker-client";
+import { apiGet } from "@/lib/api-client";
 import CandleChart from "@/components/watchlist/ChartLoader";
+
+type LlmScore = {
+  date: string;
+  ticker: string;
+  name: string | null;
+  score: number | null;
+  category: string | null;
+  reason_summary: string | null;
+  final_opinion: string | null;
+};
+
+async function fetchScore(
+  code: string,
+  baseDate: string
+): Promise<LlmScore | null> {
+  try {
+    const rows = await apiGet<LlmScore[]>(`/watchlist/scores/${baseDate}`);
+    return rows.find((r) => r.ticker === code) ?? null;
+  } catch (err) {
+    console.error(`${code} 스코어 조회 에러:`, err);
+    return null;
+  }
+}
 
 function yyyymmdd(date: Date): string {
   return date.toISOString().slice(0, 10).replace(/-/g, "");
@@ -51,7 +75,10 @@ export default async function ChartPage({
   const startDate = subtractDays(baseDate, 14);
   const endDate = yyyymmdd(new Date());
 
-  const data = await fetchChart(code, baseDate, startDate, endDate);
+  const [data, score] = await Promise.all([
+    fetchChart(code, baseDate, startDate, endDate),
+    fetchScore(code, baseDate),
+  ]);
 
   return (
     <div className="fin-scope min-h-screen bg-background font-terminal">
@@ -80,6 +107,36 @@ export default async function ChartPage({
         ) : (
           <div className="text-center py-20 text-[11px] tracking-[0.2em] text-white/15">
             데이터를 불러올 수 없습니다
+          </div>
+        )}
+
+        {score && (
+          <div className="mt-8 border border-primary/20 rounded p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-[11px] tracking-[0.2em] text-white/40">
+                LLM SCORE · {formatDate(baseDate)}
+              </span>
+              {score.score != null && (
+                <span className="text-xl font-bold text-primary">
+                  {score.score}
+                </span>
+              )}
+              {score.category && (
+                <span className="text-[11px] tracking-[0.15em] text-white/50 border border-white/15 rounded px-2 py-0.5">
+                  {score.category}
+                </span>
+              )}
+            </div>
+            {score.reason_summary && (
+              <p className="text-[13px] text-white/70 leading-relaxed mb-3">
+                {score.reason_summary}
+              </p>
+            )}
+            {score.final_opinion && (
+              <p className="text-[13px] text-white/50 leading-relaxed border-l-2 border-primary/30 pl-3">
+                {score.final_opinion}
+              </p>
+            )}
           </div>
         )}
       </div>

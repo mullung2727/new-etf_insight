@@ -10,6 +10,7 @@ from fastapi_mcp import FastApiMCP
 from duck import DUCKDB_PATH, init_connection
 from routers import etfs as etfs_router
 from routers import stats as stats_router
+from routers import watchlist as watchlist_router
 
 load_dotenv()
 
@@ -49,6 +50,7 @@ app.add_middleware(
 
 app.include_router(etfs_router.router)
 app.include_router(stats_router.router)
+app.include_router(watchlist_router.router)
 
 mcp = FastApiMCP(
     app,

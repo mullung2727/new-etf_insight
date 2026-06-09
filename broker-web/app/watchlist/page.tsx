@@ -1,4 +1,4 @@
-import stockData from "@/data/stock_data.json";
+import { apiGet } from "@/lib/api-client";
 import { fetchCorpCodes } from "@/lib/dart";
 import Link from "next/link";
 import {
@@ -16,15 +16,18 @@ function formatDate(raw: string): string {
 }
 
 export default async function WatchlistPage() {
-  const corpCodes = await fetchCorpCodes();
+  const [corpCodes, stockData] = await Promise.all([
+    fetchCorpCodes(),
+    apiGet<Record<string, string[]>>("/watchlist"),
+  ]);
   const nameMap = Object.fromEntries(
     corpCodes
       .filter((c) => c.stock_code)
       .map((c) => [c.stock_code, c.corp_name])
   );
 
-  const entries = Object.entries(stockData as Record<string, string[]>).sort(
-    ([a], [b]) => b.localeCompare(a)
+  const entries = Object.entries(stockData).sort(([a], [b]) =>
+    b.localeCompare(a)
   );
 
   return (
