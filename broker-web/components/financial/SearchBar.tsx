@@ -124,7 +124,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
 
   return (
     <div
-      className="w-full relative overflow-visible font-terminal border border-primary/25 rounded-[2px]"
+      className="w-full relative overflow-visible font-terminal border border-fin-gold/25 rounded-[2px]"
       style={{
         background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 50%, #0A1628 100%)",
         boxShadow: "0 0 0 1px rgba(240,180,41,0.08), 0 20px 60px rgba(0,0,0,0.5)",
@@ -139,17 +139,17 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
       />
 
       {/* 헤더 */}
-      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-primary/[0.12]">
+      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-fin-gold/[0.12]">
         <div className="flex items-center gap-3">
           <div
-            className="w-[6px] h-[6px] rounded-full bg-primary"
-            style={{ boxShadow: "0 0 8px #F0B429" }}
+            className="w-[6px] h-[6px] rounded-full bg-fin-gold"
+            style={{ boxShadow: "0 0 8px var(--color-fin-gold)" }}
           />
-          <span className="text-primary text-[10px] tracking-[0.2em] font-semibold uppercase">
+          <span className="text-fin-gold text-fin-sm tracking-[0.2em] font-semibold uppercase">
             DART Financial Query
           </span>
         </div>
-        <span className={`text-[9px] tracking-[0.15em] ${corpsLoaded ? "text-primary/50" : "text-white/20"}`}>
+        <span className={`text-fin-xs tracking-[0.15em] ${corpsLoaded ? "text-fin-gold/50" : "text-fin-muted"}`}>
           {corpsLoaded ? `${allCorps.length.toLocaleString()} CORPS INDEXED` : "LOADING INDEX..."}
         </span>
       </div>
@@ -158,7 +158,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
       <div className="px-6 py-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:gap-3">
         {/* 기업 검색 입력 */}
         <div className="flex-1 min-w-0 relative">
-          <label className="block text-primary/60 text-[9px] tracking-[0.2em] mb-[6px] uppercase">
+          <label className="block text-fin-gold/60 text-fin-xs tracking-[0.2em] mb-[6px] uppercase">
             기업명 / 종목코드
           </label>
           <div className="relative">
@@ -197,7 +197,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
               }}
             />
             {corpCode && (
-              <div className="absolute right-[10px] top-1/2 -translate-y-1/2 text-primary text-xs">
+              <div className="absolute right-[10px] top-1/2 -translate-y-1/2 text-fin-gold text-xs">
                 ✓
               </div>
             )}
@@ -207,7 +207,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
           {showDropdown && (
             <div
               ref={dropdownRef}
-              className="absolute top-[calc(100%+4px)] left-0 right-0 border border-primary/30 rounded-[1px] z-50 max-h-60 overflow-y-auto"
+              className="absolute top-[calc(100%+4px)] left-0 right-0 border border-fin-gold/30 rounded-[1px] z-50 max-h-60 overflow-y-auto"
               style={{
                 background: "#0D1B35",
                 boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
@@ -230,7 +230,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
                   >
                     {corp.corp_name}
                   </span>
-                  <span className="text-primary/40 text-[10px] tracking-[0.1em] font-[inherit]">
+                  <span className="text-fin-gold/40 text-fin-sm tracking-[0.1em] font-[inherit]">
                     {corp.stock_code}
                   </span>
                 </div>
@@ -241,7 +241,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
 
         {/* 연도 선택 */}
         <div className="min-w-[100px]">
-          <label className="block text-primary/60 text-[9px] tracking-[0.2em] mb-[6px] uppercase">
+          <label className="block text-fin-gold/60 text-fin-xs tracking-[0.2em] mb-[6px] uppercase">
             사업연도
           </label>
           <SelectControl value={year} onChange={setYear} options={YEARS.map((y) => ({ label: y, value: y }))} />
@@ -249,7 +249,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
 
         {/* 보고서 구분 */}
         <div className="min-w-[160px]">
-          <label className="block text-primary/60 text-[9px] tracking-[0.2em] mb-[6px] uppercase">
+          <label className="block text-fin-gold/60 text-fin-xs tracking-[0.2em] mb-[6px] uppercase">
             보고서 구분
           </label>
           <SelectControl value={reprtCode} onChange={setReprtCode} options={REPRT_OPTIONS} />
@@ -257,7 +257,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
 
         {/* 재무제표 구분 */}
         <div className="min-w-[130px]">
-          <label className="block text-primary/60 text-[9px] tracking-[0.2em] mb-[6px] uppercase">
+          <label className="block text-fin-gold/60 text-fin-xs tracking-[0.2em] mb-[6px] uppercase">
             재무제표
           </label>
           <SelectControl value={fsDiv} onChange={setFsDiv} options={FS_DIV_OPTIONS} />
@@ -269,7 +269,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
           <button
             onClick={handleSearch}
             disabled={!canSearch}
-            className="flex items-center justify-center gap-2 px-6 py-[10px] rounded-[1px] text-[11px] font-bold tracking-[0.15em] uppercase whitespace-nowrap transition-all duration-200 font-[inherit]"
+            className="flex items-center justify-center gap-2 px-6 py-[10px] rounded-[1px] text-fin-base font-bold tracking-[0.15em] uppercase whitespace-nowrap transition-all duration-200 font-[inherit]"
             style={{
               background: canSearch
                 ? "linear-gradient(135deg, #F0B429, #d49a1f)"
@@ -296,10 +296,10 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
       </div>
 
       {/* 하단 상태바 */}
-      <div className="px-6 py-2 flex items-center gap-2 border-t border-primary/[0.08] bg-black/20">
+      <div className="px-6 py-2 flex items-center gap-2 border-t border-fin-gold/[0.08] bg-black/20">
         <span
-          className={`text-[9px] tracking-[0.15em] font-[inherit] ${
-            corpCode ? "text-primary/50" : "text-white/15"
+          className={`text-fin-xs tracking-[0.15em] font-[inherit] ${
+            corpCode ? "text-fin-gold/50" : "text-fin-ghost"
           }`}
         >
           {corpCode

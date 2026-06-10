@@ -44,7 +44,7 @@ export default function FinancialPage() {
         )}
 
         {loading && (
-          <div className="mb-6 flex items-center gap-[10px] bg-primary/[0.06] border border-primary/20 rounded-[2px] px-[18px] py-[14px] text-primary/70 text-[11px] tracking-[0.15em]">
+          <div className="mb-6 flex items-center gap-[10px] bg-fin-gold/[0.06] border border-fin-gold/20 rounded-[2px] px-[18px] py-[14px] text-fin-gold/70 text-fin-base tracking-[0.15em]">
             <span style={{ animation: "pulse 1s ease-in-out infinite", display: "inline-block" }}>◆</span>
             <style>{`@keyframes pulse{0%,100%{opacity:0.3}50%{opacity:1}}`}</style>
             DART API 호출 중 (~14회 병렬)...
@@ -60,7 +60,7 @@ export default function FinancialPage() {
         {!loading && !data && !error && (
           <div className="text-center px-6 py-20 text-white/10">
             <div className="text-5xl mb-4 opacity-30">▭</div>
-            <p className="text-[11px] tracking-[0.2em] uppercase">
+            <p className="text-fin-base tracking-[0.2em] uppercase">
               기업을 검색하면 다기간 재무 비교가 표시됩니다
             </p>
           </div>

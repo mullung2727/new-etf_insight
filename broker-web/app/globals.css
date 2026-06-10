@@ -10,9 +10,33 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
-  /* 재무제표(fin-scope)용 토큰 — 값은 .fin-scope에서 주입 */
   --color-up: var(--up);
   --font-terminal: var(--font-terminal);
+
+  /* ── 전역 시맨틱 색상 ──────────────────────────────────────────────── */
+  /* 수익/손실 */
+  --color-status-profit: var(--status-profit);
+  --color-status-loss:   var(--status-loss);
+  /* 투자노트 상태 */
+  --color-status-open:    var(--status-open);
+  --color-status-partial: var(--status-partial);
+  --color-status-closed:  var(--status-closed);
+  /* 차트 하락 */
+  --color-down: var(--down);
+
+  /* ── fin-scope 전용 토큰 ──────────────────────────────────────────── */
+  --color-fin-gold:      var(--fin-gold);     /* #F0B429 — primary accent */
+  --color-fin-text:      var(--fin-text);     /* 값 텍스트 */
+  --color-fin-label:     var(--fin-label);    /* 레이블·보조 */
+  --color-fin-muted:     var(--fin-muted);    /* 비활성 */
+  --color-fin-ghost:     var(--fin-ghost);    /* null/— */
+  --color-fin-ratio:     var(--fin-ratio);    /* 인라인 비율 % */
+
+  /* fin-scope 타이포 스케일 */
+  --text-fin-xs:   9px;
+  --text-fin-sm:   10px;
+  --text-fin-base: 11px;
+  --text-fin-lg:   13px;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -86,6 +110,24 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* ── 전역 시맨틱 + fin 토큰 기본값 (라이트/다크 공통) ─────────────────────── */
+:root {
+  --status-profit:  oklch(0.70 0.18 145);   /* emerald */
+  --status-loss:    oklch(0.627 0.258 29);  /* red */
+  --status-open:    oklch(0.70 0.18 145);   /* emerald */
+  --status-partial: oklch(0.75 0.16 77);    /* amber */
+  --status-closed:  oklch(0.6 0 0 / 0.6);
+  --down:           #3b82f6;                /* 차트 하락 파란색 */
+
+  /* fin-scope 토큰 초기값 (라이트에서 fin 컴포넌트 쓸 일 없지만 정의) */
+  --fin-gold:  oklch(0.78 0.165 77);
+  --fin-text:  oklch(0.96 0 0 / 0.80);
+  --fin-label: oklch(0.96 0 0 / 0.55);
+  --fin-muted: oklch(0.96 0 0 / 0.30);
+  --fin-ghost: oklch(0.96 0 0 / 0.15);
+  --fin-ratio: oklch(0.78 0.165 77 / 0.55);
+}
+
 .dark {
   /* Figma design: deep navy trading dashboard */
   --background: oklch(0.118 0.02 264);
@@ -124,9 +166,10 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* 재무제표 페이지 전용 골드 터미널 테마 (fintech 원본 룩). 앱 나머지엔 영향 없음 */
+/* 재무제표 페이지 전용 골드 터미널 테마
+   --primary는 더 이상 덮어쓰지 않음 (B안: --fin-gold 별도 토큰 사용)
+   fin 컴포넌트가 .fin-scope 없이 쓰여도 색상 안 깨짐 */
 .fin-scope {
-  --primary: oklch(0.78 0.165 77);          /* #F0B429 골드 */
   --up: oklch(0.627 0.258 29);              /* #ef4444 */
   --font-terminal: 'IBM Plex Mono', 'Courier New', monospace;
 }

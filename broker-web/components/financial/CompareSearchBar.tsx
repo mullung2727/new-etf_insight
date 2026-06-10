@@ -71,7 +71,7 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
 
   return (
     <div
-      className="w-full relative overflow-visible font-terminal border border-primary/25 rounded-[2px]"
+      className="w-full relative overflow-visible font-terminal border border-fin-gold/25 rounded-[2px]"
       style={{
         background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 50%, #0A1628 100%)",
         boxShadow: "0 0 0 1px rgba(240,180,41,0.08), 0 20px 60px rgba(0,0,0,0.5)",
@@ -80,16 +80,16 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
       <div className="absolute top-0 left-0 right-0 h-[2px]"
         style={{ background: "linear-gradient(90deg, transparent, #F0B429 30%, #F0B429 70%, transparent)" }} />
 
-      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-primary/[0.12]">
+      <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-fin-gold/[0.12]">
         <div className="flex items-center gap-3">
-          <div className="w-[6px] h-[6px] rounded-full bg-primary" style={{ boxShadow: "0 0 8px #F0B429" }} />
-          <span className="text-primary text-[10px] tracking-[0.2em] font-semibold uppercase">
+          <div className="w-[6px] h-[6px] rounded-full bg-fin-gold" style={{ boxShadow: "0 0 8px var(--color-fin-gold)" }} />
+          <span className="text-fin-gold text-fin-sm tracking-[0.2em] font-semibold uppercase">
             DART Financial Compare · 연간 5년
           </span>
         </div>
         <span
           data-testid={corpsLoaded ? "corps-ready" : undefined}
-          className={`text-[9px] tracking-[0.15em] ${corpsLoaded ? "text-primary/50" : "text-white/20"}`}
+          className={`text-fin-xs tracking-[0.15em] ${corpsLoaded ? "text-fin-gold/50" : "text-fin-muted"}`}
         >
           {corpsLoaded ? `${allCorps.length.toLocaleString()} CORPS INDEXED` : "LOADING INDEX..."}
         </span>
@@ -97,7 +97,7 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
 
       <div className="px-6 py-5 flex items-end gap-3">
         <div className="flex-1 min-w-0 relative">
-          <label className="block text-primary/60 text-[9px] tracking-[0.2em] mb-[6px] uppercase">
+          <label className="block text-fin-gold/60 text-fin-xs tracking-[0.2em] mb-[6px] uppercase">
             기업명 / 종목코드
           </label>
           <div className="relative">
@@ -134,14 +134,14 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
               </div>
             )}
             {corpCode && !loading && (
-              <div className="absolute right-[10px] top-1/2 -translate-y-1/2 text-primary text-xs">✓</div>
+              <div className="absolute right-[10px] top-1/2 -translate-y-1/2 text-fin-gold text-xs">✓</div>
             )}
           </div>
 
           {showDropdown && (
             <div
               ref={dropdownRef}
-              className="absolute top-[calc(100%+4px)] left-0 right-0 border border-primary/30 rounded-[1px] z-50 max-h-60 overflow-y-auto"
+              className="absolute top-[calc(100%+4px)] left-0 right-0 border border-fin-gold/30 rounded-[1px] z-50 max-h-60 overflow-y-auto"
               style={{ background: "#0D1B35", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}
             >
               {suggestions.map((corp, i) => (
@@ -157,7 +157,7 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
                     style={{ color: i === activeIndex ? "#F0B429" : "rgba(255,255,255,0.8)" }}>
                     {corp.corp_name}
                   </span>
-                  <span className="text-primary/40 text-[10px] tracking-[0.1em] font-[inherit]">
+                  <span className="text-fin-gold/40 text-fin-sm tracking-[0.1em] font-[inherit]">
                     {corp.stock_code}
                   </span>
                 </div>
@@ -167,8 +167,8 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
         </div>
       </div>
 
-      <div className="px-6 py-2 flex items-center gap-2 border-t border-primary/[0.08] bg-black/20">
-        <span className={`text-[9px] tracking-[0.15em] font-[inherit] ${corpCode ? "text-primary/50" : "text-white/15"}`}>
+      <div className="px-6 py-2 flex items-center gap-2 border-t border-fin-gold/[0.08] bg-black/20">
+        <span className={`text-fin-xs tracking-[0.15em] font-[inherit] ${corpCode ? "text-fin-gold/50" : "text-fin-ghost"}`}>
           {corpCode ? `CORP_CODE: ${corpCode} · fs_div 자동 · 연간 5년` : "기업명을 입력하고 자동완성에서 선택하면 즉시 조회됩니다"}
         </span>
       </div>

@@ -3,14 +3,9 @@
 import dynamic from "next/dynamic";
 import { FinancialItem } from "@/types/dart";
 import { extractKeyMetrics, buildChartData } from "@/lib/parser";
+import { getChartTokens } from "@/lib/tokens";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
-
-// ECharts color constants — mirror CSS variables (ECharts doesn't support CSS vars)
-const C_PRIMARY = "#F0B429"; // var(--primary)
-const C_UP = "#ef4444";      // var(--up)
-const C_DOWN = "#3B82F6";    // var(--down)
-const C_GREEN = "#22C55E";
 
 interface FinancialChartProps {
   items: FinancialItem[];
@@ -24,16 +19,17 @@ function toEok(val: number | null): number | null {
 }
 
 export default function FinancialChart({ items, year, corpName }: FinancialChartProps) {
+  const { gold: C_PRIMARY, up: C_UP, down: C_DOWN, profit: C_GREEN } = getChartTokens();
   if (items.length === 0) {
     return (
-      <div className="bg-[#0A1628]/80 border border-primary/[0.12] rounded-[2px] h-[400px] flex items-center justify-center font-terminal">
+      <div className="bg-[#0A1628]/80 border border-fin-gold/[0.12] rounded-[2px] h-[400px] flex items-center justify-center font-terminal">
         <div className="text-center">
           <div
             className="w-60 h-20 bg-white/[0.03] rounded-[2px] mb-3 mx-auto"
             style={{ animation: "pulse 1.5s ease-in-out infinite" }}
           />
           <style>{`@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:0.8} }`}</style>
-          <p className="text-white/20 text-[10px] tracking-[0.15em]">AWAITING DATA</p>
+          <p className="text-fin-muted text-fin-sm tracking-[0.15em]">AWAITING DATA</p>
         </div>
       </div>
     );
@@ -175,34 +171,34 @@ export default function FinancialChart({ items, year, corpName }: FinancialChart
 
   return (
     <div
-      className="border border-primary/20 rounded-[2px] overflow-hidden font-terminal"
+      className="border border-fin-gold/20 rounded-[2px] overflow-hidden font-terminal"
       style={{ background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 100%)" }}
     >
       {/* 상단 골드 라인 */}
       <div
         className="h-[2px]"
         style={{
-          background: `linear-gradient(90deg, transparent, ${C_PRIMARY} 30%, ${C_PRIMARY} 70%, transparent)`,
+          background: "linear-gradient(90deg, transparent, var(--color-fin-gold) 30%, var(--color-fin-gold) 70%, transparent)",
         }}
       />
 
       {/* 헤더 */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-primary/10">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-fin-gold/10">
         <div className="flex items-center gap-3">
           <div
-            className="w-[6px] h-[6px] rounded-full bg-primary"
-            style={{ boxShadow: `0 0 8px ${C_PRIMARY}` }}
+            className="w-[6px] h-[6px] rounded-full bg-fin-gold"
+            style={{ boxShadow: "0 0 8px var(--color-fin-gold)" }}
           />
-          <span className="text-primary text-[10px] tracking-[0.2em] font-semibold">
+          <span className="text-fin-gold text-fin-sm tracking-[0.2em] font-semibold">
             FINANCIAL METRICS — {year}
           </span>
         </div>
-        <span className="text-white/20 text-[9px] tracking-[0.1em]">단위: 억원</span>
+        <span className="text-fin-muted text-fin-xs tracking-[0.1em]">단위: 억원</span>
       </div>
 
       {/* 차트 2열 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-3">
-        <div className="lg:col-span-2 border-r border-primary/[0.08]">
+        <div className="lg:col-span-2 border-r border-fin-gold/[0.08]">
           <div className="py-2">
             <ReactECharts option={barOption} style={{ width: "100%", height: "320px" }} />
           </div>

@@ -1,11 +1,7 @@
 "use client";
 
 import ReactECharts from "echarts-for-react";
-
-// ECharts color constants — mirror CSS variables (ECharts doesn't support CSS vars)
-const C_PRIMARY = "#F0B429"; // var(--primary)
-const C_UP = "#ef4444";      // var(--up)
-const C_DOWN = "#3b82f6";    // var(--down)
+import { getChartTokens } from "@/lib/tokens";
 
 interface CandleData {
   dt: string;
@@ -23,6 +19,7 @@ interface Props {
 }
 
 export default function CandleChart({ data, baseDate }: Props) {
+  const { gold: C_PRIMARY, up: C_UP, down: C_DOWN } = getChartTokens();
   const dates = data.map(
     (d) => `${d.dt.slice(0, 4)}-${d.dt.slice(4, 6)}-${d.dt.slice(6, 8)}`
   );

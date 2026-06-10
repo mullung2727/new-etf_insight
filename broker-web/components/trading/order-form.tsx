@@ -133,9 +133,9 @@ export function OrderForm({ symbol: initSymbol = "", price: initPrice = 0 }: Ord
               </p>
             )}
 
-            {error && <p className="text-xs text-red-400">{error}</p>}
+            {error && <p className="text-xs text-status-loss">{error}</p>}
             {result && (
-              <Badge variant="outline" className="text-emerald-400 border-emerald-400/30 self-start">
+              <Badge variant="outline" className="text-status-profit border-status-profit/30 self-start">
                 주문접수 {result.order_no ? `#${result.order_no}` : ""}
               </Badge>
             )}

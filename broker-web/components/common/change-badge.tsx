@@ -12,7 +12,7 @@ export function ChangeBadge({ value, format = "percent", className }: ChangeBadg
   if (value == null) return <span className={cn("text-muted-foreground", className)}>-</span>;
 
   const positive = value > 0;
-  const color = positive ? "text-emerald-400" : value < 0 ? "text-red-400" : "text-muted-foreground";
+  const color = positive ? "text-status-profit" : value < 0 ? "text-status-loss" : "text-muted-foreground";
   const sign = positive ? "+" : "";
 
   const display =

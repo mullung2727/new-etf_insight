@@ -53,7 +53,7 @@ export function NotesPanel({ symbol }: NotesPanelProps) {
         </Tabs>
       )}
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-status-loss">{error}</p>}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">불러오는 중...</p>

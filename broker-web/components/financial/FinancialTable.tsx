@@ -32,9 +32,9 @@ export default function FinancialTable({ items }: FinancialTableProps) {
 
   if (items.length === 0) {
     return (
-      <div className="bg-[#0A1628]/80 border border-primary/[0.12] rounded-[2px] py-12 px-6 text-center font-terminal">
-        <div className="text-primary/30 text-[32px] mb-3">▭</div>
-        <p className="text-white/30 text-[11px] tracking-[0.15em]">
+      <div className="bg-[#0A1628]/80 border border-fin-gold/[0.12] rounded-[2px] py-12 px-6 text-center font-terminal">
+        <div className="text-fin-gold/30 text-[32px] mb-3">▭</div>
+        <p className="text-fin-muted text-fin-base tracking-[0.15em]">
           NO DATA — 기업을 검색하세요
         </p>
       </div>
@@ -43,7 +43,7 @@ export default function FinancialTable({ items }: FinancialTableProps) {
 
   return (
     <div
-      className="border border-primary/20 rounded-[2px] font-terminal overflow-hidden"
+      className="border border-fin-gold/20 rounded-[2px] font-terminal overflow-hidden"
       style={{ background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 100%)" }}
     >
       {/* 상단 골드 라인 */}
@@ -55,7 +55,7 @@ export default function FinancialTable({ items }: FinancialTableProps) {
       />
 
       {/* 탭 헤더 */}
-      <div className="flex border-b border-primary/[0.12] bg-black/20">
+      <div className="flex border-b border-fin-gold/[0.12] bg-black/20">
         {availableTabs.map((tab) => {
           const active = tab.key === activeTab;
           return (
@@ -63,9 +63,9 @@ export default function FinancialTable({ items }: FinancialTableProps) {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={[
-                "px-5 py-3 border-b-2 text-[10px] tracking-[0.15em] uppercase cursor-pointer transition-all duration-150 font-[inherit]",
+                "px-5 py-3 border-b-2 text-fin-sm tracking-[0.15em] uppercase cursor-pointer transition-all duration-150 font-[inherit]",
                 active
-                  ? "bg-primary/10 border-primary text-primary font-bold"
+                  ? "bg-fin-gold/10 border-fin-gold text-fin-gold font-bold"
                   : "bg-transparent border-transparent text-white/35 font-normal",
               ].join(" ")}
             >
@@ -83,13 +83,13 @@ export default function FinancialTable({ items }: FinancialTableProps) {
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-black/30">
-              <th className="p-[10px_16px] text-left text-primary/50 text-[9px] tracking-[0.2em] font-semibold uppercase border-b border-primary/10 min-w-[200px]">
+              <th className="p-[10px_16px] text-left text-fin-gold/50 text-fin-xs tracking-[0.2em] font-semibold uppercase border-b border-fin-gold/10 min-w-[200px]">
                 계정명
               </th>
               {["당기", "전기", "전전기"].map((label) => (
                 <th
                   key={label}
-                  className="p-[10px_16px] text-right text-primary/50 text-[9px] tracking-[0.2em] font-semibold uppercase border-b border-primary/10 min-w-[140px]"
+                  className="p-[10px_16px] text-right text-fin-gold/50 text-fin-xs tracking-[0.2em] font-semibold uppercase border-b border-fin-gold/10 min-w-[140px]"
                 >
                   {label}
                   <span className="block text-[8px] opacity-50 mt-[1px]">(원)</span>
@@ -106,7 +106,7 @@ export default function FinancialTable({ items }: FinancialTableProps) {
                 <tr
                   key={`${item.account_id}-${i}`}
                   className={[
-                    "border-b border-white/[0.04] transition-colors duration-100 hover:bg-primary/[0.05]",
+                    "border-b border-white/[0.04] transition-colors duration-100 hover:bg-fin-gold/[0.05]",
                     i % 2 === 0 ? "bg-transparent" : "bg-white/[0.015]",
                   ].join(" ")}
                 >
@@ -121,7 +121,7 @@ export default function FinancialTable({ items }: FinancialTableProps) {
                         val.negative
                           ? "text-up"
                           : val.text === "—"
-                          ? "text-white/20"
+                          ? "text-fin-muted"
                           : "text-white/85",
                       ].join(" ")}
                     >
@@ -136,11 +136,11 @@ export default function FinancialTable({ items }: FinancialTableProps) {
       </div>
 
       {/* 하단 메타 */}
-      <div className="px-4 py-2 border-t border-primary/[0.08] bg-black/20 flex justify-between items-center">
-        <span className="text-white/20 text-[9px] tracking-[0.1em]">
+      <div className="px-4 py-2 border-t border-fin-gold/[0.08] bg-black/20 flex justify-between items-center">
+        <span className="text-fin-muted text-fin-xs tracking-[0.1em]">
           {tabItems.length} ROWS · KRW
         </span>
-        <span className="text-primary/30 text-[9px] tracking-[0.1em]">SOURCE: DART OpenAPI</span>
+        <span className="text-fin-gold/30 text-fin-xs tracking-[0.1em]">SOURCE: DART OpenAPI</span>
       </div>
     </div>
   );

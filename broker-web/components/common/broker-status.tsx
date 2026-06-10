@@ -14,7 +14,7 @@ export function BrokerStatus() {
 
     return (
         <div className="flex items-center gap-1.5" title={connected ? "키움 WS 연결됨" : "키움 WS 끊김"}>
-            <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-400" : "bg-red-500"}`} />
+            <span className={`w-2 h-2 rounded-full ${connected ? "bg-status-open" : "bg-status-loss"}`} />
             <span className="text-xs text-muted-foreground">{connected ? "연결됨" : "끊김"}</span>
         </div>
     );

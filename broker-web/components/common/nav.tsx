@@ -19,7 +19,7 @@ export function Nav() {
     <header className="border-b border-border px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-6">
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-emerald-400 text-lg">↗</span>
+          <span className="text-status-profit text-lg">↗</span>
           <span className="font-semibold text-sm">ETF Insight</span>
         </Link>
         <nav className="flex items-center gap-1">

@@ -153,7 +153,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
         </DialogHeader>
 
         {loading && <p className="text-sm text-muted-foreground">불러오는 중...</p>}
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-status-loss">{error}</p>}
 
         {isNew && (
           <div className="flex flex-col gap-3">

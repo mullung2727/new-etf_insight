@@ -12,8 +12,8 @@ const STATUS_LABEL: Record<NoteStatus, string> = {
 };
 
 const STATUS_CLASS: Record<NoteStatus, string> = {
-  open: "text-blue-400 border-blue-400/30",
-  partial: "text-yellow-400 border-yellow-400/30",
+  open: "text-status-open border-status-open/30",
+  partial: "text-status-partial border-status-partial/30",
   closed: "text-muted-foreground border-border",
 };
 

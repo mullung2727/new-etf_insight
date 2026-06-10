@@ -127,8 +127,8 @@ export function AccountPanel() {
               disabled={envSwitching}
               className={`text-xs px-2 py-0.5 rounded border font-medium transition-colors ${
                 settings.env === "paper"
-                  ? "border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10"
-                  : "border-green-500/50 text-green-400 hover:bg-green-500/10"
+                  ? "border-status-partial/50 text-status-partial hover:bg-status-partial/10"
+                  : "border-status-profit/50 text-status-profit hover:bg-status-profit/10"
               }`}
             >
               {envSwitching ? "..." : settings.env === "paper" ? "모의" : "실전"}
@@ -140,7 +140,7 @@ export function AccountPanel() {
         </Button>
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-status-loss">{error}</p>}
 
       <StatCard
         label="주문가능"

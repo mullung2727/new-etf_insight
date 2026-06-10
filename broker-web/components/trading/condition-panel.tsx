@@ -70,7 +70,7 @@ export function ConditionPanel({ onSymbolSelect }: ConditionPanelProps) {
         </Button>
       </div>
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-status-loss">{error}</p>}
 
       {results.length > 0 && (
         <DataTable
