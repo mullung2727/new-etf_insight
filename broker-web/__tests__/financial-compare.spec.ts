@@ -14,7 +14,7 @@ test.describe("재무제표 다기간 비교 페이지", () => {
   });
 
   // ── 삼성전자 검색 → 비교 표 ─────────────────────────────────────────────────
-  test("삼성전자 검색 → 비교 표 10행 표시", async ({ page }) => {
+  test("삼성전자 검색 → 비교 표 24행 표시", async ({ page }) => {
     await page.locator("[data-testid='corp-search-input']").fill("삼성전자");
     await page.waitForSelector("[data-testid='autocomplete-item']");
     await page.locator("[data-testid='autocomplete-item']").first().click();
@@ -25,9 +25,36 @@ test.describe("재무제표 다기간 비교 페이지", () => {
     const yearCols = page.locator("[data-testid='compare-table'] [data-year]");
     await expect(yearCols).toHaveCount(5);
 
-    // 금액 6행 + 비율 4행
+    // BS 17행(자산 top5+그 외+총계, 부채 top3+그 외+총계, 자본 5행) + IS 3행 + 비율 4행
     const rows = page.locator("[data-testid='compare-table'] [data-row-key]");
-    await expect(rows).toHaveCount(10);
+    await expect(rows).toHaveCount(24);
+  });
+
+  test("삼성전자 — 섹션 헤더 3개 (재무상태표/손익계산서/비율)", async ({ page }) => {
+    await page.locator("[data-testid='corp-search-input']").fill("삼성전자");
+    await page.waitForSelector("[data-testid='autocomplete-item']");
+    await page.locator("[data-testid='autocomplete-item']").first().click();
+    await page.waitForSelector("[data-testid='compare-table']", { timeout: 90_000 });
+
+    const headers = page.locator("[data-testid='compare-table'] [data-section-header]");
+    await expect(headers).toHaveCount(3);
+    await expect(headers.nth(0)).toContainText("재무상태표");
+    await expect(headers.nth(1)).toContainText("손익계산서");
+    await expect(headers.nth(2)).toContainText("비율");
+  });
+
+  test("삼성전자 — BS 동적 행 렌더 (유형자산, 그 외 자산)", async ({ page }) => {
+    await page.locator("[data-testid='corp-search-input']").fill("삼성전자");
+    await page.waitForSelector("[data-testid='autocomplete-item']");
+    await page.locator("[data-testid='autocomplete-item']").first().click();
+    await page.waitForSelector("[data-testid='compare-table']", { timeout: 90_000 });
+
+    await expect(page.locator("[data-row-key='bsAsset0'] td").first()).toHaveText("유형자산");
+    await expect(page.locator("[data-row-key='bsAssetEtc'] td").first()).toHaveText("그 외 자산");
+    // 동적 행 값은 금액 포맷 (% 아님)
+    const valCell = page.locator("[data-row-key='bsAsset0'] td").last();
+    await expect(valCell).not.toContainText("%");
+    await expect(valCell).not.toHaveText("—");
   });
 
   test("삼성전자 — 필수 행 레이블 표시", async ({ page }) => {
@@ -65,8 +92,9 @@ test.describe("재무제표 다기간 비교 페이지", () => {
     await expect(firstValueCell).toHaveText("—");
   });
 
-  // ── M83 — 상장 전 연도 — 표시 ───────────────────────────────────────────────
-  test("M83 검색 → 2021~2023 매출액 — 표시", async ({ page }) => {
+  // ── M83 — 백필 커버 범위 밖 연도(2021) — 표시 ──────────────────────────────
+  // [WHY] 2022/2023은 2024 보고서 frmtrm/bfefrmtrm으로 백필되므로 2021만 — 유지
+  test("M83 검색 → 2021 매출액 — 표시", async ({ page }) => {
     await page.locator("[data-testid='corp-search-input']").fill("M83");
     await page.waitForSelector("[data-testid='autocomplete-item']");
     await page.locator("[data-testid='autocomplete-item']").first().click();

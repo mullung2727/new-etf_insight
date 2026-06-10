@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-type CompareRow = { key: string; label: string; type: string; values: (number | null)[] };
+type CompareRow = {
+  key: string;
+  label: string;
+  type: string;
+  section: "bs" | "is" | "ratio";
+  values: (number | null)[];
+};
 type CompareBody = {
   corpName: string;
   fsDiv: "CFS" | "OFS";
@@ -24,19 +30,84 @@ test.beforeAll(async ({ request }) => {
 });
 
 // ── 응답 구조 ──────────────────────────────────────────────────────────────
+// BS 17행(자산 top5 + 그 외 + 총계, 부채 top3 + 그 외 + 총계,
+//         자본금·이익잉여금·기타(자본)·비지배지분·자본총계)
+// + IS 3행 + 비율 4행 = 24행
 test("삼성전자 응답 구조", () => {
   expect(samsung.corpName).toBeTruthy();
   expect(samsung.fsDiv).toBe("CFS");
   expect(samsung.periods).toHaveLength(5);
-  // 금액 6 + 비율 4 = 10행
-  expect(samsung.rows).toHaveLength(10);
+  expect(samsung.rows).toHaveLength(24);
 });
 
 test("M83 응답 구조", () => {
   expect(m83.corpName).toBeTruthy();
   expect(["CFS", "OFS"]).toContain(m83.fsDiv);
   expect(m83.periods).toHaveLength(5);
-  expect(m83.rows).toHaveLength(10);
+  expect(m83.rows).toHaveLength(24);
+});
+
+test("rows 섹션 순서 — bs → is → ratio", () => {
+  const sections = samsung.rows.map(r => r.section);
+  expect(sections).toEqual([
+    ...Array(17).fill("bs"), ...Array(3).fill("is"), ...Array(4).fill("ratio"),
+  ]);
+});
+
+// ── BS 동적 top-N 행 ────────────────────────────────────────────────────────
+test("삼성전자 — BS 동적 행 키·순서·레이블", () => {
+  const bsRows = samsung.rows.filter(r => r.section === "bs");
+  expect(bsRows.map(r => r.key)).toEqual([
+    "bsAsset0", "bsAsset1", "bsAsset2", "bsAsset3", "bsAsset4", "bsAssetEtc", "totalAssets",
+    "bsLiab0", "bsLiab1", "bsLiab2", "bsLiabEtc", "totalLiab",
+    "equityCapital", "equityRetained", "equityEtc", "equityNci", "totalEquity",
+  ]);
+  expect(bsRows[0].label).toBe("유형자산");
+  expect(bsRows[5].label).toBe("그 외 자산");
+  expect(bsRows[7].label).toBe("미지급비용");
+  expect(bsRows[12].label).toBe("자본금");
+  expect(bsRows[14].label).toBe("기타(자본)");
+});
+
+// ── 자본 고정 행 (방안 2 — 표준 계정 전 종목 존재, fixture 6개사 확인) ────────
+test("삼성전자 — 자본 구성 정확값 (2025)", () => {
+  const idx = samsung.periods.indexOf(2025);
+  expect(idx).toBeGreaterThanOrEqual(0);
+  const get = (key: string) => samsung.rows.find(r => r.key === key)!.values[idx];
+  expect(get("equityCapital")).toBe(897_514_000_000);
+  expect(get("equityRetained")).toBe(402_135_600_000_000);
+  expect(get("equityNci")).toBe(12_007_082_000_000);
+  // 기타(자본) = 자본총계 − (자본금 + 이익잉여금 + 비지배지분)
+  expect(get("equityEtc")).toBe(21_280_141_000_000);
+});
+
+test("신한지주 — 자본 행 2021/2022 백필", () => {
+  const row = shinhan.rows.find(r => r.key === "equityRetained")!;
+  for (const year of [2021, 2022]) {
+    const idx = shinhan.periods.indexOf(year);
+    if (idx < 0) continue;
+    expect(row.values[idx], `신한지주 이익잉여금 ${year}`).not.toBeNull();
+    expect(row.values[idx]!).toBeGreaterThan(0);
+  }
+});
+
+test("삼성전자 — 그 외 자산 = 자산총계 − top5 합 (2025)", () => {
+  const idx = samsung.periods.indexOf(2025);
+  expect(idx).toBeGreaterThanOrEqual(0);
+  const etc = samsung.rows.find(r => r.key === "bsAssetEtc")!;
+  // 566,942,110M − (215,304,784 + 67,965,021 + 57,856,378 + 52,636,828 + 51,127,642)M
+  expect(etc.values[idx]).toBe(122_051_457_000_000);
+});
+
+test("신한지주 — BS 동적 행 2021/2022 백필", () => {
+  const row = shinhan.rows.find(r => r.key === "bsAsset0")!;
+  expect(row.label).toBe("상각후원가측정대출채권");
+  for (const year of [2021, 2022]) {
+    const idx = shinhan.periods.indexOf(year);
+    if (idx < 0) continue;
+    expect(row.values[idx], `신한지주 bsAsset0 ${year}`).not.toBeNull();
+    expect(row.values[idx]!).toBeGreaterThan(0);
+  }
 });
 
 // ── 금액 행 ────────────────────────────────────────────────────────────────
@@ -88,12 +159,22 @@ test("삼성전자 영업이익률 — 금액 계산, 2024 양수", () => {
   }
 });
 
-// ── M83 — 상장 전 연도 null ────────────────────────────────────────────────
-test("M83 2021~2023 금액 행 null", () => {
+// ── M83 — 상장 전 연도 백필 ──────────────────────────────────────────────
+// [WHY] 2022/2023은 직접 조회 시 status=013이지만 2024 보고서의
+//       frmtrm/bfefrmtrm(전기/전전기)에 값이 존재 → 백필로 표시
+test("M83 2021 금액 행 null (백필 커버 범위 밖)", () => {
   const revenueRow = m83.rows.find(r => r.key === "revenue")!;
-  for (const year of [2021, 2022, 2023]) {
+  const idx = m83.periods.indexOf(2021);
+  if (idx >= 0) expect(revenueRow.values[idx], "revenue 2021").toBeNull();
+});
+
+test("M83 2022~2023 금액 행 백필 값 존재", () => {
+  const revenueRow = m83.rows.find(r => r.key === "revenue")!;
+  for (const year of [2022, 2023]) {
     const idx = m83.periods.indexOf(year);
-    if (idx >= 0) expect(revenueRow.values[idx], `revenue ${year}`).toBeNull();
+    if (idx < 0) continue;
+    expect(revenueRow.values[idx], `revenue ${year}`).not.toBeNull();
+    expect(revenueRow.values[idx]!).toBeGreaterThan(0);
   }
 });
 
@@ -146,16 +227,38 @@ test("신한지주 — 2023/2024 영업이익 양수", () => {
   }
 });
 
-test("신한지주 — 2020~2022 전 금액 행 null (DART 미지원)", () => {
-  const amtKeys = ["revenue", "opProfit", "netIncome", "totalAssets", "totalLiab", "totalEquity"];
-  for (const key of amtKeys) {
+// [WHY] 직접 조회 시 2021/2022는 status=013이지만 2023 보고서의
+//       frmtrm(2022)/bfefrmtrm(2021)에 값 존재 → 백필. 실호출 확정값(2026-06-10):
+test("신한지주 — 2021/2022 금액 백필 (전기/전전기 값)", () => {
+  const expected: Record<string, Record<number, number>> = {
+    opProfit:    { 2021: 5_952_096_000_000,   2022: 5_905_564_000_000 },
+    netIncome:   { 2021: 4_112_628_000_000,   2022: 4_755_514_000_000 },
+    totalAssets: { 2021: 648_152_185_000_000, 2022: 664_433_230_000_000 },
+  };
+  for (const [key, byYear] of Object.entries(expected)) {
     const row = shinhan.rows.find(r => r.key === key)!;
-    for (const year of [2020, 2021, 2022]) {
-      const idx = shinhan.periods.indexOf(year);
+    for (const [year, val] of Object.entries(byYear)) {
+      const idx = shinhan.periods.indexOf(Number(year));
       if (idx < 0) continue;
-      expect(row.values[idx], `신한지주 ${key} ${year}`).toBeNull();
+      expect(row.values[idx], `신한지주 ${key} ${year}`).toBe(val);
     }
   }
+});
+
+test("신한지주 — 2021/2022 부채·자본총계 백필 값 존재", () => {
+  for (const key of ["totalLiab", "totalEquity"]) {
+    const row = shinhan.rows.find(r => r.key === key)!;
+    for (const year of [2021, 2022]) {
+      const idx = shinhan.periods.indexOf(year);
+      if (idx < 0) continue;
+      expect(row.values[idx], `신한지주 ${key} ${year}`).not.toBeNull();
+    }
+  }
+});
+
+test("신한지주 — revenue 전 연도 null (금융업 단일 매출 계정 없음)", () => {
+  const row = shinhan.rows.find(r => r.key === "revenue")!;
+  expect(row.values.every(v => v === null)).toBe(true);
 });
 
 test("KB금융 — 2023/2024 영업이익 양수", () => {

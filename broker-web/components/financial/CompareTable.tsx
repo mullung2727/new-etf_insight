@@ -1,6 +1,7 @@
 "use client";
 
-import { CompareResponse } from "@/types/dart";
+import { Fragment } from "react";
+import { CompareResponse, CompareRow } from "@/types/dart";
 
 interface Props {
   data: CompareResponse;
@@ -20,10 +21,21 @@ function fmtRatio(val: number | null): string {
   return `${val.toFixed(1)}%`;
 }
 
-const AMOUNT_KEYS = new Set(["revenue", "opProfit", "netIncome", "totalAssets", "totalLiab", "totalEquity"]);
+const SECTION_LABELS: Record<CompareRow["section"], string> = {
+  bs: "재무상태표",
+  is: "손익계산서",
+  ratio: "비율",
+};
+
+/** 총계 행 강조 */
+const TOTAL_KEYS = new Set(["totalAssets", "totalLiab", "totalEquity"]);
 
 export default function CompareTable({ data }: Props) {
   const { corpName, fsDiv, periods, rows } = data;
+
+  const sections = (Object.keys(SECTION_LABELS) as CompareRow["section"][])
+    .map(section => ({ section, rows: rows.filter(r => r.section === section) }))
+    .filter(g => g.rows.length > 0);
 
   return (
     <div
@@ -80,41 +92,61 @@ export default function CompareTable({ data }: Props) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => {
-              const isAmount = AMOUNT_KEYS.has(row.key);
-              const isSectionBorder = row.key === "opMargin"; // 비율 첫 행 위에 구분선
-
-              return (
+            {sections.map(group => (
+              <Fragment key={group.section}>
                 <tr
-                  key={row.key}
-                  data-row-key={row.key}
-                  className={[
-                    "border-b border-white/[0.04] transition-colors hover:bg-white/[0.02]",
-                    isSectionBorder ? "border-t border-primary/[0.12]" : "",
-                    idx % 2 === 0 ? "bg-black/[0.08]" : "",
-                  ].join(" ")}
+                  data-section-header={group.section}
+                  className="border-b border-primary/[0.15] bg-black/[0.25]"
                 >
-                  <td className="px-6 py-[10px] text-white/55 text-[10px] tracking-[0.05em] whitespace-nowrap">
-                    {row.label}
+                  <td
+                    colSpan={periods.length + 1}
+                    className="px-6 py-[8px] text-primary/70 text-[9px] tracking-[0.2em] font-semibold uppercase"
+                  >
+                    {SECTION_LABELS[group.section]}
                   </td>
-                  {row.values.map((val, i) => (
-                    <td
-                      key={periods[i]}
+                </tr>
+                {group.rows.map((row, idx) => {
+                  const isAmount = row.type === "amount";
+                  const isTotal = TOTAL_KEYS.has(row.key);
+
+                  return (
+                    <tr
+                      key={row.key}
+                      data-row-key={row.key}
                       className={[
-                        "text-right px-4 py-[10px] tabular-nums tracking-[0.02em]",
-                        val === null
-                          ? "text-white/15"
-                          : isAmount
-                            ? "text-white/80"
-                            : "text-primary/80",
+                        "border-b border-white/[0.04] transition-colors hover:bg-white/[0.02]",
+                        isTotal ? "bg-primary/[0.04]" : idx % 2 === 0 ? "bg-black/[0.08]" : "",
                       ].join(" ")}
                     >
-                      {isAmount ? fmtAmount(val) : fmtRatio(val)}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
+                      <td
+                        className={[
+                          "px-6 py-[10px] text-[10px] tracking-[0.05em] whitespace-nowrap",
+                          isTotal ? "text-primary/80 font-semibold" : "text-white/55",
+                        ].join(" ")}
+                      >
+                        {row.label}
+                      </td>
+                      {row.values.map((val, i) => (
+                        <td
+                          key={periods[i]}
+                          className={[
+                            "text-right px-4 py-[10px] tabular-nums tracking-[0.02em]",
+                            isTotal ? "font-semibold" : "",
+                            val === null
+                              ? "text-white/15"
+                              : isAmount
+                                ? "text-white/80"
+                                : "text-primary/80",
+                          ].join(" ")}
+                        >
+                          {isAmount ? fmtAmount(val) : fmtRatio(val)}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            ))}
           </tbody>
         </table>
       </div>

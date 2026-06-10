@@ -3,15 +3,20 @@
  * 출처: scripts/probe-dart.mjs → __tests__/fixtures/
  */
 
-/** fnlttSinglAcntAll에서 추출할 6개 계정
- *  account_id가 여러 sj_div에 중복되는 경우 sj_div 필터 필수 */
+/** fnlttSinglAcntAll에서 추출할 고정 계정
+ *  account_id가 여러 sj_div에 중복되는 경우 sj_div 필터 필수
+ *  자본 3개는 6개사(삼성전자·신한지주·현대차·카카오·M83·삼성생명) fixture로
+ *  전 종목 존재 확인 (2026-06-10) */
 export const AMOUNT_ACCOUNTS = [
-  { key: "revenue",        label: "매출액",    account_id: "ifrs-full_Revenue",           sj_div: "IS" },
-  { key: "opProfit",       label: "영업이익",   account_id: "dart_OperatingIncomeLoss",    sj_div: "IS" },
-  { key: "netIncome",      label: "당기순이익", account_id: "ifrs-full_ProfitLoss",        sj_div: "IS" },
-  { key: "totalAssets",    label: "자산총계",   account_id: "ifrs-full_Assets",            sj_div: "BS" },
-  { key: "totalLiab",      label: "부채총계",   account_id: "ifrs-full_Liabilities",       sj_div: "BS" },
-  { key: "totalEquity",    label: "자본총계",   account_id: "ifrs-full_Equity",            sj_div: "BS" },
+  { key: "revenue",        label: "매출액",     account_id: "ifrs-full_Revenue",                 sj_div: "IS" },
+  { key: "opProfit",       label: "영업이익",    account_id: "dart_OperatingIncomeLoss",          sj_div: "IS" },
+  { key: "netIncome",      label: "당기순이익",  account_id: "ifrs-full_ProfitLoss",              sj_div: "IS" },
+  { key: "totalAssets",    label: "자산총계",    account_id: "ifrs-full_Assets",                  sj_div: "BS" },
+  { key: "totalLiab",      label: "부채총계",    account_id: "ifrs-full_Liabilities",             sj_div: "BS" },
+  { key: "totalEquity",    label: "자본총계",    account_id: "ifrs-full_Equity",                  sj_div: "BS" },
+  { key: "equityCapital",  label: "자본금",     account_id: "ifrs-full_IssuedCapital",           sj_div: "BS" },
+  { key: "equityRetained", label: "이익잉여금",  account_id: "ifrs-full_RetainedEarnings",        sj_div: "BS" },
+  { key: "equityNci",      label: "비지배지분",  account_id: "ifrs-full_NoncontrollingInterests", sj_div: "BS" },
 ] as const;
 
 export type AmountKey = typeof AMOUNT_ACCOUNTS[number]["key"];

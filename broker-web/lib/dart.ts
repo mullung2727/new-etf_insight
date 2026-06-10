@@ -4,6 +4,9 @@ import {
   FinancialIndexResponse, CompareResponse, CompareRow,
 } from "@/types/dart";
 import { AMOUNT_ACCOUNTS, RATIO_INDICES } from "@/lib/dart-compare-keys";
+import {
+  AmountField, BsRowDef, selectBsTopAccounts, extractBsRowAmount,
+} from "@/lib/dart-bs-topn";
 
 const BASE_URL = "https://opendart.fss.or.kr";
 
@@ -90,7 +93,8 @@ async function fetchIndxRaw(
 function extractAmount(
   list: FinancialResponse["list"],
   accountId: string,
-  sjDiv: string
+  sjDiv: string,
+  field: AmountField = "thstrm"
 ): number | null {
   // 일부 기업(단일 포괄손익계산서)은 IS 없이 CIS에만 IS 계정이 있음 → CIS 폴백
   let item = list.find(i => i.account_id === accountId && i.sj_div === sjDiv);
@@ -105,8 +109,9 @@ function extractAmount(
       (i.sj_div === sjDiv || i.sj_div === "CIS")
     );
   }
-  if (!item?.thstrm_amount) return null;
-  const n = parseFloat(String(item.thstrm_amount).replace(/,/g, ""));
+  const amount = item?.[`${field}_amount`];
+  if (!amount) return null;
+  const n = parseFloat(String(amount).replace(/,/g, ""));
   return isNaN(n) ? null : n;
 }
 
@@ -169,19 +174,93 @@ export async function fetchCompare(
     )
   );
 
-  // 금액 행
-  const amountRows: CompareRow[] = AMOUNT_ACCOUNTS.map(acnt => ({
-    key: acnt.key,
-    label: acnt.label,
+  // 연도별 금액 — 직접 조회 실패 연도(status≠000)는 이후 연도 보고서의
+  // 전기(frmtrm)/전전기(bfefrmtrm) 금액으로 백필 (예: 금융지주 2021/2022)
+  const valuesWithBackfill = (
+    extract: (list: FinancialResponse["list"], field: AmountField) => number | null
+  ): (number | null)[] =>
+    acntResults.map((res, i) => {
+      if (res.status === "000") return extract(res.list, "thstrm");
+      const backfills: { donor: FinancialResponse | undefined; field: AmountField }[] = [
+        { donor: acntResults[i + 1], field: "frmtrm" },
+        { donor: acntResults[i + 2], field: "bfefrmtrm" },
+      ];
+      for (const { donor, field } of backfills) {
+        if (donor?.status !== "000") continue;
+        const v = extract(donor.list, field);
+        if (v !== null) return v;
+      }
+      return null;
+    });
+
+  // 고정 계정 (IS 3개 + BS 총계 3개)
+  const amountValues = new Map<string, (number | null)[]>(
+    AMOUNT_ACCOUNTS.map(acnt => [
+      acnt.key,
+      valuesWithBackfill((list, field) =>
+        extractAmount(list, acnt.account_id, acnt.sj_div, field)
+      ),
+    ])
+  );
+  const amountRow = (key: string, section: "bs" | "is"): CompareRow => ({
+    key,
+    label: AMOUNT_ACCOUNTS.find(a => a.key === key)!.label,
     type: "amount",
-    values: acntResults.map(res =>
-      res.status === "000" ? extractAmount(res.list, acnt.account_id, acnt.sj_div) : null
-    ),
-  }));
+    section,
+    values: amountValues.get(key)!,
+  });
+
+  // BS 동적 행 — 최신 연도 기준 자산 top5 / 부채 top3 선정 (docs/PLAN_FINANCIAL_BS_TOPN.md)
+  const topDefs = selectBsTopAccounts(baseData.list);
+  const dynRows = (defs: BsRowDef[], prefix: string): CompareRow[] =>
+    defs.map((def, i) => ({
+      key: `${prefix}${i}`,
+      label: def.nm,
+      type: "amount",
+      section: "bs",
+      values: valuesWithBackfill((list, field) => extractBsRowAmount(list, def, field)),
+    }));
+  const assetRows = dynRows(topDefs.assets, "bsAsset");
+  const liabRows = dynRows(topDefs.liabilities, "bsLiab");
+
+  // 그 외 = 총계 − top 행 합 (총계 null이면 null, top 행 null은 0 취급)
+  const etcValues = (totalKey: string, topRows: CompareRow[]): (number | null)[] =>
+    amountValues.get(totalKey)!.map((tot, i) =>
+      tot == null ? null : tot - topRows.reduce((s, r) => s + (r.values[i] ?? 0), 0)
+    );
+
+  // 자본 — 표준 고정 행 (방안 2, docs/PLAN_FINANCIAL_BS_TOPN.md)
+  // 자본은 음수 항목(자본조정 등)·2단 중첩 때문에 top-N 부적합 → 자본금/이익잉여금/비지배 고정
+  const equityCapitalRow = amountRow("equityCapital", "bs");
+  const equityRetainedRow = amountRow("equityRetained", "bs");
+  const equityNciRow = amountRow("equityNci", "bs");
+
+  const bsRows: CompareRow[] = [
+    ...assetRows,
+    { key: "bsAssetEtc", label: "그 외 자산", type: "amount", section: "bs", values: etcValues("totalAssets", assetRows) },
+    amountRow("totalAssets", "bs"),
+    ...liabRows,
+    { key: "bsLiabEtc", label: "그 외 부채", type: "amount", section: "bs", values: etcValues("totalLiab", liabRows) },
+    amountRow("totalLiab", "bs"),
+    equityCapitalRow,
+    equityRetainedRow,
+    {
+      key: "equityEtc", label: "기타(자본)", type: "amount", section: "bs",
+      values: etcValues("totalEquity", [equityCapitalRow, equityRetainedRow, equityNciRow]),
+    },
+    equityNciRow,
+    amountRow("totalEquity", "bs"),
+  ];
+
+  const isRows: CompareRow[] = [
+    amountRow("revenue", "is"),
+    amountRow("opProfit", "is"),
+    amountRow("netIncome", "is"),
+  ];
 
   // 영업이익률 계산
-  const revenues = amountRows.find(r => r.key === "revenue")!.values;
-  const opProfits = amountRows.find(r => r.key === "opProfit")!.values;
+  const revenues = amountValues.get("revenue")!;
+  const opProfits = amountValues.get("opProfit")!;
   const opMarginValues: (number | null)[] = periods.map((_, i) => {
     const rev = revenues[i];
     const op = opProfits[i];
@@ -191,11 +270,12 @@ export async function fetchCompare(
 
   // 비율 행
   const ratioRows: CompareRow[] = [
-    { key: "opMargin", label: "영업이익률", type: "ratio", values: opMarginValues },
+    { key: "opMargin", label: "영업이익률", type: "ratio", section: "ratio", values: opMarginValues },
     ...RATIO_INDICES.map(ri => ({
       key: ri.key,
       label: ri.label,
       type: "ratio" as const,
+      section: "ratio" as const,
       values: periods.map(year => {
         const yearMap = ratioMap.get(year);
         if (!yearMap) return null;
@@ -211,7 +291,7 @@ export async function fetchCompare(
     corpName: corpInfo.corp_name,
     fsDiv,
     periods,
-    rows: [...amountRows, ...ratioRows],
+    rows: [...bsRows, ...isRows, ...ratioRows],
   };
 }
 

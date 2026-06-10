@@ -59,15 +59,22 @@ periods = [2020, 2021, 2022, 2023, 2024]
   year=2020 → status=013이면 year=2024 응답의 bfefrmtrm... 불가 (2020은 커버 범위 밖)
 ```
 
-**불확실 사항:**
-- [ ] 전기/전전기 금액이 재작성(restated)본인지 원본인지 — DART 응답에서 직접 확인 필요
-- [ ] 백필 적용 범위: 금융업만 vs 전체 (status=013인 모든 케이스) — 전체 적용이 더 범용적
+**불확실 사항 (해소됨, 2026-06-10):**
+- [x] restated 여부 — 신한지주 2024 보고서 frmtrm/bfefrmtrm이 2023 보고서 값과 일치, 불일치 없음
+- [x] 백필 적용 범위 — 전체 적용 채택. M83(2024 상장)도 2022/2023 백필됨 (의도된 동작)
 
 ### Step 4 — 테스트 통과 확인
 
 전체 22개 회귀 포함.
 
-## 미결 결정
+## 미결 결정 (해소됨)
 
-- [ ] `bfefrmtrm_amount` 값이 당시 공시 원본과 다를 경우 허용 여부
-- [ ] 비율 행(ROE, 매출증가율 등) 백필 — `fnlttSinglIndx`는 연도 직접 호출만 지원하므로 백필 불가. 금액만 백필하고 비율은 `—` 유지.
+- [x] `bfefrmtrm_amount` restated 여부 — 교차검증 결과 일치, 그대로 사용
+- [x] 비율 행(ROE, 매출증가율 등) 백필 — `fnlttSinglIndx`는 연도 직접 호출만 지원하므로 백필 불가. 금액만 백필하고 비율은 `—` 유지.
+
+## 완료 (2026-06-10)
+
+- Step 1: 실패 테스트 3개 작성 (red 확인) — 신한지주 2021/2022 실값 검증 + M83 2022/2023 백필
+- Step 2: frmtrm/bfefrmtrm 실값 확인 (`temp/probe-backfill-fields.mjs`)
+- Step 3: `extractAmount`에 field 파라미터, `fetchCompare`에 donor 백필 (year+1 frmtrm → year+2 bfefrmtrm)
+- Step 4: 전체 25/25 통과, tsc 클린

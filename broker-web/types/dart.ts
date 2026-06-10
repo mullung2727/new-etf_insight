@@ -51,6 +51,8 @@ export interface CompareRow {
   key: string;
   label: string;
   type: "amount" | "ratio";
+  /** 표시 섹션 — bs: 재무상태표, is: 손익계산서, ratio: 비율 */
+  section: "bs" | "is" | "ratio";
   values: (number | null)[];
 }
 
