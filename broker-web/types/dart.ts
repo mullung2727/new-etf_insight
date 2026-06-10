@@ -32,3 +32,31 @@ export interface CorpCode {
   corp_name: string;
   stock_code: string;
 }
+
+export interface FinancialIndexItem {
+  idx_cl_code: string;
+  idx_cl_nm: string;
+  idx_code: string;
+  idx_nm: string;
+  idx_val?: string;
+}
+
+export interface FinancialIndexResponse {
+  status: string;
+  message: string;
+  list?: FinancialIndexItem[];
+}
+
+export interface CompareRow {
+  key: string;
+  label: string;
+  type: "amount" | "ratio";
+  values: (number | null)[];
+}
+
+export interface CompareResponse {
+  corpName: string;
+  fsDiv: FsDivType;
+  periods: number[];
+  rows: CompareRow[];
+}
