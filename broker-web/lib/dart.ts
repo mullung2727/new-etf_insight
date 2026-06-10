@@ -97,6 +97,14 @@ function extractAmount(
   if (!item && sjDiv === "IS") {
     item = list.find(i => i.account_id === accountId && i.sj_div === "CIS");
   }
+  // 금융지주: dart_OperatingIncomeLoss 대신 ifrs-full_ProfitLossFromOperatingActivities[CIS] 사용
+  // 신한(2023/2024), KB(2024), 하나(2023/2024) 실호출 확인 (2026-06-10)
+  if (!item && accountId === "dart_OperatingIncomeLoss") {
+    item = list.find(i =>
+      i.account_id === "ifrs-full_ProfitLossFromOperatingActivities" &&
+      (i.sj_div === sjDiv || i.sj_div === "CIS")
+    );
+  }
   if (!item?.thstrm_amount) return null;
   const n = parseFloat(String(item.thstrm_amount).replace(/,/g, ""));
   return isNaN(n) ? null : n;

@@ -110,3 +110,70 @@ test("corp_code 없으면 400", async ({ request }) => {
   const res = await request.get("/api/financial/compare?years=5");
   expect(res.status()).toBe(400);
 });
+
+// ── 금융업 — 영업이익 폴백 (ifrs-full_ProfitLossFromOperatingActivities) ──────
+// [WHY] 금융지주사는 dart_OperatingIncomeLoss 대신 ifrs-full_ProfitLossFromOperatingActivities[CIS]
+//       사용. 신한(2023/2024), KB(2024), 하나(2023/2024) 실호출로 확인 (2026-06-10)
+let shinhan: CompareBody;
+let kb: CompareBody;
+let hana: CompareBody;
+
+test.beforeAll(async ({ request }) => {
+  const [sRes, kRes, hRes] = await Promise.all([
+    request.get("/api/financial/compare?corp_code=00382199&years=5"), // 신한지주
+    request.get("/api/financial/compare?corp_code=00688996&years=5"), // KB금융
+    request.get("/api/financial/compare?corp_code=00547583&years=5"), // 하나금융지주
+  ]);
+  expect(sRes.status()).toBe(200);
+  expect(kRes.status()).toBe(200);
+  expect(hRes.status()).toBe(200);
+  shinhan = await sRes.json();
+  kb      = await kRes.json();
+  hana    = await hRes.json();
+});
+
+test("신한지주 — 5개 기간 반환", () => {
+  expect(shinhan.periods).toHaveLength(5);
+});
+
+test("신한지주 — 2023/2024 영업이익 양수", () => {
+  const row = shinhan.rows.find(r => r.key === "opProfit")!;
+  for (const year of [2023, 2024]) {
+    const idx = shinhan.periods.indexOf(year);
+    if (idx < 0) continue;
+    expect(row.values[idx], `신한지주 opProfit ${year}`).not.toBeNull();
+    expect(row.values[idx]!).toBeGreaterThan(0);
+  }
+});
+
+test("신한지주 — 2020~2022 전 금액 행 null (DART 미지원)", () => {
+  const amtKeys = ["revenue", "opProfit", "netIncome", "totalAssets", "totalLiab", "totalEquity"];
+  for (const key of amtKeys) {
+    const row = shinhan.rows.find(r => r.key === key)!;
+    for (const year of [2020, 2021, 2022]) {
+      const idx = shinhan.periods.indexOf(year);
+      if (idx < 0) continue;
+      expect(row.values[idx], `신한지주 ${key} ${year}`).toBeNull();
+    }
+  }
+});
+
+test("KB금융 — 2023/2024 영업이익 양수", () => {
+  const row = kb.rows.find(r => r.key === "opProfit")!;
+  for (const year of [2023, 2024]) {
+    const idx = kb.periods.indexOf(year);
+    if (idx < 0) continue;
+    expect(row.values[idx], `KB금융 opProfit ${year}`).not.toBeNull();
+    expect(row.values[idx]!).toBeGreaterThan(0);
+  }
+});
+
+test("하나금융지주 — 2023/2024 영업이익 양수", () => {
+  const row = hana.rows.find(r => r.key === "opProfit")!;
+  for (const year of [2023, 2024]) {
+    const idx = hana.periods.indexOf(year);
+    if (idx < 0) continue;
+    expect(row.values[idx], `하나금융지주 opProfit ${year}`).not.toBeNull();
+    expect(row.values[idx]!).toBeGreaterThan(0);
+  }
+});

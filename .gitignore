@@ -54,3 +54,6 @@ etl/bash.exe.stackdump
 .DS_Store
 .idea/
 .vscode/
+
+# Temp scripts / ad-hoc tests
+temp/
