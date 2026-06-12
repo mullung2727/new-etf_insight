@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from new_etf_insight.llm.base import LlmProvider
+from new_etf_insight.llm.chatgpt_oauth_provider import ChatGptOAuthProvider
 from new_etf_insight.llm.codex_provider import CodexProvider
 from new_etf_insight.llm.openclaw_provider import OpenClawProvider
 
@@ -17,6 +18,8 @@ def get_provider(provider_name: str | None = None) -> LlmProvider:
 
     if name in {"codex", "codex_cli"}:
         return CodexProvider()
+    if name in {"chatgpt_oauth", "oauth", "openai_oauth"}:
+        return ChatGptOAuthProvider()
     if name == "openclaw":
         return OpenClawProvider()
 

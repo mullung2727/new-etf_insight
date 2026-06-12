@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,6 +44,7 @@ from new_etf_insight.holding_identifier import (
     parse_nasdaq_listed,
     parse_other_listed,
 )
+from new_etf_insight.llm.chatgpt_oauth_provider import ChatGptOAuthProvider
 from new_etf_insight.llm.codex_provider import CodexProvider
 from new_etf_insight.llm.openclaw_provider import OpenClawProvider
 
@@ -618,6 +620,10 @@ class LlmProviderTest(unittest.TestCase):
         with patch.dict("os.environ", {"ETF_LLM_PROVIDER": "openclaw"}):
             self.assertIsInstance(get_provider(), OpenClawProvider)
 
+    def test_selects_chatgpt_oauth_provider(self) -> None:
+        with patch.dict("os.environ", {"ETF_LLM_PROVIDER": "chatgpt_oauth"}):
+            self.assertIsInstance(get_provider(), ChatGptOAuthProvider)
+
     def test_generate_json_uses_selected_provider(self) -> None:
         with patch("new_etf_insight.llm.get_provider") as get_provider_mock:
             provider = get_provider_mock.return_value
@@ -668,13 +674,15 @@ class LlmProviderTest(unittest.TestCase):
                 "prompt",
                 output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
                 search=True,
-            )
+        )
 
         command = run_mock.call_args.args[0]
-        self.assertEqual(command[:2], ["codex", "--search"])
+        expected_codex = "codex.cmd" if os.name == "nt" else "codex"
+        self.assertEqual(command[:2], [expected_codex, "--search"])
         self.assertIn("--output-schema", command)
         self.assertIn(str(CORRECTION_REVIEW_SCHEMA_PATH), command)
-        self.assertEqual(command[-1], "prompt")
+        self.assertEqual(command[-1], "-")
+        self.assertEqual(run_mock.call_args.kwargs["input"], "prompt")
         self.assertEqual(result, '{"ok": true}')
 
     def test_openclaw_provider_requires_command(self) -> None:
@@ -716,6 +724,78 @@ class LlmProviderTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.assertEqual(result, '{"ok": true}')
+
+    def test_chatgpt_oauth_provider_refreshes_and_calls_responses(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            auth_path = Path(td) / "auth-profiles.json"
+            auth_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "profiles": {
+                            "openai:default": {
+                                "type": "oauth",
+                                "provider": "openai",
+                                "refresh": "old-refresh",
+                                "access": "old-access",
+                                "expires": 0,
+                                "accountId": "acct-test",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            class FakeResponse:
+                def __init__(self, *, ok=True, status_code=200, payload=None, lines=None):
+                    self.ok = ok
+                    self.status_code = status_code
+                    self._payload = payload or {}
+                    self._lines = lines or []
+                    self.text = json.dumps(self._payload)
+
+                def json(self):
+                    return self._payload
+
+                def iter_lines(self, decode_unicode=True):
+                    return iter(self._lines)
+
+            calls = []
+
+            def fake_post(url, **kwargs):
+                calls.append((url, kwargs))
+                if "oauth/token" in url:
+                    return FakeResponse(
+                        payload={
+                            "access_token": "new-access",
+                            "refresh_token": "new-refresh",
+                            "expires_in": 3600,
+                        }
+                    )
+                return FakeResponse(lines=[
+                    'data: {"type":"response.output_text.delta","delta":"{\\"ok\\":true}"}',
+                    "data: [DONE]",
+                ])
+
+            with (
+                patch.dict("os.environ", {"ETF_AUTH_PROFILES_PATH": str(auth_path), "ETF_OPENAI_MODEL": "gpt-test"}, clear=True),
+                patch("new_etf_insight.llm.chatgpt_oauth_provider.requests.post", side_effect=fake_post),
+            ):
+                result = ChatGptOAuthProvider().generate_json(
+                    "prompt",
+                    output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
+                    search=True,
+                )
+
+            self.assertEqual(result, '{"ok":true}')
+            self.assertEqual(calls[0][1]["data"]["refresh_token"], "old-refresh")
+            request_body = calls[1][1]["json"]
+            self.assertEqual(request_body["model"], "gpt-test")
+            self.assertEqual(request_body["text"]["format"]["type"], "json_schema")
+            self.assertNotIn("tools", request_body)
+            saved = json.loads(auth_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["profiles"]["openai:default"]["refresh"], "new-refresh")
 
 
 class CollectEtfCandidatesScriptTest(unittest.TestCase):

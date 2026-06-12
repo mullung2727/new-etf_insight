@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -16,7 +17,7 @@ class CodexProvider:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "codex_last_message.txt"
 
-            command = ["codex"]
+            command = ["codex.cmd" if os.name == "nt" else "codex"]
             if search:
                 command.append("--search")
 
@@ -31,10 +32,17 @@ class CodexProvider:
                     str(output_schema_path),
                     "--output-last-message",
                     str(output_path),
-                    prompt,
+                    "-",
                 ]
             )
 
-            subprocess.run(command, check=True, text=True)
+            subprocess.run(
+                command,
+                check=True,
+                text=True,
+                input=prompt,
+                encoding="utf-8",
+                errors="replace",
+            )
 
             return output_path.read_text(encoding="utf-8").strip()
