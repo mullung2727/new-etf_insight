@@ -5,12 +5,13 @@
 - When running or debugging the ETF batch pipeline, first read `skills/new-etf-insight-batch/SKILL.md`.
 - When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
 
-이 문서는 `new-etf-insight` 프로젝트에서 Codex가 항상 따라야 하는 최상위 작업 지침이다.
+이 문서는 `new-etf-insight` 프로젝트에서 에이전트가 항상 따라야 하는 최상위 작업 지침이다.
 코드 수정, 설계, 테스트, 응답 방식은 반드시 이 문서를 우선한다.
 
 ## 기본 응답 규칙
 
-- 항상 반말, 개조식으로 대답할 것
+- 항상 반말, 
+- 항상 개조식으로 대답할 것
 - 항상 한글로 대답할 것
 
 ## 질문 답변 규칙
@@ -48,6 +49,19 @@ Before implementing:
 - If multiple interpretations exist, present them. Don't pick silently.
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
+
+### Critical Rule
+
+절대 추정하지 말 것.
+
+다음 상황에서는 작업을 중단하고 질문할 것:
+
+- 요구사항이 2개 이상으로 해석 가능
+- 파일명이 명시되지 않음
+- API 선택이 명시되지 않음
+- DB 스키마가 확정되지 않음
+
+위 상황에서 추정 후 작업하면 실패로 간주한다.
 
 ## 2. Simplicity First
 

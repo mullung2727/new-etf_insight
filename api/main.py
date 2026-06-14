@@ -1,13 +1,12 @@
 import logging
 import os
-from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_mcp import FastApiMCP
 
-from duck import DUCKDB_PATH, init_connection
+from duck import DUCKDB_PATH
 from routers import etfs as etfs_router
 from routers import stats as stats_router
 from routers import watchlist as watchlist_router
@@ -25,18 +24,10 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    init_connection()
-    yield
-
-
 app = FastAPI(
     title="ETF Insight API",
     description="DuckDB-backed ETF data gateway (REST + MCP).",
     version="0.1.0",
-    lifespan=lifespan,
 )
 
 app.add_middleware(

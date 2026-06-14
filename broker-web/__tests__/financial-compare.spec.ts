@@ -51,10 +51,11 @@ test.describe("재무제표 다기간 비교 페이지", () => {
 
     await expect(page.locator("[data-row-key='bsAsset0'] td").first()).toHaveText("유형자산");
     await expect(page.locator("[data-row-key='bsAssetEtc'] td").first()).toHaveText("그 외 자산");
-    // 동적 행 값은 금액 포맷 (% 아님)
+    // 동적 행 값은 금액 포맷 — 비율 인라인 포함 가능 (예: "215.3조(38.0%)")
     const valCell = page.locator("[data-row-key='bsAsset0'] td").last();
-    await expect(valCell).not.toContainText("%");
     await expect(valCell).not.toHaveText("—");
+    // 조/억/만 단위 포함
+    await expect(valCell).toContainText(/조|억|만/);
   });
 
   test("삼성전자 — 필수 행 레이블 표시", async ({ page }) => {

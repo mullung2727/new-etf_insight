@@ -366,7 +366,12 @@ def load_watchlist(watchlist_db: Path, date: str, limit: int | None) -> list[str
         return [r[0] for r in con.execute(sql, [date]).fetchall()]
 
 
-def load_market_metrics(krx_db: Path, date: str, tickers: list[str]) -> dict[str, dict]:
+def load_market_metrics(
+    krx_db: Path,
+    watchlist_db: Path,
+    date: str,
+    tickers: list[str],
+) -> dict[str, dict]:
     if not tickers:
         return {}
     placeholders = ",".join(["?"] * len(tickers))
@@ -400,6 +405,32 @@ def load_market_metrics(krx_db: Path, date: str, tickers: list[str]) -> dict[str
     }
     for ticker, avg5 in avg_rows:
         metrics.setdefault(ticker, {})["avg5_volume"] = avg5
+    missing_today = [
+        ticker
+        for ticker in tickers
+        if not metrics.get(ticker, {}).get("today_volume")
+        or not metrics.get(ticker, {}).get("close")
+    ]
+    if missing_today:
+        intraday_placeholders = ",".join(["?"] * len(missing_today))
+        try:
+            with duckdb.connect(str(watchlist_db), read_only=True) as con:
+                intraday_rows = con.execute(
+                    f"""
+                    SELECT ticker, close, volume
+                    FROM intraday_ranking
+                    WHERE date = ? AND ticker IN ({intraday_placeholders})
+                    """,
+                    [date, *missing_today],
+                ).fetchall()
+        except duckdb.CatalogException:
+            intraday_rows = []
+        for ticker, close, volume in intraday_rows:
+            vals = metrics.setdefault(ticker, {})
+            vals["close"] = close
+            vals["today_volume"] = volume
+            if close is not None and volume is not None:
+                vals["trading_value"] = int(close) * int(volume)
     for ticker, vals in metrics.items():
         today = vals.get("today_volume") or 0
         avg5 = vals.get("avg5_volume") or 0
@@ -681,7 +712,7 @@ def main() -> None:
         target_date = built_target_date or latest_watchlist_date(watchlist_db)
 
     tickers = load_watchlist(watchlist_db, target_date, args.limit)
-    metrics = load_market_metrics(krx_db, target_date, tickers)
+    metrics = load_market_metrics(krx_db, watchlist_db, target_date, tickers)
     rows = []
     for ticker in tickers:
         try:
