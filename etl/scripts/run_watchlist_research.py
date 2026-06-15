@@ -14,11 +14,14 @@ import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -650,6 +653,79 @@ def upsert_scores(watchlist_db: Path, rows: list[dict]) -> None:
             )
 
 
+def upsert_one_score(watchlist_db: Path, row: dict) -> None:
+    value = (
+        row["date"].replace("-", ""),
+        row["ticker"],
+        row["name"],
+        row["ratio"],
+        row["today_volume"],
+        row["avg5_volume"],
+        row["trading_value"],
+        row["close"],
+        row["score"],
+        row["category"],
+        row["reason_summary"],
+        row["final_opinion"],
+        row["evidence_board"],
+        row["evidence_news"],
+        row["evidence_web"],
+        json.dumps(row["sources"], ensure_ascii=False),
+    )
+    with duckdb.connect(str(watchlist_db)) as con:
+        con.execute(CREATE_LLM_SCORES)
+        con.execute(
+            "INSERT OR REPLACE INTO llm_scores VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            value,
+        )
+
+
+def _now_seoul() -> datetime:
+    return datetime.now(ZoneInfo("Asia/Seoul"))
+
+
+def _is_past_deadline(deadline_str: str | None) -> bool:
+    if not deadline_str:
+        return False
+    h, m, s = (int(x) for x in deadline_str.split(":"))
+    now = _now_seoul()
+    deadline = now.replace(hour=h, minute=m, second=s, microsecond=0)
+    return now >= deadline
+
+
+def _research_with_timeout(
+    research_fn,
+    date: str,
+    ticker: str,
+    metrics: dict,
+    timeout_sec: float,
+) -> dict:
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        future = ex.submit(research_fn, date, ticker, metrics)
+        try:
+            return future.result(timeout=timeout_sec)
+        except FuturesTimeoutError:
+            return {
+                "date": dashed_date(date),
+                "ticker": ticker,
+                "name": ticker,
+                "ratio": metrics.get("ratio"),
+                "today_volume": metrics.get("today_volume"),
+                "avg5_volume": metrics.get("avg5_volume"),
+                "trading_value": metrics.get("trading_value"),
+                "close": metrics.get("close"),
+                "score": 0,
+                "category": "scoring timeout",
+                "reason_summary": f"종목 조사 타임아웃 ({timeout_sec}초)",
+                "final_opinion": "타임아웃으로 원인 명확성 판단 불가.",
+                "evidence_board": "종토방: 타임아웃",
+                "evidence_news": "뉴스: 타임아웃",
+                "evidence_web": "웹: 타임아웃",
+                "sources": [f"https://finance.naver.com/item/board.naver?code={ticker}"],
+                "raw": {},
+            }
+
+
 def write_reports(reports_dir: Path, date: str, rows: list[dict], build_status: str, watchlist_db: Path) -> tuple[Path, Path]:
     reports_dir.mkdir(parents=True, exist_ok=True)
     dash = dashed_date(date)
@@ -699,6 +775,8 @@ def main() -> None:
     parser.add_argument("--skip-build", action="store_true", help="do not run build_watchlist.py first")
     parser.add_argument("--force-build", action="store_true", help="pass --force to build_watchlist.py")
     parser.add_argument("--limit", type=int, help="smoke-test limit")
+    parser.add_argument("--scoring-deadline", help="stop issuing new LLM calls at this HH:MM:SS (Asia/Seoul)")
+    parser.add_argument("--scoring-timeout", type=float, help="per-symbol LLM timeout in seconds")
     args = parser.parse_args()
 
     watchlist_db, krx_db, reports_dir = load_paths()
@@ -714,33 +792,43 @@ def main() -> None:
     tickers = load_watchlist(watchlist_db, target_date, args.limit)
     metrics = load_market_metrics(krx_db, watchlist_db, target_date, tickers)
     rows = []
+    skipped_deadline = []
     for ticker in tickers:
+        if _is_past_deadline(args.scoring_deadline):
+            skipped_deadline.append(ticker)
+            print(f"[watchlist_research] scoring deadline {args.scoring_deadline} reached, skipping {ticker}")
+            continue
         try:
-            rows.append(research_one(target_date, ticker, metrics.get(ticker, {})))
+            if args.scoring_timeout:
+                row = _research_with_timeout(research_one, target_date, ticker, metrics.get(ticker, {}), args.scoring_timeout)
+            else:
+                row = research_one(target_date, ticker, metrics.get(ticker, {}))
         except Exception as exc:
             name = ticker_name(ticker)
-            rows.append(
-                {
-                    "date": dashed_date(target_date),
-                    "ticker": ticker,
-                    "name": name,
-                    "ratio": metrics.get(ticker, {}).get("ratio"),
-                    "today_volume": metrics.get(ticker, {}).get("today_volume"),
-                    "avg5_volume": metrics.get(ticker, {}).get("avg5_volume"),
-                    "trading_value": metrics.get(ticker, {}).get("trading_value"),
-                    "close": metrics.get(ticker, {}).get("close"),
-                    "score": 0,
-                    "category": "조사 실패",
-                    "reason_summary": f"종목 조사 중 오류: {exc}",
-                    "final_opinion": "조사 실패로 원인 명확성 판단 불가.",
-                    "evidence_board": "종토방: 조사 실패",
-                    "evidence_news": "뉴스: 조사 실패",
-                    "evidence_web": "웹: 조사 실패",
-                    "sources": [f"https://finance.naver.com/item/board.naver?code={ticker}"],
-                    "raw": {},
-                }
-            )
+            row = {
+                "date": dashed_date(target_date),
+                "ticker": ticker,
+                "name": name,
+                "ratio": metrics.get(ticker, {}).get("ratio"),
+                "today_volume": metrics.get(ticker, {}).get("today_volume"),
+                "avg5_volume": metrics.get(ticker, {}).get("avg5_volume"),
+                "trading_value": metrics.get(ticker, {}).get("trading_value"),
+                "close": metrics.get(ticker, {}).get("close"),
+                "score": 0,
+                "category": "조사 실패",
+                "reason_summary": f"종목 조사 중 오류: {exc}",
+                "final_opinion": "조사 실패로 원인 명확성 판단 불가.",
+                "evidence_board": "종토방: 조사 실패",
+                "evidence_news": "뉴스: 조사 실패",
+                "evidence_web": "웹: 조사 실패",
+                "sources": [f"https://finance.naver.com/item/board.naver?code={ticker}"],
+                "raw": {},
+            }
+        rows.append(row)
+        upsert_one_score(watchlist_db, row)
 
+    if skipped_deadline:
+        print(f"[watchlist_research] deadline skip: {skipped_deadline}")
     upsert_scores(watchlist_db, rows)
     json_path, md_path = write_reports(reports_dir, target_date, rows, build_status, watchlist_db)
     print(f"[watchlist_research] date={target_date} rows={len(rows)}")

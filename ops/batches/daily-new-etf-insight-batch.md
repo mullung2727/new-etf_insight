@@ -20,7 +20,7 @@ Run the `new_etf_insight` ETF daily batch and sync records to DuckDB.
 
 - Work from `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl`.
 - Use `.\.venv\Scripts\python.exe`; do not assume `uv` is on PATH.
-- Set `PYTHONPATH=src` before running Python.
+- Set `PYTHONPATH=src` before running Python (`$env:PYTHONPATH = "src"` in PowerShell).
 - Load `.env` from `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\.env` without printing secrets.
 - Determine today's Asia/Seoul date as `YYYYMMDD`.
 - Run `new_etf_insight.daily_pipeline.run_daily_pipeline` for that date with:

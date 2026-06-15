@@ -2,7 +2,7 @@
 
 ## Cron
 
-- Schedule: `35 15 * * 1-5`
+- Schedule: `10 15 * * 1-5`
 - Timezone: `Asia/Seoul`
 - OpenClaw session target: `isolated`
 - Delivery: Discord announce
@@ -12,11 +12,12 @@
 Run the ETF watchlist intraday Kiwoom candidate batch and immediately
 score/research today's candidates.
 
-This is the same-day after-close watchlist batch. KRX OpenAPI does not reliably
-provide today's full exchange data yet, so first use Kiwoom `ka10030` intraday
-top-volume data after regular close to build today's watchlist candidates. Then
-immediately run cause-clarity research/scoring for those same-day candidates and
-upsert `llm_scores`.
+This is the same-day pre-close watchlist batch, timed to complete LLM scoring
+before the 15:19 close-bet order window. KRX OpenAPI does not reliably provide
+today's full exchange data yet, so use Kiwoom `ka10030` intraday top-volume data
+at 15:10 (장중 스냅샷, not final close volume) to build today's watchlist
+candidates. Then immediately run cause-clarity research/scoring for those
+same-day candidates and upsert `llm_scores`.
 
 The next-morning KRX confirmation job refreshes/confirms yesterday's full-market
 KRX OHLCV, but same-day candidates must still get immediate LLM scores after the
@@ -104,6 +105,11 @@ For each item, display DB-backed fields:
 After listing all items, include report path, DB upsert status, and Notion status
 if attempted. If Discord length limits are hit, split the report into multiple
 messages rather than omitting items.
+
+On non-trading day (holiday or weekend), `build_intraday_ranking.py` detects a
+휴장일 via the duplicate-snapshot guard and skips saving and candidate selection.
+If휴장일 is detected, announce a concise skip message to Discord for the explicit
+target date and do not run `run_watchlist_research.py`.
 
 On Kiwoom auth/rate-limit/API failure or scoring failure, report the exact
 blocker and do not run unrelated projects.

@@ -27,7 +27,6 @@ batch.
 ## Required References
 
 - `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\AGENTS.md`
-- `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\.claude\skills\etf-watchlist-batch\SKILL.md`, if present, only for schedule/context. Do not follow any instruction there that asks this morning job to build watchlists or run LLM scoring.
 
 ## Execution
 
@@ -44,13 +43,28 @@ batch.
 ## DB-First Reporting Rule
 
 After the runner finishes, query `etl/db/krx_ohlcv.duckdb` directly and report
-from the saved DB rows.
+from the saved DB rows, not from script stdout alone.
+
+Use this verification block (replace `YYYYMMDD`):
+
+```powershell
+@'
+import duckdb
+con = duckdb.connect("db/krx_ohlcv.duckdb", read_only=True)
+date = "YYYYMMDD"
+row = con.execute(
+    f"SELECT COUNT(*) AS cnt, MIN(ticker) AS min_t, MAX(ticker) AS max_t, "
+    f"SUM(trading_value) AS total_tv FROM ohlcv WHERE date='{date}'"
+).fetchone()
+print(f"date={date} rows={row[0]} ticker_range=[{row[1]}~{row[2]}] total_trading_value={row[3]:,.0f}")
+'@ | .\.venv\Scripts\python.exe -
+```
 
 Verify:
 
 - OHLCV row count for the target date.
-- Min/max ticker or a small sanity sample.
-- Total `trading_value`, if available.
+- Ticker range (`min_t` ~ `max_t`) as a sanity check.
+- Total `trading_value`.
 
 Do not query or report watchlist/LLM scores except to explicitly say this job
 skipped them by design.
