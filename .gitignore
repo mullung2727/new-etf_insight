@@ -21,6 +21,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
 artifacts/
 downloads/
 
@@ -49,6 +50,11 @@ etl/bash.exe.stackdump
 .claude/settings.local.json
 .playwright-mcp/
 .mcp.json
+.serena/
+memory/
+# headroom-ai (local memory-compression MCP), not part of project deliverable
+/package.json
+/package-lock.json
 
 # OS/editor
 .DS_Store

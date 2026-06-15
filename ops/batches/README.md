@@ -16,9 +16,8 @@ be reviewed together with the project code.
   - Schedule: Mon-Fri 15:10 Asia/Seoul
   - Purpose: build same-day Kiwoom intraday watchlist candidates and score them (pre-close, feeds 15:19 close-bet order window).
 - `daily-close-bet-order.md`
-  - Schedule: Mon-Fri 15:19 Asia/Seoul
-  - Purpose: place market-price buy orders for today's score >= 80 watchlist symbols (max 5). Requires 15:10 scoring batch to have run first.
+  - Schedule: Mon-Fri 15:21 Asia/Seoul
+  - Purpose: report close-bet order results after Windows Task Scheduler runs `\OpenClaw\close-bet-order` at 15:19.
 - `daily-new-etf-insight-batch.md`
   - Schedule: daily 19:50 Asia/Seoul
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
-
