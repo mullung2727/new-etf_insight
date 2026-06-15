@@ -1,17 +1,18 @@
 """종가배팅 주문 배치 (15:19 실행).
 
 llm_scores에서 score >= score_threshold 종목을 score 내림차순 / max_order_count 제한으로
-선별해 키움 시장가 1주 매수 주문을 넣고 close_bet_orders에 결과를 기록한다.
+선별해 broker REST API를 통해 시장가 1주 매수하고 결과를 기록한다.
+
+핵심 사상: Kiwoom API는 무조건 broker를 통해서만 호출한다.
 
 전제:
   - 15:10 scoring 배치(build_intraday_ranking + run_watchlist_research)가 먼저 돌아야 함.
-    check_precondition()으로 llm_scores 행 수를 확인하고 0이면 abort.
-  - 키움 토큰은 broker/.token_cache.json 공유 (build_intraday_ranking.py 와 동일 패턴).
-  - 기본 환경: 모의투자(paper), dry_run=True.
+  - broker(http://localhost:8001)가 반드시 기동되어 있어야 함.
+  - 기본: dry_run=True.
 
 Usage (from etl/):
     .venv/Scripts/python.exe scripts/run_close_bet.py --date 20260615
-    .venv/Scripts/python.exe scripts/run_close_bet.py --dry-run false --kiwoom-env paper
+    .venv/Scripts/python.exe scripts/run_close_bet.py --dry-run false
 """
 from __future__ import annotations
 
@@ -34,23 +35,29 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
 DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.duckdb"
-TOKEN_CACHE_PATH = ROOT / "broker" / ".token_cache.json"
 
-_HOSTS = {
-    "paper": "https://mockapi.kiwoom.com",
-    "real": "https://api.kiwoom.com",
-}
-
-EP_STKINFO = "/api/dostk/stkinfo"   # ka10001
-EP_ORDR    = "/api/dostk/ordr"      # kt10000
-TR_QUOTE   = "ka10001"
-TR_BUY     = "kt10000"
-
-REQUEST_TIMEOUT   = 15
-_TOKEN_REFRESH_SKEW = 600
+REQUEST_TIMEOUT = 15
 
 
 # ── DDL ──────────────────────────────────────────────────────────────────────
+
+def create_kiwoom_trade_history_table(con: duckdb.DuckDBPyConnection) -> None:
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS kiwoom_trade_history (
+            order_no    VARCHAR PRIMARY KEY,
+            date        VARCHAR,
+            ticker      VARCHAR,
+            side        VARCHAR,
+            order_type  VARCHAR,
+            qty         INTEGER,
+            price       INTEGER,
+            status      VARCHAR,
+            source      VARCHAR,
+            raw         TEXT,
+            created_at  TIMESTAMP
+        )
+    """)
+
 
 def create_close_bet_orders_table(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("""
@@ -124,6 +131,27 @@ def load_order_candidates(
     ]
 
 
+def upsert_trade_history(watchlist_db: Path, row: dict) -> None:
+    """kiwoom_trade_history에 거래 기록. order_no PK 중복 시 기존 행 유지."""
+    with duckdb.connect(str(watchlist_db)) as con:
+        create_kiwoom_trade_history_table(con)
+        existing = con.execute(
+            "SELECT COUNT(*) FROM kiwoom_trade_history WHERE order_no=?",
+            [row["order_no"]],
+        ).fetchone()[0]
+        if existing:
+            return
+        con.execute(
+            """INSERT INTO kiwoom_trade_history
+               (order_no, date, ticker, side, order_type, qty, price,
+                status, source, raw, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
+            [row["order_no"], row["date"], row["ticker"], row["side"],
+             row["order_type"], row["qty"], row["price"],
+             row["status"], row["source"], row["raw"]],
+        )
+
+
 def upsert_order_result(watchlist_db: Path, row: dict) -> None:
     """close_bet_orders에 주문 결과 삽입. (date, ticker) PK 중복 시 기존 행 유지."""
     with duckdb.connect(str(watchlist_db)) as con:
@@ -168,125 +196,51 @@ def _is_in_order_window(order_time: str, order_deadline_time: str, allow_outside
     return start <= now < end
 
 
-# ── 키움 API ──────────────────────────────────────────────────────────────────
+# ── broker REST API 경유 함수 ─────────────────────────────────────────────────
 
-def _kiwoom_env() -> str:
-    return os.getenv("KIWOOM_ENV", "paper").strip().lower()
-
-
-def _load_keys() -> tuple[str, str]:
-    appkey = (os.getenv("KIWOOM_APPKEY") or os.getenv("KIWOON_MOCK_TR_APP_KEY") or "").strip()
-    secret = (os.getenv("KIWOOM_SECRETKEY") or os.getenv("KIWOON_MOCK_TR_APP_SECRET") or "").strip()
-    if not appkey or not secret:
-        raise RuntimeError("키움 앱키 없음 — .env의 KIWOOM_APPKEY 확인")
-    return appkey, secret
-
-
-def get_token(host: str, env: str) -> str:
-    if TOKEN_CACHE_PATH.exists():
-        try:
-            data = json.loads(TOKEN_CACHE_PATH.read_text(encoding="utf-8"))
-            if (
-                data.get("env") == env
-                and data.get("token")
-                and float(data.get("expires_at", 0)) - _TOKEN_REFRESH_SKEW > time.time()
-            ):
-                return data["token"]
-        except (ValueError, OSError):
-            pass
-    appkey, secret = _load_keys()
-    resp = requests.post(
-        f"{host}/oauth2/token",
-        json={"grant_type": "client_credentials", "appkey": appkey, "secretkey": secret},
-        headers={"content-type": "application/json;charset=UTF-8"},
-        timeout=REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    token = data.get("token") or data.get("access_token")
-    if not token:
-        raise RuntimeError(f"키움 토큰 발급 실패: {data}")
-    expires_at = time.time() + 12 * 3600
-    raw = str(data.get("expires_dt") or "").strip()
-    if len(raw) == 14 and raw.isdigit():
-        try:
-            expires_at = datetime.strptime(raw, "%Y%m%d%H%M%S").timestamp()
-        except ValueError:
-            pass
+def fetch_price_via_broker(broker_url: str, ticker: str) -> int | None:
+    """GET {broker_url}/quotes/{ticker} → price. 실패 시 None."""
     try:
-        TOKEN_CACHE_PATH.write_text(
-            json.dumps({"env": env, "token": token, "expires_at": expires_at}),
-            encoding="utf-8",
-        )
-    except OSError:
-        pass
-    return token
+        resp = requests.get(f"{broker_url}/quotes/{ticker}", timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        price = resp.json().get("price")
+        if price is None:
+            return None
+        return int(price)
+    except Exception:
+        return None
 
 
-def fetch_current_price(token: str, host: str, ticker: str, retries: int = 3) -> int | None:
-    """ka10001로 cur_prc 조회. 실패 또는 0이면 None. 429는 백오프 재시도."""
-    for attempt in range(retries + 1):
+def place_order_via_broker(broker_url: str, ticker: str, qty: int, dry_run: bool) -> dict:
+    """POST {broker_url}/orders 시장가 매수. dry_run=True면 HTTP 호출 없이 반환."""
+    if dry_run:
+        ts = _now_seoul().strftime("%Y%m%d%H%M%S")
+        return {
+            "order_no": f"DRY_{ticker}_{ts}",
+            "status": "dry_run",
+            "message": "dry_run — 실제 주문 없음",
+        }
+    try:
         resp = requests.post(
-            f"{host}{EP_STKINFO}",
-            json={"stk_cd": ticker},
-            headers={
-                "content-type": "application/json;charset=UTF-8",
-                "authorization": f"Bearer {token}",
-                "api-id": TR_QUOTE,
-            },
+            f"{broker_url}/orders",
+            json={"symbol": ticker, "side": "buy", "qty": qty, "order_type": "market"},
             timeout=REQUEST_TIMEOUT,
         )
-        if resp.status_code == 429 and attempt < retries:
-            time.sleep(1.0 * (attempt + 1))
-            continue
-        break
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("return_code") not in (None, 0, "0"):
-        return None
-    raw = str(data.get("cur_prc", "0")).replace("+", "").replace(",", "").strip()
-    try:
-        price = abs(int(raw))
-        return price if price > 0 else None
-    except (ValueError, TypeError):
-        return None
-
-
-def place_market_order(token: str, host: str, ticker: str, qty: int, dry_run: bool) -> dict:
-    """kt10000 시장가 매수. dry_run=True면 실제 전송 없이 dict 반환."""
-    if dry_run:
-        return {"order_no": "DRY_RUN", "status": "dry_run", "message": "dry_run — 실제 주문 없음"}
-    resp = requests.post(
-        f"{host}{EP_ORDR}",
-        json={
-            "dmst_stex_tp": "KRX",
-            "stk_cd": ticker,
-            "ord_qty": str(qty),
-            "ord_uv": "",
-            "trde_tp": "3",   # 시장가
-            "cond_uv": "",
-        },
-        headers={
-            "content-type": "application/json;charset=UTF-8",
-            "authorization": f"Bearer {token}",
-            "api-id": TR_BUY,
-        },
-        timeout=REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    code = data.get("return_code")
-    if code not in (None, 0, "0"):
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("accepted"):
+            return {
+                "order_no": "",
+                "status": "failed",
+                "message": data.get("message", "accepted=False"),
+            }
         return {
-            "order_no": "",
-            "status": "failed",
-            "message": f"return_code={code}: {data.get('return_msg', '')}",
+            "order_no": str(data.get("order_no") or ""),
+            "status": "submitted",
+            "message": data.get("message", ""),
         }
-    return {
-        "order_no": str(data.get("ord_no", "")),
-        "status": "submitted",
-        "message": "",
-    }
+    except Exception as exc:
+        return {"order_no": "", "status": "failed", "message": str(exc)}
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -303,12 +257,12 @@ def main() -> None:
     parser.add_argument("--order-deadline-time", default="15:20:00")
     parser.add_argument("--allow-order-outside-close-window", action="store_true")
     parser.add_argument("--dry-run", default="true")
-    parser.add_argument("--kiwoom-env", default=None)
+    parser.add_argument("--broker-url", default=None)
     args = parser.parse_args()
 
     dry_run = args.dry_run.lower() not in ("false", "0", "no")
     date = args.date or _now_seoul().strftime("%Y%m%d")
-    kiwoom_env = args.kiwoom_env or _kiwoom_env()
+    broker_url = args.broker_url or os.getenv("BROKER_API_URL", "http://localhost:8001")
     watchlist_db = DEFAULT_WATCHLIST_DB
 
     # precondition
@@ -333,9 +287,6 @@ def main() -> None:
         print(f"[close_bet] 주문 대상 없음")
         return
 
-    host = _HOSTS.get(kiwoom_env, _HOSTS["paper"])
-    token = get_token(host, kiwoom_env)
-
     submitted = skipped = failed = 0
     for cand in candidates:
         if not _is_in_order_window(args.order_time, args.order_deadline_time, args.allow_order_outside_close_window):
@@ -345,7 +296,7 @@ def main() -> None:
         ticker = cand["ticker"]
         score  = cand["score"]
 
-        cur_prc = fetch_current_price(token, host, ticker)
+        cur_prc = fetch_price_via_broker(broker_url, ticker)
         if cur_prc is None:
             print(f"[close_bet] {ticker}: 현재가 조회 실패 — skip")
             upsert_order_result(watchlist_db, {
@@ -357,18 +308,24 @@ def main() -> None:
             skipped += 1
             continue
 
-        result = place_market_order(token, host, ticker, args.qty_per_symbol, dry_run)
+        result = place_order_via_broker(broker_url, ticker, args.qty_per_symbol, dry_run)
         upsert_order_result(watchlist_db, {
             "date": date, "ticker": ticker, "score": score,
             "qty": args.qty_per_symbol, "order_type": "market",
             "status": result["status"], "order_no": result["order_no"],
             "message": result["message"], "raw": json.dumps(result),
         })
+        upsert_trade_history(watchlist_db, {
+            "order_no": result["order_no"] or f"FAIL_{ticker}_{_now_seoul().strftime('%Y%m%d%H%M%S')}",
+            "date": date, "ticker": ticker,
+            "side": "buy", "order_type": "market",
+            "qty": args.qty_per_symbol, "price": cur_prc,
+            "status": result["status"], "source": "close_bet",
+            "raw": json.dumps(result),
+        })
         print(f"[close_bet] {ticker} score={score} cur={cur_prc} → {result['status']} ord={result['order_no']}")
 
-        if result["status"] == "submitted":
-            submitted += 1
-        elif result["status"] == "dry_run":
+        if result["status"] in ("submitted", "dry_run"):
             submitted += 1
         else:
             failed += 1

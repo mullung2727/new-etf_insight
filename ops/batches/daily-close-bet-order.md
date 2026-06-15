@@ -21,10 +21,22 @@ has completed. The precondition check at startup enforces this.
 
 - `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\AGENTS.md`
 - `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\docs\PLAN_WATCHLIST_CLOSE_BET.md`
+- `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\docs\PLAN_TRADE_HISTORY.md`
 
 ## Precondition Check
 
-Before doing anything else, verify today's scoring batch has run:
+Before doing anything else, verify broker is running and today's scoring batch has run:
+
+```powershell
+Invoke-RestMethod http://localhost:8001/health
+```
+
+If this fails, broker is not running — report to Discord and stop:
+```
+[종가배팅] ABORT: broker(http://localhost:8001) 미기동 — 주문 불가.
+```
+
+Then verify today's scoring batch has run:
 
 ```powershell
 @'
@@ -64,19 +76,21 @@ Default parameters (override via CLI args as needed):
 - `--score-threshold 80`
 - `--max-order-count 5`
 - `--qty-per-symbol 1`
-- `--kiwoom-env paper`
 - `--dry-run true` (flip to `false` for live paper trading)
+- `--broker-url http://localhost:8001` (or set `BROKER_API_URL` env var)
 - `--order-time 15:19:00`
 - `--order-deadline-time 15:20:00`
 
 ## Order Rules
 
+**핵심 사상: Kiwoom API는 무조건 broker를 통해서만 호출한다.**
+
 - Query `llm_scores WHERE date=? AND score >= score_threshold`, order by score DESC, limit `max_order_count`.
-- For each symbol, call `ka10001` (주식기본정보요청) to get `cur_prc` (현재가).
-  - If `cur_prc <= 0` or request fails, skip and record in `close_bet_orders`.
-  - `upl_pric` (상한가) field is available for upper-limit detection if needed.
+- For each symbol, call `GET http://localhost:8001/quotes/{ticker}` via broker to get current price.
+  - If price is None or request fails, skip and record in `close_bet_orders`.
 - Before each order, check `now >= order_deadline_time` — if past deadline, stop immediately.
-- Place Kiwoom market-price buy (`kt10000`) for `qty_per_symbol` shares.
+- Place buy order via `POST http://localhost:8001/orders` body `{symbol, side:"buy", qty, order_type:"market"}`.
+  - Result recorded in both `close_bet_orders` and `kiwoom_trade_history` (universal trade ledger).
 - Wait `order_interval_sec` (default 0.5s) between orders.
 - Skip symbols already present in `close_bet_orders` for today (duplicate guard).
 - Do NOT place orders outside `order_time <= now < order_deadline_time` in production.
