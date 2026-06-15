@@ -1,146 +1,66 @@
 # daily-close-bet-order
 
-## Cron
+## 실행 방식
 
-- Schedule: `19 15 * * 1-5`
-- Timezone: `Asia/Seoul`
-- OpenClaw session target: `isolated`
-- Delivery: Discord announce
+**Windows 작업 스케줄러**가 직접 실행. OpenClaw cron은 결과 보고만 담당.
+
+- 스케줄 정의: `ops/scheduled-tasks/close-bet-order.xml`
+- 파라미터 변경 또는 스케줄 변경 시 XML 수정 후 재등록:
+  ```powershell
+  $xml = Get-Content ops\scheduled-tasks\close-bet-order.xml -Raw -Encoding UTF8
+  Register-ScheduledTask -Xml $xml -TaskName "close-bet-order" -TaskPath "\OpenClaw\" -Force
+  ```
+- 로그: `etl/logs/close-bet-YYYYMMDD.log`
 
 ## Purpose
 
-Run the close-bet order batch: read today's `llm_scores` from
-`etl/db/watchlist.duckdb`, select symbols with `score >= 80` (sorted by score
-descending, capped at `max_order_count=5`), and place Kiwoom market-price buy
-orders for 1 share each.
+평일 15:19에 `llm_scores`에서 score >= 80 종목을 score DESC / 최대 5개로 선별해
+broker(`http://localhost:8001`)를 통해 시장가 1주 매수. 결과를 `close_bet_orders`와
+`kiwoom_trade_history`에 기록.
 
-This batch must only run after the 15:10 scoring batch (`daily-etf-watchlist-intraday-kiwoom`)
-has completed. The precondition check at startup enforces this.
+15:10 scoring 배치(`daily-etf-watchlist-intraday-kiwoom`)가 먼저 완료되어 있어야 한다.
+precondition 체크는 스크립트 내부에서 수행 — llm_scores 0건이면 자동 abort.
 
 ## Required References
 
 - `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\AGENTS.md`
-- `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\docs\PLAN_WATCHLIST_CLOSE_BET.md`
-- `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\docs\PLAN_TRADE_HISTORY.md`
+- `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\close-bet-order.xml`
 
-## Precondition Check
+## 결과 확인 (DB-First)
 
-Before doing anything else, verify broker is running and today's scoring batch has run:
-
+로그 확인:
 ```powershell
-Invoke-RestMethod http://localhost:8001/health
+Get-Content C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl\logs\close-bet-<YYYYMMDD>.log
 ```
 
-If this fails, broker is not running — report to Discord and stop:
-```
-[종가배팅] ABORT: broker(http://localhost:8001) 미기동 — 주문 불가.
-```
-
-Then verify today's scoring batch has run:
-
-```powershell
-@'
-import duckdb, sys
-from datetime import datetime
-import pytz
-date = datetime.now(pytz.timezone("Asia/Seoul")).strftime("%Y%m%d")
-con = duckdb.connect("db/watchlist.duckdb", read_only=True)
-cnt = con.execute(f"SELECT COUNT(*) FROM llm_scores WHERE date='{date}'").fetchone()[0]
-con.close()
-if cnt == 0:
-    print(f"ABORT: llm_scores has 0 rows for {date} — scoring batch has not run today")
-    sys.exit(1)
-print(f"OK: {cnt} llm_scores rows found for {date}")
-'@ | .\.venv\Scripts\python.exe -
-```
-
-If this exits with code 1, report to Discord:
-```
-[종가배팅] ABORT: {date} scoring 배치 미실행 — llm_scores 없음. 주문 건너뜀.
-```
-and stop immediately. Do not proceed to order.
-
-## Execution
-
-- Work from `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl`.
-- Use `.\.venv\Scripts\python.exe`; do not assume `uv` is on PATH.
-- Load `.env` from `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\.env` without printing secrets.
-- Determine today's Asia/Seoul date as `YYYYMMDD`.
-- Run after the precondition check passes:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\run_close_bet.py --date <TODAY_YYYYMMDD>
-```
-
-Default parameters (override via CLI args as needed):
-- `--score-threshold 80`
-- `--max-order-count 5`
-- `--qty-per-symbol 1`
-- `--dry-run true` (flip to `false` for live paper trading)
-- `--broker-url http://localhost:8001` (or set `BROKER_API_URL` env var)
-- `--order-time 15:19:00`
-- `--order-deadline-time 15:20:00`
-
-## Order Rules
-
-**핵심 사상: Kiwoom API는 무조건 broker를 통해서만 호출한다.**
-
-- Query `llm_scores WHERE date=? AND score >= score_threshold`, order by score DESC, limit `max_order_count`.
-- For each symbol, call `GET http://localhost:8001/quotes/{ticker}` via broker to get current price.
-  - If price is None or request fails, skip and record in `close_bet_orders`.
-- Before each order, check `now >= order_deadline_time` — if past deadline, stop immediately.
-- Place buy order via `POST http://localhost:8001/orders` body `{symbol, side:"buy", qty, order_type:"market"}`.
-  - Result recorded in both `close_bet_orders` and `kiwoom_trade_history` (universal trade ledger).
-- Wait `order_interval_sec` (default 0.5s) between orders.
-- Skip symbols already present in `close_bet_orders` for today (duplicate guard).
-- Do NOT place orders outside `order_time <= now < order_deadline_time` in production.
-  - Use `--allow-order-outside-close-window true` for test runs only.
-- 동시호가(15:20~15:30) 중 시장가 주문은 금지 — `order_deadline_time=15:20:00`이 이를 보장.
-
-## DB-First Reporting Rule
-
-After the run, query `etl/db/watchlist.duckdb` directly:
-
+DB 확인:
 ```powershell
 @'
 import duckdb
-date = "YYYYMMDD"
-con = duckdb.connect("db/watchlist.duckdb", read_only=True)
+from datetime import datetime
+import zoneinfo
+date = datetime.now(zoneinfo.ZoneInfo("Asia/Seoul")).strftime("%Y%m%d")
+con = duckdb.connect(r"C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl\db\watchlist.duckdb", read_only=True)
 rows = con.execute(
     f"SELECT ticker, score, status, order_no, message FROM close_bet_orders WHERE date='{date}' ORDER BY score DESC"
 ).fetchall()
+print(f"총 {len(rows)}건")
+for r in rows: print(r)
 con.close()
-for r in rows:
-    print(r)
-'@ | .\.venv\Scripts\python.exe -
+'@ | C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl\.venv\Scripts\python.exe -
 ```
 
-Report every row from `close_bet_orders` for today — do not summarize from stdout alone.
+로그나 DB 중 하나라도 확인 후 보고. stdout 요약만으로 보고 금지.
 
 ## Discord Report
 
-Label:
-```text
+```
 [종가배팅] {date} 주문 결과
 ```
 
-For each order attempt, display:
-- 종목명 `(ticker)`, score
-- 현재가 (`cur_prc`) at time of order
-- 주문 결과: `status` (submitted / skipped / failed)
-- 주문번호: `order_no` if available
-- 실패 사유: `message` if failed
+각 종목:
+- 종목명 `(ticker)`, score, 현재가
+- 주문 결과: submitted / skipped / failed
+- 주문번호 / 실패 사유
 
-Include totals: 주문 시도 N건, 성공 N건, 스킵 N건, 실패 N건.
-
-On abort (precondition failure or all orders failed), report the exact blocker.
-
-## PowerShell Safety
-
-Do not use Bash heredoc syntax. For multiline Python, use:
-
-```powershell
-@'
-print("ok")
-'@ | .\.venv\Scripts\python.exe -
-```
+합계: 시도 N건, 성공 N건, 스킵 N건, 실패 N건.

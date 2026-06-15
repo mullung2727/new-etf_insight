@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!-- Windows 작업 스케줄러 정의 — 종가배팅 주문 배치
+     파라미터 변경: Arguments 수정 후 아래 명령으로 재등록
+       Register-ScheduledTask -Xml (Get-Content -Path close-bet-order.xml -Raw -Encoding UTF8) -TaskName "close-bet-order" -TaskPath "\OpenClaw\" -Force
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>종가배팅 주문 배치 (평일 15:19, score&gt;=80 시장가 매수)</Description>
+    <URI>\OpenClaw\close-bet-order</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-06-16T15:19:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday />
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NonInteractive -ExecutionPolicy Bypass -Command "$logDir='C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl\logs'; New-Item -Force -ItemType Directory $logDir | Out-Null; $log=Join-Path $logDir ('close-bet-'+(Get-Date -Format 'yyyyMMdd')+'.log'); Set-Location 'C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl'; [Console]::OutputEncoding=[System.Text.Encoding]::UTF8; &amp; '.venv\Scripts\python.exe' 'scripts\run_close_bet.py' '--score-threshold' '80' '--max-order-count' '5' '--qty-per-symbol' '1' '--dry-run' 'false' '--broker-url' 'http://localhost:8001' '--order-time' '15:19:00' '--order-deadline-time' '15:20:00' 2&gt;&amp;1 | Tee-Object -FilePath $log -Encoding UTF8"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
