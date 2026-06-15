@@ -32,6 +32,11 @@ import duckdb
 import requests
 from dotenv import load_dotenv
 
+try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
+    from scripts.notify import send_discord
+except ImportError:
+    from notify import send_discord
+
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
 DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.duckdb"
@@ -227,10 +232,13 @@ def main() -> None:
     broker_url = args.broker_url or os.getenv("BROKER_API_URL", "http://localhost:8001")
     watchlist_db = DEFAULT_WATCHLIST_DB
 
+    dry_tag = " (DRY-RUN)" if dry_run else ""
+
     # precondition
     cnt = check_precondition(watchlist_db, date)
     if cnt == 0:
         print(f"[close_bet] ABORT: {date} llm_scores 없음 — scoring 배치 미실행")
+        send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\nllm_scores 없음 (15:10 scoring 배치 미실행)")
         sys.exit(1)
     print(f"[close_bet] precondition OK: llm_scores={cnt}건")
 
@@ -238,6 +246,7 @@ def main() -> None:
     if not _is_in_order_window(args.order_time, args.order_deadline_time, args.allow_order_outside_close_window):
         now_str = _now_seoul().strftime("%H:%M:%S")
         print(f"[close_bet] ABORT: 주문 시간창 밖 (now={now_str}, window={args.order_time}~{args.order_deadline_time})")
+        send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\n주문 시간창 밖 (now={now_str}, window={args.order_time}~{args.order_deadline_time})")
         sys.exit(1)
 
     candidates = load_order_candidates(
@@ -247,16 +256,20 @@ def main() -> None:
 
     if not candidates:
         print(f"[close_bet] 주문 대상 없음")
+        send_discord(f"[종가베팅] {date} 주문 대상 없음{dry_tag}\nscore>={args.score_threshold} 종목 0건")
         return
 
     submitted = skipped = failed = 0
+    report_lines: list[str] = []
     for cand in candidates:
         if not _is_in_order_window(args.order_time, args.order_deadline_time, args.allow_order_outside_close_window):
             print(f"[close_bet] 마감 시각 초과 — 남은 종목 중단")
+            report_lines.append("⏱ 마감 시각 초과 — 남은 종목 중단")
             break
 
         ticker = cand["ticker"]
         score  = cand["score"]
+        label  = f"{cand.get('name') or ticker}({ticker})"
 
         cur_prc = fetch_price_via_broker(broker_url, ticker)
         if cur_prc is None:
@@ -268,6 +281,7 @@ def main() -> None:
                 "message": "현재가 조회 실패", "raw": "{}",
             })
             skipped += 1
+            report_lines.append(f"⏭ {label} score={score} skip(현재가 조회 실패)")
             continue
 
         result = place_order_via_broker(broker_url, ticker, args.qty_per_symbol, dry_run)
@@ -282,12 +296,20 @@ def main() -> None:
 
         if result["status"] in ("submitted", "dry_run"):
             submitted += 1
+            report_lines.append(f"✅ {label} score={score} {result['status']} #{result['order_no']}")
         else:
             failed += 1
+            report_lines.append(f"❌ {label} score={score} 실패: {result['message']}")
 
         time.sleep(float(os.getenv("ORDER_INTERVAL_SEC", "0.5")))
 
     print(f"[close_bet] 완료: submitted={submitted} skipped={skipped} failed={failed}")
+    summary = (
+        f"[종가베팅] {date} 주문 결과{dry_tag}\n"
+        f"대상 {len(candidates)} | 매수 {submitted} | 스킵 {skipped} | 실패 {failed}\n"
+        + "\n".join(report_lines)
+    )
+    send_discord(summary)
 
 
 if __name__ == "__main__":

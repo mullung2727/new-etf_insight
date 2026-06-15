@@ -31,6 +31,11 @@ import duckdb
 import requests
 from dotenv import load_dotenv
 
+try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
+    from scripts.notify import send_discord
+except ImportError:
+    from notify import send_discord
+
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
 DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.duckdb"
@@ -135,6 +140,7 @@ def main() -> None:
     history = fetch_order_history(broker_url, date)
     if history is None:
         print("[verify] ABORT: broker 체결내역 조회 실패 — DB 변경 없이 종료")
+        send_discord(f"[종가베팅] {date} 체결 대조 ABORT\nbroker 체결내역 조회 실패 — 확인 필요 (대조 대상 {len(orders)}건)")
         sys.exit(1)
 
     # order_no(정규화) → 체결내역 집계 (부분체결 대비 qty 합산, 단가는 첫 유효값)
@@ -150,6 +156,7 @@ def main() -> None:
 
     now = _now_seoul()
     confirmed = unconfirmed = 0
+    report_lines: list[str] = []
     for o in orders:
         key = normalize_order_no(o["order_no"])
         match = by_no.get(key)
@@ -161,15 +168,26 @@ def main() -> None:
             confirmed += 1
             print(f"[verify] {o['ticker']} ord={o['order_no']} → confirmed "
                   f"price={match['cntr_uv']} qty={match['cntr_qty']}")
+            report_lines.append(
+                f"✅ {o['ticker']} #{o['order_no']} 체결 {match['cntr_uv']}원 x{match['cntr_qty']}"
+            )
         else:
             mark_unconfirmed(watchlist_db, date, o["ticker"])
             unconfirmed += 1
             print(f"[verify] WARN {o['ticker']} ord={o['order_no']} → unconfirmed "
                   f"(체결내역 매칭 실패)")
+            report_lines.append(f"⚠️ {o['ticker']} #{o['order_no']} unconfirmed (체결 매칭 실패)")
 
     print(f"[verify] 완료: confirmed={confirmed} unconfirmed={unconfirmed}")
     if unconfirmed:
         print(f"[verify] 미체결/미확인 {unconfirmed}건 — 확인 필요")
+
+    summary = (
+        f"[종가베팅] {date} 체결 대조 결과\n"
+        f"대조 {len(orders)} | 체결확인 {confirmed} | 미확인 {unconfirmed}\n"
+        + "\n".join(report_lines)
+    )
+    send_discord(summary)
 
 
 if __name__ == "__main__":
