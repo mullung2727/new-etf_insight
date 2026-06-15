@@ -25,6 +25,7 @@ TR_DAILY_CHART = "ka10081"  # 주식일봉차트조회요청 → EP_CHART
 TR_BALANCE = "kt00018"      # 계좌평가잔고내역요청 → EP_ACNT
 TR_DEPOSIT = "kt00001"      # 예수금상세현황요청 → EP_ACNT
 TR_SETTLED_BALANCE = "kt00005"  # 체결잔고요청 (예수금D+0/D+1/D+2 + 보유종목) → EP_ACNT
+TR_CNTR_HIST = "kt00007"    # 계좌별주문체결내역상세요청 (당일 체결 대조용) → EP_ACNT
 
 # --- Orders (주문) ---
 TR_ORDER_BUY = "kt10000"    # 주식 매수주문 → EP_ORDR

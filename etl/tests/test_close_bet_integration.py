@@ -8,7 +8,9 @@ broker REST API mock 기반으로 main() 전체 흐름 검증:
   5. dry_run=False → place_order_via_broker가 dry_run=False로 호출됨
   6. max_order_count 제한 → 상위 N개만 주문
   7. 마감 시각 루프 중 초과 → 일부만 처리하고 중단
-  8. 성공 주문 시 kiwoom_trade_history에도 기록
+
+거래 원장(kiwoom_trade_history)은 broker가 기록하므로 이 테스트 범위 밖이다
+(broker/test_orders.py 참고).
 """
 import contextlib
 import os
@@ -20,10 +22,7 @@ from unittest.mock import patch
 
 import duckdb
 
-from scripts.run_close_bet import (
-    create_close_bet_orders_table,
-    create_kiwoom_trade_history_table,
-)
+from scripts.run_close_bet import create_close_bet_orders_table
 
 _DATE = "20260615"
 _DEFAULT_NOW = datetime(2026, 6, 15, 15, 19, 30)
@@ -57,21 +56,12 @@ def _seed(db: Path, scores: list[tuple[str, int]]) -> None:
                  score, "테스트", "요약", "의견", "종토방", "뉴스", "웹", "[]"],
             )
         create_close_bet_orders_table(con)
-        create_kiwoom_trade_history_table(con)
 
 
 def _order_rows(db: Path) -> list[tuple]:
     with duckdb.connect(str(db), read_only=True) as con:
         return con.execute(
             "SELECT ticker, status, order_no FROM close_bet_orders WHERE date=?",
-            [_DATE],
-        ).fetchall()
-
-
-def _trade_rows(db: Path) -> list[tuple]:
-    with duckdb.connect(str(db), read_only=True) as con:
-        return con.execute(
-            "SELECT ticker, status, source FROM kiwoom_trade_history WHERE date=?",
             [_DATE],
         ).fetchall()
 
@@ -287,70 +277,6 @@ class TestDeadlineMidLoop(unittest.TestCase):
         rows = _order_rows(self.db)
         self.assertLess(len(rows), 3)
         self.assertGreater(len(rows), 0)
-
-
-# ── 7. kiwoom_trade_history 동시 기록 ────────────────────────────────────────
-
-def _unique_order_side_effect():
-    """종목마다 고유 order_no를 반환하는 side_effect."""
-    count = 0
-    def _inner(broker_url, ticker, qty, dry_run):
-        nonlocal count
-        count += 1
-        return {"order_no": f"000{count:04d}", "status": "submitted", "message": ""}
-    return _inner
-
-
-class TestTradeHistoryIntegration(unittest.TestCase):
-    def setUp(self):
-        self.db = _fresh_db()
-        _seed(self.db, [("005930", 85), ("000660", 82)])
-
-    def tearDown(self):
-        self.db.unlink(missing_ok=True)
-
-    def test_trade_history_recorded_on_success(self):
-        with patch("scripts.run_close_bet.DEFAULT_WATCHLIST_DB", self.db), \
-             patch("scripts.run_close_bet._now_seoul", return_value=_DEFAULT_NOW), \
-             patch("scripts.run_close_bet.fetch_price_via_broker", return_value=5000), \
-             patch("scripts.run_close_bet.place_order_via_broker", side_effect=_unique_order_side_effect()), \
-             patch("scripts.run_close_bet.load_dotenv"), \
-             patch("time.sleep"), \
-             patch("sys.argv", ["run_close_bet.py", "--date", _DATE, "--dry-run", "false",
-                                "--allow-order-outside-close-window"]):
-            from scripts import run_close_bet
-            run_close_bet.main()
-
-        trade_rows = _trade_rows(self.db)
-        self.assertEqual(len(trade_rows), 2)
-        self.assertTrue(all(r[1] == "submitted" for r in trade_rows))
-        self.assertTrue(all(r[2] == "close_bet" for r in trade_rows))
-
-    def test_trade_history_recorded_on_dry_run(self):
-        # mock_place_order=False → 실제 place_order_via_broker → dry_run (ticker별 고유 order_no)
-        _run_main(
-            ["--date", _DATE, "--dry-run", "true", "--allow-order-outside-close-window"],
-            self.db,
-            mock_place_order=False,
-        )
-        trade_rows = _trade_rows(self.db)
-        self.assertEqual(len(trade_rows), 2)
-        self.assertTrue(all(r[1] == "dry_run" for r in trade_rows))
-
-    def test_both_tables_populated_together(self):
-        with patch("scripts.run_close_bet.DEFAULT_WATCHLIST_DB", self.db), \
-             patch("scripts.run_close_bet._now_seoul", return_value=_DEFAULT_NOW), \
-             patch("scripts.run_close_bet.fetch_price_via_broker", return_value=5000), \
-             patch("scripts.run_close_bet.place_order_via_broker", side_effect=_unique_order_side_effect()), \
-             patch("scripts.run_close_bet.load_dotenv"), \
-             patch("time.sleep"), \
-             patch("sys.argv", ["run_close_bet.py", "--date", _DATE, "--dry-run", "false",
-                                "--allow-order-outside-close-window"]):
-            from scripts import run_close_bet
-            run_close_bet.main()
-
-        self.assertEqual(len(_order_rows(self.db)), 2)
-        self.assertEqual(len(_trade_rows(self.db)), 2)
 
 
 if __name__ == "__main__":

@@ -41,24 +41,6 @@ REQUEST_TIMEOUT = 15
 
 # ── DDL ──────────────────────────────────────────────────────────────────────
 
-def create_kiwoom_trade_history_table(con: duckdb.DuckDBPyConnection) -> None:
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS kiwoom_trade_history (
-            order_no    VARCHAR PRIMARY KEY,
-            date        VARCHAR,
-            ticker      VARCHAR,
-            side        VARCHAR,
-            order_type  VARCHAR,
-            qty         INTEGER,
-            price       INTEGER,
-            status      VARCHAR,
-            source      VARCHAR,
-            raw         TEXT,
-            created_at  TIMESTAMP
-        )
-    """)
-
-
 def create_close_bet_orders_table(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("""
         CREATE TABLE IF NOT EXISTS close_bet_orders (
@@ -129,27 +111,6 @@ def load_order_candidates(
         {"ticker": r[0], "score": r[1], "name": r[2], "close": r[3]}
         for r in rows
     ]
-
-
-def upsert_trade_history(watchlist_db: Path, row: dict) -> None:
-    """kiwoom_trade_history에 거래 기록. order_no PK 중복 시 기존 행 유지."""
-    with duckdb.connect(str(watchlist_db)) as con:
-        create_kiwoom_trade_history_table(con)
-        existing = con.execute(
-            "SELECT COUNT(*) FROM kiwoom_trade_history WHERE order_no=?",
-            [row["order_no"]],
-        ).fetchone()[0]
-        if existing:
-            return
-        con.execute(
-            """INSERT INTO kiwoom_trade_history
-               (order_no, date, ticker, side, order_type, qty, price,
-                status, source, raw, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
-            [row["order_no"], row["date"], row["ticker"], row["side"],
-             row["order_type"], row["qty"], row["price"],
-             row["status"], row["source"], row["raw"]],
-        )
 
 
 def upsert_order_result(watchlist_db: Path, row: dict) -> None:
@@ -223,7 +184,8 @@ def place_order_via_broker(broker_url: str, ticker: str, qty: int, dry_run: bool
     try:
         resp = requests.post(
             f"{broker_url}/orders",
-            json={"symbol": ticker, "side": "buy", "qty": qty, "order_type": "market"},
+            json={"symbol": ticker, "side": "buy", "qty": qty,
+                  "order_type": "market", "source": "close_bet"},
             timeout=REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
@@ -315,14 +277,7 @@ def main() -> None:
             "status": result["status"], "order_no": result["order_no"],
             "message": result["message"], "raw": json.dumps(result),
         })
-        upsert_trade_history(watchlist_db, {
-            "order_no": result["order_no"] or f"FAIL_{ticker}_{_now_seoul().strftime('%Y%m%d%H%M%S')}",
-            "date": date, "ticker": ticker,
-            "side": "buy", "order_type": "market",
-            "qty": args.qty_per_symbol, "price": cur_prc,
-            "status": result["status"], "source": "close_bet",
-            "raw": json.dumps(result),
-        })
+        # 거래 원장(kiwoom_trade_history)은 broker가 기록한다 (POST /orders 시).
         print(f"[close_bet] {ticker} score={score} cur={cur_prc} → {result['status']} ord={result['order_no']}")
 
         if result["status"] in ("submitted", "dry_run"):

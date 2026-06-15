@@ -33,6 +33,10 @@ class OrderRequest(_Base):
     qty: int = Field(gt=0, description="주문 수량 (주)")
     price: int = Field(ge=0, default=0, description="지정가 가격(원). 시장가면 0")
     order_type: OrderType = OrderType.limit
+    source: str = Field(
+        default="manual",
+        description="주문 출처 — 거래 원장 기록용. ETL 배치='close_bet', 수동 주문='manual'",
+    )
 
 
 class Quote(_Base):

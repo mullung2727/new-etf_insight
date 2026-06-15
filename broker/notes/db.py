@@ -47,6 +47,23 @@ CREATE TABLE IF NOT EXISTS note_events (
 
 CREATE INDEX IF NOT EXISTS idx_notes_symbol ON notes(symbol);
 CREATE INDEX IF NOT EXISTS idx_events_note_uid ON note_events(note_uid);
+
+-- 거래 원장: broker를 통과한 모든 주문 기록. notes와 무관한 독립 테이블.
+CREATE TABLE IF NOT EXISTS kiwoom_trade_history (
+    order_no    TEXT PRIMARY KEY,
+    date        TEXT,
+    ticker      TEXT,
+    side        TEXT,
+    order_type  TEXT,
+    qty         INTEGER,
+    price       INTEGER,
+    status      TEXT,
+    source      TEXT,
+    raw         TEXT,
+    created_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_trade_history_date ON kiwoom_trade_history(date);
 """
 
 

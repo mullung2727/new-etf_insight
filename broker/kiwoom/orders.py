@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from . import tr
 from .client import request
 from .config import Config, load_config
@@ -45,6 +47,31 @@ def place_order(req: OrderRequest) -> OrderResult:
         message=str(data.get("return_msg", "")),
         raw=data,
     )
+
+
+def get_order_history(date: str) -> list[dict[str, Any]]:
+    """kt00007 — 당일 매수 체결내역(상세)을 연속조회 병합해 반환한다.
+
+    qry_tp=4(체결내역만), stk_bond_tp=1(주식), sell_tp=2(매수). 반환 리스트는
+    원본 ``acnt_ord_cntr_prps_dtl`` 항목 그대로(정규화는 라우트 책임).
+    """
+    body = {
+        "ord_dt": date,        # YYYYMMDD
+        "qry_tp": "4",         # 체결내역만
+        "stk_bond_tp": "1",    # 주식
+        "sell_tp": "2",        # 매수
+        "stk_cd": "",          # 전체 종목
+        "fr_ord_no": "",       # 전체
+        "dmst_stex_tp": "%",   # 전체 거래소 (Required)
+    }
+    res = request(tr.TR_CNTR_HIST, tr.EP_ACNT, body)
+    rows: list[dict[str, Any]] = list(res.data.get("acnt_ord_cntr_prps_dtl") or [])
+    while res.cont_yn == "Y" and res.next_key:
+        res = request(
+            tr.TR_CNTR_HIST, tr.EP_ACNT, body, cont_yn="Y", next_key=res.next_key
+        )
+        rows.extend(res.data.get("acnt_ord_cntr_prps_dtl") or [])
+    return rows
 
 
 def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
