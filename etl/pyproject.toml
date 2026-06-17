@@ -6,7 +6,6 @@ dependencies = [
     "duckdb>=1.1.0",
     "langgraph>=1.2.0",
     "pandas>=2.0.0",
-    "pykrx>=1.0.45",
     "pypdf>=6.11.0",
     "python-dotenv>=1.2.2",
     "requests>=2.34.1",
