@@ -70,7 +70,7 @@ class StatsSummary(_Base):
 
 
 class LlmScore(_Base):
-    """One row of llm_scores (watchlist.duckdb). Mirrors the 16-column table."""
+    """One row of llm_scores (watchlist.sqlite3). Mirrors the 16-column table."""
 
     date: str
     ticker: str

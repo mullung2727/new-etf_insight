@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Any
 
-import duckdb
 
-
-def rows_to_dicts(cur: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
+def rows_to_dicts(cur: sqlite3.Cursor) -> list[dict[str, Any]]:
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, row)) for row in cur.fetchall()]
 

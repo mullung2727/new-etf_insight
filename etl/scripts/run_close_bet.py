@@ -28,40 +28,43 @@ from zoneinfo import ZoneInfo
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-import duckdb
+import sqlite3
+
 import requests
 from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.notify import send_discord
+    from scripts.wl_sqlite import connect_ro, connect_rw
 except ImportError:
     from notify import send_discord
+    from wl_sqlite import connect_ro, connect_rw
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.duckdb"
+DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
 
 REQUEST_TIMEOUT = 15
 
 
 # ── DDL ──────────────────────────────────────────────────────────────────────
 
-def create_close_bet_orders_table(con: duckdb.DuckDBPyConnection) -> None:
+def create_close_bet_orders_table(con: sqlite3.Connection) -> None:
     con.execute("""
         CREATE TABLE IF NOT EXISTS close_bet_orders (
-            date        VARCHAR,
-            ticker      VARCHAR,
+            date        TEXT,
+            ticker      TEXT,
             score       INTEGER,
             qty         INTEGER,
-            order_type  VARCHAR,
-            status      VARCHAR,
-            order_no    VARCHAR,
+            order_type  TEXT,
+            status      TEXT,
+            order_no    TEXT,
             message     TEXT,
             raw         TEXT,
-            created_at  TIMESTAMP,
+            created_at  TEXT,
             cntr_price  INTEGER,
             cntr_qty    INTEGER,
-            verified_at TIMESTAMP,
+            verified_at TEXT,
             PRIMARY KEY (date, ticker)
         )
     """)
@@ -71,7 +74,7 @@ def create_close_bet_orders_table(con: duckdb.DuckDBPyConnection) -> None:
 
 def check_precondition(watchlist_db: Path, date: str) -> int:
     """오늘 llm_scores 행 수 반환. 0이면 scoring 배치 미실행."""
-    with duckdb.connect(str(watchlist_db), read_only=True) as con:
+    with connect_ro(watchlist_db) as con:
         return con.execute(
             "SELECT COUNT(*) FROM llm_scores WHERE date=?", [date]
         ).fetchone()[0]
@@ -87,10 +90,10 @@ def load_order_candidates(
 
     이미 close_bet_orders에 (date, ticker) 행이 있는 종목은 제외한다.
     """
-    with duckdb.connect(str(watchlist_db), read_only=True) as con:
+    with connect_ro(watchlist_db) as con:
         # close_bet_orders가 없을 수도 있으므로 LEFT JOIN 전에 테이블 존재 확인
         tables = {r[0] for r in con.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_name='close_bet_orders'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='close_bet_orders'"
         ).fetchall()}
         if "close_bet_orders" in tables:
             rows = con.execute("""
@@ -120,7 +123,7 @@ def load_order_candidates(
 
 def upsert_order_result(watchlist_db: Path, row: dict) -> None:
     """close_bet_orders에 주문 결과 삽입. (date, ticker) PK 중복 시 기존 행 유지."""
-    with duckdb.connect(str(watchlist_db)) as con:
+    with connect_rw(watchlist_db) as con:
         create_close_bet_orders_table(con)
         existing = con.execute(
             "SELECT COUNT(*) FROM close_bet_orders WHERE date=? AND ticker=?",

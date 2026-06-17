@@ -10,8 +10,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import duckdb
-
 from scripts.build_intraday_ranking import (
     N_TOP,
     _HOSTS,
@@ -21,6 +19,7 @@ from scripts.build_intraday_ranking import (
     parse_ranking,
     run,
 )
+from scripts.wl_sqlite import connect_ro
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,19 +36,16 @@ class TestHolidayGuardE2E(unittest.TestCase):
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.db = Path(self._tmp.name) / "wl.duckdb"
+        self.db = Path(self._tmp.name) / "wl.sqlite3"
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def _count(self, date: str) -> int:
-        con = duckdb.connect(str(self.db), read_only=True)
-        try:
+        with connect_ro(self.db) as con:
             return con.execute(
                 "SELECT COUNT(*) FROM intraday_ranking WHERE date = ?", [date]
             ).fetchone()[0]
-        finally:
-            con.close()
 
     def test_skip_when_identical_to_prev_snapshot(self):
         """휴장일 재현: 전일 스냅샷과 완전 동일 → skip (0 반환, 미저장)."""

@@ -27,18 +27,19 @@ from zoneinfo import ZoneInfo
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-import duckdb
 import requests
 from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.notify import send_discord
+    from scripts.wl_sqlite import connect_ro, connect_rw
 except ImportError:
     from notify import send_discord
+    from wl_sqlite import connect_ro, connect_rw
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.duckdb"
+DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
 
 REQUEST_TIMEOUT = 15
 _UNVERIFIED = ("submitted", "unconfirmed")
@@ -62,7 +63,7 @@ def normalize_order_no(value: object) -> str:
 
 def load_unverified_orders(watchlist_db: Path, date: str) -> list[dict]:
     """status가 submitted/unconfirmed인 주문(order_no 보유)을 반환."""
-    with duckdb.connect(str(watchlist_db), read_only=True) as con:
+    with connect_ro(watchlist_db) as con:
         rows = con.execute(
             f"""
             SELECT ticker, order_no, status
@@ -80,19 +81,21 @@ def mark_confirmed(
     watchlist_db: Path, date: str, ticker: str,
     cntr_price: int, cntr_qty: int, verified_at: datetime,
 ) -> None:
-    with duckdb.connect(str(watchlist_db)) as con:
+    # SQLite(py3.12+)는 datetime 기본 어댑터가 deprecated → ISO 문자열로 저장.
+    verified_at_iso = verified_at.isoformat(sep=" ", timespec="seconds")
+    with connect_rw(watchlist_db) as con:
         con.execute(
             """
             UPDATE close_bet_orders
             SET status='confirmed', cntr_price=?, cntr_qty=?, verified_at=?
             WHERE date=? AND ticker=?
             """,
-            [cntr_price, cntr_qty, verified_at, date, ticker],
+            [cntr_price, cntr_qty, verified_at_iso, date, ticker],
         )
 
 
 def mark_unconfirmed(watchlist_db: Path, date: str, ticker: str) -> None:
-    with duckdb.connect(str(watchlist_db)) as con:
+    with connect_rw(watchlist_db) as con:
         con.execute(
             "UPDATE close_bet_orders SET status='unconfirmed' WHERE date=? AND ticker=?",
             [date, ticker],

@@ -20,9 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-import duckdb
-
 from scripts.run_close_bet import create_close_bet_orders_table
+from scripts.wl_sqlite import connect_ro, connect_rw
 
 _DATE = "20260615"
 _DEFAULT_NOW = datetime(2026, 6, 15, 15, 19, 30)
@@ -30,14 +29,14 @@ _BROKER = "http://localhost:8001"
 
 
 def _fresh_db() -> Path:
-    fd, path = tempfile.mkstemp(suffix=".duckdb")
+    fd, path = tempfile.mkstemp(suffix=".sqlite3")
     os.close(fd)
     os.unlink(path)
     return Path(path)
 
 
 def _seed(db: Path, scores: list[tuple[str, int]]) -> None:
-    with duckdb.connect(str(db)) as con:
+    with connect_rw(db) as con:
         con.execute("""
             CREATE TABLE IF NOT EXISTS llm_scores (
                 date VARCHAR, ticker VARCHAR, name VARCHAR,
@@ -59,7 +58,7 @@ def _seed(db: Path, scores: list[tuple[str, int]]) -> None:
 
 
 def _order_rows(db: Path) -> list[tuple]:
-    with duckdb.connect(str(db), read_only=True) as con:
+    with connect_ro(db) as con:
         return con.execute(
             "SELECT ticker, status, order_no FROM close_bet_orders WHERE date=?",
             [_DATE],

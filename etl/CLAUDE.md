@@ -15,8 +15,8 @@ etl/
 │   └── {날짜범위}/
 │       ├── records/       # ETF JSON (etf_key.json)
 │       └── pdfs/          # 다운로드 PDF
-├── db/                    # DuckDB (git 제외)
-│   └── etf_insight.duckdb
+├── db/                    # git 제외. etf_insight/watchlist=SQLite, krx_ohlcv=DuckDB
+│   └── etf_insight.sqlite3
 ├── tests/
 └── pyproject.toml
 ```
@@ -30,7 +30,7 @@ DART API
   → dart_pdf.py            투자설명서 PDF 다운로드
   → pdf_analysis_langgraph.py  LLM 분석 (LangGraph)
   → runs/{날짜}/records/{etf_key}.json  저장
-  → build_db.py            runs/ 전체 스캔 → DuckDB upsert
+  → build_db.py            runs/ 전체 스캔 → SQLite upsert
 ```
 
 ## 핵심 식별자
@@ -56,7 +56,7 @@ etf_key = "{corp_code}_{fund_code}"   # 예: 00104500_AL415
 | `scripts/pdf_langgraph/pdf_analysis_langgraph.py` | LangGraph 상태머신. PDF → LLM → JSON |
 | `scripts/pdf_langgraph/prompts/` | LLM 프롬프트 (pdf_summary, correction_review 등) |
 | `scripts/pdf_langgraph/*.json` | LLM 출력 JSON 스키마 |
-| `scripts/build_db.py` | runs/ 전체 스캔 → DuckDB upsert (standalone 실행 가능) |
+| `scripts/build_db.py` | runs/ 전체 스캔 → SQLite upsert (standalone 실행 가능) |
 
 ## ETF JSON 레코드 구조
 
@@ -92,9 +92,9 @@ etf_key = "{corp_code}_{fund_code}"   # 예: 00104500_AL415
 - `revision_count`: 새 `rcept_no`일 때만 증가. 동일 rcept_no 재처리 시 증가 안 함
 - `source`: 항상 최신 공시 기준으로 갱신
 
-## DuckDB 테이블
+## etf_insight 테이블 (SQLite)
 
-`db/etf_insight.duckdb`
+`db/etf_insight.sqlite3`
 
 - `etf_records`: etf_key PK, ETF 메타 + 요약 (1 row per ETF)
 - `etf_holdings`: (etf_key, seq) PK, 구성종목 목록

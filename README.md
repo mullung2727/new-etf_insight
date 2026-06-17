@@ -61,7 +61,7 @@ cd broker-web && npx next build && npx next start   # 포트 3000
 | ------------------------- | ----------------- | ---------------------------- |
 | `KIWOON_MOCK_TR_APP_KEY/SECRET` | 루트 `.env`       | 키움 모의(paper) OAuth       |
 | `KIWOOM_ENV`              | 루트 `.env`       | `paper`(기본) / `real`       |
-| `DUCKDB_PATH`             | `api/.env`        | DuckDB 경로(기본 `../etl/db/etf_insight.duckdb`) |
+| `DUCKDB_PATH`             | `api/.env`        | etf_insight SQLite 경로(기본 `../etl/db/etf_insight.sqlite3`; 변수명 back-compat) |
 | `DART_API_KEY`            | `broker-web/.env.local` | DART 전자공시 키(재무제표) |
 
 ## broker-web 주요 페이지

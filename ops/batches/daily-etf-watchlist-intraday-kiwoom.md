@@ -42,13 +42,13 @@ Kiwoom batch.
 ```
 
 `run_watchlist_research.py` must use saved same-day watchlist rows and upsert
-`etl/db/watchlist.duckdb` `llm_scores`. If today's KRX OHLCV is unavailable, use
+`etl/db/watchlist.sqlite3` `llm_scores`. If today's KRX OHLCV is unavailable, use
 same-day `intraday_ranking` metrics for `today_volume`, `close`, and
 `trading_value`, and prior KRX rows for `avg5_volume` and `ratio`.
 
 ## DB-First Reporting Rule
 
-After both steps finish, query `etl/db/watchlist.duckdb` directly and report from
+After both steps finish, query `etl/db/watchlist.sqlite3` directly and report from
 the saved DB rows, not from stdout alone, memory, or an abbreviated
 interpretation.
 

@@ -13,13 +13,12 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import duckdb
-
 from scripts.run_watchlist_research import (
     _is_past_deadline,
     _research_with_timeout,
     upsert_one_score,
 )
+from scripts.wl_sqlite import connect_ro
 
 _SAMPLE_ROW = {
     "date": "2026-06-15",
@@ -44,16 +43,16 @@ _SAMPLE_ROW = {
 
 class TestUpsertOneScore(unittest.TestCase):
     def setUp(self):
-        fd, path = tempfile.mkstemp(suffix=".duckdb")
+        fd, path = tempfile.mkstemp(suffix=".sqlite3")
         os.close(fd)
-        os.unlink(path)  # DuckDB needs a non-existent path to create fresh DB
+        os.unlink(path)  # 새 DB로 생성되도록 빈 경로 확보
         self.db_path = Path(path)
 
     def tearDown(self):
         self.db_path.unlink(missing_ok=True)
 
     def _row_count(self, date: str, ticker: str) -> int:
-        with duckdb.connect(str(self.db_path), read_only=True) as con:
+        with connect_ro(self.db_path) as con:
             return con.execute(
                 "SELECT COUNT(*) FROM llm_scores WHERE date=? AND ticker=?",
                 [date, ticker],
@@ -67,7 +66,7 @@ class TestUpsertOneScore(unittest.TestCase):
         upsert_one_score(self.db_path, _SAMPLE_ROW)
         updated = {**_SAMPLE_ROW, "score": 90}
         upsert_one_score(self.db_path, updated)
-        with duckdb.connect(str(self.db_path), read_only=True) as con:
+        with connect_ro(self.db_path) as con:
             score = con.execute(
                 "SELECT score FROM llm_scores WHERE date='20260615' AND ticker='005930'"
             ).fetchone()[0]

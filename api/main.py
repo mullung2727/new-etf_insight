@@ -26,7 +26,7 @@ CORS_ORIGINS = [
 
 app = FastAPI(
     title="ETF Insight API",
-    description="DuckDB-backed ETF data gateway (REST + MCP).",
+    description="SQLite/DuckDB-backed ETF data gateway (REST + MCP).",
     version="0.1.0",
 )
 
@@ -46,7 +46,7 @@ app.include_router(watchlist_router.router)
 mcp = FastApiMCP(
     app,
     name="etf-insight",
-    description="ETF Insight data gateway. Tools read from DuckDB and return JSON.",
+    description="ETF Insight data gateway. Tools read from SQLite/DuckDB and return JSON.",
     exclude_operations=["health_check"],
 )
 mcp.mount()

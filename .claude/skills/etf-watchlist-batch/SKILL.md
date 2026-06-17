@@ -1,11 +1,11 @@
 ---
 name: etf-watchlist-batch
-description: Run the KRX watchlist batches — D-1 확정 배치(build_watchlist.py, KRX OpenAPI)와 당일 15:35 배치(build_intraday_ranking.py, 키움 ka10030)로 거래량 신규진입 종목을 watchlist.duckdb에 적재하고, 그 ticker를 읽어 LLM 분석/스코어 입력으로 쓴다. Use whenever you need today's or yesterday's watchlist stocks, to refresh the KRX OHLCV cache, or to feed watchlist종목 into llm_scores.
+description: Run the KRX watchlist batches — D-1 확정 배치(build_watchlist.py, KRX OpenAPI)와 당일 15:35 배치(build_intraday_ranking.py, 키움 ka10030)로 거래량 신규진입 종목을 watchlist.sqlite3에 적재하고, 그 ticker를 읽어 LLM 분석/스코어 입력으로 쓴다. Use whenever you need today's or yesterday's watchlist stocks, to refresh the KRX OHLCV cache, or to feed watchlist종목 into llm_scores.
 ---
 
 # ETF watchlist batch — run & consume
 
-배치가 거래량 급등(신규진입) 종목을 골라 `watchlist.duckdb / watchlist (date, stock_code)`에 적재한다.
+배치가 거래량 급등(신규진입) 종목을 골라 `watchlist.sqlite3 / watchlist (date, stock_code)`에 적재한다.
 **다른 LLM은 이 watchlist 종목을 입력으로 분석하여 `llm_scores` 테이블에 (date, ticker) 키로 써넣는다.**
 즉 watchlist = 분석 대상 종목 목록, llm_scores = 그 분석 결과.
 
@@ -41,7 +41,7 @@ uv run python scripts/build_krx_ohlcv.py --from 20260601 --to 20260608 --force  
 하는 일 (순서):
 1. 대상 거래일 D 결정 (기본 = pykrx 달력 최신 거래일).
 2. `D-100캘린더일 ~ D`(≈68거래일) OHLCV 누락분을 KRX OpenAPI로 자기치유 갭필 → `krx_ohlcv.duckdb`.
-3. 통합 거래량 상위 30 → 과거 60거래일 **신규진입** → 종가>500 → `watchlist.duckdb / watchlist` upsert.
+3. 통합 거래량 상위 30 → 과거 60거래일 **신규진입** → 종가>500 → `watchlist.sqlite3 / watchlist` upsert.
 4. (현행) `REPORTS_DIR/volume_spike_*.notion.json` 스캔 → `llm_scores` upsert.
    ※ 이 외부 스캔은 **다른 선정기준**이라 watchlist와 종목이 안 겹친다. watchlist 기준 분석으로 전환 시 무시/대체.
 
@@ -62,7 +62,7 @@ uv run python scripts/build_intraday_ranking.py --date 20260611  # 저장 날짜
 
 하는 일 (순서):
 1. 키움 ka10030(당일거래량상위, ETF+ETN 제외, KRX+NXT 통합) → 순수 거래량 top30
-   → `watchlist.duckdb / intraday_ranking (date, rank, ticker, name, volume, close)` 스냅샷.
+   → `watchlist.sqlite3 / intraday_ranking (date, rank, ticker, name, volume, close)` 스냅샷.
 2. **휴장일 가드**: 응답 (ticker, volume)이 직전 스냅샷과 완전 동일 → 휴장 판정, 저장·후보 skip.
 3. 직전 60거래일 일별 top30 합집합(krx_ohlcv.duckdb) 대비 신규진입 → 종가>500
    → `watchlist` 테이블에 당일 (date, stock_code) upsert. 후보 0건이면 빈 날짜(정상).
@@ -88,7 +88,7 @@ e2e 테스트: `uv run python -m unittest tests.test_intraday_ranking_e2e tests.
 
 ```bash
 cd etl
-uv run python -c "import duckdb; c=duckdb.connect('db/watchlist.duckdb',read_only=True); print([r[0] for r in c.execute(\"SELECT stock_code FROM watchlist WHERE date='20260608' ORDER BY stock_code\").fetchall()])"
+uv run python -c "import sqlite3; c=sqlite3.connect('db/watchlist.sqlite3'); print([r[0] for r in c.execute(\"SELECT stock_code FROM watchlist WHERE date='20260608' ORDER BY stock_code\").fetchall()])"
 ```
 
 날짜 목록 확인: `SELECT date, COUNT(*) FROM watchlist GROUP BY date ORDER BY date`.
@@ -111,6 +111,6 @@ evidence_board, evidence_news, evidence_web, sources
 - `.env`(repo 루트): `KRX_API_KEY`(필수), `REPORTS_DIR`, `KRX_DB_PATH`, `WATCHLIST_DB_PATH`.
 - **Windows**: 스크립트가 `sys.stdout.reconfigure(utf-8)`로 cp949 print 크래시 방지. 새 print는 ascii 권장.
   grep으로 한글 stdout 보면 "Binary file matches"로 삼켜짐 — 검증은 ascii 컬럼명 사용.
-- DuckDB 단일 writer: 배치 실행 중 다른 프로세스가 같은 .duckdb write-connect 불가. 읽기는 `read_only=True`.
+- watchlist.sqlite3 = SQLite WAL: 단일 writer + 다중 reader 동시성. reader는 `PRAGMA query_only=ON`. (krx_ohlcv.duckdb는 DuckDB라 배치 중 write-connect 단일.)
 - watchlist에 우선주/신주인수권/ETN(예 `0117P0`) 포함될 수 있음(보통주 필터 미적용, 종가>500 컷만).
 - 데이터 소스 상세: pykrx=거래일 달력만, OHLCV 본체=KRX OpenAPI(`data-dbg.krx.co.kr`). `build_krx_ohlcv.py` 참조.

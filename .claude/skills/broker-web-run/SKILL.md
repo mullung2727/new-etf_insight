@@ -11,7 +11,7 @@ broker-web(Next.js) 동작에 서버 3개 필요. **순서 중요**: api → bro
 
 | # | 이름 | 디렉토리 | 포트 | 역할 |
 |---|------|----------|------|------|
-| 1 | **api** | `api/` | **8000** | ETF 데이터 FastAPI (DuckDB read-only) |
+| 1 | **api** | `api/` | **8000** | ETF 데이터 FastAPI (etf/watchlist=SQLite, krx=DuckDB, read-only) |
 | 2 | **broker** | `broker/` | **8001** | 키움증권 게이트웨이 FastAPI (WS Manager 포함) |
 | 3 | **broker-web** | `broker-web/` | **3000** | Next.js UI |
 
@@ -41,9 +41,9 @@ npm run dev
 ## 전제 조건
 
 - `api/.env` 존재 (`api/.env.example` 복사 후 작성)
-  - `DUCKDB_PATH=../etl/db/etf_insight.duckdb` (ETL 배치가 먼저 생성해야 함)
-  - `WATCHLIST_DB_PATH=../etl/db/watchlist.duckdb`
-  - `KRX_DB_PATH=../etl/db/krx_ohlcv.duckdb`
+  - `DUCKDB_PATH=../etl/db/etf_insight.sqlite3` (SQLite. 변수명은 back-compat용 유지. ETL 배치가 먼저 생성)
+  - `WATCHLIST_DB_PATH=../etl/db/watchlist.sqlite3` (SQLite)
+  - `KRX_DB_PATH=../etl/db/krx_ohlcv.duckdb` (OHLCV는 DuckDB 유지)
 - `broker/.env` 존재 (`broker/.env.example` 복사 후 작성)
   - `KIWOOM_APPKEY`, `KIWOOM_SECRETKEY` 필수
   - `KIWOOM_ENV=paper` (기본, 모의투자)

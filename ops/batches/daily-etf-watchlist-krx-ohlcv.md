@@ -18,7 +18,7 @@ previous trading day's full exchange OHLCV one day late.
 This job must only refresh and verify `etl/db/krx_ohlcv.duckdb` for the previous
 date.
 
-Do not select stock picks, do not build or update `etl/db/watchlist.duckdb`, do
+Do not select stock picks, do not build or update `etl/db/watchlist.sqlite3`, do
 not run `run_watchlist_research.py`, do not collect board/news/web evidence, do
 not create LLM scores, and do not write watchlist research reports. Stock
 picking and LLM scoring belong to the separate same-day 15:35 Kiwoom intraday

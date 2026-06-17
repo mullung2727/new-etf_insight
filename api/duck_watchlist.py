@@ -1,16 +1,18 @@
-"""Per-request DuckDB access for the watchlist batch outputs.
+"""Per-request access for the watchlist batch outputs.
 
-Unlike ``duck.py`` (a long-lived shared read-only connection to
-``etf_insight.duckdb``), the watchlist/OHLCV databases are written by the
-``build_watchlist.py`` batch. DuckDB allows either a single read-write process
-or many read-only processes — a persistent read-only handle here would block
-the batch's read-write connect. So each request opens its own read-only
-connection and closes it immediately, keeping the lock window tiny.
+watchlist/llm_scores 는 SQLite(`watchlist.sqlite3`, build_watchlist 등 배치가 WAL 로 씀).
+ohlcv(krx)는 DuckDB(`krx_ohlcv.duckdb`) 유지 — OLAP 집계 우위 때문.
+
+watchlist reader 는 `mode=ro` URI 대신 `PRAGMA query_only=ON` 을 쓴다(WAL DB 를
+read-only 프로세스가 못 여는 문제 회피, duck.py 와 동일). krx reader 는 DuckDB 의
+다중 read-only 연결을 매 요청마다 열고 닫는다(배치의 read-write connect 을 막지
+않도록 짧은 락 윈도우 유지).
 """
 
 from __future__ import annotations
 
 import os
+import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import ContextManager, Iterator
@@ -19,7 +21,7 @@ import duckdb
 
 # Defaults assume api/ and etl/ are siblings under the repo root (same as duck.py).
 WATCHLIST_DB_PATH = Path(
-    os.getenv("WATCHLIST_DB_PATH", "../etl/db/watchlist.duckdb")
+    os.getenv("WATCHLIST_DB_PATH", "../etl/db/watchlist.sqlite3")
 ).resolve()
 KRX_DB_PATH = Path(
     os.getenv("KRX_DB_PATH", "../etl/db/krx_ohlcv.duckdb")
@@ -27,7 +29,19 @@ KRX_DB_PATH = Path(
 
 
 @contextmanager
-def _read_cursor(db_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
+def watchlist_cursor() -> Iterator[sqlite3.Connection]:
+    if not WATCHLIST_DB_PATH.exists():
+        raise FileNotFoundError(f"SQLite file not found: {WATCHLIST_DB_PATH}")
+    con = sqlite3.connect(str(WATCHLIST_DB_PATH))
+    con.execute("PRAGMA query_only=ON")
+    try:
+        yield con
+    finally:
+        con.close()
+
+
+@contextmanager
+def _krx_cursor(db_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
     if not db_path.exists():
         raise FileNotFoundError(f"DuckDB file not found: {db_path}")
     con = duckdb.connect(database=str(db_path), read_only=True)
@@ -37,9 +51,5 @@ def _read_cursor(db_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
         con.close()
 
 
-def watchlist_cursor() -> ContextManager[duckdb.DuckDBPyConnection]:
-    return _read_cursor(WATCHLIST_DB_PATH)
-
-
 def krx_cursor() -> ContextManager[duckdb.DuckDBPyConnection]:
-    return _read_cursor(KRX_DB_PATH)
+    return _krx_cursor(KRX_DB_PATH)

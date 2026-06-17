@@ -14,24 +14,23 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-import duckdb
-
 from scripts.run_close_bet import create_close_bet_orders_table
 from scripts.run_verify import normalize_order_no
+from scripts.wl_sqlite import connect_ro, connect_rw
 
 _DATE = "20260615"
 _NOW = datetime(2026, 6, 15, 16, 0, 0)
 
 
 def _fresh_db() -> Path:
-    fd, path = tempfile.mkstemp(suffix=".duckdb")
+    fd, path = tempfile.mkstemp(suffix=".sqlite3")
     os.close(fd)
     os.unlink(path)
     return Path(path)
 
 
 def _seed_order(db: Path, ticker: str, status: str, order_no: str) -> None:
-    with duckdb.connect(str(db)) as con:
+    with connect_rw(db) as con:
         create_close_bet_orders_table(con)
         con.execute(
             """INSERT INTO close_bet_orders
@@ -42,7 +41,7 @@ def _seed_order(db: Path, ticker: str, status: str, order_no: str) -> None:
 
 
 def _row(db: Path, ticker: str) -> dict:
-    with duckdb.connect(str(db), read_only=True) as con:
+    with connect_ro(db) as con:
         r = con.execute(
             "SELECT status, cntr_price, cntr_qty, verified_at FROM close_bet_orders "
             "WHERE date=? AND ticker=?",

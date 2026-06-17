@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-import duckdb
+import sqlite3
 
 from scripts.run_close_bet import (
     _is_in_order_window,
@@ -23,19 +23,20 @@ from scripts.run_close_bet import (
     load_order_candidates,
     upsert_order_result,
 )
+from scripts.wl_sqlite import connect_ro, connect_rw
 
 # ── 공통 픽스처 ───────────────────────────────────────────────────────────────
 
 _DATE = "20260615"
 
 def _fresh_db() -> Path:
-    fd, path = tempfile.mkstemp(suffix=".duckdb")
+    fd, path = tempfile.mkstemp(suffix=".sqlite3")
     os.close(fd)
     os.unlink(path)
     return Path(path)
 
 
-def _seed_llm_scores(con: duckdb.DuckDBPyConnection, rows: list[dict]) -> None:
+def _seed_llm_scores(con: sqlite3.Connection, rows: list[dict]) -> None:
     con.execute("""
         CREATE TABLE IF NOT EXISTS llm_scores (
             date VARCHAR, ticker VARCHAR, name VARCHAR,
@@ -57,7 +58,7 @@ def _seed_llm_scores(con: duckdb.DuckDBPyConnection, rows: list[dict]) -> None:
         )
 
 
-def _seed_close_bet_orders(con: duckdb.DuckDBPyConnection, rows: list[dict]) -> None:
+def _seed_close_bet_orders(con: sqlite3.Connection, rows: list[dict]) -> None:
     create_close_bet_orders_table(con)
     for r in rows:
         con.execute(
@@ -79,26 +80,26 @@ class TestCreateTable(unittest.TestCase):
         self.db.unlink(missing_ok=True)
 
     def test_creates_table(self):
-        with duckdb.connect(str(self.db)) as con:
+        with connect_rw(self.db) as con:
             create_close_bet_orders_table(con)
-            cols = {r[0] for r in con.execute(
-                "SELECT column_name FROM information_schema.columns WHERE table_name='close_bet_orders'"
+            cols = {r[1] for r in con.execute(
+                "PRAGMA table_info('close_bet_orders')"
             ).fetchall()}
         self.assertIn("order_no", cols)
         self.assertIn("status", cols)
 
     def test_has_verify_columns(self):
-        with duckdb.connect(str(self.db)) as con:
+        with connect_rw(self.db) as con:
             create_close_bet_orders_table(con)
-            cols = {r[0] for r in con.execute(
-                "SELECT column_name FROM information_schema.columns WHERE table_name='close_bet_orders'"
+            cols = {r[1] for r in con.execute(
+                "PRAGMA table_info('close_bet_orders')"
             ).fetchall()}
         self.assertIn("cntr_price", cols)
         self.assertIn("cntr_qty", cols)
         self.assertIn("verified_at", cols)
 
     def test_idempotent(self):
-        with duckdb.connect(str(self.db)) as con:
+        with connect_rw(self.db) as con:
             create_close_bet_orders_table(con)
             create_close_bet_orders_table(con)  # 두 번 호출해도 에러 없음
 
@@ -113,12 +114,12 @@ class TestCheckPrecondition(unittest.TestCase):
         self.db.unlink(missing_ok=True)
 
     def test_returns_zero_when_no_scores(self):
-        with duckdb.connect(str(self.db)) as con:
+        with connect_rw(self.db) as con:
             _seed_llm_scores(con, [])
         self.assertEqual(check_precondition(self.db, _DATE), 0)
 
     def test_returns_count_when_scores_exist(self):
-        with duckdb.connect(str(self.db)) as con:
+        with connect_rw(self.db) as con:
             _seed_llm_scores(con, [
                 {"date": _DATE, "ticker": "005930", "score": 85},
                 {"date": _DATE, "ticker": "000660", "score": 72},
@@ -126,7 +127,7 @@ class TestCheckPrecondition(unittest.TestCase):
         self.assertEqual(check_precondition(self.db, _DATE), 2)
 
     def test_counts_only_target_date(self):
-        with duckdb.connect(str(self.db)) as con:
+        with connect_rw(self.db) as con:
             _seed_llm_scores(con, [
                 {"date": _DATE, "ticker": "005930", "score": 85},
                 {"date": "20260614", "ticker": "000660", "score": 90},
@@ -144,7 +145,7 @@ class TestLoadOrderCandidates(unittest.TestCase):
         self.db.unlink(missing_ok=True)
 
     def _seed(self, scores: list[dict], already_ordered: list[str] | None = None):
-        with duckdb.connect(str(self.db)) as con:
+        with connect_rw(self.db) as con:
             _seed_llm_scores(con, scores)
             create_close_bet_orders_table(con)
             if already_ordered:
@@ -203,18 +204,18 @@ class TestLoadOrderCandidates(unittest.TestCase):
 class TestUpsertOrderResult(unittest.TestCase):
     def setUp(self):
         self.db = _fresh_db()
-        with duckdb.connect(str(self.db)) as con:
+        with connect_rw(self.db) as con:
             create_close_bet_orders_table(con)
 
     def tearDown(self):
         self.db.unlink(missing_ok=True)
 
     def _count(self) -> int:
-        with duckdb.connect(str(self.db), read_only=True) as con:
+        with connect_ro(self.db) as con:
             return con.execute("SELECT COUNT(*) FROM close_bet_orders").fetchone()[0]
 
     def _fetch(self, ticker: str) -> dict | None:
-        with duckdb.connect(str(self.db), read_only=True) as con:
+        with connect_ro(self.db) as con:
             row = con.execute(
                 "SELECT status, order_no FROM close_bet_orders WHERE date=? AND ticker=?",
                 [_DATE, ticker],

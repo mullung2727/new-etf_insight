@@ -2,14 +2,14 @@
 
 ## Cron
 
-- Schedule: `50 19 * * *`
+- Schedule: `0 7 * * *`
 - Timezone: `Asia/Seoul`
 - OpenClaw session target: `isolated`
 - Delivery: Discord announce
 
 ## Purpose
 
-Run the `new_etf_insight` ETF daily batch and sync records to DuckDB.
+Run the previous-day `new_etf_insight` ETF daily batch and sync records to DuckDB.
 
 ## Required References
 
@@ -22,18 +22,18 @@ Run the `new_etf_insight` ETF daily batch and sync records to DuckDB.
 - Use `.\.venv\Scripts\python.exe`; do not assume `uv` is on PATH.
 - Set `PYTHONPATH=src` before running Python (`$env:PYTHONPATH = "src"` in PowerShell).
 - Load `.env` from `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\.env` without printing secrets.
-- Determine today's Asia/Seoul date as `YYYYMMDD`.
-- Run `new_etf_insight.daily_pipeline.run_daily_pipeline` for that date with:
+- Determine yesterday's Asia/Seoul date as `YYYYMMDD`.
+- Run `new_etf_insight.daily_pipeline.run_daily_pipeline` for that previous-day date with:
   - records path: `runs/YYYYMMDD/records`
   - PDFs path: `runs/YYYYMMDD/pdfs`
-- The pipeline must sync records to DuckDB at `etl/db/etf_insight.duckdb`.
+- The pipeline must sync records to SQLite at `etl/db/etf_insight.sqlite3`.
 
 ## Verification
 
 After the pipeline:
 
-- Verify `etl/db/etf_insight.duckdb` exists.
-- If DB row verification is needed, use the DuckDB verification block in the
+- Verify `etl/db/etf_insight.sqlite3` exists.
+- If DB row verification is needed, use the verification block in the
   skill exactly, replacing `YYYYMMDD`.
 - Report a concise result summary to Discord.
 

@@ -12,30 +12,26 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-import duckdb
-
 from scripts.build_intraday_ranking import N_TOP, run
+from scripts.wl_sqlite import connect_ro
 
 
 class TestIntradayRankingE2E(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.db_path = Path(self._tmp.name) / "watchlist_test.duckdb"
+        self.db_path = Path(self._tmp.name) / "watchlist_test.sqlite3"
         self.date = datetime.now().strftime("%Y%m%d")
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def _rows(self):
-        con = duckdb.connect(str(self.db_path), read_only=True)
-        try:
+        with connect_ro(self.db_path) as con:
             return con.execute(
                 "SELECT date, rank, ticker, name, volume, close "
                 "FROM intraday_ranking WHERE date = ? ORDER BY rank",
                 [self.date],
             ).fetchall()
-        finally:
-            con.close()
 
     def test_e2e_fetch_upsert_and_idempotent(self):
         # 1차 실행
@@ -65,15 +61,12 @@ class TestIntradayRankingE2E(unittest.TestCase):
         self.assertEqual(n2, N_TOP)
         self.assertEqual(len(rows2), N_TOP, "재실행 후 행 수 변동(중복) 발생")
 
-        con = duckdb.connect(str(self.db_path), read_only=True)
-        try:
+        with connect_ro(self.db_path) as con:
             dup = con.execute(
                 "SELECT ticker, COUNT(*) FROM intraday_ranking "
                 "WHERE date = ? GROUP BY ticker HAVING COUNT(*) > 1",
                 [self.date],
             ).fetchall()
-        finally:
-            con.close()
         self.assertEqual(dup, [], f"중복 ticker: {dup}")
 
 

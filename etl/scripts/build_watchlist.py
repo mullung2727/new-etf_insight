@@ -1,4 +1,4 @@
-"""Daily watchlist batch: 급등(거래량) 필터 + LLM 스코어 → watchlist.duckdb.
+"""Daily watchlist batch: 급등(거래량) 필터 + LLM 스코어 → watchlist.sqlite3.
 
 흐름(krx_hight_volumns.py 로직 이식):
   1. 대상 거래일 D 결정 (기본: 최신 거래일).
@@ -26,15 +26,22 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+import sqlite3
+
 import duckdb
 
 # scripts/ 가 sys.path[0] 이므로 동일 디렉토리 STEP1 모듈을 직접 import.
 from build_krx_ohlcv import ensure_ohlcv, get_trading_calendar, load_api_key
 
+try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
+    from scripts.wl_sqlite import connect_rw
+except ImportError:
+    from wl_sqlite import connect_rw
+
 ROOT = Path(__file__).resolve().parents[2]                       # new-etf_insight/
 ENV_PATH = ROOT / ".env"
 DEFAULT_KRX_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.duckdb"
+DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
 DEFAULT_REPORTS_DIR = Path(r"C:\Users\mullu\.openclaw\workspace\reports")
 
 LOOKBACK = 60                 # 신규진입 판정 lookback (거래일)
@@ -44,24 +51,24 @@ GAPFILL_CAL_DAYS = 100        # D 기준 갭필 캘린더 범위 (≈68 거래�
 
 _CREATE_WATCHLIST = """
 CREATE TABLE IF NOT EXISTS watchlist (
-    date       VARCHAR,
-    stock_code VARCHAR,
+    date       TEXT,
+    stock_code TEXT,
     PRIMARY KEY (date, stock_code)
 )
 """
 
 _CREATE_LLM_SCORES = """
 CREATE TABLE IF NOT EXISTS llm_scores (
-    date           VARCHAR,
-    ticker         VARCHAR,
-    name           VARCHAR,
-    ratio          DOUBLE,
-    today_volume   BIGINT,
-    avg5_volume    BIGINT,
-    trading_value  BIGINT,
+    date           TEXT,
+    ticker         TEXT,
+    name           TEXT,
+    ratio          REAL,
+    today_volume   INTEGER,
+    avg5_volume    INTEGER,
+    trading_value  INTEGER,
     close          INTEGER,
     score          INTEGER,
-    category       VARCHAR,
+    category       TEXT,
     reason_summary TEXT,
     final_opinion  TEXT,
     evidence_board TEXT,
@@ -132,7 +139,7 @@ def compute_watchlist(con: duckdb.DuckDBPyConnection, from_date: str, to_date: s
     return result
 
 
-def upsert_watchlist(con: duckdb.DuckDBPyConnection, watchlist: dict[str, list[str]]) -> int:
+def upsert_watchlist(con: sqlite3.Connection, watchlist: dict[str, list[str]]) -> int:
     con.execute(_CREATE_WATCHLIST)
     rows = [(d, code) for d, codes in watchlist.items() for code in codes]
     if rows:
@@ -190,7 +197,7 @@ def load_llm_scores(reports_dir: Path) -> list[tuple]:
     return out
 
 
-def upsert_llm_scores(con: duckdb.DuckDBPyConnection, rows: list[tuple]) -> int:
+def upsert_llm_scores(con: sqlite3.Connection, rows: list[tuple]) -> int:
     con.execute(_CREATE_LLM_SCORES)
     if rows:
         placeholders = ",".join(["?"] * 16)
@@ -245,14 +252,11 @@ def main() -> None:
     finally:
         krx_con.close()
 
-    # 3) watchlist + llm_scores upsert (watchlist.duckdb write)
+    # 3) watchlist + llm_scores upsert (watchlist.sqlite3 write)
     score_rows = load_llm_scores(reports_dir)
-    wl_con = duckdb.connect(str(wl_db))
-    try:
+    with connect_rw(wl_db) as wl_con:
         n_wl = upsert_watchlist(wl_con, watchlist)
         n_sc = upsert_llm_scores(wl_con, score_rows)
-    finally:
-        wl_con.close()
 
     dates = sorted(watchlist)
     print(

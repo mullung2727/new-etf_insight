@@ -1,62 +1,63 @@
-"""Sync all ETF records from runs/ into DuckDB.
+"""Sync all ETF records from runs/ into SQLite (etf_insight.sqlite3).
 
 Usage (standalone):
-    uv run python scripts/build_db.py [--runs-dir runs] [--db-path db/etf_insight.duckdb]
+    uv run python scripts/build_db.py [--runs-dir runs] [--db-path db/etf_insight.sqlite3]
 """
 from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 from pathlib import Path
-
-import duckdb
 
 
 DEFAULT_RUNS_DIR = Path(__file__).parent.parent / "runs"
-DEFAULT_DB_PATH = Path(__file__).parent.parent / "db" / "etf_insight.duckdb"
+DEFAULT_DB_PATH = Path(__file__).parent.parent / "db" / "etf_insight.sqlite3"
 
+# SQLite 타입 매핑: VARCHAR→TEXT, JSON→TEXT(직렬화 문자열), DOUBLE→REAL,
+# BOOLEAN→INTEGER(0/1), TIMESTAMP→TEXT(CURRENT_TIMESTAMP ISO 문자열).
 _CREATE_ETF_RECORDS = """
 CREATE TABLE IF NOT EXISTS etf_records (
-    etf_key             VARCHAR PRIMARY KEY,
-    route               VARCHAR,
-    is_pre_listing_etf  BOOLEAN,
-    fund_name           VARCHAR,
-    asset_manager       VARCHAR,
-    index_name          VARCHAR,
-    index_provider      VARCHAR,
-    index_description   VARCHAR,
-    primary_country     VARCHAR,
-    theme_status        VARCHAR,
-    theme_bucket        VARCHAR,
-    structure_tags      JSON,
-    classification_confidence DOUBLE,
-    classification_evidence VARCHAR,
-    holdings_available_in_pdf BOOLEAN,
-    holdings_summary    VARCHAR,
-    keywords            JSON,
-    trend_summary       VARCHAR,
-    missing_info        JSON,
-    rcept_no            VARCHAR,
-    rcept_dt            VARCHAR,
-    corp_code           VARCHAR,
-    corp_name           VARCHAR,
-    report_nm           VARCHAR,
-    fund_code           VARCHAR,
-    pdf_path            VARCHAR,
-    first_rcept_dt      VARCHAR,
+    etf_key             TEXT PRIMARY KEY,
+    route               TEXT,
+    is_pre_listing_etf  INTEGER,
+    fund_name           TEXT,
+    asset_manager       TEXT,
+    index_name          TEXT,
+    index_provider      TEXT,
+    index_description   TEXT,
+    primary_country     TEXT,
+    theme_status        TEXT,
+    theme_bucket        TEXT,
+    structure_tags      TEXT,
+    classification_confidence REAL,
+    classification_evidence TEXT,
+    holdings_available_in_pdf INTEGER,
+    holdings_summary    TEXT,
+    keywords            TEXT,
+    trend_summary       TEXT,
+    missing_info        TEXT,
+    rcept_no            TEXT,
+    rcept_dt            TEXT,
+    corp_code           TEXT,
+    corp_name           TEXT,
+    report_nm           TEXT,
+    fund_code           TEXT,
+    pdf_path            TEXT,
+    first_rcept_dt      TEXT,
     revision_count      INTEGER,
-    db_updated_at       TIMESTAMP
+    db_updated_at       TEXT
 )
 """
 
 _CREATE_ETF_HOLDINGS = """
 CREATE TABLE IF NOT EXISTS etf_holdings (
-    etf_key  VARCHAR,
+    etf_key  TEXT,
     seq      INTEGER,
-    name     VARCHAR,
-    ticker   VARCHAR,
-    exchange VARCHAR,
-    weight   VARCHAR,
+    name     TEXT,
+    ticker   TEXT,
+    exchange TEXT,
+    weight   TEXT,
     PRIMARY KEY (etf_key, seq)
 )
 """
@@ -78,26 +79,27 @@ def _load_records(runs_dir: Path) -> dict[str, dict]:
     return best
 
 
-def _ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
+def _ensure_schema(con: sqlite3.Connection) -> None:
     con.execute(_CREATE_ETF_RECORDS)
     con.execute(_CREATE_ETF_HOLDINGS)
+    # PRAGMA table_info: row[1] = 컬럼명 (DuckDB/SQLite 동일).
     existing_columns = {
         row[1]
         for row in con.execute("PRAGMA table_info('etf_records')").fetchall()
     }
     migrations = {
-        "theme_status": "ALTER TABLE etf_records ADD COLUMN theme_status VARCHAR",
-        "theme_bucket": "ALTER TABLE etf_records ADD COLUMN theme_bucket VARCHAR",
-        "structure_tags": "ALTER TABLE etf_records ADD COLUMN structure_tags JSON",
-        "classification_confidence": "ALTER TABLE etf_records ADD COLUMN classification_confidence DOUBLE",
-        "classification_evidence": "ALTER TABLE etf_records ADD COLUMN classification_evidence VARCHAR",
+        "theme_status": "ALTER TABLE etf_records ADD COLUMN theme_status TEXT",
+        "theme_bucket": "ALTER TABLE etf_records ADD COLUMN theme_bucket TEXT",
+        "structure_tags": "ALTER TABLE etf_records ADD COLUMN structure_tags TEXT",
+        "classification_confidence": "ALTER TABLE etf_records ADD COLUMN classification_confidence REAL",
+        "classification_evidence": "ALTER TABLE etf_records ADD COLUMN classification_evidence TEXT",
     }
     for column, statement in migrations.items():
         if column not in existing_columns:
             con.execute(statement)
 
 
-def _upsert_record(con: duckdb.DuckDBPyConnection, etf_key: str, record: dict) -> None:
+def _upsert_record(con: sqlite3.Connection, etf_key: str, record: dict) -> None:
     summary = record.get("summary", {})
     source = record.get("source", {})
     index = summary.get("index", {})
@@ -193,11 +195,13 @@ def sync_to_db(runs_dir: Path, db_path: Path = DEFAULT_DB_PATH) -> int:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     records = _load_records(runs_dir)
 
-    con = duckdb.connect(str(db_path))
+    con = sqlite3.connect(str(db_path))
     try:
+        con.execute("PRAGMA journal_mode=WAL")  # reader-writer 동시성 (reader는 query_only)
         _ensure_schema(con)
         for etf_key, record in records.items():
             _upsert_record(con, etf_key, record)
+        con.commit()  # SQLite는 명시 커밋 필요 (DuckDB와 달리 자동 커밋 아님)
     finally:
         con.close()
 

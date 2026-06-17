@@ -31,6 +31,7 @@ from scripts.build_intraday_ranking import (
     run_candidates,
 )
 from scripts.build_watchlist import compute_watchlist
+from scripts.wl_sqlite import connect_ro, connect_rw
 
 ETL_DIR = Path(__file__).resolve().parents[1]
 KRX_DB = ETL_DIR / "db" / "krx_ohlcv.duckdb"
@@ -54,7 +55,7 @@ class TestEquivalenceWithBuildWatchlist(unittest.TestCase):
         if len(self.dates) < LOOKBACK + 1:
             self.skipTest(f"거래일 {len(self.dates)} < {LOOKBACK + 1}")
         self._tmp = tempfile.TemporaryDirectory()
-        self.wl_db = Path(self._tmp.name) / "wl.duckdb"
+        self.wl_db = Path(self._tmp.name) / "wl.sqlite3"
 
     def tearDown(self):
         if hasattr(self, "_tmp"):
@@ -72,19 +73,16 @@ class TestEquivalenceWithBuildWatchlist(unittest.TestCase):
             ).fetchall()
         finally:
             krx.close()
-        con = duckdb.connect(str(self.wl_db))
-        try:
+        with connect_rw(self.wl_db) as con:
             con.execute(
                 "CREATE TABLE IF NOT EXISTS intraday_ranking ("
-                "date VARCHAR, rank INTEGER, ticker VARCHAR, name VARCHAR, "
-                "volume BIGINT, close INTEGER, PRIMARY KEY (date, ticker))"
+                "date TEXT, rank INTEGER, ticker TEXT, name TEXT, "
+                "volume INTEGER, close INTEGER, PRIMARY KEY (date, ticker))"
             )
             con.executemany(
                 "INSERT INTO intraday_ranking VALUES (?, ?, ?, ?, ?, ?)",
                 [(date, i + 1, t, "", v, c) for i, (t, v, c) in enumerate(rows)],
             )
-        finally:
-            con.close()
 
     def test_same_candidates_as_original(self):
         d = self.dates[-1]
@@ -111,7 +109,7 @@ class TestLiveCandidates(unittest.TestCase):
         if not KRX_DB.exists():
             self.skipTest("krx_ohlcv.duckdb 없음")
         self._tmp = tempfile.TemporaryDirectory()
-        self.wl_db = Path(self._tmp.name) / "wl.duckdb"
+        self.wl_db = Path(self._tmp.name) / "wl.sqlite3"
         self.date = datetime.now().strftime("%Y%m%d")
 
     def tearDown(self):
@@ -123,8 +121,7 @@ class TestLiveCandidates(unittest.TestCase):
 
         candidates = run_candidates(self.wl_db, KRX_DB, self.date)
 
-        con = duckdb.connect(str(self.wl_db), read_only=True)
-        try:
+        with connect_ro(self.wl_db) as con:
             snapshot = {
                 r[0]: r[1]
                 for r in con.execute(
@@ -137,8 +134,6 @@ class TestLiveCandidates(unittest.TestCase):
                     "SELECT stock_code FROM watchlist WHERE date = ? ORDER BY stock_code", [self.date]
                 ).fetchall()
             ]
-        finally:
-            con.close()
 
         krx = duckdb.connect(str(KRX_DB), read_only=True)
         try:
@@ -155,13 +150,10 @@ class TestLiveCandidates(unittest.TestCase):
         # 멱등
         candidates2 = run_candidates(self.wl_db, KRX_DB, self.date)
         self.assertEqual(sorted(candidates2), wl_rows)
-        con = duckdb.connect(str(self.wl_db), read_only=True)
-        try:
+        with connect_ro(self.wl_db) as con:
             cnt = con.execute(
                 "SELECT COUNT(*) FROM watchlist WHERE date = ?", [self.date]
             ).fetchone()[0]
-        finally:
-            con.close()
         self.assertEqual(cnt, len(wl_rows), "재실행 후 행 수 변동")
 
 

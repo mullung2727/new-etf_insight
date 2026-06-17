@@ -37,8 +37,8 @@ def list_etfs(
             else "NULL AS theme_status, NULL AS theme_bucket, '[]' AS structure_tags, NULL AS classification_confidence,"
         )
         theme_where = (
-            "AND ($theme_status IS NULL OR theme_status = $theme_status) "
-            "AND ($theme_bucket IS NULL OR theme_bucket = $theme_bucket)"
+            "AND (:theme_status IS NULL OR theme_status = :theme_status) "
+            "AND (:theme_bucket IS NULL OR theme_bucket = :theme_bucket)"
             if has_theme
             else ""
         )
@@ -57,11 +57,11 @@ def list_etfs(
                    primary_country, {theme_select} first_rcept_dt, is_pre_listing_etf, revision_count,
                    EXISTS(SELECT 1 FROM etf_holdings h WHERE h.etf_key = r.etf_key) AS has_holdings
             FROM etf_records r
-            WHERE ($begin IS NULL OR first_rcept_dt >= $begin)
-              AND first_rcept_dt <= COALESCE($end, STRFTIME('%Y%m%d', CURRENT_DATE))
-              AND ($country IS NULL OR primary_country = $country)
+            WHERE (:begin IS NULL OR first_rcept_dt >= :begin)
+              AND first_rcept_dt <= COALESCE(:end, strftime('%Y%m%d', 'now', 'localtime'))
+              AND (:country IS NULL OR primary_country = :country)
               {theme_where}
-              AND ($pre_listing IS NULL OR is_pre_listing_etf = $pre_listing)
+              AND (:pre_listing IS NULL OR is_pre_listing_etf = :pre_listing)
             ORDER BY first_rcept_dt DESC
         """
         cur.execute(sql, params)
@@ -80,7 +80,7 @@ def list_etfs(
 )
 def get_etf_detail(etf_key: str) -> EtfDetail:
     with read_cursor() as cur:
-        cur.execute("SELECT * FROM etf_records WHERE etf_key = $etf_key", {"etf_key": etf_key})
+        cur.execute("SELECT * FROM etf_records WHERE etf_key = :etf_key", {"etf_key": etf_key})
         rows = rows_to_dicts(cur)
     if not rows:
         raise HTTPException(status_code=404, detail=f"etf_key not found: {etf_key}")
@@ -101,7 +101,7 @@ def get_etf_detail(etf_key: str) -> EtfDetail:
 def get_etf_holdings(etf_key: str) -> list[Holding]:
     with read_cursor() as cur:
         cur.execute(
-            "SELECT name, ticker, exchange, weight FROM etf_holdings WHERE etf_key = $etf_key ORDER BY seq",
+            "SELECT name, ticker, exchange, weight FROM etf_holdings WHERE etf_key = :etf_key ORDER BY seq",
             {"etf_key": etf_key},
         )
         rows = rows_to_dicts(cur)

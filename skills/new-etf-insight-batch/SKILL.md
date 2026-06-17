@@ -15,7 +15,7 @@ Use this skill when running or debugging the `new_etf_insight` ETF batch pipelin
 - `.env` is one directory above the working directory: `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\.env`.
 - Do not print secrets from `.env`.
 - Batch output goes under `etl\runs\...`.
-- DuckDB output goes to `etl\db\etf_insight.duckdb`.
+- SQLite output goes to `etl\db\etf_insight.sqlite3`.
 
 ## Prepare
 
@@ -65,7 +65,7 @@ import json
 from pathlib import Path
 
 records = sorted(Path("runs/YYYYMMDD/records").glob("*.json"))
-db_path = Path("db/etf_insight.duckdb")
+db_path = Path("db/etf_insight.sqlite3")
 print(f"records={len(records)}")
 print(f"db_exists={db_path.exists()}")
 

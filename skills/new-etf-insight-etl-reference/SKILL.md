@@ -208,7 +208,7 @@ save_graph_png(path)
 ### `scripts/build_db.py`
 ```python
 DEFAULT_RUNS_DIR = etl/runs
-DEFAULT_DB_PATH  = etl/db/etf_insight.duckdb
+DEFAULT_DB_PATH  = etl/db/etf_insight.sqlite3
 
 sync_to_db(runs_dir: Path, db_path: Path = DEFAULT_DB_PATH) -> int
     # Scans runs/*/records/*.json, dedups by etf_key keeping max(rcept_dt), upserts both tables. Idempotent.
@@ -345,7 +345,7 @@ LLM env var           = ETF_LLM_PROVIDER  (default "codex")
 
 ---
 
-## 7. DuckDB Schema (`db/etf_insight.duckdb`)
+## 7. SQLite Schema (`db/etf_insight.sqlite3`)
 
 `etf_records` (PK `etf_key`, 1 row per ETF):
 ```

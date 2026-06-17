@@ -1,7 +1,7 @@
 [project]
 name = "etf-insight-api"
 version = "0.1.0"
-description = "FastAPI backend serving ETF insight DuckDB data + MCP"
+description = "FastAPI backend serving ETF insight data (SQLite + DuckDB) + MCP"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

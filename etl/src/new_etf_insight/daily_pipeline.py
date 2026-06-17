@@ -110,7 +110,7 @@ def run_daily_pipeline(
         )
 
     runs_dir = records_dir.parent.parent
-    db_path = runs_dir.parent / "db" / "etf_insight.duckdb"
+    db_path = runs_dir.parent / "db" / "etf_insight.sqlite3"
     synced = sync_to_db(runs_dir, db_path)
 
     return {
