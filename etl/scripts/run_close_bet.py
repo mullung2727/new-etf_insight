@@ -70,6 +70,27 @@ def create_close_bet_orders_table(con: sqlite3.Connection) -> None:
     """)
 
 
+# 종가베팅 청산(익절/손절) 워커가 쓰는 추가 컬럼. 기존행은 ALTER 후 NULL.
+_EXIT_COLUMNS = [
+    ("sell_order_no", "TEXT"),
+    ("sell_status", "TEXT"),    # ordered → filled (NULL=미청산)
+    ("sell_price", "INTEGER"),
+    ("sell_qty", "INTEGER"),
+    ("sold_at", "TEXT"),
+    ("exit_reason", "TEXT"),    # tp / sl / forced
+    ("pnl_pct", "REAL"),
+]
+
+
+def ensure_exit_columns(con: sqlite3.Connection) -> None:
+    """close_bet_orders에 청산용 컬럼을 멱등 추가. 두 번 호출해도 무동작."""
+    create_close_bet_orders_table(con)
+    existing = {r[1] for r in con.execute("PRAGMA table_info(close_bet_orders)")}
+    for col, col_type in _EXIT_COLUMNS:
+        if col not in existing:
+            con.execute(f"ALTER TABLE close_bet_orders ADD COLUMN {col} {col_type}")
+
+
 # ── DB 조회/저장 ──────────────────────────────────────────────────────────────
 
 def check_precondition(watchlist_db: Path, date: str) -> int:
@@ -220,7 +241,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="종가배팅 주문 배치")
     parser.add_argument("--date", help="대상 날짜 YYYYMMDD; 기본: 오늘(Asia/Seoul)")
-    parser.add_argument("--score-threshold", type=int, default=80)
+    parser.add_argument("--score-threshold", type=int, default=70)
     parser.add_argument("--max-order-count", type=int, default=5)
     parser.add_argument("--qty-per-symbol", type=int, default=1)
     parser.add_argument("--order-time", default="15:19:00")

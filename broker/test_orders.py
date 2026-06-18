@@ -172,6 +172,69 @@ class TestOrderHistoryWrapper(unittest.TestCase):
             rows = korders.get_order_history("20260615")
         self.assertEqual(rows, [])
 
+    def test_sell_tp_default_and_override(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append(dict(body))
+            return TrResult(data={}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            korders.get_order_history("20260615")              # 기본 매수
+            korders.get_order_history("20260615", sell_tp="1")  # 매도
+        self.assertEqual(calls[0]["sell_tp"], "2")
+        self.assertEqual(calls[1]["sell_tp"], "1")
+
+
+class TestUnfilledWrapper(unittest.TestCase):
+    """kiwoom.orders.get_unfilled — ka10075 body + 연속조회 병합."""
+
+    def test_body_fields_and_paging(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body), "next_key": next_key})
+            if cont_yn == "N":
+                return TrResult(data={"oso": [{"ord_no": "0000070"}]}, cont_yn="Y", next_key="K2")
+            return TrResult(data={"oso": [{"ord_no": "0000071"}]}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            rows = korders.get_unfilled("sell")
+
+        self.assertEqual([r["ord_no"] for r in rows], ["0000070", "0000071"])
+        self.assertEqual(calls[0]["api_id"], "ka10075")
+        self.assertEqual(calls[0]["body"]["trde_tp"], "1")   # 매도
+        self.assertEqual(calls[0]["body"]["all_stk_tp"], "0")
+        self.assertEqual(calls[1]["next_key"], "K2")
+
+    def test_buy_side_trde_tp(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        seen: list[str] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            seen.append(body["trde_tp"])
+            return TrResult(data={}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            korders.get_unfilled("buy")
+        self.assertEqual(seen, ["2"])
+
+    def test_empty_oso(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        with patch("kiwoom.orders.request",
+                   return_value=TrResult(data={}, cont_yn="N", next_key="")):
+            self.assertEqual(korders.get_unfilled("sell"), [])
+
 
 class TestOrderHistoryRoute(_OrdersTestBase):
     """GET /orders/history — 정규화(접두어 제거 + int 파싱)."""
@@ -195,14 +258,37 @@ class TestOrderHistoryRoute(_OrdersTestBase):
     def test_passes_date_through(self):
         seen: list[str] = []
 
-        def fake(date):
-            seen.append(date)
+        def fake(date, sell_tp="2"):
+            seen.append((date, sell_tp))
             return []
 
         with patch("routers.orders.orders.get_order_history", side_effect=fake):
-            resp = self.client.get("/orders/history", params={"date": "20260601"})
+            self.client.get("/orders/history", params={"date": "20260601"})
+            self.client.get("/orders/history", params={"date": "20260601", "side": "sell"})
+        self.assertEqual(seen, [("20260601", "2"), ("20260601", "1")])
+
+
+class TestUnfilledRoute(_OrdersTestBase):
+    """GET /orders/unfilled — 정규화(접두 제거 + int 파싱)."""
+
+    def test_normalizes_response(self):
+        raw = [{"ord_no": "0000070", "stk_cd": "A005930",
+                "oso_qty": "0000000001", "ord_stt": "접수"}]
+        with patch("routers.orders.orders.get_unfilled", return_value=raw):
+            resp = self.client.get("/orders/unfilled", params={"side": "sell"})
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(seen, ["20260601"])
+        item = resp.json()[0]
+        self.assertEqual(item["order_no"], "0000070")
+        self.assertEqual(item["ticker"], "005930")
+        self.assertEqual(item["oso_qty"], 1)
+        self.assertEqual(item["ord_stt"], "접수")
+
+    def test_passes_side(self):
+        seen: list[str] = []
+        with patch("routers.orders.orders.get_unfilled",
+                   side_effect=lambda side: seen.append(side) or []):
+            self.client.get("/orders/unfilled", params={"side": "sell"})
+        self.assertEqual(seen, ["sell"])
 
 
 if __name__ == "__main__":

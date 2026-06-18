@@ -86,12 +86,14 @@ def place_order(req: OrderRequest) -> OrderResult:
     operation_id="get_order_history",
     summary="당일 체결내역 조회 (kt00007)",
 )
-def get_order_history(date: str) -> list[dict[str, Any]]:
-    """당일 매수 체결내역을 정규화해 반환한다 (체결 대조 배치용).
+def get_order_history(date: str, side: str = "buy") -> list[dict[str, Any]]:
+    """당일 체결내역을 정규화해 반환한다 (체결 대조·매도 청산 확인용).
 
-    date: 주문일자 YYYYMMDD. 각 항목은 0-padding을 제거한 정수/순수 종목코드.
+    date: 주문일자 YYYYMMDD. side: buy(기본·매수 체결대조)/sell(매도 청산 확인).
+    각 항목은 0-padding을 제거한 정수/순수 종목코드.
     """
-    rows = orders.get_order_history(date)
+    sell_tp = "1" if side == "sell" else "2"
+    rows = orders.get_order_history(date, sell_tp=sell_tp)
     return [
         {
             "order_no": str(item.get("ord_no", "") or ""),
@@ -99,6 +101,29 @@ def get_order_history(date: str) -> list[dict[str, Any]]:
             "cntr_qty": _to_int(item.get("cntr_qty")),
             "cntr_uv": _to_int(item.get("cntr_uv")),
             "ord_remnq": _to_int(item.get("ord_remnq")),
+            "raw": item,
+        }
+        for item in rows
+    ]
+
+
+@router.get(
+    "/unfilled",
+    operation_id="get_unfilled",
+    summary="미체결 주문 조회 (ka10075)",
+)
+def get_unfilled(side: str = "sell") -> list[dict[str, Any]]:
+    """미체결 주문을 정규화해 반환한다 (매도 청산 체결확인·재주문 가드용).
+
+    side: sell(기본)/buy/all. 우리 주문이 목록서 사라지면 체결 완료로 판단.
+    """
+    rows = orders.get_unfilled(side)
+    return [
+        {
+            "order_no": str(item.get("ord_no", "") or ""),
+            "ticker": _TICKER_PREFIX.sub("", str(item.get("stk_cd", "") or "")),
+            "oso_qty": _to_int(item.get("oso_qty")),
+            "ord_stt": str(item.get("ord_stt", "") or ""),
             "raw": item,
         }
         for item in rows

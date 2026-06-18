@@ -49,17 +49,18 @@ def place_order(req: OrderRequest) -> OrderResult:
     )
 
 
-def get_order_history(date: str) -> list[dict[str, Any]]:
-    """kt00007 — 당일 매수 체결내역(상세)을 연속조회 병합해 반환한다.
+def get_order_history(date: str, sell_tp: str = "2") -> list[dict[str, Any]]:
+    """kt00007 — 당일 체결내역(상세)을 연속조회 병합해 반환한다.
 
-    qry_tp=4(체결내역만), stk_bond_tp=1(주식), sell_tp=2(매수). 반환 리스트는
-    원본 ``acnt_ord_cntr_prps_dtl`` 항목 그대로(정규화는 라우트 책임).
+    qry_tp=4(체결내역만), stk_bond_tp=1(주식). sell_tp: 1=매도, 2=매수(기본·체결대조용).
+    매도 청산 체결확인은 sell_tp="1"로 호출. 반환 리스트는 원본
+    ``acnt_ord_cntr_prps_dtl`` 항목 그대로(정규화는 라우트 책임).
     """
     body = {
         "ord_dt": date,        # YYYYMMDD
         "qry_tp": "4",         # 체결내역만
         "stk_bond_tp": "1",    # 주식
-        "sell_tp": "2",        # 매수
+        "sell_tp": sell_tp,    # 1=매도 / 2=매수
         "stk_cd": "",          # 전체 종목
         "fr_ord_no": "",       # 전체
         "dmst_stex_tp": "%",   # 전체 거래소 (Required)
@@ -71,6 +72,30 @@ def get_order_history(date: str) -> list[dict[str, Any]]:
             tr.TR_CNTR_HIST, tr.EP_ACNT, body, cont_yn="Y", next_key=res.next_key
         )
         rows.extend(res.data.get("acnt_ord_cntr_prps_dtl") or [])
+    return rows
+
+
+_TRDE_TP_BY_SIDE = {"sell": "1", "buy": "2", "all": "0"}
+
+
+def get_unfilled(side: str = "sell") -> list[dict[str, Any]]:
+    """ka10075 — 미체결 주문 목록을 연속조회 병합해 반환한다.
+
+    side: sell(매도)/buy(매수)/all(전체). 청산 체결확인은 미체결에서 우리 매도주문이
+    사라졌는지로 판단한다. 반환 리스트는 원본 ``oso`` 항목 그대로(정규화는 라우트 책임).
+    """
+    trde_tp = _TRDE_TP_BY_SIDE.get(side, "0")
+    body = {
+        "all_stk_tp": "0",   # 0:전체 종목
+        "trde_tp": trde_tp,  # 0:전체 1:매도 2:매수
+        "stk_cd": "",        # 전체 종목
+        "stex_tp": "0",      # 0:통합
+    }
+    res = request(tr.TR_UNFILLED, tr.EP_ACNT, body)
+    rows: list[dict[str, Any]] = list(res.data.get("oso") or [])
+    while res.cont_yn == "Y" and res.next_key:
+        res = request(tr.TR_UNFILLED, tr.EP_ACNT, body, cont_yn="Y", next_key=res.next_key)
+        rows.extend(res.data.get("oso") or [])
     return rows
 
 
