@@ -99,7 +99,7 @@ class TestLoadUnsoldPositions(unittest.TestCase):
         self.db.unlink(missing_ok=True)
 
     def _seed(self, con, **kw):
-        cols = {"date": "20260617", "ticker": "005930", "status": "filled",
+        cols = {"date": "20260617", "ticker": "005930", "status": "confirmed",
                 "qty": 1, "cntr_price": 1000, "sell_status": None, **kw}
         con.execute(
             "INSERT INTO close_bet_orders (date,ticker,status,qty,cntr_price,sell_status) "
@@ -151,7 +151,7 @@ class TestStateMachine(unittest.TestCase):
             ensure_exit_columns(con)
             con.execute(
                 "INSERT INTO close_bet_orders (date,ticker,status,qty,cntr_price,sell_status) "
-                "VALUES ('20260617','005930','filled',5,1000,NULL)")
+                "VALUES ('20260617','005930','confirmed',5,1000,NULL)")
 
     def tearDown(self):
         self.db.unlink(missing_ok=True)
@@ -224,7 +224,7 @@ class TestExecuteSell(unittest.TestCase):
             ensure_exit_columns(con)
             con.execute(
                 "INSERT INTO close_bet_orders (date,ticker,status,qty,cntr_price,sell_status) "
-                "VALUES ('20260617','005930','filled',5,1000,NULL)")
+                "VALUES ('20260617','005930','confirmed',5,1000,NULL)")
         self.pos = {"date": "20260617", "ticker": "005930", "cntr_price": 1000,
                     "qty": 5, "qty_eff": 5}
 
@@ -272,7 +272,7 @@ class TestSettlePending(unittest.TestCase):
             ensure_exit_columns(con)
             con.execute(
                 "INSERT INTO close_bet_orders (date,ticker,status,qty,cntr_price,sell_status,sell_order_no) "
-                "VALUES ('20260617','005930','filled',5,1000,'ordered','0000070')")
+                "VALUES ('20260617','005930','confirmed',5,1000,'ordered','0000070')")
         self.pending = {"005930": {"date": "20260617", "ticker": "005930",
                                    "cntr_price": 1000, "order_no": "0000070",
                                    "exit_reason": "tp"}}
@@ -312,10 +312,10 @@ class TestLoadOrderedPending(unittest.TestCase):
                 ensure_exit_columns(con)
                 con.execute(
                     "INSERT INTO close_bet_orders (date,ticker,status,qty,cntr_price,sell_status,sell_order_no,exit_reason) "
-                    "VALUES ('20260617','005930','filled',5,1000,'ordered','0000070','forced')")
+                    "VALUES ('20260617','005930','confirmed',5,1000,'ordered','0000070','forced')")
                 con.execute(
                     "INSERT INTO close_bet_orders (date,ticker,status,qty,cntr_price,sell_status) "
-                    "VALUES ('20260617','000660','filled',3,2000,NULL)")  # 미주문 제외
+                    "VALUES ('20260617','000660','confirmed',3,2000,NULL)")  # 미주문 제외
             pend = load_ordered_pending(db, "20260618")
             self.assertEqual(list(pend.keys()), ["005930"])
             self.assertEqual(pend["005930"]["order_no"], "0000070")

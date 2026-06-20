@@ -110,13 +110,17 @@ def _padint(val: object) -> int:
 
 
 def load_unsold_positions(con, today: str) -> list[dict]:
-    """청산 대상 = filled + sell_status NULL + 과거날짜(오버나이트분)."""
+    """청산 대상 = confirmed(매수 체결확정) + sell_status NULL + 과거날짜(오버나이트분).
+
+    status 생애: submitted(매수) → confirmed(run_verify 체결대조 성공). 'filled'은
+    매도쪽 sell_status 값이지 status 값이 아니다.
+    """
     ensure_exit_columns(con)
     rows = con.execute(
         """
         SELECT date, ticker, cntr_price, qty
         FROM close_bet_orders
-        WHERE status='filled' AND sell_status IS NULL AND date < ?
+        WHERE status='confirmed' AND sell_status IS NULL AND date < ?
         """,
         [today],
     ).fetchall()
