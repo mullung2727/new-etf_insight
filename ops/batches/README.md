@@ -18,12 +18,16 @@ be reviewed together with the project code.
 - `daily-new-etf-insight-batch.md`
   - Schedule: daily 19:50 Asia/Seoul
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
+- `daily-close-bet-order.md`
+  - Schedule: Mon-Fri 15:21 Asia/Seoul
+  - Purpose: report the Windows Task Scheduler 15:19 close-bet order result.
 
-## Not OpenClaw batches (Windows Task Scheduler + self-reporting)
+## Windows Task Scheduler execution
 
-Close-bet order/verify no longer run through OpenClaw. Windows Task Scheduler
-runs the scripts directly and they post their own Discord summary
-(`DISCORD_WEBHOOK_URL`), so there is no OpenClaw report batch:
+Close-bet order/verify execution does not run through OpenClaw. Windows Task
+Scheduler runs the scripts directly. OpenClaw may run report-only follow-up jobs
+that inspect logs, scheduler status, and DB rows; those follow-up jobs must not
+place or retry orders.
 
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).
