@@ -19,6 +19,7 @@ import sqlite3
 from scripts.run_close_bet import (
     _is_in_order_window,
     check_precondition,
+    confirm_fills,
     create_close_bet_orders_table,
     load_order_candidates,
     upsert_order_result,
@@ -265,6 +266,77 @@ class TestOrderTimeWindow(unittest.TestCase):
     def test_allow_outside_bypasses_window(self):
         with patch("scripts.run_close_bet._now_seoul", return_value=self._now(10, 0, 0)):
             self.assertTrue(_is_in_order_window("15:19:00", "15:20:00", allow_outside=True))
+
+
+# ── 6. confirm_fills (매수 직후 kt00007 폴링 체결확정) ─────────────────────────
+
+class TestConfirmFills(unittest.TestCase):
+    def setUp(self):
+        self.db = _fresh_db()
+        with connect_rw(self.db) as con:
+            _seed_close_bet_orders(con, [
+                {"date": _DATE, "ticker": "005930", "order_no": "0000050",
+                 "status": "submitted"},
+            ])
+
+    def tearDown(self):
+        self.db.unlink(missing_ok=True)
+
+    def _row(self, ticker: str):
+        with connect_ro(self.db) as con:
+            return con.execute(
+                "SELECT status, cntr_price, cntr_qty FROM close_bet_orders "
+                "WHERE date=? AND ticker=?", [_DATE, ticker],
+            ).fetchone()
+
+    def test_confirms_on_match(self):
+        # order_no "50"(정규화) ↔ 시드 "0000050" 매칭
+        history = [{"order_no": "50", "cntr_qty": 1, "cntr_uv": 12340}]
+        with patch("scripts.run_close_bet.fetch_order_history", return_value=history):
+            remaining = confirm_fills(
+                self.db, "http://x", _DATE, {"005930": "0000050"},
+                sleep=lambda s: None,
+            )
+        self.assertEqual(remaining, {})
+        status, cntr_price, cntr_qty = self._row("005930")
+        self.assertEqual(status, "confirmed")
+        self.assertEqual(cntr_price, 12340)
+        self.assertEqual(cntr_qty, 1)
+
+    def test_aggregates_partial_fills(self):
+        # 동일 order_no 부분체결 → qty 합산, 단가는 첫 유효값
+        history = [
+            {"order_no": "50", "cntr_qty": 1, "cntr_uv": 12340},
+            {"order_no": "50", "cntr_qty": 2, "cntr_uv": 12350},
+        ]
+        with patch("scripts.run_close_bet.fetch_order_history", return_value=history):
+            confirm_fills(self.db, "x", _DATE, {"005930": "0000050"},
+                          sleep=lambda s: None)
+        _, cntr_price, cntr_qty = self._row("005930")
+        self.assertEqual(cntr_qty, 3)
+        self.assertEqual(cntr_price, 12340)
+
+    def test_unmatched_stays_pending(self):
+        # 체결내역 비면 미확정 → submitted 유지(16:00 배치 백업)
+        with patch("scripts.run_close_bet.fetch_order_history", return_value=[]):
+            remaining = confirm_fills(
+                self.db, "x", _DATE, {"005930": "0000050"},
+                max_attempts=2, interval=0, sleep=lambda s: None,
+            )
+        self.assertEqual(remaining, {"005930": "0000050"})
+        self.assertEqual(self._row("005930")[0], "submitted")
+
+    def test_retries_until_filled(self):
+        # 첫 폴링 빈 응답 → 둘째 폴링에 체결 등장 → 확정
+        responses = [[], [{"order_no": "50", "cntr_qty": 1, "cntr_uv": 999}]]
+        with patch("scripts.run_close_bet.fetch_order_history",
+                   side_effect=lambda url, date: responses.pop(0)):
+            remaining = confirm_fills(
+                self.db, "x", _DATE, {"005930": "0000050"},
+                max_attempts=3, sleep=lambda s: None,
+            )
+        self.assertEqual(remaining, {})
+        self.assertEqual(self._row("005930")[0], "confirmed")
 
 
 if __name__ == "__main__":

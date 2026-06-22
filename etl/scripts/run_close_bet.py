@@ -35,9 +35,15 @@ from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.notify import send_discord
+    from scripts.run_verify import (
+        fetch_order_history,
+        mark_confirmed,
+        normalize_order_no,
+    )
     from scripts.wl_sqlite import connect_ro, connect_rw
 except ImportError:
     from notify import send_discord
+    from run_verify import fetch_order_history, mark_confirmed, normalize_order_no
     from wl_sqlite import connect_ro, connect_rw
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -234,6 +240,54 @@ def place_order_via_broker(broker_url: str, ticker: str, qty: int, dry_run: bool
         return {"order_no": "", "status": "failed", "message": str(exc)}
 
 
+# ── 체결 확정 (매수 직후 kt00007 폴링) ───────────────────────────────────────────
+
+def confirm_fills(
+    watchlist_db: Path,
+    broker_url: str,
+    date: str,
+    pending: dict[str, str],
+    *,
+    max_attempts: int = 5,
+    interval: float = 1.0,
+    now: datetime | None = None,
+    sleep=time.sleep,
+) -> dict[str, str]:
+    """매수 직후 kt00007(GET /orders/history) 폴링으로 cntr_price를 즉시 확정한다.
+
+    시장가는 보통 즉시 체결되므로 매수 종료 직후 짧게 폴링해 체결가를 채워
+    status='confirmed'로 만든다(별도 16:00 체결대조 배치 의존 제거).
+    `pending`: {ticker: order_no}. 반환: 폴링 안에 확정 못 한 {ticker: order_no}.
+    미확정분은 submitted로 남아 16:00 run_verify가 백업 대조한다.
+    """
+    remaining = dict(pending)
+    for attempt in range(max_attempts):
+        history = fetch_order_history(broker_url, date)
+        if history:
+            by_no: dict[str, dict] = {}
+            for item in history:
+                key = normalize_order_no(item.get("order_no"))
+                if not key:
+                    continue
+                agg = by_no.setdefault(key, {"cntr_qty": 0, "cntr_uv": 0})
+                agg["cntr_qty"] += int(item.get("cntr_qty") or 0)
+                if not agg["cntr_uv"]:
+                    agg["cntr_uv"] = int(item.get("cntr_uv") or 0)
+            for ticker, order_no in list(remaining.items()):
+                match = by_no.get(normalize_order_no(order_no))
+                if match and match["cntr_qty"] > 0:
+                    mark_confirmed(
+                        watchlist_db, date, ticker,
+                        match["cntr_uv"], match["cntr_qty"], now or _now_seoul(),
+                    )
+                    del remaining[ticker]
+        if not remaining:
+            break
+        if attempt < max_attempts - 1:
+            sleep(interval)
+    return remaining
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -284,6 +338,7 @@ def main() -> None:
         return
 
     submitted = skipped = failed = 0
+    fill_pending: dict[str, str] = {}  # ticker → order_no (체결확정 대기)
     report_lines: list[str] = []
     for cand in candidates:
         if not _is_in_order_window(args.order_time, args.order_deadline_time, args.allow_order_outside_close_window):
@@ -320,12 +375,26 @@ def main() -> None:
 
         if result["status"] in ("submitted", "dry_run"):
             submitted += 1
+            if result["status"] == "submitted" and result["order_no"]:
+                fill_pending[ticker] = result["order_no"]
             report_lines.append(f"✅ {label} score={score} {result['status']} #{result['order_no']}")
         else:
             failed += 1
             report_lines.append(f"❌ {label} score={score} 실패: {result['message']}")
 
         time.sleep(float(os.getenv("ORDER_INTERVAL_SEC", "0.5")))
+
+    # 매수 직후 체결확정 — kt00007 폴링으로 cntr_price 즉시 채움(별도 16:00 배치 의존 제거)
+    if fill_pending:
+        remaining = confirm_fills(watchlist_db, broker_url, date, fill_pending)
+        n_conf = len(fill_pending) - len(remaining)
+        print(f"[close_bet] 체결확정: {n_conf}/{len(fill_pending)} cntr_price 즉시 기록")
+        report_lines.append(
+            f"📥 체결확정 {n_conf}/{len(fill_pending)}"
+            + (f" (미확정 {len(remaining)}: {', '.join(remaining)} → 16:00 대조 백업)" if remaining else "")
+        )
+        if remaining:
+            print(f"[close_bet] 미확정 {list(remaining)} — submitted 유지, 16:00 체결대조 백업")
 
     print(f"[close_bet] 완료: submitted={submitted} skipped={skipped} failed={failed}")
     summary = (
