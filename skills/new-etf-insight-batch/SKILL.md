@@ -54,13 +54,13 @@ $env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -c "from pathlib import Path; 
 $env:PYTHONPATH='src'; .\.venv\Scripts\python.exe -m unittest tests/test_pipeline_modules.py
 ```
 
-## DuckDB Verification
+## SQLite Verification
 
-Use this PowerShell-compatible pattern when verifying DuckDB. Do not use Bash/Linux heredoc syntax such as `python - <<'PY'` in PowerShell.
+Use this PowerShell-compatible pattern when verifying SQLite. Do not use Bash/Linux heredoc syntax such as `python - <<'PY'` in PowerShell.
 
 ```powershell
 @'
-import duckdb
+import sqlite3
 import json
 from pathlib import Path
 
@@ -73,14 +73,15 @@ if records and db_path.exists():
     data = json.loads(records[-1].read_text(encoding="utf-8"))
     etf_key = data.get("source", {}).get("etf_key")
     fund_name = data.get("summary", {}).get("fund_name")
-    con = duckdb.connect(str(db_path), read_only=True)
+    con = sqlite3.connect(str(db_path))
+    con.execute("PRAGMA query_only=ON")
     record_count = con.execute("select count(*) from etf_records where etf_key = ?", [etf_key]).fetchone()[0]
     holding_count = con.execute("select count(*) from etf_holdings where etf_key = ?", [etf_key]).fetchone()[0]
     con.close()
     print(f"etf_key={etf_key}")
     print(f"fund_name={fund_name}")
-    print(f"duckdb_record_count_for_key={record_count}")
-    print(f"duckdb_holdings_count_for_key={holding_count}")
+    print(f"sqlite_record_count_for_key={record_count}")
+    print(f"sqlite_holdings_count_for_key={holding_count}")
 '@ | .\.venv\Scripts\python.exe -
 ```
 

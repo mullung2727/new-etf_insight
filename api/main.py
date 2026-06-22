@@ -6,12 +6,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_mcp import FastApiMCP
 
+load_dotenv()
+
 from duck import DUCKDB_PATH
 from routers import etfs as etfs_router
 from routers import stats as stats_router
 from routers import watchlist as watchlist_router
-
-load_dotenv()
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
