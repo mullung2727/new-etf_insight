@@ -1,0 +1,22 @@
+# venv / 캐시
+.venv
+__pycache__
+*.pyc
+
+# 상태파일 — bind mount로 주입, 이미지에 굽지 않음
+notes.db
+.token_cache.json
+
+# 로그/덤프
+*.log
+*.stackdump
+
+# 테스트/문서
+test_*.py
+docs
+README.md
+AGENTS.md
+
+# 시크릿 (혹시 모를 누출 방지; 키는 compose env_file로 주입)
+.env
+.env.*

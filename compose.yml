@@ -1,0 +1,25 @@
+# 테넌트 dev 스택 — broker(:8001) + broker-web(:3000)
+# api(:8000)와 etl DB는 호스트에 그대로, 컨테이너가 host.docker.internal로 접근.
+# 키움 키는 repo-root .env(KIWOON_MOCK_TR_*)에서 주입.
+services:
+  broker:
+    build: ./broker
+    ports: ["8001:8001"]
+    env_file: ./.env
+    volumes:
+      - ./broker:/app          # 소스 + notes.db + .token_cache.json 영속(핫리로드)
+      - /app/.venv             # uv venv 익명볼륨으로 가림(host→linux 누수 차단)
+      - /app/__pycache__
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  broker-web:
+    build: ./broker-web
+    ports: ["3000:3000"]
+    environment:
+      NEXT_PUBLIC_BROKER_API_URL: http://172.30.1.94:8001
+      FASTAPI_BASE_URL: http://host.docker.internal:8000
+    volumes:
+      - ./broker-web:/app
+      - /app/node_modules      # node_modules 익명볼륨으로 가림(host 것과 충돌 방지)
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: [broker]
