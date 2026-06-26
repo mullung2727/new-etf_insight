@@ -9,6 +9,7 @@ from fastapi_mcp import FastApiMCP
 from kiwoom.config import load_config
 from notes import db as notes_db
 from routers import account as account_router
+from routers import close_bet as close_bet_router
 from routers import conditions as conditions_router
 from routers import notes as notes_router
 from routers import orders as orders_router
@@ -61,6 +62,7 @@ notes_db.init()  # 노트 SQLite 테이블 보장
 
 app.include_router(quotes_router.router)
 app.include_router(account_router.router)
+app.include_router(close_bet_router.router)
 app.include_router(orders_router.router)
 app.include_router(conditions_router.router)
 app.include_router(notes_router.router)

@@ -6,10 +6,15 @@ services:
     build: ./broker
     ports: ["8001:8001"]
     env_file: ./.env
+    environment:
+      # etl DB는 호스트 소유 → 컨테이너는 RO 마운트(아래) 경로로 읽는다.
+      CLOSE_BET_DB_PATH: /data/watchlist/watchlist.sqlite3
     volumes:
       - ./broker:/app          # 소스 + notes.db + .token_cache.json 영속(핫리로드)
       - /app/.venv             # uv venv 익명볼륨으로 가림(host→linux 누수 차단)
       - /app/__pycache__
+      - ./etl/db:/data/watchlist   # 종가배팅 조회용 watchlist.sqlite3. WAL은 reader도 -shm 매핑이
+                                   # 필요해 :ro 마운트면 열기 실패 → RW 마운트, 연결은 mode=ro로 읽기전용 강제.
     extra_hosts: ["host.docker.internal:host-gateway"]
 
   broker-web:
