@@ -52,7 +52,7 @@ def get_quote(symbol: str) -> Quote:
     """Return current price for a 6-digit symbol code (예: '005930')."""
     res = request(tr.TR_STOCK_INFO, tr.EP_STKINFO, {"stk_cd": symbol})
     data = res.data
-    price = next((_to_int(data[k]) for k in _PRICE_KEYS if k in data), None)
+    price = next((_abs_int(data[k]) for k in _PRICE_KEYS if k in data), None)
     return Quote(symbol=symbol, price=price, raw=data)
 
 

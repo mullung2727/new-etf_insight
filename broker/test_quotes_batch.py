@@ -85,6 +85,23 @@ class TestGetWatchlistQuotes(unittest.TestCase):
         self.assertEqual(rows, [])
 
 
+class TestGetQuote(unittest.TestCase):
+    """kiwoom.quotes.get_quote — 단일종목 현재가. 부호 제거(절대값) 검증."""
+
+    def test_strips_negative_sign(self):
+        # ka10001 cur_prc 부호는 등락방향 — 절대값이 실가격(-4535 → 4535)
+        with patch("kiwoom.quotes.request",
+                   return_value=TrResult(data={"cur_prc": "-4535"}, cont_yn="N", next_key="")):
+            q = quotes.get_quote("014940")
+        self.assertEqual(q.price, 4535)
+
+    def test_positive_sign(self):
+        with patch("kiwoom.quotes.request",
+                   return_value=TrResult(data={"cur_prc": "+156600"}, cont_yn="N", next_key="")):
+            q = quotes.get_quote("005930")
+        self.assertEqual(q.price, 156600)
+
+
 class TestQuotesRouteCache(unittest.TestCase):
     """GET /quotes?codes= — TTL 캐시 히트/만료."""
 
