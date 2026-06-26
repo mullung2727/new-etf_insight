@@ -1,13 +1,13 @@
-const BASE = process.env.NEXT_PUBLIC_BROKER_API_URL ?? "http://localhost:8001";
+import { brokerBase } from "./broker-base";
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
+  const res = await fetch(`${brokerBase()}${path}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
   return res.json();
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${brokerBase()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -20,7 +20,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${brokerBase()}${path}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -33,13 +33,13 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  const res = await fetch(`${brokerBase()}${path}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
   return res.json();
 }
 
 async function del204(path: string): Promise<void> {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  const res = await fetch(`${brokerBase()}${path}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
 }
 
@@ -172,9 +172,47 @@ export interface EventCreate {
   memo?: string | null;
 }
 
+// --- Close-bet types ---
+
+export interface CloseBetBuy {
+  date: string;
+  ticker: string;
+  score: number | null;
+  cntr_price: number | null;
+  status: string;
+  order_no: string;
+  created_at: string | null;
+}
+
+export interface CloseBetWatch {
+  date: string;
+  ticker: string;
+  score: number | null;
+  cntr_price: number | null;
+  qty: number;
+}
+
+export interface CloseBetHistory {
+  date: string;
+  ticker: string;
+  cntr_price: number | null;
+  sell_price: number | null;
+  sell_qty: number | null;
+  pnl_pct: number | null;
+  sold_at: string | null;
+}
+
+export interface CloseBetPositions {
+  buys: CloseBetBuy[];
+  watching: CloseBetWatch[];
+  history: CloseBetHistory[];
+}
+
 // --- API calls ---
 
 export const brokerClient = {
+  getCloseBetPositions: () =>
+    get<CloseBetPositions>("/close-bet/positions"),
   getQuote: (symbol: string) => get<Quote>(`/quotes/${symbol}`),
   getOrderbook: (symbol: string) => get<Record<string, unknown>>(`/quotes/${symbol}/orderbook`),
   getDailyChart: (symbol: string, baseDt?: string) =>

@@ -1,8 +1,7 @@
 "use client"
 
 import { useEffect } from "react";
-
-const BASE = process.env.NEXT_PUBLIC_BROKER_API_URL ?? "http://localhost:8001";
+import { brokerBase } from "./broker-base";
 
 export type BrokerEvent = {
     channel: string;
@@ -11,7 +10,7 @@ export type BrokerEvent = {
 
 export function useBrokerEvents(onEvent: (e:BrokerEvent) => void): void {
     useEffect(()=>{
-        const es = new EventSource(`${BASE}/events`);
+        const es = new EventSource(`${brokerBase()}/events`);
 
         es.onmessage = (e: MessageEvent) => {
             try {

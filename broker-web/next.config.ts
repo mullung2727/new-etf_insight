@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 // 원격(LAN IP) 브라우저에서 dev 접근 시 Next이 /_next/*(HMR WS 포함)를 cross-origin으로
 // 차단 → hydration 멈춤(빈 데이터·끊김). 허용할 origin(들)을 DEV_ORIGIN env로 주입.
@@ -8,6 +9,11 @@ const devOrigins = process.env.DEV_ORIGIN?.split(",").map((s) => s.trim()).filte
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: devOrigins,
+  // 상위 디렉토리에 두 번째 package-lock.json이 있어 Next이 워크스페이스 root를
+  // repo 루트로 오추론 → dev 청크 경로 틀어짐(illegal path)·HMR 끊김. root를 이 앱으로 고정.
+  turbopack: {
+    root: __dirname,
+  },
 };
 
 export default nextConfig;

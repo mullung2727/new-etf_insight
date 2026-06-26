@@ -48,9 +48,10 @@ npm run dev
   - `KIWOOM_APPKEY`, `KIWOOM_SECRETKEY` 필수
   - `KIWOOM_ENV=paper` (기본, 모의투자)
   - `KIWOOM_ACCOUNT_NO` 필수
-- `broker-web/.env.local` 이미 존재 (커밋됨, 수정 불필요)
-  - `NEXT_PUBLIC_BROKER_API_URL=http://localhost:8001`
-  - `FASTAPI_BASE_URL=http://localhost:8000`
+- `broker-web/.env.local` 이미 존재
+  - `NEXT_PUBLIC_BROKER_API_URL` **미설정 권장** — 미설정 시 클라가 접속 host에서 broker(:8001)
+    런타임 유도(localhost로 열면 localhost:8001, IP로 열면 그 IP:8001). IP 박으면 환경 바뀔 때 깨짐.
+  - `FASTAPI_BASE_URL=http://localhost:8000` (서버측 프록시용, localhost 고정 OK)
 
 ## broker 주의
 
@@ -69,3 +70,23 @@ curl http://localhost:8001/health   # broker
 
 - api MCP: `http://localhost:8000/mcp`
 - broker MCP: `http://localhost:8001/mcp`
+
+## 트러블슈팅 (2026-06-26 실측)
+
+### 1. node 프로세스 수백 개 → PC 프리징/재부팅
+- **현상**: `npm run dev` 후 페이지 컴파일하면 node 프로세스가 수백~900개로 폭증, 메모리 고갈, PC 멈춤.
+- **원인**: Next16 `next dev`는 turbopack 기본. turbopack이 Tailwind v4 postcss를 **node 자식 프로세스**
+  (`.next/dev/build/postcss.js`)로 띄우고 회수를 안 함 → 누적 폭주.
+- **해결**: dev를 webpack로. `package.json`에 `"dev": "next dev --webpack"` (적용 완료). webpack은
+  postcss를 인프로세스 실행 → 자식 0개. (turbopack보다 약간 느리지만 폭주 없음.)
+- **응급정리**: `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | ? { $_.CommandLine -like '*broker-web*' } | % { Stop-Process -Id $_.ProcessId -Force }`
+
+### 2. 페이지는 뜨는데 "끊김"·"로딩…"에서 멈춤
+- **현상**: broker는 떠 있는데(`/health` 200) UI 우상단 "끊김", 데이터 "로딩…"만.
+- **원인**: 브라우저가 broker를 **하드코딩 IP**(예전 `.env.local`의 `172.30.1.94:8001`)로 부르는데
+  broker는 로컬전용(`127.0.0.1`)이라 그 IP는 안 받음 → 무한대기.
+- **해결**: broker 주소를 접속 host에서 런타임 유도(`lib/broker-base.ts`). `.env.local`의
+  `NEXT_PUBLIC_BROKER_API_URL` 비우면 됨. **이 PC에선 `http://localhost:3000`으로 접속**.
+- **코드 바꿔도 안 바뀌면**: 브라우저가 옛 번들 캐시 → **하드 새로고침 Ctrl+Shift+R**.
+- **폰·다른 PC에서 보려면**: broker를 `--host 0.0.0.0`로 띄워야 함(매매 broker가 LAN에 노출됨 — 보안 판단 필요).
+  기본은 `--host 127.0.0.1`(로컬전용, 안전).
