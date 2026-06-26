@@ -291,5 +291,89 @@ class TestUnfilledRoute(_OrdersTestBase):
         self.assertEqual(seen, ["sell"])
 
 
+class TestRealizedWrapper(unittest.TestCase):
+    """kiwoom.orders.get_today_realized — ka10077 body + 연속조회 병합."""
+
+    def test_body_and_paging(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body), "next_key": next_key})
+            if cont_yn == "N":
+                return TrResult(data={"tdy_rlzt_pl_dtl": [{"stk_cd": "A005930"}]},
+                                cont_yn="Y", next_key="K2")
+            return TrResult(data={"tdy_rlzt_pl_dtl": [{"stk_cd": "A005930"}]},
+                            cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            rows = korders.get_today_realized("005930")
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(calls[0]["api_id"], "ka10077")
+        self.assertEqual(calls[0]["body"]["stk_cd"], "005930")
+        self.assertEqual(calls[1]["next_key"], "K2")
+
+
+class TestRealizedRoute(_OrdersTestBase):
+    """GET /orders/realized/{ticker} — net 손익율·수수료·세금·손익금 정규화."""
+
+    def test_single_row_uses_pl_rt(self):
+        raw = [{
+            "stk_cd": "A005930", "cntr_qty": "0000000010", "buy_uv": "0000001000",
+            "tdy_sel_pl": "0000048500", "pl_rt": "+4.85",
+            "tdy_trde_cmsn": "0000000150", "tdy_trde_tax": "0000001350",
+        }]
+        with patch("routers.orders.orders.get_today_realized", return_value=raw):
+            resp = self.client.get("/orders/realized/005930")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["ticker"], "005930")
+        self.assertTrue(body["found"])
+        self.assertEqual(body["pnl_pct"], 4.85)
+        self.assertEqual(body["sel_pl_won"], 48500)
+        self.assertEqual(body["cmsn"], 150)
+        self.assertEqual(body["tax"], 1350)
+        self.assertEqual(body["qty"], 10)
+
+    def test_negative_pl(self):
+        raw = [{
+            "stk_cd": "A005930", "cntr_qty": "0000000010", "buy_uv": "0000001000",
+            "tdy_sel_pl": "-0000031500", "pl_rt": "-3.15",
+            "tdy_trde_cmsn": "0000000150", "tdy_trde_tax": "0000001350",
+        }]
+        with patch("routers.orders.orders.get_today_realized", return_value=raw):
+            body = self.client.get("/orders/realized/005930").json()
+        self.assertEqual(body["pnl_pct"], -3.15)
+        self.assertEqual(body["sel_pl_won"], -31500)
+
+    def test_multi_row_recomputes_pct(self):
+        # 같은 종목 2건: 손익금 합산, 손익율은 원가기준 재계산
+        raw = [
+            {"stk_cd": "A005930", "cntr_qty": "5", "buy_uv": "1000",
+             "tdy_sel_pl": "2500", "pl_rt": "+5.00",
+             "tdy_trde_cmsn": "10", "tdy_trde_tax": "90"},
+            {"stk_cd": "A005930", "cntr_qty": "5", "buy_uv": "1000",
+             "tdy_sel_pl": "-1500", "pl_rt": "-3.00",
+             "tdy_trde_cmsn": "10", "tdy_trde_tax": "90"},
+        ]
+        with patch("routers.orders.orders.get_today_realized", return_value=raw):
+            body = self.client.get("/orders/realized/005930").json()
+        self.assertEqual(body["sel_pl_won"], 1000)
+        self.assertEqual(body["cmsn"], 20)
+        self.assertEqual(body["tax"], 180)
+        # cost = 5*1000 + 5*1000 = 10000, pl 1000 → 10.0%
+        self.assertEqual(body["pnl_pct"], 10.0)
+
+    def test_empty_not_found(self):
+        with patch("routers.orders.orders.get_today_realized", return_value=[]):
+            body = self.client.get("/orders/realized/005930").json()
+        self.assertFalse(body["found"])
+        self.assertEqual(body["pnl_pct"], 0.0)
+        self.assertEqual(body["sel_pl_won"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

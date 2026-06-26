@@ -90,7 +90,10 @@ _EXIT_COLUMNS = [
     ("sell_qty", "INTEGER"),
     ("sold_at", "TEXT"),
     ("exit_reason", "TEXT"),    # tp / sl / forced
-    ("pnl_pct", "REAL"),
+    ("pnl_pct", "REAL"),        # net 손익율(키움 ka10077 pl_rt). 폴백 시 gross.
+    ("sell_cmsn", "INTEGER"),   # 당일매매수수료(원, ka10077)
+    ("sell_tax", "INTEGER"),    # 당일매매세금(원, ka10077)
+    ("sell_pl_won", "INTEGER"), # net 실현손익(원, ka10077 tdy_sel_pl)
 ]
 
 

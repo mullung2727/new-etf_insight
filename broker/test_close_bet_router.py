@@ -26,6 +26,7 @@ CREATE TABLE close_bet_orders (
     cntr_price INTEGER, cntr_qty INTEGER, verified_at TEXT,
     sell_order_no TEXT, sell_status TEXT, sell_price INTEGER, sell_qty INTEGER,
     sold_at TEXT, exit_reason TEXT, pnl_pct REAL,
+    sell_cmsn INTEGER, sell_tax INTEGER, sell_pl_won INTEGER,
     PRIMARY KEY (date, ticker)
 )
 """
@@ -69,13 +70,16 @@ class _Base(unittest.TestCase):
             con.execute(
                 "INSERT INTO close_bet_orders "
                 "(date,ticker,score,qty,order_type,status,order_no,cntr_price,"
-                " sell_status,sell_price,sell_qty,exit_reason,pnl_pct,sold_at,created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " sell_status,sell_price,sell_qty,exit_reason,pnl_pct,sold_at,"
+                " sell_cmsn,sell_tax,sell_pl_won,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [date, tk, sc, qty, ot, st, ono, cp,
                  sell_st, (cp + 50 if sell_st else None),
                  (1 if sell_st else None), reason,
                  (5.0 if sell_st else None),
                  ("2026-06-21T15:19:00+09:00" if sell_st else None),
+                 (15 if sell_st else None), (135 if sell_st else None),
+                 (50 if sell_st else None),
                  created],
             )
         con.commit()
@@ -89,11 +93,11 @@ class TestPositions(_Base):
         return resp.json()
 
     def test_buys_all_dates_desc(self):
-        # 매수현황 = 전체 매수(청산된 CCC 포함), date 내림차순
+        # 매수현황 = 전체 매수(청산된 CCC 포함), date 내림차순. history 버킷 폐기.
         data = self._get()
         self.assertEqual([r["ticker"] for r in data["buys"]], ["AAA", "BBB", "CCC"])
         self.assertEqual([r["ticker"] for r in data["watching"]], ["BBB"])
-        self.assertEqual([r["ticker"] for r in data["history"]], ["CCC"])
+        self.assertNotIn("history", data)
 
     def test_buy_fields_with_created_at(self):
         row = self._get()["buys"][0]
@@ -101,13 +105,20 @@ class TestPositions(_Base):
         self.assertEqual(row["cntr_price"], 1000)
         self.assertEqual(row["status"], "confirmed")
         self.assertEqual(row["created_at"], "2026-06-22 06:19:01")
+        # 미청산 행은 sell_* NULL
+        self.assertIsNone(row["sell_status"])
+        self.assertIsNone(row["pnl_pct"])
 
-    def test_history_has_pnl_no_reason(self):
-        row = self._get()["history"][0]
-        self.assertNotIn("exit_reason", row)  # 사유 제거됨
-        self.assertEqual(row["date"], "20251231")  # 매수일(watchlist 일자) 표시
-        self.assertEqual(row["pnl_pct"], 5.0)
-        self.assertEqual(row["sell_price"], 3050)
+    def test_buys_includes_liquidation_result(self):
+        # 청산분 CCC가 buys에 sell_* 채워진 통합 행으로 나온다
+        ccc = next(r for r in self._get()["buys"] if r["ticker"] == "CCC")
+        self.assertEqual(ccc["sell_status"], "filled")
+        self.assertEqual(ccc["exit_reason"], "tp")
+        self.assertEqual(ccc["pnl_pct"], 5.0)
+        self.assertEqual(ccc["sell_price"], 3050)
+        self.assertEqual(ccc["sell_cmsn"], 15)
+        self.assertEqual(ccc["sell_tax"], 135)
+        self.assertEqual(ccc["sell_pl_won"], 50)
 
     def test_watching_excludes_today_and_sold(self):
         # 오늘 매수(AAA)·청산완료(CCC)는 watching에 없어야
@@ -136,7 +147,7 @@ class TestEmpty(unittest.TestCase):
 
     def test_empty_returns_empty_buckets(self):
         data = self.client.get("/close-bet/positions").json()
-        self.assertEqual(data, {"buys": [], "watching": [], "history": []})
+        self.assertEqual(data, {"buys": [], "watching": []})
 
 
 if __name__ == "__main__":

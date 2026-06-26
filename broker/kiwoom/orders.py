@@ -99,6 +99,24 @@ def get_unfilled(side: str = "sell") -> list[dict[str, Any]]:
     return rows
 
 
+def get_today_realized(symbol: str) -> list[dict[str, Any]]:
+    """ka10077 — 당일실현손익상세를 연속조회 병합해 반환한다.
+
+    매도 체결 후 호출하면 키움이 수수료·세금을 차감한 net 손익(``tdy_sel_pl`` 원,
+    ``pl_rt`` %)을 종목별로 준다. 반환 리스트는 원본 ``tdy_rlzt_pl_dtl`` 항목 그대로
+    (정규화는 라우트 책임). 당일분만 조회되므로 매도 당일에 호출해야 한다.
+    """
+    body = {"stk_cd": symbol}
+    res = request(tr.TR_RLZT_PL_TODAY, tr.EP_ACNT, body)
+    rows: list[dict[str, Any]] = list(res.data.get("tdy_rlzt_pl_dtl") or [])
+    while res.cont_yn == "Y" and res.next_key:
+        res = request(
+            tr.TR_RLZT_PL_TODAY, tr.EP_ACNT, body, cont_yn="Y", next_key=res.next_key
+        )
+        rows.extend(res.data.get("tdy_rlzt_pl_dtl") or [])
+    return rows
+
+
 def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
     """Cancel a resting order. qty=0 cancels the full remaining quantity."""
     body = {

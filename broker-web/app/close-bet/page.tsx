@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   brokerClient,
   type CloseBetPositions,
+  type CloseBetBuy,
 } from "@/lib/broker-client";
 import {
   Table,
@@ -36,6 +37,24 @@ function TickerLink({ ticker, date }: { ticker: string; date: string }) {
       </Badge>
     </Link>
   );
+}
+
+const _EXIT_LABEL: Record<string, string> = { tp: "익절", sl: "손절", forced: "강제" };
+
+function StatusCell({ r }: { r: CloseBetBuy }) {
+  // 생애주기 한 칸: 청산완료=청산(사유) 배지, 매도전송=매도중, 그 외=매수상태.
+  if (r.sell_status === "filled") {
+    const profit = r.pnl_pct != null && r.pnl_pct >= 0;
+    return (
+      <Badge className={cn("font-mono", profit ? "bg-status-profit/15 text-status-profit" : "bg-status-loss/15 text-status-loss")}>
+        청산·{_EXIT_LABEL[r.exit_reason ?? ""] ?? r.exit_reason ?? ""}
+      </Badge>
+    );
+  }
+  if (r.sell_status === "ordered") {
+    return <Badge variant="outline" className="font-mono">매도중</Badge>;
+  }
+  return <span className="font-mono text-sm">{r.status}</span>;
 }
 
 function fmtTime(utc: string | null): string {
@@ -94,6 +113,11 @@ export default function CloseBetPage() {
                       <TableHead className="text-right">점수</TableHead>
                       <TableHead className="text-right">매수가</TableHead>
                       <TableHead>상태</TableHead>
+                      <TableHead className="text-right">매도가</TableHead>
+                      <TableHead className="text-right">손익</TableHead>
+                      <TableHead className="text-right">수수료</TableHead>
+                      <TableHead className="text-right">세금</TableHead>
+                      <TableHead className="text-right">청산시각</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -104,7 +128,22 @@ export default function CloseBetPage() {
                         <TableCell><TickerLink ticker={r.ticker} date={r.date} /></TableCell>
                         <TableCell className="text-right font-mono">{r.score ?? "-"}</TableCell>
                         <TableCell className="text-right font-mono">{won(r.cntr_price)}</TableCell>
-                        <TableCell className="font-mono text-sm">{r.status}</TableCell>
+                        <TableCell><StatusCell r={r} /></TableCell>
+                        <TableCell className="text-right font-mono">{won(r.sell_price)}</TableCell>
+                        <TableCell
+                          className={cn(
+                            "text-right font-mono",
+                            r.pnl_pct != null && r.pnl_pct > 0 && "text-status-profit",
+                            r.pnl_pct != null && r.pnl_pct < 0 && "text-status-loss"
+                          )}
+                        >
+                          {r.pnl_pct == null ? "-" : `${r.pnl_pct > 0 ? "+" : ""}${r.pnl_pct}%`}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs text-muted-foreground">{won(r.sell_cmsn)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs text-muted-foreground">{won(r.sell_tax)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                          {r.sold_at ? r.sold_at.slice(5, 19).replace("T", " ") : "-"}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -145,50 +184,6 @@ export default function CloseBetPage() {
               )}
             </section>
 
-            {/* 청산 이력 */}
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-foreground">
-                청산 이력 <span className="text-muted-foreground text-sm">({data.history.length})</span>
-              </h2>
-              {data.history.length === 0 ? (
-                <p className="text-muted-foreground text-sm">없음</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">매수일</TableHead>
-                      <TableHead>종목</TableHead>
-                      <TableHead className="text-right">매수가</TableHead>
-                      <TableHead className="text-right">매도가</TableHead>
-                      <TableHead className="text-right">손익</TableHead>
-                      <TableHead className="text-right">청산시각</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.history.map((r) => (
-                      <TableRow key={`${r.date}-${r.ticker}`}>
-                        <TableCell className="text-right font-mono text-sm">{fmtDate(r.date)}</TableCell>
-                        <TableCell><TickerLink ticker={r.ticker} date={r.date} /></TableCell>
-                        <TableCell className="text-right font-mono">{won(r.cntr_price)}</TableCell>
-                        <TableCell className="text-right font-mono">{won(r.sell_price)}</TableCell>
-                        <TableCell
-                          className={cn(
-                            "text-right font-mono",
-                            r.pnl_pct != null && r.pnl_pct > 0 && "text-status-profit",
-                            r.pnl_pct != null && r.pnl_pct < 0 && "text-status-loss"
-                          )}
-                        >
-                          {r.pnl_pct == null ? "-" : `${r.pnl_pct > 0 ? "+" : ""}${r.pnl_pct}%`}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                          {r.sold_at ? r.sold_at.slice(5, 19).replace("T", " ") : "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </section>
           </>
         )}
       </main>

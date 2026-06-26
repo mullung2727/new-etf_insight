@@ -3,12 +3,11 @@
 watchlist.sqlite3의 close_bet_orders를 3분류로 노출한다. 매수/청산은 etl 배치가
 기록하고, broker는 RO로 읽기만 한다(매매 데이터라 로컬전용 broker에 둔다).
 
-  - today_buys: 오늘 매수분
-  - watching:   어제 이전 매수 + 미청산(청산 워커 감시 대상과 동일 기준)
-  - history:    청산 완료분
+  - buys:     전체 매수 원장 + 청산결과(sell_*·net 손익) 통합 행
+  - watching: 어제 이전 매수 + 미청산(청산 워커 감시 대상과 동일 기준)
 
-실시간 손익은 여기서 계산하지 않는다 — 프론트가 기존 /quotes(ka10095)를 폴링해
-buy_bid/cntr_price로 표시한다.
+실시간 손익(미청산분)은 여기서 계산하지 않는다 — 프론트가 기존 /quotes(ka10095)를
+폴링해 buy_bid/cntr_price로 표시한다. 확정 손익(청산분)은 buys의 pnl_pct(net).
 """
 from __future__ import annotations
 
@@ -52,13 +51,19 @@ def _today() -> str:
     summary="종가배팅 매매·청산 현황",
 )
 def get_close_bet_positions() -> dict[str, list[dict[str, Any]]]:
-    """close_bet_orders를 오늘매수/감시중/청산이력 3분류로 반환한다."""
+    """close_bet_orders를 매수현황(청산결과 포함)/감시중 2분류로 반환한다.
+
+    매수현황 = 생애주기 통합 행(매수→청산). 청산분은 sell_* 컬럼이 채워지고
+    미청산은 NULL. 별도 청산이력 버킷은 프론트 병합으로 폐기.
+    """
     today = _today()
     con = _connect()
     try:
-        # 매수 현황: 전체 매수 원장(일자별, 청산여부 무관). created_at=주문시각(UTC).
+        # 매수 현황: 전체 매수 원장 + 청산결과(net 손익·수수료·세금). created_at=주문시각(UTC).
         buys = [dict(r) for r in con.execute(
-            "SELECT date, ticker, score, cntr_price, status, order_no, created_at "
+            "SELECT date, ticker, score, cntr_price, status, order_no, created_at, "
+            "sell_status, sell_price, sell_qty, sold_at, exit_reason, "
+            "pnl_pct, sell_cmsn, sell_tax, sell_pl_won "
             "FROM close_bet_orders "
             "ORDER BY date DESC, created_at DESC, ticker",
         )]
@@ -69,13 +74,6 @@ def get_close_bet_positions() -> dict[str, list[dict[str, Any]]]:
             "ORDER BY date DESC, ticker",
             [today],
         )]
-        # 청산 이력: 매수일(date) 표시, 사유는 손익 부호로 자명하므로 제거.
-        history = [dict(r) for r in con.execute(
-            "SELECT date, ticker, cntr_price, sell_price, sell_qty, "
-            "pnl_pct, sold_at "
-            "FROM close_bet_orders WHERE sell_status = 'filled' "
-            "ORDER BY sold_at DESC",
-        )]
     finally:
         con.close()
-    return {"buys": buys, "watching": watching, "history": history}
+    return {"buys": buys, "watching": watching}

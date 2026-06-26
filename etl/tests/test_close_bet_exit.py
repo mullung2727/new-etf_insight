@@ -207,6 +207,18 @@ class TestBrokerSellHelpers(unittest.TestCase):
             out = fetch_unfilled_tickers("http://b")
         self.assertEqual(out, {"005930", "000660"})
 
+    def test_fetch_realized_found(self):
+        with patch.object(ex, "requests") as rq:
+            rq.get.return_value = _resp({"found": True, "pnl_pct": 4.8, "cmsn": 1,
+                                         "tax": 2, "sel_pl_won": 100})
+            out = ex.fetch_realized("http://b", "005930")
+        self.assertEqual(out["pnl_pct"], 4.8)
+
+    def test_fetch_realized_not_found_returns_none(self):
+        with patch.object(ex, "requests") as rq:
+            rq.get.return_value = _resp({"found": False, "pnl_pct": 0.0})
+            self.assertIsNone(ex.fetch_realized("http://b", "005930"))
+
     def test_fetch_sell_fills_aggregates_partial(self):
         with patch.object(ex, "requests") as rq:
             rq.get.return_value = _resp([
@@ -286,16 +298,34 @@ class TestSettlePending(unittest.TestCase):
             done = settle_pending("http://b", self.db, "20260618", self.pending)
         self.assertEqual(done, [])
 
-    def test_fills_and_computes_pnl(self):
+    def test_fills_gross_fallback_when_no_realized(self):
+        # ka10077 미발견 → gross 계산 폴백, 수수료·세금 NULL
         with patch.object(ex, "fetch_unfilled_tickers", return_value=set()), \
              patch.object(ex, "fetch_sell_fills",
-                          return_value={"70": {"cntr_uv": 1050, "cntr_qty": 5}}):
+                          return_value={"70": {"cntr_uv": 1050, "cntr_qty": 5}}), \
+             patch.object(ex, "fetch_realized", return_value=None):
             done = settle_pending("http://b", self.db, "20260618", self.pending)
         self.assertEqual(done, ["005930"])
         with connect_rw(self.db) as con:
-            r = con.execute("SELECT sell_status,sell_price,sell_qty,exit_reason,pnl_pct "
+            r = con.execute("SELECT sell_status,sell_price,sell_qty,exit_reason,pnl_pct,"
+                            "sell_cmsn,sell_tax,sell_pl_won "
                             "FROM close_bet_orders WHERE ticker='005930'").fetchone()
-        self.assertEqual(r, ("filled", 1050, 5, "tp", 5.0))  # pnl=1050/1000-1=+5%
+        self.assertEqual(r, ("filled", 1050, 5, "tp", 5.0, None, None, None))  # gross 1050/1000-1
+
+    def test_fills_uses_net_realized(self):
+        # ka10077 net 손익(수수료·세금 차감) 우선 저장
+        realized = {"found": True, "pnl_pct": 4.78, "cmsn": 150, "tax": 1350,
+                    "sel_pl_won": 47800}
+        with patch.object(ex, "fetch_unfilled_tickers", return_value=set()), \
+             patch.object(ex, "fetch_sell_fills",
+                          return_value={"70": {"cntr_uv": 1050, "cntr_qty": 5}}), \
+             patch.object(ex, "fetch_realized", return_value=realized):
+            done = settle_pending("http://b", self.db, "20260618", self.pending)
+        self.assertEqual(done, ["005930"])
+        with connect_rw(self.db) as con:
+            r = con.execute("SELECT sell_price,pnl_pct,sell_cmsn,sell_tax,sell_pl_won "
+                            "FROM close_bet_orders WHERE ticker='005930'").fetchone()
+        self.assertEqual(r, (1050, 4.78, 150, 1350, 47800))
 
     def test_gone_but_no_fill_record_waits(self):
         with patch.object(ex, "fetch_unfilled_tickers", return_value=set()), \

@@ -31,6 +31,14 @@ def _to_int(value: Any) -> int:
         return 0
 
 
+def _to_float(value: Any) -> float:
+    """부호 포함 백분율 문자열("+5.00")을 float로. 빈값/오류는 0.0."""
+    try:
+        return float(str(value).strip().lstrip("+"))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _friendly_order_error(exc: KiwoomError) -> str:
     msg = str(exc)
     if get_current_env() == "paper" and "모의투자" in msg:
@@ -128,6 +136,39 @@ def get_unfilled(side: str = "sell") -> list[dict[str, Any]]:
         }
         for item in rows
     ]
+
+
+@router.get(
+    "/realized/{ticker}",
+    operation_id="get_today_realized",
+    summary="당일 종목 실현손익 (ka10077, net)",
+)
+def get_today_realized(ticker: str) -> dict[str, Any]:
+    """당일 해당 종목의 net 실현손익(수수료·세금 차감)을 반환한다.
+
+    매도 청산 직후 호출해 gross 추정 대신 키움 권위값을 저장하는 용도.
+    같은 날 같은 종목 매도가 여러 건이면 수수료·세금·손익금을 합산하고
+    손익율은 원가기준 재계산한다(close-bet은 보통 1건이라 단일 행).
+    """
+    rows = orders.get_today_realized(ticker)
+    cmsn = sum(_to_int(r.get("tdy_trde_cmsn")) for r in rows)
+    tax = sum(_to_int(r.get("tdy_trde_tax")) for r in rows)
+    sel_pl = sum(_to_int(r.get("tdy_sel_pl")) for r in rows)
+    qty = sum(_to_int(r.get("cntr_qty")) for r in rows)
+    cost = sum(_to_int(r.get("buy_uv")) * _to_int(r.get("cntr_qty")) for r in rows)
+    if len(rows) == 1:
+        pnl_pct = _to_float(rows[0].get("pl_rt"))
+    else:
+        pnl_pct = round(sel_pl / cost * 100, 2) if cost else 0.0
+    return {
+        "ticker": _TICKER_PREFIX.sub("", ticker),
+        "found": bool(rows),
+        "pnl_pct": pnl_pct,
+        "sel_pl_won": sel_pl,
+        "cmsn": cmsn,
+        "tax": tax,
+        "qty": qty,
+    }
 
 
 @router.delete(

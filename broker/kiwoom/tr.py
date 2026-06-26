@@ -28,6 +28,7 @@ TR_DEPOSIT = "kt00001"      # 예수금상세현황요청 → EP_ACNT
 TR_SETTLED_BALANCE = "kt00005"  # 체결잔고요청 (예수금D+0/D+1/D+2 + 보유종목) → EP_ACNT
 TR_CNTR_HIST = "kt00007"    # 계좌별주문체결내역상세요청 (당일 체결 대조용) → EP_ACNT
 TR_UNFILLED = "ka10075"     # 미체결요청 (체결확인·중복가드·백스톱용, G2부터 사용) → EP_ACNT
+TR_RLZT_PL_TODAY = "ka10077"  # 당일실현손익상세요청 (수수료·세금 차감 net 손익) → EP_ACNT
 
 # --- Orders (주문) ---
 TR_ORDER_BUY = "kt10000"    # 주식 매수주문 → EP_ORDR

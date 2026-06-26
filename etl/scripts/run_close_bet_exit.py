@@ -162,12 +162,16 @@ def mark_ordered(con, date: str, ticker: str, order_no: str) -> None:
 def mark_filled(
     con, date: str, ticker: str, sell_price: int, sell_qty: int,
     sold_at: str, exit_reason: str, pnl_pct: float,
+    sell_cmsn: int | None = None, sell_tax: int | None = None,
+    sell_pl_won: int | None = None,
 ) -> None:
-    """체결확인 후 'filled' + 실현가/손익 확정."""
+    """체결확인 후 'filled' + 실현가/손익 확정. 수수료·세금·net손익금은 ka10077분(없으면 NULL)."""
     con.execute(
         "UPDATE close_bet_orders SET sell_status='filled', sell_price=?, sell_qty=?, "
-        "sold_at=?, exit_reason=?, pnl_pct=? WHERE date=? AND ticker=?",
-        [sell_price, sell_qty, sold_at, exit_reason, pnl_pct, date, ticker],
+        "sold_at=?, exit_reason=?, pnl_pct=?, sell_cmsn=?, sell_tax=?, sell_pl_won=? "
+        "WHERE date=? AND ticker=?",
+        [sell_price, sell_qty, sold_at, exit_reason, pnl_pct,
+         sell_cmsn, sell_tax, sell_pl_won, date, ticker],
     )
 
 
@@ -248,6 +252,23 @@ def fetch_sell_fills(broker_url: str, date: str) -> dict[str, dict]:
         if not agg["cntr_uv"]:
             agg["cntr_uv"] = int(item.get("cntr_uv") or 0)
     return by_no
+
+
+def fetch_realized(broker_url: str, ticker: str) -> dict | None:
+    """GET /orders/realized/{ticker} → net 실현손익(키움 권위값). 실패/미발견 시 None.
+
+    당일 매도 체결 후 호출해 수수료·세금 차감된 pnl_pct·손익금을 받는다.
+    """
+    try:
+        resp = requests.get(
+            f"{broker_url}/orders/realized/{ticker}", timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data if data.get("found") else None
+    except Exception as exc:
+        print(f"[exit] /orders/realized 조회 실패({ticker}): {exc}")
+        return None
 
 
 def place_sell_via_broker(broker_url: str, ticker: str, qty: int) -> dict:
@@ -345,10 +366,18 @@ def settle_pending(broker_url: str, db_path, today: str, pending: dict) -> list[
         if not f or f["cntr_qty"] <= 0:
             continue  # 사라졌으나 체결내역 아직 — 다음 폴링 대기
         sell_price = f["cntr_uv"]
-        pnl = round((sell_price / e["cntr_price"] - 1) * 100, 2) if e["cntr_price"] else 0.0
+        # net 손익(수수료·세금 차감) 우선 — 키움 ka10077. 조회 실패 시 gross 폴백.
+        realized = fetch_realized(broker_url, ticker)
+        if realized:
+            pnl = realized["pnl_pct"]
+            cmsn, tax, pl_won = realized["cmsn"], realized["tax"], realized["sel_pl_won"]
+        else:
+            pnl = round((sell_price / e["cntr_price"] - 1) * 100, 2) if e["cntr_price"] else 0.0
+            cmsn = tax = pl_won = None
         with connect_rw(db_path) as con:
             mark_filled(con, e["date"], ticker, sell_price, f["cntr_qty"],
-                        _now_seoul().isoformat(), e["exit_reason"], pnl)
+                        _now_seoul().isoformat(), e["exit_reason"], pnl,
+                        cmsn, tax, pl_won)
         done.append(ticker)
     return done
 

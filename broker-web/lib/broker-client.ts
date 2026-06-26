@@ -174,6 +174,7 @@ export interface EventCreate {
 
 // --- Close-bet types ---
 
+// 매수 원장 + 청산결과 통합 행. 미청산은 sell_* = null.
 export interface CloseBetBuy {
   date: string;
   ticker: string;
@@ -182,6 +183,16 @@ export interface CloseBetBuy {
   status: string;
   order_no: string;
   created_at: string | null;
+  // 청산결과 (sell_status=null이면 미청산)
+  sell_status: string | null;
+  sell_price: number | null;
+  sell_qty: number | null;
+  sold_at: string | null;
+  exit_reason: string | null;
+  pnl_pct: number | null;      // net 손익율(수수료·세금 차감)
+  sell_cmsn: number | null;    // 수수료(원)
+  sell_tax: number | null;     // 세금(원)
+  sell_pl_won: number | null;  // net 실현손익(원)
 }
 
 export interface CloseBetWatch {
@@ -192,20 +203,9 @@ export interface CloseBetWatch {
   qty: number;
 }
 
-export interface CloseBetHistory {
-  date: string;
-  ticker: string;
-  cntr_price: number | null;
-  sell_price: number | null;
-  sell_qty: number | null;
-  pnl_pct: number | null;
-  sold_at: string | null;
-}
-
 export interface CloseBetPositions {
   buys: CloseBetBuy[];
   watching: CloseBetWatch[];
-  history: CloseBetHistory[];
 }
 
 // --- API calls ---
