@@ -7,6 +7,16 @@
 - OpenClaw session target: `isolated`
 - Delivery: Discord announce
 
+## File Reading
+
+Read this instruction file with a platform-neutral UTF-8-safe reader, such as
+OpenClaw `file_fetch` or the agent's native workspace file access. Do not read
+this file with host-default shell decoding, especially Windows PowerShell 5.1
+`Get-Content` without an explicit UTF-8 setting.
+
+If Korean text in this file appears corrupted, discard that read result and
+reread with a UTF-8-safe reader before reporting to Discord.
+
 ## Purpose
 
 Report the result of the Windows Task Scheduler close-bet order job.

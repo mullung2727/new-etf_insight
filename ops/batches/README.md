@@ -7,6 +7,19 @@ should read the matching file in this directory before running the batch. Keep
 the runtime script, schedule, purpose, and reporting rules here so the batch can
 be reviewed together with the project code.
 
+## File reading
+
+All files in this directory are UTF-8. OpenClaw agents should read these
+instruction files with a platform-neutral file reader, such as OpenClaw
+`file_fetch` or the agent's native workspace file access. Do not use shell
+commands that depend on the host default encoding, especially Windows
+PowerShell 5.1 `Get-Content` without an explicit UTF-8 setting, to read batch
+instructions or Korean report bodies.
+
+If Korean text appears corrupted while reading a batch instruction or report
+body, stop using that read result and reread the file through a UTF-8-safe
+reader before composing the Discord report.
+
 ## Jobs
 
 - `daily-etf-watchlist-krx-ohlcv.md`
