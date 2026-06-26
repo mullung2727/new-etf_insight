@@ -16,12 +16,18 @@ from unittest.mock import patch
 
 import sqlite3
 
+import duckdb
+
 from scripts.run_close_bet import (
     _is_in_order_window,
+    budget_for,
     check_precondition,
     confirm_fills,
     create_close_bet_orders_table,
+    fetch_market_caps,
     load_order_candidates,
+    qty_from_budget,
+    rank_and_cut,
     upsert_order_result,
 )
 from scripts.wl_sqlite import connect_ro, connect_rw
@@ -156,7 +162,7 @@ class TestLoadOrderCandidates(unittest.TestCase):
 
     def test_empty_when_no_scores(self):
         self._seed([])
-        result = load_order_candidates(self.db, _DATE, score_threshold=80, max_order_count=5)
+        result = load_order_candidates(self.db, _DATE, score_threshold=80)
         self.assertEqual(result, [])
 
     def test_filters_below_threshold(self):
@@ -164,7 +170,7 @@ class TestLoadOrderCandidates(unittest.TestCase):
             {"date": _DATE, "ticker": "005930", "score": 85},
             {"date": _DATE, "ticker": "000660", "score": 75},
         ])
-        result = load_order_candidates(self.db, _DATE, score_threshold=80, max_order_count=5)
+        result = load_order_candidates(self.db, _DATE, score_threshold=80)
         tickers = [r["ticker"] for r in result]
         self.assertIn("005930", tickers)
         self.assertNotIn("000660", tickers)
@@ -175,16 +181,17 @@ class TestLoadOrderCandidates(unittest.TestCase):
             {"date": _DATE, "ticker": "B", "score": 95},
             {"date": _DATE, "ticker": "C", "score": 88},
         ])
-        result = load_order_candidates(self.db, _DATE, score_threshold=80, max_order_count=5)
+        result = load_order_candidates(self.db, _DATE, score_threshold=80)
         scores = [r["score"] for r in result]
         self.assertEqual(scores, sorted(scores, reverse=True))
 
-    def test_max_order_count_cap(self):
+    def test_returns_all_above_threshold(self):
+        # cut은 rank_and_cut 책임 — load는 threshold 통과분 전체 반환
         self._seed([
             {"date": _DATE, "ticker": str(i), "score": 80 + i} for i in range(10)
         ])
-        result = load_order_candidates(self.db, _DATE, score_threshold=80, max_order_count=5)
-        self.assertEqual(len(result), 5)
+        result = load_order_candidates(self.db, _DATE, score_threshold=80)
+        self.assertEqual(len(result), 10)
 
     def test_excludes_already_ordered(self):
         self._seed(
@@ -194,7 +201,7 @@ class TestLoadOrderCandidates(unittest.TestCase):
             ],
             already_ordered=["005930"],
         )
-        result = load_order_candidates(self.db, _DATE, score_threshold=80, max_order_count=5)
+        result = load_order_candidates(self.db, _DATE, score_threshold=80)
         tickers = [r["ticker"] for r in result]
         self.assertNotIn("005930", tickers)
         self.assertIn("000660", tickers)
@@ -337,6 +344,108 @@ class TestConfirmFills(unittest.TestCase):
             )
         self.assertEqual(remaining, {})
         self.assertEqual(self._row("005930")[0], "confirmed")
+
+
+# ── 7. 예산 배분 순수 함수 (G1) ───────────────────────────────────────────────
+
+class TestBudgetFor(unittest.TestCase):
+    def test_one_stock_3m(self):
+        self.assertEqual(budget_for(1), 3_000_000)
+
+    def test_two_stocks_2m_each(self):
+        self.assertEqual(budget_for(2), 2_000_000)
+
+    def test_three_stocks_split_5m(self):
+        # 500만 ÷ 3, floor
+        self.assertEqual(budget_for(3), 1_666_666)
+
+    def test_zero_or_out_of_range(self):
+        # 정의역 밖(0, 4+)은 0 — 호출측이 N∈{1,2,3}로 보장하지만 방어
+        self.assertEqual(budget_for(0), 0)
+        self.assertEqual(budget_for(4), 0)
+
+
+class TestQtyFromBudget(unittest.TestCase):
+    def test_floor_division(self):
+        # 200만 / 12,340 = 162.07 → 162
+        self.assertEqual(qty_from_budget(2_000_000, 12_340), 162)
+
+    def test_price_exceeds_budget_zero(self):
+        self.assertEqual(qty_from_budget(1_666_666, 2_000_000), 0)
+
+    def test_zero_price_zero(self):
+        self.assertEqual(qty_from_budget(2_000_000, 0), 0)
+
+
+class TestRankAndCut(unittest.TestCase):
+    def _c(self, ticker, score):
+        return {"ticker": ticker, "score": score}
+
+    def test_cuts_to_three(self):
+        cands = [self._c(str(i), 90 - i) for i in range(5)]
+        result = rank_and_cut(cands, {}, n=3)
+        self.assertEqual(len(result), 3)
+
+    def test_score_desc_primary(self):
+        cands = [self._c("A", 80), self._c("B", 95), self._c("C", 88)]
+        result = rank_and_cut(cands, {}, n=3)
+        self.assertEqual([r["ticker"] for r in result], ["B", "C", "A"])
+
+    def test_market_cap_breaks_score_tie(self):
+        # score 동점 4개 → 시총 큰 3개만, 시총 DESC 정렬
+        cands = [self._c("A", 80), self._c("B", 80), self._c("C", 80), self._c("D", 80)]
+        caps = {"A": 100, "B": 400, "C": 300, "D": 200}
+        result = rank_and_cut(cands, caps, n=3)
+        self.assertEqual([r["ticker"] for r in result], ["B", "C", "D"])
+
+    def test_missing_cap_treated_as_zero(self):
+        # 시총 없는 종목은 0 취급 → 동점 시 맨 뒤
+        cands = [self._c("A", 80), self._c("B", 80)]
+        caps = {"A": 500}  # B 없음
+        result = rank_and_cut(cands, caps, n=3)
+        self.assertEqual([r["ticker"] for r in result], ["A", "B"])
+
+
+# ── 8. fetch_market_caps (DuckDB, G2) ────────────────────────────────────────
+
+class TestFetchMarketCaps(unittest.TestCase):
+    def setUp(self):
+        fd, path = tempfile.mkstemp(suffix=".duckdb")
+        os.close(fd)
+        os.unlink(path)  # duckdb가 새로 생성
+        self.krx = Path(path)
+        con = duckdb.connect(str(self.krx))
+        con.execute("""
+            CREATE TABLE ohlcv (
+                date VARCHAR, ticker VARCHAR, market_cap BIGINT,
+                PRIMARY KEY (date, ticker)
+            )
+        """)
+        con.executemany(
+            "INSERT INTO ohlcv (date, ticker, market_cap) VALUES (?,?,?)",
+            [
+                ("20260612", "005930", 100),
+                ("20260615", "005930", 500),   # 대상일 — 최신
+                ("20260616", "005930", 999),    # 대상일 이후 — 무시
+                ("20260613", "000660", 300),    # 대상일 이전 최신
+            ],
+        )
+        con.close()
+
+    def tearDown(self):
+        self.krx.unlink(missing_ok=True)
+
+    def test_returns_latest_on_or_before_date(self):
+        caps = fetch_market_caps(self.krx, ["005930", "000660"], "20260615")
+        self.assertEqual(caps["005930"], 500)   # 20260616(999) 무시
+        self.assertEqual(caps["000660"], 300)   # 20260613 최신
+
+    def test_missing_ticker_absent(self):
+        caps = fetch_market_caps(self.krx, ["005930", "999999"], "20260615")
+        self.assertNotIn("999999", caps)
+
+    def test_empty_tickers(self):
+        self.assertEqual(fetch_market_caps(self.krx, [], "20260615"), {})
 
 
 if __name__ == "__main__":

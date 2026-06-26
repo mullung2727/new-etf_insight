@@ -1,7 +1,8 @@
 """종가배팅 주문 배치 (15:19 실행).
 
-llm_scores에서 score >= score_threshold 종목을 score 내림차순 / max_order_count 제한으로
-선별해 broker REST API를 통해 시장가 1주 매수하고 결과를 기록한다.
+llm_scores에서 score >= score_threshold 종목을 score 1순위·시총(krx_ohlcv) 2순위로
+상위 3개 선별해, 총 500만원을 종목 수별 예산(1→300만/2→200만/3→167만)으로 나눠
+broker REST API 시장가 매수(qty = 예산 // 현재가)하고 결과를 기록한다.
 
 핵심 사상: Kiwoom API는 무조건 broker를 통해서만 호출한다.
 
@@ -30,6 +31,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import sqlite3
 
+import duckdb
 import requests
 from dotenv import load_dotenv
 
@@ -49,8 +51,12 @@ except ImportError:
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
 DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
+DEFAULT_KRX_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
 
 REQUEST_TIMEOUT = 15
+
+# 총 500만원을 score 상위 N개에 분할 매수(예산은 budget_for).
+_TOP_N = 3
 
 
 # ── DDL ──────────────────────────────────────────────────────────────────────
@@ -111,9 +117,8 @@ def load_order_candidates(
     watchlist_db: Path,
     date: str,
     score_threshold: int,
-    max_order_count: int,
 ) -> list[dict]:
-    """score >= threshold 종목을 score DESC / max_order_count 제한으로 반환.
+    """score >= threshold 종목 전체를 score DESC로 반환(상위 N cut은 rank_and_cut 책임).
 
     이미 close_bet_orders에 (date, ticker) 행이 있는 종목은 제외한다.
     """
@@ -132,16 +137,14 @@ def load_order_candidates(
                   AND l.score >= ?
                   AND c.ticker IS NULL
                 ORDER BY l.score DESC
-                LIMIT ?
-            """, [date, score_threshold, max_order_count]).fetchall()
+            """, [date, score_threshold]).fetchall()
         else:
             rows = con.execute("""
                 SELECT ticker, score, name, close
                 FROM llm_scores
                 WHERE date = ? AND score >= ?
                 ORDER BY score DESC
-                LIMIT ?
-            """, [date, score_threshold, max_order_count]).fetchall()
+            """, [date, score_threshold]).fetchall()
     return [
         {"ticker": r[0], "score": r[1], "name": r[2], "close": r[3]}
         for r in rows
@@ -168,6 +171,53 @@ def upsert_order_result(watchlist_db: Path, row: dict) -> None:
                 row["message"], row["raw"],
             ],
         )
+
+
+# ── 예산 배분 / 수량 환산 ──────────────────────────────────────────────────────
+
+# 총 500만원. 선정 종목 수 N별 종목당 예산(1→300만, 2→200만, 3→500만÷3 floor).
+_BUDGET_BY_COUNT = {1: 3_000_000, 2: 2_000_000, 3: 5_000_000 // 3}
+
+
+def budget_for(n: int) -> int:
+    """선정 종목 수 N별 종목당 예산(원). 정의역 밖(N∉{1,2,3})은 0."""
+    return _BUDGET_BY_COUNT.get(n, 0)
+
+
+def qty_from_budget(budget: int, price: int) -> int:
+    """예산 ÷ 현재가 floor. price<=0이면 0(잔여현금은 버림)."""
+    if price <= 0:
+        return 0
+    return budget // price
+
+
+def fetch_market_caps(krx_db: Path, tickers: list[str], date: str) -> dict[str, int]:
+    """각 ticker의 date 이하 최신 거래일 market_cap. 없는 ticker는 키 부재."""
+    if not tickers:
+        return {}
+    placeholders = ",".join(["?"] * len(tickers))
+    with duckdb.connect(str(krx_db), read_only=True) as con:
+        rows = con.execute(
+            f"""
+            SELECT ticker, market_cap
+            FROM ohlcv
+            WHERE date = (
+                SELECT MAX(date) FROM ohlcv o2
+                WHERE o2.ticker = ohlcv.ticker AND o2.date <= ?
+            ) AND ticker IN ({placeholders})
+            """,
+            [date, *tickers],
+        ).fetchall()
+    return {r[0]: r[1] for r in rows if r[1] is not None}
+
+
+def rank_and_cut(candidates: list[dict], caps: dict[str, int], n: int = 3) -> list[dict]:
+    """(score DESC, market_cap DESC)로 정렬해 상위 n개. 시총 없는 종목은 0 취급."""
+    return sorted(
+        candidates,
+        key=lambda c: (c["score"], caps.get(c["ticker"], 0)),
+        reverse=True,
+    )[:n]
 
 
 # ── 시각 유틸 ─────────────────────────────────────────────────────────────────
@@ -296,8 +346,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="종가배팅 주문 배치")
     parser.add_argument("--date", help="대상 날짜 YYYYMMDD; 기본: 오늘(Asia/Seoul)")
     parser.add_argument("--score-threshold", type=int, default=70)
-    parser.add_argument("--max-order-count", type=int, default=5)
-    parser.add_argument("--qty-per-symbol", type=int, default=1)
     parser.add_argument("--order-time", default="15:19:00")
     parser.add_argument("--order-deadline-time", default="15:20:00")
     parser.add_argument("--allow-order-outside-close-window", action="store_true")
@@ -327,15 +375,17 @@ def main() -> None:
         send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\n주문 시간창 밖 (now={now_str}, window={args.order_time}~{args.order_deadline_time})")
         sys.exit(1)
 
-    candidates = load_order_candidates(
-        watchlist_db, date, args.score_threshold, args.max_order_count
-    )
-    print(f"[close_bet] 주문 후보: {len(candidates)}건 (threshold={args.score_threshold}, max={args.max_order_count})")
-
-    if not candidates:
+    pool = load_order_candidates(watchlist_db, date, args.score_threshold)
+    if not pool:
         print(f"[close_bet] 주문 대상 없음")
         send_discord(f"[종가베팅] {date} 주문 대상 없음{dry_tag}\nscore>={args.score_threshold} 종목 0건")
         return
+
+    # score 1순위·시총 2순위로 상위 N개. 시총은 krx_ohlcv(별 DuckDB) → Python에서 동점깸.
+    caps = fetch_market_caps(DEFAULT_KRX_DB, [c["ticker"] for c in pool], date) if DEFAULT_KRX_DB.exists() else {}
+    candidates = rank_and_cut(pool, caps, n=_TOP_N)
+    budget = budget_for(len(candidates))
+    print(f"[close_bet] 후보 {len(pool)}건 → 선정 {len(candidates)}건 (threshold={args.score_threshold}), 종목당 예산 {budget:,}원")
 
     submitted = skipped = failed = 0
     fill_pending: dict[str, str] = {}  # ticker → order_no (체결확정 대기)
@@ -355,7 +405,7 @@ def main() -> None:
             print(f"[close_bet] {ticker}: 현재가 조회 실패 — skip")
             upsert_order_result(watchlist_db, {
                 "date": date, "ticker": ticker, "score": score,
-                "qty": args.qty_per_symbol, "order_type": "market",
+                "qty": 0, "order_type": "market",
                 "status": "skipped", "order_no": "",
                 "message": "현재가 조회 실패", "raw": "{}",
             })
@@ -363,21 +413,34 @@ def main() -> None:
             report_lines.append(f"⏭ {label} score={score} skip(현재가 조회 실패)")
             continue
 
-        result = place_order_via_broker(broker_url, ticker, args.qty_per_symbol, dry_run)
+        qty = qty_from_budget(budget, cur_prc)
+        if qty == 0:
+            print(f"[close_bet] {ticker}: 예산<현재가({budget:,}<{cur_prc:,}) — skip")
+            upsert_order_result(watchlist_db, {
+                "date": date, "ticker": ticker, "score": score,
+                "qty": 0, "order_type": "market",
+                "status": "skipped", "order_no": "",
+                "message": f"예산<현재가({budget}<{cur_prc})", "raw": "{}",
+            })
+            skipped += 1
+            report_lines.append(f"⏭ {label} score={score} skip(예산<현재가)")
+            continue
+
+        result = place_order_via_broker(broker_url, ticker, qty, dry_run)
         upsert_order_result(watchlist_db, {
             "date": date, "ticker": ticker, "score": score,
-            "qty": args.qty_per_symbol, "order_type": "market",
+            "qty": qty, "order_type": "market",
             "status": result["status"], "order_no": result["order_no"],
             "message": result["message"], "raw": json.dumps(result),
         })
         # 거래 원장(kiwoom_trade_history)은 broker가 기록한다 (POST /orders 시).
-        print(f"[close_bet] {ticker} score={score} cur={cur_prc} → {result['status']} ord={result['order_no']}")
+        print(f"[close_bet] {ticker} score={score} cur={cur_prc} qty={qty}(예산 {budget:,}) → {result['status']} ord={result['order_no']}")
 
         if result["status"] in ("submitted", "dry_run"):
             submitted += 1
             if result["status"] == "submitted" and result["order_no"]:
                 fill_pending[ticker] = result["order_no"]
-            report_lines.append(f"✅ {label} score={score} {result['status']} #{result['order_no']}")
+            report_lines.append(f"✅ {label} score={score} {qty}주 {result['status']} #{result['order_no']}")
         else:
             failed += 1
             report_lines.append(f"❌ {label} score={score} 실패: {result['message']}")
