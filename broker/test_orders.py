@@ -317,8 +317,50 @@ class TestRealizedWrapper(unittest.TestCase):
         self.assertEqual(calls[1]["next_key"], "K2")
 
 
+class TestRealizedByDateWrapper(unittest.TestCase):
+    """kiwoom.orders.get_realized_by_date — ka10072 body(strt_dt) + 병합."""
+
+    def test_body_and_paging(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body), "next_key": next_key})
+            if cont_yn == "N":
+                return TrResult(data={"dt_stk_div_rlzt_pl": [{"stk_cd": "A005930"}]},
+                                cont_yn="Y", next_key="K2")
+            return TrResult(data={"dt_stk_div_rlzt_pl": [{"stk_cd": "A005930"}]},
+                            cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            rows = korders.get_realized_by_date("005930", "20260623")
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(calls[0]["api_id"], "ka10072")
+        self.assertEqual(calls[0]["body"]["stk_cd"], "005930")
+        self.assertEqual(calls[0]["body"]["strt_dt"], "20260623")
+        self.assertEqual(calls[1]["next_key"], "K2")
+
+
 class TestRealizedRoute(_OrdersTestBase):
     """GET /orders/realized/{ticker} — net 손익율·수수료·세금·손익금 정규화."""
+
+    def test_date_param_routes_to_ka10072(self):
+        raw = [{
+            "stk_cd": "A005930", "cntr_qty": "1", "buy_uv": "1000",
+            "tdy_sel_pl": "-569", "pl_rt": "-5.67",
+            "tdy_trde_cmsn": "60", "tdy_trde_tax": "19",
+        }]
+        with patch("routers.orders.orders.get_realized_by_date", return_value=raw) as by_date, \
+             patch("routers.orders.orders.get_today_realized") as today:
+            body = self.client.get("/orders/realized/005930?date=20260623").json()
+        by_date.assert_called_once_with("005930", "20260623")
+        today.assert_not_called()
+        self.assertEqual(body["pnl_pct"], -5.67)
+        self.assertEqual(body["cmsn"], 60)
+        self.assertEqual(body["tax"], 19)
 
     def test_single_row_uses_pl_rt(self):
         raw = [{

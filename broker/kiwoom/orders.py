@@ -117,6 +117,22 @@ def get_today_realized(symbol: str) -> list[dict[str, Any]]:
     return rows
 
 
+def get_realized_by_date(symbol: str, date: str) -> list[dict[str, Any]]:
+    """ka10072 — 특정 일자 종목 실현손익. 필드는 ka10077과 동일(``tdy_sel_pl``·
+    ``pl_rt``·``tdy_trde_cmsn``·``tdy_trde_tax``). 당일限인 ka10077로 못 가져오는
+    과거 청산분 소급 백필용. date=YYYYMMDD. 모의 도메인도 지원(KRX限).
+    """
+    body = {"stk_cd": symbol, "strt_dt": date}
+    res = request(tr.TR_RLZT_PL_DATE, tr.EP_ACNT, body)
+    rows: list[dict[str, Any]] = list(res.data.get("dt_stk_div_rlzt_pl") or [])
+    while res.cont_yn == "Y" and res.next_key:
+        res = request(
+            tr.TR_RLZT_PL_DATE, tr.EP_ACNT, body, cont_yn="Y", next_key=res.next_key
+        )
+        rows.extend(res.data.get("dt_stk_div_rlzt_pl") or [])
+    return rows
+
+
 def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
     """Cancel a resting order. qty=0 cancels the full remaining quantity."""
     body = {

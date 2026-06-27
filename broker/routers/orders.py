@@ -141,16 +141,17 @@ def get_unfilled(side: str = "sell") -> list[dict[str, Any]]:
 @router.get(
     "/realized/{ticker}",
     operation_id="get_today_realized",
-    summary="당일 종목 실현손익 (ka10077, net)",
+    summary="종목 실현손익 net (ka10077 당일 / date 지정 시 ka10072)",
 )
-def get_today_realized(ticker: str) -> dict[str, Any]:
-    """당일 해당 종목의 net 실현손익(수수료·세금 차감)을 반환한다.
+def get_today_realized(ticker: str, date: str | None = None) -> dict[str, Any]:
+    """해당 종목의 net 실현손익(수수료·세금 차감)을 반환한다.
 
+    date 없으면 당일(ka10077), date=YYYYMMDD 지정 시 그 날(ka10072)로 과거 소급.
     매도 청산 직후 호출해 gross 추정 대신 키움 권위값을 저장하는 용도.
     같은 날 같은 종목 매도가 여러 건이면 수수료·세금·손익금을 합산하고
     손익율은 원가기준 재계산한다(close-bet은 보통 1건이라 단일 행).
     """
-    rows = orders.get_today_realized(ticker)
+    rows = orders.get_realized_by_date(ticker, date) if date else orders.get_today_realized(ticker)
     cmsn = sum(_to_int(r.get("tdy_trde_cmsn")) for r in rows)
     tax = sum(_to_int(r.get("tdy_trde_tax")) for r in rows)
     sel_pl = sum(_to_int(r.get("tdy_sel_pl")) for r in rows)
