@@ -8,6 +8,7 @@
   5. _is_in_order_window: 시간창 체크 / allow_outside 우회
 """
 import os
+import re
 import tempfile
 import unittest
 from datetime import datetime
@@ -25,7 +26,10 @@ from scripts.run_close_bet import (
     confirm_fills,
     create_close_bet_orders_table,
     fetch_market_caps,
+    load_close_bet_status,
     load_order_candidates,
+    normalize_date_key,
+    parse_args,
     qty_from_budget,
     rank_and_cut,
     upsert_order_result,
@@ -142,6 +146,18 @@ class TestCheckPrecondition(unittest.TestCase):
         self.assertEqual(check_precondition(self.db, _DATE), 1)
 
 
+class TestDateKey(unittest.TestCase):
+    def test_keeps_compact_date(self):
+        self.assertEqual(normalize_date_key("20260629"), "20260629")
+
+    def test_converts_dashed_date(self):
+        self.assertEqual(normalize_date_key("2026-06-29"), "20260629")
+
+    def test_rejects_invalid_date_key(self):
+        with self.assertRaises(ValueError):
+            normalize_date_key("2026/06/29")
+
+
 # ── 3. load_order_candidates ─────────────────────────────────────────────────
 
 class TestLoadOrderCandidates(unittest.TestCase):
@@ -205,6 +221,56 @@ class TestLoadOrderCandidates(unittest.TestCase):
         tickers = [r["ticker"] for r in result]
         self.assertNotIn("005930", tickers)
         self.assertIn("000660", tickers)
+
+
+class TestCloseBetStatus(unittest.TestCase):
+    def setUp(self):
+        self.db = _fresh_db()
+        self.log_dir = Path(tempfile.mkdtemp())
+        with connect_rw(self.db) as con:
+            _seed_llm_scores(con, [
+                {"date": "20260629", "ticker": "122350", "name": "삼기", "score": 80},
+                {"date": "20260629", "ticker": "012340", "name": "뉴인텍", "score": 76},
+                {"date": "20260629", "ticker": "086520", "name": "에코프로", "score": 76},
+                {"date": "20260629", "ticker": "037710", "name": "광주신세계", "score": 54},
+            ])
+            create_close_bet_orders_table(con)
+
+    def tearDown(self):
+        self.db.unlink(missing_ok=True)
+        for path in self.log_dir.glob("*"):
+            path.unlink()
+        self.log_dir.rmdir()
+
+    def test_status_uses_compact_date_key_and_threshold_rows(self):
+        status = load_close_bet_status(self.db, "2026-06-29", log_dir=self.log_dir)
+
+        self.assertEqual(status["date_key"], "20260629")
+        self.assertEqual(status["score_count"], 4)
+        self.assertEqual(status["threshold_count"], 3)
+        self.assertEqual([r["ticker"] for r in status["threshold_rows"]], ["122350", "012340", "086520"])
+        self.assertEqual(status["order_count"], 0)
+        self.assertEqual(status["final_judgment"], "failed before order")
+
+
+class TestScheduledTaskContract(unittest.TestCase):
+    def test_close_bet_order_wrapper_args_match_python_cli(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        wrapper = repo_root / "ops" / "scheduled-tasks" / "run-close-bet-order.ps1"
+        text = wrapper.read_text(encoding="utf-8")
+
+        self.assertNotIn("--max-order-count", text)
+        self.assertNotIn("--qty-per-symbol", text)
+
+        match = re.search(r"\$pythonArgs\s*=\s*@\((.*?)\)", text, re.S)
+        self.assertIsNotNone(match)
+        args = re.findall(r'"([^"]*)"', match.group(1))
+        self.assertEqual(args[0], "scripts\\run_close_bet.py")
+
+        parsed = parse_args(args[1:])
+        self.assertEqual(parsed.score_threshold, 70)
+        self.assertEqual(parsed.dry_run, "false")
+        self.assertEqual(parsed.broker_url, "http://localhost:8001")
 
 
 # ── 4. upsert_order_result ────────────────────────────────────────────────────

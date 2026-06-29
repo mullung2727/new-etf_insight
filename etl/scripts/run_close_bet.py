@@ -59,6 +59,16 @@ REQUEST_TIMEOUT = 15
 _TOP_N = 3
 
 
+def normalize_date_key(value: str | None = None) -> str:
+    """DB/log key date. Accepts YYYYMMDD or YYYY-MM-DD; defaults to today KST."""
+    if not value:
+        return _now_seoul().strftime("%Y%m%d")
+    compact = value.replace("-", "")
+    if len(compact) != 8 or not compact.isdigit():
+        raise ValueError(f"date must be YYYYMMDD or YYYY-MM-DD: {value}")
+    return compact
+
+
 # ── DDL ──────────────────────────────────────────────────────────────────────
 
 def create_close_bet_orders_table(con: sqlite3.Connection) -> None:
@@ -152,6 +162,89 @@ def load_order_candidates(
         {"ticker": r[0], "score": r[1], "name": r[2], "close": r[3]}
         for r in rows
     ]
+
+
+def load_score_rows(watchlist_db: Path, date: str) -> list[dict]:
+    """Return all llm_scores rows for date, ordered by score desc."""
+    with connect_ro(watchlist_db) as con:
+        rows = con.execute(
+            """
+            SELECT ticker, score, name, close
+            FROM llm_scores
+            WHERE date = ?
+            ORDER BY score DESC
+            """,
+            [date],
+        ).fetchall()
+    return [
+        {"ticker": r[0], "score": r[1], "name": r[2], "close": r[3]}
+        for r in rows
+    ]
+
+
+def load_close_bet_order_rows(watchlist_db: Path, date: str) -> list[dict]:
+    """Return close_bet_orders rows for date. Missing table means no rows."""
+    with connect_ro(watchlist_db) as con:
+        tables = {r[0] for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='close_bet_orders'"
+        ).fetchall()}
+        if "close_bet_orders" not in tables:
+            return []
+        rows = con.execute(
+            """
+            SELECT ticker, score, qty, status, order_no, message, created_at
+            FROM close_bet_orders
+            WHERE date = ?
+            ORDER BY score DESC, ticker
+            """,
+            [date],
+        ).fetchall()
+    return [
+        {
+            "ticker": r[0],
+            "score": r[1],
+            "qty": r[2],
+            "status": r[3],
+            "order_no": r[4],
+            "message": r[5],
+            "created_at": r[6],
+        }
+        for r in rows
+    ]
+
+
+def load_close_bet_status(
+    watchlist_db: Path,
+    date: str,
+    *,
+    score_threshold: int = 70,
+    log_dir: Path | None = None,
+) -> dict:
+    """Shared status snapshot for order/report paths. No ad hoc SQL in reports."""
+    date_key = normalize_date_key(date)
+    score_rows = load_score_rows(watchlist_db, date_key)
+    threshold_rows = [row for row in score_rows if (row["score"] or 0) >= score_threshold]
+    order_rows = load_close_bet_order_rows(watchlist_db, date_key)
+    log_path = (log_dir or (Path(__file__).resolve().parents[1] / "logs")) / f"close-bet-{date_key}.log"
+    if not order_rows and threshold_rows:
+        final_judgment = "failed before order"
+    elif order_rows:
+        failed_or_skipped = [row for row in order_rows if row["status"] in ("failed", "skipped")]
+        final_judgment = "completed" if not failed_or_skipped else "completed with failures"
+    else:
+        final_judgment = "no targets"
+    return {
+        "date_key": date_key,
+        "score_threshold": score_threshold,
+        "score_count": len(score_rows),
+        "threshold_count": len(threshold_rows),
+        "threshold_rows": threshold_rows,
+        "order_count": len(order_rows),
+        "order_rows": order_rows,
+        "log_path": str(log_path),
+        "log_exists": log_path.exists(),
+        "final_judgment": final_judgment,
+    }
 
 
 def upsert_order_result(watchlist_db: Path, row: dict) -> None:
@@ -343,9 +436,7 @@ def confirm_fills(
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-def main() -> None:
-    load_dotenv(ENV_PATH)
-
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="종가배팅 주문 배치")
     parser.add_argument("--date", help="대상 날짜 YYYYMMDD; 기본: 오늘(Asia/Seoul)")
     parser.add_argument("--score-threshold", type=int, default=70)
@@ -354,10 +445,20 @@ def main() -> None:
     parser.add_argument("--allow-order-outside-close-window", action="store_true")
     parser.add_argument("--dry-run", default="true")
     parser.add_argument("--broker-url", default=None)
-    args = parser.parse_args()
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    return build_arg_parser().parse_args(argv)
+
+
+def main() -> None:
+    load_dotenv(ENV_PATH)
+
+    args = parse_args()
 
     dry_run = args.dry_run.lower() not in ("false", "0", "no")
-    date = args.date or _now_seoul().strftime("%Y%m%d")
+    date = normalize_date_key(args.date)
     broker_url = args.broker_url or os.getenv("BROKER_API_URL", "http://localhost:8001")
     watchlist_db = DEFAULT_WATCHLIST_DB
 

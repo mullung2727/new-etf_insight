@@ -6,7 +6,7 @@ broker REST API mock 기반으로 main() 전체 흐름 검증:
   3. 시간창 밖 + allow_outside=True → 주문 진행
   4. dry_run=True → broker 호출 없이 'dry_run' 상태 기록
   5. dry_run=False → place_order_via_broker가 dry_run=False로 호출됨
-  6. max_order_count 제한 → 상위 N개만 주문
+  6. score·시총 기준 상위 3개만 주문
   7. 마감 시각 루프 중 초과 → 일부만 처리하고 중단
 
 거래 원장(kiwoom_trade_history)은 broker가 기록하므로 이 테스트 범위 밖이다
@@ -120,6 +120,7 @@ def _run_main(
         stack.enter_context(patch("scripts.run_close_bet.load_dotenv"))
         stack.enter_context(patch("time.sleep"))
         stack.enter_context(patch("sys.argv", ["run_close_bet.py"] + argv))
+        stack.enter_context(patch("scripts.run_close_bet.confirm_fills", return_value={}))
         if mock_place_order:
             stack.enter_context(patch(
                 "scripts.run_close_bet.place_order_via_broker",
@@ -234,6 +235,7 @@ class TestDryRun(unittest.TestCase):
              patch("scripts.run_close_bet._now_seoul", return_value=_DEFAULT_NOW), \
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=5000), \
              patch("scripts.run_close_bet.place_order_via_broker", side_effect=fake_place), \
+             patch("scripts.run_close_bet.confirm_fills", return_value={}), \
              patch("scripts.run_close_bet.load_dotenv"), \
              patch("time.sleep"), \
              patch("sys.argv", ["run_close_bet.py", "--date", _DATE, "--dry-run", "false",
@@ -299,6 +301,7 @@ class TestBudgetSizing(unittest.TestCase):
              patch("scripts.run_close_bet._now_seoul", return_value=_DEFAULT_NOW), \
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=4_000_000), \
              patch("scripts.run_close_bet.place_order_via_broker", side_effect=fake_place), \
+             patch("scripts.run_close_bet.confirm_fills", return_value={}), \
              patch("scripts.run_close_bet.load_dotenv"), \
              patch("time.sleep"), \
              patch("sys.argv", ["run_close_bet.py", "--date", _DATE,
@@ -356,6 +359,7 @@ class TestDeadlineMidLoop(unittest.TestCase):
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=5000), \
              patch("scripts.run_close_bet.place_order_via_broker",
                    return_value={"order_no": "0000001", "status": "submitted", "message": ""}), \
+             patch("scripts.run_close_bet.confirm_fills", return_value={}), \
              patch("scripts.run_close_bet.load_dotenv"), \
              patch("time.sleep"), \
              patch("sys.argv", ["run_close_bet.py", "--date", _DATE,

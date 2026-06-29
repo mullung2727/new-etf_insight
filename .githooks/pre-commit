@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if command -v py >/dev/null 2>&1; then
+  py -3 scripts/pre_commit_checks.py
+elif command -v python >/dev/null 2>&1; then
+  python scripts/pre_commit_checks.py
+else
+  echo "python not found; cannot run pre-commit checks" >&2
+  exit 1
+fi

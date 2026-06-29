@@ -46,7 +46,14 @@ Work from:
 C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl
 ```
 
-Check:
+Do not write ad hoc SQL for this report. Use the project-owned report script,
+which calls the same status/query helpers as the order batch:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\report_close_bet_order.py
+```
+
+Check the report script output for:
 
 1. Windows task status for `\OpenClaw\close-bet-order`.
 2. Today's log file, if present: `logs\close-bet-YYYYMMDD.log`.
@@ -55,7 +62,14 @@ Check:
    - `llm_scores` rows with `score >= 70`.
    - `close_bet_orders` rows for today.
 
-Use DB-backed rows as the source of truth for whether orders were attempted.
+Use the compact date key `YYYYMMDD` for DB queries and log filenames. The
+watchlist DB stores `llm_scores.date` and `close_bet_orders.date` as compact
+strings such as `20260629`, not dashed strings such as `2026-06-29`. If a
+dashed date is used for display, convert it before querying. When reporting,
+include the exact DB date key used.
+
+Use the report script's DB-backed rows as the source of truth for whether
+orders were attempted.
 
 ## Discord Report
 
