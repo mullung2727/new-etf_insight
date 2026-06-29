@@ -99,7 +99,21 @@ def run_daily_pipeline(
             results.append(_skipped_result(rcept_no, etf_key, "existing_record"))
             continue
 
-        _save_pdf_analysis(filing, record_path, pdf_dir, holding_identifier_resolver=holding_identifier_resolver)
+        try:
+            _save_pdf_analysis(filing, record_path, pdf_dir, holding_identifier_resolver=holding_identifier_resolver)
+        except Exception as exc:
+            results.append(
+                {
+                    "rcept_no": rcept_no,
+                    "etf_key": etf_key,
+                    "action": "failed",
+                    "reason": "pdf_analysis_failed",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+            )
+            continue
+
         results.append(
             {
                 "rcept_no": rcept_no,
