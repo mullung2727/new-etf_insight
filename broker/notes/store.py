@@ -183,6 +183,29 @@ def upsert_event(
     return NoteEvent(**dict(row))
 
 
+def find_note_uid_by_order_no(order_no: str) -> str | None:
+    """이 order_no를 이미 가진 이벤트의 노트 uid. 없으면 None.
+
+    자동연결 멱등성의 핵심: order_no가 어느 노트(닫힌 노트 포함)에 속하는지
+    먼저 확인해 같은 노트에 재반영한다(종목 기준 _active_note보다 우선).
+    """
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT note_uid FROM note_events WHERE order_no = ?", (order_no,)
+    ).fetchone()
+    return row["note_uid"] if row else None
+
+
+def update_event_type(event_id: int, event_type: str) -> None:
+    """이벤트 분류(buy/add_buy/partial_sell/sell)만 갱신한다(시간순 재계산용)."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE note_events SET event_type = ? WHERE id = ?",
+        (event_type, event_id),
+    )
+    conn.commit()
+
+
 def delete_event(note_uid: str, event_id: int) -> bool:
     conn = get_conn()
     cur = conn.execute(

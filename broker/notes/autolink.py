@@ -32,7 +32,6 @@ _lock = threading.Lock()
 _TICKER_PREFIX = re.compile(r"^\D+")  # stk_cd "A005930" → "005930"
 
 _BUY_TYPES = (EventType.buy.value, EventType.add_buy.value)
-_SELL_TYPES = (EventType.partial_sell.value, EventType.sell.value)
 
 
 def _to_int(value: Any) -> int:
@@ -63,38 +62,35 @@ def _active_note(ticker: str):
     return None
 
 
-def _decide_type(events, side: str, order_no: str, cntr_qty: int) -> str:
-    """이 체결의 event_type을 결정한다. 재동기화해도 동일 결과(멱등).
+def _reclassify(uid: str) -> None:
+    """노트의 모든 이벤트를 시간순으로 훑어 분류·status를 재계산한다.
 
-    events: 노트의 기존 이벤트(NoteEvent 리스트). 현재 order_no 행은 새 qty로
-    대체해 계산한다.
+    side(매수/매도)는 sync_trades가 출처로 확정해 보존하고, 그 안에서만
+    최초매수/추가매수, 분할매도/전량매도를 보유수량 흐름으로 다시 매긴다.
+    전체 재계산이라 몇 번을 돌려도 같은 결과(멱등) — 부분체결·추가매수·
+    재동기화에 모두 안전. _decide_type+_refresh_status를 대체한다.
     """
-    buy = sum(
-        e.qty for e in events
-        if e.event_type.value in _BUY_TYPES and e.order_no != order_no
-    )
-    sell = sum(
-        e.qty for e in events
-        if e.event_type.value in _SELL_TYPES and e.order_no != order_no
-    )
-    if side == "buy":
-        return EventType.buy.value if buy == 0 else EventType.add_buy.value
-    # sell: 이 매도까지 반영한 net이 0 이하면 전량매도, 아니면 분할매도
-    net = buy - (sell + cntr_qty)
-    return EventType.sell.value if net <= 0 else EventType.partial_sell.value
-
-
-def _refresh_status(uid: str) -> None:
-    """이벤트 합으로 노트 status를 재계산한다(보유수량 아님 — 이벤트 net 기준)."""
     note = store.get_note(uid)
-    if note is None:
+    if note is None:  # 동기화 중 외부 삭제 등
         return
-    buy = sum(e.qty for e in note.events if e.event_type.value in _BUY_TYPES)
-    sell = sum(e.qty for e in note.events if e.event_type.value in _SELL_TYPES)
-    net = buy - sell
-    if net <= 0:
+    events = sorted(
+        note.events, key=lambda e: (e.executed_at, e.order_no or "", e.id)
+    )
+    holdings = 0
+    saw_sell = False
+    for e in events:
+        if e.event_type.value in _BUY_TYPES:
+            new = EventType.buy.value if holdings == 0 else EventType.add_buy.value
+            holdings += e.qty
+        else:
+            saw_sell = True
+            holdings -= e.qty
+            new = EventType.sell.value if holdings <= 0 else EventType.partial_sell.value
+        if e.event_type.value != new:
+            store.update_event_type(e.id, new)
+    if holdings <= 0:
         status = NoteStatus.closed
-    elif sell > 0:
+    elif saw_sell:
         status = NoteStatus.partial
     else:
         status = NoteStatus.open
@@ -115,21 +111,24 @@ def _reconcile(date: str, side: str, row: dict[str, Any], summary: dict[str, int
     price = _to_int(row.get("cntr_uv"))
     executed_at = _executed_at(date, str(row.get("ord_tm", "") or ""))
 
-    note = _active_note(ticker)
-    if note is None:
-        # 매수면 새 사이클 시작. 매도인데 active 노트 없으면(도입 전 HTS 매수분)
-        # 기록은 남긴다 — 사용자 목표는 "전부 기록". net 음수 → closed 처리됨.
-        note = store.create_note(NoteCreate(symbol=ticker))
-        summary["notes"] += 1
-        existing = []
-    else:
-        existing = store.get_note(note.uid).events
+    # 멱등 핵심: 이 order_no가 이미 어느 노트에 속하면(닫힌 노트 포함) 그 노트에
+    # 재반영한다. 못 찾을 때만 미청산 노트 재사용 → 없으면 새 노트 생성.
+    note_uid = store.find_note_uid_by_order_no(order_no)
+    is_update = note_uid is not None
+    if note_uid is None:
+        active = _active_note(ticker)
+        if active is None:
+            # 매수면 새 사이클. 매도인데 active 없으면(도입 전 HTS 매수분) 기록만
+            # 남긴다 — 사용자 목표는 "전부 기록". 재계산 시 net 음수 → closed.
+            active = store.create_note(NoteCreate(symbol=ticker))
+            summary["notes"] += 1
+        note_uid = active.uid
 
-    already = any(e.order_no == order_no for e in existing)
-    etype = _decide_type(existing, side, order_no, cntr_qty)
-    store.upsert_event(note.uid, order_no, etype, price, cntr_qty, executed_at)
-    summary["updated" if already else "created"] += 1
-    _refresh_status(note.uid)
+    # 분류는 _reclassify가 시간순으로 정한다. 여기선 side만 맞는 잠정값을 넣는다.
+    provisional = EventType.buy.value if side == "buy" else EventType.sell.value
+    store.upsert_event(note_uid, order_no, provisional, price, cntr_qty, executed_at)
+    summary["updated" if is_update else "created"] += 1
+    _reclassify(note_uid)
 
 
 def sync_trades(date: str) -> dict[str, int]:
@@ -139,9 +138,10 @@ def sync_trades(date: str) -> dict[str, int]:
     반환: {"created": 신규 이벤트 수, "updated": 갱신된 이벤트 수, "notes": 신규 노트 수}.
     """
     summary = {"created": 0, "updated": 0, "notes": 0}
-    with _lock:
-        buys = orders.get_order_history(date, sell_tp="2")
-        sells = orders.get_order_history(date, sell_tp="1")
+    # 키움 HTTP 조회는 lock 밖에서(느린 네트워크가 실시간 경로를 막지 않도록).
+    buys = orders.get_order_history(date, sell_tp="2")
+    sells = orders.get_order_history(date, sell_tp="1")
+    with _lock:  # SQLite 쓰기만 직렬화
         for row in buys:
             _reconcile(date, "buy", row, summary)
         for row in sells:

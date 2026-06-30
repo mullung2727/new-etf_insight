@@ -137,6 +137,55 @@ class TestSyncTrades(_Base):
         self.assertEqual(res, {"created": 0, "updated": 0, "notes": 0})
         self.assertEqual(store.list_notes(), [])
 
+    def test_resync_closed_position_no_orphan(self):
+        # 회귀: 닫힌 노트를 (폴링이 같은 날 반복하듯) 재동기화해도 빈 고아 노트가
+        # 생기지 않아야 한다. kt00007은 닫힌 주문 행을 계속 반환한다.
+        self._buys = [_row("0000001", "A005930", 10, 70000)]
+        self._sells = [_row("0000002", "A005930", 10, 72000, "143000")]
+        autolink.sync_trades("20260630")
+        note = self._only_note()
+        self.assertEqual(note.status, NoteStatus.closed)
+        # 같은 행으로 두 번 더 재동기화
+        autolink.sync_trades("20260630")
+        autolink.sync_trades("20260630")
+        notes = store.list_notes()
+        self.assertEqual(len(notes), 1)  # 고아 노트 없음
+        note = store.get_note(notes[0].uid)
+        self.assertEqual(len(note.events), 2)  # 중복 이벤트 없음
+        self.assertEqual(note.status, NoteStatus.closed)
+
+    def test_resync_multibuy_keeps_first_buy(self):
+        # 회귀: 매수 2건 노트를 재동기화해도 최초 'buy'가 'add_buy'로 뒤집히면 안 됨.
+        self._buys = [
+            _row("0000001", "A005930", 10, 70000, "093000"),
+            _row("0000002", "A005930", 5, 71000, "100000"),
+        ]
+        autolink.sync_trades("20260630")
+        autolink.sync_trades("20260630")  # 재동기화
+        note = self._only_note()
+        types = [e.event_type.value for e in note.events]  # executed_at 정렬
+        self.assertEqual(types.count("buy"), 1)
+        self.assertEqual(types.count("add_buy"), 1)
+        # 가장 이른 주문이 'buy'
+        first = min(note.events, key=lambda e: (e.executed_at, e.order_no))
+        self.assertEqual(first.event_type.value, "buy")
+        self.assertEqual(note.status, NoteStatus.open)
+
+    def test_partial_then_full_sell_typed_by_order(self):
+        # buy 10 → 분할매도 4(이른 시각) → 전량매도 6(늦은 시각).
+        self._buys = [_row("0000001", "A005930", 10, 70000, "093000")]
+        self._sells = [
+            _row("0000002", "A005930", 4, 72000, "100000"),
+            _row("0000003", "A005930", 6, 73000, "143000"),
+        ]
+        autolink.sync_trades("20260630")
+        autolink.sync_trades("20260630")  # 재동기화해도 동일
+        note = self._only_note()
+        by_no = {e.order_no: e.event_type.value for e in note.events}
+        self.assertEqual(by_no["0000002"], "partial_sell")
+        self.assertEqual(by_no["0000003"], "sell")
+        self.assertEqual(note.status, NoteStatus.closed)
+
 
 if __name__ == "__main__":
     unittest.main()
