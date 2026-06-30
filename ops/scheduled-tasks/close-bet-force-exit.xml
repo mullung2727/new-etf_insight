@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!-- Windows 작업 스케줄러 정의 — 종가베팅 청산 백스톱 (워커 크래시 대비)
+     파라미터 변경: Arguments 수정 후 아래 명령으로 재등록
+       Register-ScheduledTask -Xml (Get-Content -Path close-bet-force-exit.xml -Raw -Encoding UTF8) -TaskName "close-bet-force-exit" -TaskPath "\OpenClaw\" -Force
+     워커 강제청산(15:19:00) 직후 15:19:30 독립 시계로 1회. 잔고+미체결+sell_status 3중대조 멱등.
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>종가베팅 청산 백스톱 (평일 15:19:30, 워커 정상이면 무동작)</Description>
+    <URI>\OpenClaw\close-bet-force-exit</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-06-16T15:19:30</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday />
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-close-bet-force-exit.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

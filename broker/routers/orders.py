@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from kiwoom import orders
 from kiwoom.client import KiwoomError
@@ -29,6 +30,14 @@ def _to_int(value: Any) -> int:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return 0
+
+
+def _to_float(value: Any) -> float:
+    """부호 포함 백분율 문자열("+5.00")을 float로. 빈값/오류는 0.0."""
+    try:
+        return float(str(value).strip().lstrip("+"))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _friendly_order_error(exc: KiwoomError) -> str:
@@ -86,12 +95,14 @@ def place_order(req: OrderRequest) -> OrderResult:
     operation_id="get_order_history",
     summary="당일 체결내역 조회 (kt00007)",
 )
-def get_order_history(date: str) -> list[dict[str, Any]]:
-    """당일 매수 체결내역을 정규화해 반환한다 (체결 대조 배치용).
+def get_order_history(date: str, side: str = "buy") -> list[dict[str, Any]]:
+    """당일 체결내역을 정규화해 반환한다 (체결 대조·매도 청산 확인용).
 
-    date: 주문일자 YYYYMMDD. 각 항목은 0-padding을 제거한 정수/순수 종목코드.
+    date: 주문일자 YYYYMMDD. side: buy(기본·매수 체결대조)/sell(매도 청산 확인).
+    각 항목은 0-padding을 제거한 정수/순수 종목코드.
     """
-    rows = orders.get_order_history(date)
+    sell_tp = "1" if side == "sell" else "2"
+    rows = orders.get_order_history(date, sell_tp=sell_tp)
     return [
         {
             "order_no": str(item.get("ord_no", "") or ""),
@@ -105,6 +116,68 @@ def get_order_history(date: str) -> list[dict[str, Any]]:
     ]
 
 
+@router.get(
+    "/unfilled",
+    operation_id="get_unfilled",
+    summary="미체결 주문 조회 (ka10075)",
+)
+def get_unfilled(side: str = "sell") -> list[dict[str, Any]]:
+    """미체결 주문을 정규화해 반환한다 (매도 청산 체결확인·재주문 가드용).
+
+    side: sell(기본)/buy/all. 우리 주문이 목록서 사라지면 체결 완료로 판단.
+    """
+    rows = orders.get_unfilled(side)
+    return [
+        {
+            "order_no": str(item.get("ord_no", "") or ""),
+            "ticker": _TICKER_PREFIX.sub("", str(item.get("stk_cd", "") or "")),
+            "stk_nm": str(item.get("stk_nm", "") or ""),
+            "ord_qty": _to_int(item.get("ord_qty")),
+            "ord_price": _to_int(item.get("ord_pric")),
+            "oso_qty": _to_int(item.get("oso_qty")),
+            "ord_stt": str(item.get("ord_stt", "") or ""),
+            "io_tp_nm": str(item.get("io_tp_nm", "") or ""),
+            "tm": str(item.get("tm", "") or ""),
+            "raw": item,
+        }
+        for item in rows
+    ]
+
+
+@router.get(
+    "/realized/{ticker}",
+    operation_id="get_today_realized",
+    summary="종목 실현손익 net (ka10077 당일 / date 지정 시 ka10072)",
+)
+def get_today_realized(ticker: str, date: str | None = None) -> dict[str, Any]:
+    """해당 종목의 net 실현손익(수수료·세금 차감)을 반환한다.
+
+    date 없으면 당일(ka10077), date=YYYYMMDD 지정 시 그 날(ka10072)로 과거 소급.
+    매도 청산 직후 호출해 gross 추정 대신 키움 권위값을 저장하는 용도.
+    같은 날 같은 종목 매도가 여러 건이면 수수료·세금·손익금을 합산하고
+    손익율은 원가기준 재계산한다(close-bet은 보통 1건이라 단일 행).
+    """
+    rows = orders.get_realized_by_date(ticker, date) if date else orders.get_today_realized(ticker)
+    cmsn = sum(_to_int(r.get("tdy_trde_cmsn")) for r in rows)
+    tax = sum(_to_int(r.get("tdy_trde_tax")) for r in rows)
+    sel_pl = sum(_to_int(r.get("tdy_sel_pl")) for r in rows)
+    qty = sum(_to_int(r.get("cntr_qty")) for r in rows)
+    cost = sum(_to_int(r.get("buy_uv")) * _to_int(r.get("cntr_qty")) for r in rows)
+    if len(rows) == 1:
+        pnl_pct = _to_float(rows[0].get("pl_rt"))
+    else:
+        pnl_pct = round(sel_pl / cost * 100, 2) if cost else 0.0
+    return {
+        "ticker": _TICKER_PREFIX.sub("", ticker),
+        "found": bool(rows),
+        "pnl_pct": pnl_pct,
+        "sel_pl_won": sel_pl,
+        "cmsn": cmsn,
+        "tax": tax,
+        "qty": qty,
+    }
+
+
 @router.delete(
     "/{order_no}",
     operation_id="cancel_order",
@@ -114,3 +187,24 @@ def get_order_history(date: str) -> list[dict[str, Any]]:
 def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
     """미체결 주문을 취소한다. qty=0이면 잔량 전부 취소."""
     return orders.cancel_order(order_no, symbol, qty)
+
+
+class ModifyRequest(BaseModel):
+    symbol: str
+    price: int
+    qty: int = 0  # 0=잔량 전부
+
+
+@router.patch(
+    "/{order_no}",
+    operation_id="modify_order",
+    summary="미체결 주문 정정 (kt10002)",
+    response_model=OrderResult,
+)
+def modify_order(order_no: str, req: ModifyRequest) -> OrderResult:
+    """미체결 주문 가격을 정정한다. qty=0이면 잔량 전부."""
+    try:
+        return orders.modify_order(order_no, req.symbol, req.price, req.qty)
+    except KiwoomError as exc:
+        logger.warning("modify error raw: %s", exc)
+        raise HTTPException(status_code=422, detail=_friendly_order_error(exc)) from exc

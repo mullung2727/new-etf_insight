@@ -60,7 +60,6 @@ class Config:
     ws_host: str
     account_no: str
     max_order_amount: int
-    max_order_qty: int
     token_cache_path: Path
 
     @property
@@ -99,6 +98,5 @@ def load_config() -> Config:
         ws_host=_WS_HOSTS[env],
         account_no=_get_first("KIWOOM_ACCOUNT_NO", "KIWOON_MOCK_TR_ACCOUNT_NO"),
         max_order_amount=int(os.getenv("MAX_ORDER_AMOUNT", "1000000")),
-        max_order_qty=int(os.getenv("MAX_ORDER_QTY", "100")),
         token_cache_path=cache_path,
     )

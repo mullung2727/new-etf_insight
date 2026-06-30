@@ -49,17 +49,18 @@ def place_order(req: OrderRequest) -> OrderResult:
     )
 
 
-def get_order_history(date: str) -> list[dict[str, Any]]:
-    """kt00007 — 당일 매수 체결내역(상세)을 연속조회 병합해 반환한다.
+def get_order_history(date: str, sell_tp: str = "2") -> list[dict[str, Any]]:
+    """kt00007 — 당일 체결내역(상세)을 연속조회 병합해 반환한다.
 
-    qry_tp=4(체결내역만), stk_bond_tp=1(주식), sell_tp=2(매수). 반환 리스트는
-    원본 ``acnt_ord_cntr_prps_dtl`` 항목 그대로(정규화는 라우트 책임).
+    qry_tp=4(체결내역만), stk_bond_tp=1(주식). sell_tp: 1=매도, 2=매수(기본·체결대조용).
+    매도 청산 체결확인은 sell_tp="1"로 호출. 반환 리스트는 원본
+    ``acnt_ord_cntr_prps_dtl`` 항목 그대로(정규화는 라우트 책임).
     """
     body = {
         "ord_dt": date,        # YYYYMMDD
         "qry_tp": "4",         # 체결내역만
         "stk_bond_tp": "1",    # 주식
-        "sell_tp": "2",        # 매수
+        "sell_tp": sell_tp,    # 1=매도 / 2=매수
         "stk_cd": "",          # 전체 종목
         "fr_ord_no": "",       # 전체
         "dmst_stex_tp": "%",   # 전체 거래소 (Required)
@@ -72,6 +73,83 @@ def get_order_history(date: str) -> list[dict[str, Any]]:
         )
         rows.extend(res.data.get("acnt_ord_cntr_prps_dtl") or [])
     return rows
+
+
+_TRDE_TP_BY_SIDE = {"sell": "1", "buy": "2", "all": "0"}
+
+
+def get_unfilled(side: str = "sell") -> list[dict[str, Any]]:
+    """ka10075 — 미체결 주문 목록을 연속조회 병합해 반환한다.
+
+    side: sell(매도)/buy(매수)/all(전체). 청산 체결확인은 미체결에서 우리 매도주문이
+    사라졌는지로 판단한다. 반환 리스트는 원본 ``oso`` 항목 그대로(정규화는 라우트 책임).
+    """
+    trde_tp = _TRDE_TP_BY_SIDE.get(side, "0")
+    body = {
+        "all_stk_tp": "0",   # 0:전체 종목
+        "trde_tp": trde_tp,  # 0:전체 1:매도 2:매수
+        "stk_cd": "",        # 전체 종목
+        "stex_tp": "0",      # 0:통합
+    }
+    res = request(tr.TR_UNFILLED, tr.EP_ACNT, body)
+    rows: list[dict[str, Any]] = list(res.data.get("oso") or [])
+    while res.cont_yn == "Y" and res.next_key:
+        res = request(tr.TR_UNFILLED, tr.EP_ACNT, body, cont_yn="Y", next_key=res.next_key)
+        rows.extend(res.data.get("oso") or [])
+    return rows
+
+
+def get_today_realized(symbol: str) -> list[dict[str, Any]]:
+    """ka10077 — 당일실현손익상세를 연속조회 병합해 반환한다.
+
+    매도 체결 후 호출하면 키움이 수수료·세금을 차감한 net 손익(``tdy_sel_pl`` 원,
+    ``pl_rt`` %)을 종목별로 준다. 반환 리스트는 원본 ``tdy_rlzt_pl_dtl`` 항목 그대로
+    (정규화는 라우트 책임). 당일분만 조회되므로 매도 당일에 호출해야 한다.
+    """
+    body = {"stk_cd": symbol}
+    res = request(tr.TR_RLZT_PL_TODAY, tr.EP_ACNT, body)
+    rows: list[dict[str, Any]] = list(res.data.get("tdy_rlzt_pl_dtl") or [])
+    while res.cont_yn == "Y" and res.next_key:
+        res = request(
+            tr.TR_RLZT_PL_TODAY, tr.EP_ACNT, body, cont_yn="Y", next_key=res.next_key
+        )
+        rows.extend(res.data.get("tdy_rlzt_pl_dtl") or [])
+    return rows
+
+
+def get_realized_by_date(symbol: str, date: str) -> list[dict[str, Any]]:
+    """ka10072 — 특정 일자 종목 실현손익. 필드는 ka10077과 동일(``tdy_sel_pl``·
+    ``pl_rt``·``tdy_trde_cmsn``·``tdy_trde_tax``). 당일限인 ka10077로 못 가져오는
+    과거 청산분 소급 백필용. date=YYYYMMDD. 모의 도메인도 지원(KRX限).
+    """
+    body = {"stk_cd": symbol, "strt_dt": date}
+    res = request(tr.TR_RLZT_PL_DATE, tr.EP_ACNT, body)
+    rows: list[dict[str, Any]] = list(res.data.get("dt_stk_div_rlzt_pl") or [])
+    while res.cont_yn == "Y" and res.next_key:
+        res = request(
+            tr.TR_RLZT_PL_DATE, tr.EP_ACNT, body, cont_yn="Y", next_key=res.next_key
+        )
+        rows.extend(res.data.get("dt_stk_div_rlzt_pl") or [])
+    return rows
+
+
+def modify_order(order_no: str, symbol: str, price: int, qty: int = 0) -> OrderResult:
+    """kt10002 — 미체결 주문 정정. qty=0이면 잔량 전부 정정. price=정정단가."""
+    body = {
+        "dmst_stex_tp": "KRX",
+        "orig_ord_no": str(order_no),
+        "stk_cd": symbol,
+        "mdfy_qty": str(qty) if qty else "0",
+        "mdfy_uv": str(price),
+    }
+    res = request(tr.TR_ORDER_MODIFY, tr.EP_ORDR, body)
+    data = res.data
+    return OrderResult(
+        accepted=True,
+        order_no=str(data.get("ord_no") or order_no),
+        message=str(data.get("return_msg", "")),
+        raw=data,
+    )
 
 
 def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:

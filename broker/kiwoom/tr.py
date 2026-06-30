@@ -20,16 +20,21 @@ EP_ORDR = "/api/dostk/ordr"        # 주문 (매수/매도/정정/취소)
 TR_STOCK_INFO = "ka10001"   # 주식기본정보요청 (현재가 포함) → EP_STKINFO
 TR_ORDERBOOK = "ka10004"    # 주식호가요청 → EP_MRKCOND
 TR_DAILY_CHART = "ka10081"  # 주식일봉차트조회요청 → EP_CHART
+TR_WATCHLIST_QUOTE = "ka10095"  # 관심종목정보요청 (복수종목 일괄시세, 등록 불요·stateless) → EP_STKINFO
 
 # --- Account (계좌) ---
 TR_BALANCE = "kt00018"      # 계좌평가잔고내역요청 → EP_ACNT
 TR_DEPOSIT = "kt00001"      # 예수금상세현황요청 → EP_ACNT
 TR_SETTLED_BALANCE = "kt00005"  # 체결잔고요청 (예수금D+0/D+1/D+2 + 보유종목) → EP_ACNT
 TR_CNTR_HIST = "kt00007"    # 계좌별주문체결내역상세요청 (당일 체결 대조용) → EP_ACNT
+TR_UNFILLED = "ka10075"     # 미체결요청 (체결확인·중복가드·백스톱용, G2부터 사용) → EP_ACNT
+TR_RLZT_PL_TODAY = "ka10077"  # 당일실현손익상세요청 (수수료·세금 차감 net 손익) → EP_ACNT
+TR_RLZT_PL_DATE = "ka10072"   # 일자별종목별실현손익_일자 (과거 청산 소급 백필, 필드 동일) → EP_ACNT
 
 # --- Orders (주문) ---
 TR_ORDER_BUY = "kt10000"    # 주식 매수주문 → EP_ORDR
 TR_ORDER_SELL = "kt10001"   # 주식 매도주문 → EP_ORDR
+TR_ORDER_MODIFY = "kt10002" # 주식 정정주문 → EP_ORDR
 TR_ORDER_CANCEL = "kt10003" # 주식 취소주문 → EP_ORDR
 
 # --- Condition search (조건검색) — WebSocket only, not REST ---

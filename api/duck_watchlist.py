@@ -19,13 +19,23 @@ from typing import ContextManager, Iterator
 
 import duckdb
 
-# Defaults assume api/ and etl/ are siblings under the repo root (same as duck.py).
-WATCHLIST_DB_PATH = Path(
-    os.getenv("WATCHLIST_DB_PATH", "../etl/db/watchlist.sqlite3")
-).resolve()
-KRX_DB_PATH = Path(
-    os.getenv("KRX_DB_PATH", "../etl/db/krx_ohlcv.duckdb")
-).resolve()
+API_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = API_DIR.parent
+ETL_DB_DIR = PROJECT_DIR / "etl" / "db"
+
+
+def _resolve_project_path(value: str | None, default: Path) -> Path:
+    path = Path(value) if value else default
+    if not path.is_absolute():
+        path = PROJECT_DIR / path
+    return path.resolve()
+
+WATCHLIST_DB_PATH = _resolve_project_path(
+    os.getenv("WATCHLIST_DB_PATH"), ETL_DB_DIR / "watchlist.sqlite3"
+)
+KRX_DB_PATH = _resolve_project_path(
+    os.getenv("KRX_DB_PATH"), ETL_DB_DIR / "krx_ohlcv.duckdb"
+)
 
 
 @contextmanager

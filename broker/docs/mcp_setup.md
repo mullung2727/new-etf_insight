@@ -29,7 +29,6 @@ KIWOOM_SECRETKEY=...
 KIWOOM_ENV=paper          # 모의투자. 실전 전환 시 real
 KIWOOM_ACCOUNT_NO=...     # 모의투자 계좌번호
 MAX_ORDER_AMOUNT=1000000  # 1회 주문 최대 금액(원)
-MAX_ORDER_QTY=100         # 1회 주문 최대 수량(주)
 ```
 
 `.env`는 `.gitignore`에 있음 — 절대 커밋 금지.

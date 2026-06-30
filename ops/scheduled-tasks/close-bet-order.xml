@@ -5,7 +5,7 @@
 -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>종가배팅 주문 배치 (평일 15:19, score&gt;=80 시장가 매수)</Description>
+    <Description>종가배팅 주문 배치 (평일 15:19, score&gt;=70 시장가 매수)</Description>
     <URI>\OpenClaw\close-bet-order</URI>
   </RegistrationInfo>
   <Triggers>
@@ -40,7 +40,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NonInteractive -ExecutionPolicy Bypass -Command "$logDir='C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl\logs'; New-Item -Force -ItemType Directory $logDir | Out-Null; $log=Join-Path $logDir ('close-bet-'+(Get-Date -Format 'yyyyMMdd')+'.log'); Set-Location 'C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl'; [Console]::OutputEncoding=[System.Text.Encoding]::UTF8; &amp; '.venv\Scripts\python.exe' 'scripts\run_close_bet.py' '--score-threshold' '80' '--max-order-count' '5' '--qty-per-symbol' '1' '--dry-run' 'false' '--broker-url' 'http://localhost:8001' '--order-time' '15:19:00' '--order-deadline-time' '15:20:00' 2&gt;&amp;1 | Tee-Object -FilePath $log -Encoding UTF8"</Arguments>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-close-bet-order.ps1"</Arguments>
     </Exec>
   </Actions>
 </Task>

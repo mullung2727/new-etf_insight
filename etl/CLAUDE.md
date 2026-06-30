@@ -1,6 +1,6 @@
 # ETL — Claude Code Context
 
-코드 수정 전 `.claude/SPEC.md` 확인. 실행 방법은 `skills/new-etf-insight-batch/SKILL.md` 참조.
+코드 수정 전 루트 `README.md`(구성·포트·데이터 흐름) 확인. 실행 방법은 `skills/new-etf-insight-batch/SKILL.md` 참조.
 
 ## 작업 디렉토리
 

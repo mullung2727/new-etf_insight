@@ -7,6 +7,19 @@ should read the matching file in this directory before running the batch. Keep
 the runtime script, schedule, purpose, and reporting rules here so the batch can
 be reviewed together with the project code.
 
+## File reading
+
+All files in this directory are UTF-8. OpenClaw agents should read these
+instruction files with a platform-neutral file reader, such as OpenClaw
+`file_fetch` or the agent's native workspace file access. Do not use shell
+commands that depend on the host default encoding, especially Windows
+PowerShell 5.1 `Get-Content` without an explicit UTF-8 setting, to read batch
+instructions or Korean report bodies.
+
+If Korean text appears corrupted while reading a batch instruction or report
+body, stop using that read result and reread the file through a UTF-8-safe
+reader before composing the Discord report.
+
 ## Jobs
 
 - `daily-etf-watchlist-krx-ohlcv.md`
@@ -18,12 +31,16 @@ be reviewed together with the project code.
 - `daily-new-etf-insight-batch.md`
   - Schedule: daily 19:50 Asia/Seoul
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
+- `daily-close-bet-order.md`
+  - Schedule: Mon-Fri 15:21 Asia/Seoul
+  - Purpose: report the Windows Task Scheduler 15:19 close-bet order result.
 
-## Not OpenClaw batches (Windows Task Scheduler + self-reporting)
+## Windows Task Scheduler execution
 
-Close-bet order/verify no longer run through OpenClaw. Windows Task Scheduler
-runs the scripts directly and they post their own Discord summary
-(`DISCORD_WEBHOOK_URL`), so there is no OpenClaw report batch:
+Close-bet order/verify execution does not run through OpenClaw. Windows Task
+Scheduler runs the scripts directly. OpenClaw may run report-only follow-up jobs
+that inspect logs, scheduler status, and DB rows; those follow-up jobs must not
+place or retry orders.
 
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).

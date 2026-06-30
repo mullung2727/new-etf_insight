@@ -34,6 +34,13 @@ Kiwoom batch.
 - Use `.\.venv\Scripts\python.exe`; do not assume `uv` is on PATH.
 - Load `.env` from `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\.env` without printing secrets.
 - Determine today's Asia/Seoul date as `YYYYMMDD`.
+- Before running commands in PowerShell, force UTF-8 output:
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+```
+
 - Run:
 
 ```powershell
@@ -89,7 +96,26 @@ Clearly label it as:
 Do not send only a short summary. Do not limit to only top tickers. Output every
 watchlist item for today, sorted by score descending.
 
-For each item, display DB-backed fields:
+Build the Discord message text from the UTF-8 JSON report with the formatter
+script. Do not read Korean report bodies with `Get-Content`, `type`, or any
+PowerShell text pipeline, because CP949 console decoding can corrupt Korean text
+before it reaches Discord.
+
+After `run_watchlist_research.py` completes, run:
+
+```powershell
+.\.venv\Scripts\python.exe -X utf8 scripts\format_watchlist_discord_report.py `
+  --json "C:\Users\mullu\.openclaw\workspace\reports\watchlist_research_<TODAY_YYYY-MM-DD>.json" `
+  --db "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl\db\watchlist.sqlite3" `
+  --out "C:\Users\mullu\.openclaw\workspace\reports\watchlist_discord_<TODAY_YYYY-MM-DD>.json" `
+  --fail-on-mojibake
+```
+
+Use only the generated `messages` array as the Discord report. If Discord length
+limits are hit, send the array entries as separate messages in order. Wrap source
+links in angle brackets exactly as emitted by the formatter.
+
+For each item, the formatter displays DB-backed fields:
 
 - 종목명 `(ticker)`
 - 키움 rank
@@ -101,6 +127,7 @@ For each item, display DB-backed fields:
 - 급등 원인: `reason_summary`, with concrete evidence themes from
   `evidence_news`, `evidence_web`, and `evidence_board`
 - 판단: `final_opinion`, with board tone/caution if present
+- 뉴스/웹 source links from `sources`
 
 After listing all items, include report path, DB upsert status, and Notion status
 if attempted. If Discord length limits are hit, split the report into multiple
@@ -123,4 +150,3 @@ Do not use Bash heredoc syntax. For multiline Python, use:
 print("ok")
 '@ | .\.venv\Scripts\python.exe -
 ```
-

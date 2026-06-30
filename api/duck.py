@@ -18,9 +18,20 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-DUCKDB_PATH = Path(
-    os.getenv("DUCKDB_PATH", "../etl/db/etf_insight.sqlite3")
-).resolve()
+API_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = API_DIR.parent
+
+
+def _resolve_project_path(value: str | None, default: Path) -> Path:
+    path = Path(value) if value else default
+    if not path.is_absolute():
+        path = PROJECT_DIR / path
+    return path.resolve()
+
+
+DUCKDB_PATH = _resolve_project_path(
+    os.getenv("DUCKDB_PATH"), PROJECT_DIR / "etl" / "db" / "etf_insight.sqlite3"
+)
 
 
 @contextmanager

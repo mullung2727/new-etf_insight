@@ -40,4 +40,4 @@ credentials, `uv sync`, then `uv run python server.py`.
 
 - `.env` / `.token_cache.json` are git-ignored.
 - Default `KIWOOM_ENV=paper`; switching to `real` is an explicit env change.
-- All orders pass `guards.check_order` (MAX_ORDER_AMOUNT / MAX_ORDER_QTY).
+- All orders pass `guards.check_order` (MAX_ORDER_AMOUNT).

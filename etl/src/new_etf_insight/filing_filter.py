@@ -7,6 +7,7 @@ from new_etf_insight.models import DART_VIEW_URL, FilingCandidate
 
 INCLUDE_KEYWORD = "상장지수투자신탁"
 EXCLUDE_REPORT_KEYWORDS = (
+    "증권발행실적보고서",
     "파생결합증권",
     "상장지수증권",
     "ETN",

@@ -11,6 +11,7 @@ const links = [
   { href: "/notes", label: "투자노트" },
   { href: "/financial", label: "재무제표" },
   { href: "/watchlist", label: "watchlist" },
+  { href: "/close-bet", label: "종가배팅" },
 ];
 
 export function Nav() {

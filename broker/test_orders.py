@@ -172,6 +172,69 @@ class TestOrderHistoryWrapper(unittest.TestCase):
             rows = korders.get_order_history("20260615")
         self.assertEqual(rows, [])
 
+    def test_sell_tp_default_and_override(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append(dict(body))
+            return TrResult(data={}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            korders.get_order_history("20260615")              # 기본 매수
+            korders.get_order_history("20260615", sell_tp="1")  # 매도
+        self.assertEqual(calls[0]["sell_tp"], "2")
+        self.assertEqual(calls[1]["sell_tp"], "1")
+
+
+class TestUnfilledWrapper(unittest.TestCase):
+    """kiwoom.orders.get_unfilled — ka10075 body + 연속조회 병합."""
+
+    def test_body_fields_and_paging(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body), "next_key": next_key})
+            if cont_yn == "N":
+                return TrResult(data={"oso": [{"ord_no": "0000070"}]}, cont_yn="Y", next_key="K2")
+            return TrResult(data={"oso": [{"ord_no": "0000071"}]}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            rows = korders.get_unfilled("sell")
+
+        self.assertEqual([r["ord_no"] for r in rows], ["0000070", "0000071"])
+        self.assertEqual(calls[0]["api_id"], "ka10075")
+        self.assertEqual(calls[0]["body"]["trde_tp"], "1")   # 매도
+        self.assertEqual(calls[0]["body"]["all_stk_tp"], "0")
+        self.assertEqual(calls[1]["next_key"], "K2")
+
+    def test_buy_side_trde_tp(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        seen: list[str] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            seen.append(body["trde_tp"])
+            return TrResult(data={}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            korders.get_unfilled("buy")
+        self.assertEqual(seen, ["2"])
+
+    def test_empty_oso(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        with patch("kiwoom.orders.request",
+                   return_value=TrResult(data={}, cont_yn="N", next_key="")):
+            self.assertEqual(korders.get_unfilled("sell"), [])
+
 
 class TestOrderHistoryRoute(_OrdersTestBase):
     """GET /orders/history — 정규화(접두어 제거 + int 파싱)."""
@@ -195,14 +258,228 @@ class TestOrderHistoryRoute(_OrdersTestBase):
     def test_passes_date_through(self):
         seen: list[str] = []
 
-        def fake(date):
-            seen.append(date)
+        def fake(date, sell_tp="2"):
+            seen.append((date, sell_tp))
             return []
 
         with patch("routers.orders.orders.get_order_history", side_effect=fake):
-            resp = self.client.get("/orders/history", params={"date": "20260601"})
+            self.client.get("/orders/history", params={"date": "20260601"})
+            self.client.get("/orders/history", params={"date": "20260601", "side": "sell"})
+        self.assertEqual(seen, [("20260601", "2"), ("20260601", "1")])
+
+
+class TestUnfilledRoute(_OrdersTestBase):
+    """GET /orders/unfilled — 정규화(접두 제거 + int 파싱)."""
+
+    def test_normalizes_response(self):
+        raw = [{"ord_no": "0000070", "stk_cd": "A005930", "stk_nm": "삼성전자",
+                "ord_qty": "0000000010", "ord_pric": "0000070000",
+                "oso_qty": "0000000001", "ord_stt": "접수",
+                "io_tp_nm": "+매수", "tm": "093015"}]
+        with patch("routers.orders.orders.get_unfilled", return_value=raw):
+            resp = self.client.get("/orders/unfilled", params={"side": "sell"})
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(seen, ["20260601"])
+        item = resp.json()[0]
+        self.assertEqual(item["order_no"], "0000070")
+        self.assertEqual(item["ticker"], "005930")
+        self.assertEqual(item["stk_nm"], "삼성전자")
+        self.assertEqual(item["ord_qty"], 10)
+        self.assertEqual(item["ord_price"], 70000)
+        self.assertEqual(item["oso_qty"], 1)
+        self.assertEqual(item["ord_stt"], "접수")
+        self.assertEqual(item["io_tp_nm"], "+매수")
+        self.assertEqual(item["tm"], "093015")
+
+    def test_passes_side(self):
+        seen: list[str] = []
+        with patch("routers.orders.orders.get_unfilled",
+                   side_effect=lambda side: seen.append(side) or []):
+            self.client.get("/orders/unfilled", params={"side": "sell"})
+        self.assertEqual(seen, ["sell"])
+
+
+class TestModifyWrapper(unittest.TestCase):
+    """kiwoom.orders.modify_order — kt10002 body."""
+
+    def test_body_fields(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body)})
+            return TrResult(data={"ord_no": "0000099"}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            res = korders.modify_order("0000070", "005930", 71000, qty=5)
+
+        self.assertEqual(res.order_no, "0000099")
+        self.assertEqual(calls[0]["api_id"], "kt10002")
+        b = calls[0]["body"]
+        self.assertEqual(b["orig_ord_no"], "0000070")
+        self.assertEqual(b["mdfy_uv"], "71000")
+        self.assertEqual(b["mdfy_qty"], "5")
+
+    def test_qty_zero_full(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        seen: list[str] = []
+        with patch("kiwoom.orders.request",
+                   side_effect=lambda *a, **k: seen.append(a[2]["mdfy_qty"]) or
+                   TrResult(data={"ord_no": "1"}, cont_yn="N", next_key="")):
+            korders.modify_order("0000070", "005930", 71000)
+        self.assertEqual(seen, ["0"])
+
+
+class TestModifyRoute(_OrdersTestBase):
+    """PATCH /orders/{order_no} — modify_order 위임 + 친화 에러."""
+
+    def test_delegates(self):
+        fake = OrderResult(accepted=True, order_no="0000099", message="", raw={})
+        seen: list[tuple] = []
+        with patch("routers.orders.orders.modify_order",
+                   side_effect=lambda *a: seen.append(a) or fake):
+            resp = self.client.patch("/orders/0000070",
+                                     json={"symbol": "005930", "price": 71000, "qty": 5})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["order_no"], "0000099")
+        self.assertEqual(seen[0], ("0000070", "005930", 71000, 5))
+
+    def test_kiwoom_error_422(self):
+        from kiwoom.client import KiwoomError
+        with patch("routers.orders.orders.modify_order",
+                   side_effect=KiwoomError("kt10002 return_code=1: 장 종료")):
+            resp = self.client.patch("/orders/0000070",
+                                     json={"symbol": "005930", "price": 71000})
+        self.assertEqual(resp.status_code, 422)
+
+
+class TestRealizedWrapper(unittest.TestCase):
+    """kiwoom.orders.get_today_realized — ka10077 body + 연속조회 병합."""
+
+    def test_body_and_paging(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body), "next_key": next_key})
+            if cont_yn == "N":
+                return TrResult(data={"tdy_rlzt_pl_dtl": [{"stk_cd": "A005930"}]},
+                                cont_yn="Y", next_key="K2")
+            return TrResult(data={"tdy_rlzt_pl_dtl": [{"stk_cd": "A005930"}]},
+                            cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            rows = korders.get_today_realized("005930")
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(calls[0]["api_id"], "ka10077")
+        self.assertEqual(calls[0]["body"]["stk_cd"], "005930")
+        self.assertEqual(calls[1]["next_key"], "K2")
+
+
+class TestRealizedByDateWrapper(unittest.TestCase):
+    """kiwoom.orders.get_realized_by_date — ka10072 body(strt_dt) + 병합."""
+
+    def test_body_and_paging(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body), "next_key": next_key})
+            if cont_yn == "N":
+                return TrResult(data={"dt_stk_div_rlzt_pl": [{"stk_cd": "A005930"}]},
+                                cont_yn="Y", next_key="K2")
+            return TrResult(data={"dt_stk_div_rlzt_pl": [{"stk_cd": "A005930"}]},
+                            cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            rows = korders.get_realized_by_date("005930", "20260623")
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(calls[0]["api_id"], "ka10072")
+        self.assertEqual(calls[0]["body"]["stk_cd"], "005930")
+        self.assertEqual(calls[0]["body"]["strt_dt"], "20260623")
+        self.assertEqual(calls[1]["next_key"], "K2")
+
+
+class TestRealizedRoute(_OrdersTestBase):
+    """GET /orders/realized/{ticker} — net 손익율·수수료·세금·손익금 정규화."""
+
+    def test_date_param_routes_to_ka10072(self):
+        raw = [{
+            "stk_cd": "A005930", "cntr_qty": "1", "buy_uv": "1000",
+            "tdy_sel_pl": "-569", "pl_rt": "-5.67",
+            "tdy_trde_cmsn": "60", "tdy_trde_tax": "19",
+        }]
+        with patch("routers.orders.orders.get_realized_by_date", return_value=raw) as by_date, \
+             patch("routers.orders.orders.get_today_realized") as today:
+            body = self.client.get("/orders/realized/005930?date=20260623").json()
+        by_date.assert_called_once_with("005930", "20260623")
+        today.assert_not_called()
+        self.assertEqual(body["pnl_pct"], -5.67)
+        self.assertEqual(body["cmsn"], 60)
+        self.assertEqual(body["tax"], 19)
+
+    def test_single_row_uses_pl_rt(self):
+        raw = [{
+            "stk_cd": "A005930", "cntr_qty": "0000000010", "buy_uv": "0000001000",
+            "tdy_sel_pl": "0000048500", "pl_rt": "+4.85",
+            "tdy_trde_cmsn": "0000000150", "tdy_trde_tax": "0000001350",
+        }]
+        with patch("routers.orders.orders.get_today_realized", return_value=raw):
+            resp = self.client.get("/orders/realized/005930")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["ticker"], "005930")
+        self.assertTrue(body["found"])
+        self.assertEqual(body["pnl_pct"], 4.85)
+        self.assertEqual(body["sel_pl_won"], 48500)
+        self.assertEqual(body["cmsn"], 150)
+        self.assertEqual(body["tax"], 1350)
+        self.assertEqual(body["qty"], 10)
+
+    def test_negative_pl(self):
+        raw = [{
+            "stk_cd": "A005930", "cntr_qty": "0000000010", "buy_uv": "0000001000",
+            "tdy_sel_pl": "-0000031500", "pl_rt": "-3.15",
+            "tdy_trde_cmsn": "0000000150", "tdy_trde_tax": "0000001350",
+        }]
+        with patch("routers.orders.orders.get_today_realized", return_value=raw):
+            body = self.client.get("/orders/realized/005930").json()
+        self.assertEqual(body["pnl_pct"], -3.15)
+        self.assertEqual(body["sel_pl_won"], -31500)
+
+    def test_multi_row_recomputes_pct(self):
+        # 같은 종목 2건: 손익금 합산, 손익율은 원가기준 재계산
+        raw = [
+            {"stk_cd": "A005930", "cntr_qty": "5", "buy_uv": "1000",
+             "tdy_sel_pl": "2500", "pl_rt": "+5.00",
+             "tdy_trde_cmsn": "10", "tdy_trde_tax": "90"},
+            {"stk_cd": "A005930", "cntr_qty": "5", "buy_uv": "1000",
+             "tdy_sel_pl": "-1500", "pl_rt": "-3.00",
+             "tdy_trde_cmsn": "10", "tdy_trde_tax": "90"},
+        ]
+        with patch("routers.orders.orders.get_today_realized", return_value=raw):
+            body = self.client.get("/orders/realized/005930").json()
+        self.assertEqual(body["sel_pl_won"], 1000)
+        self.assertEqual(body["cmsn"], 20)
+        self.assertEqual(body["tax"], 180)
+        # cost = 5*1000 + 5*1000 = 10000, pl 1000 → 10.0%
+        self.assertEqual(body["pnl_pct"], 10.0)
+
+    def test_empty_not_found(self):
+        with patch("routers.orders.orders.get_today_realized", return_value=[]):
+            body = self.client.get("/orders/realized/005930").json()
+        self.assertFalse(body["found"])
+        self.assertEqual(body["pnl_pct"], 0.0)
+        self.assertEqual(body["sel_pl_won"], 0)
 
 
 if __name__ == "__main__":

@@ -95,6 +95,16 @@ class FilingFilterTest(unittest.TestCase):
             )
         )
 
+    def test_excludes_securities_issuance_result_report(self) -> None:
+        self.assertFalse(
+            is_candidate_filing(
+                {
+                    "corp_name": "미래에셋자산운용",
+                    "report_nm": "증권발행실적보고서(집합투자증권)(미래에셋TIGER미국나스닥100ETF선물증권상장지수투자신탁(주식-파생형))",
+                }
+            )
+        )
+
     def test_query_matches_without_spaces(self) -> None:
         self.assertTrue(
             matches_candidate_query(
@@ -1030,6 +1040,43 @@ class DailyPipelineTest(unittest.TestCase):
         analyze_pdf_mock.assert_not_called()
         self.assertEqual(result["results"][0]["action"], "skipped")
         self.assertEqual(result["results"][0]["reason"], "correction_without_existing_record")
+
+    def test_continues_after_pdf_analysis_failure(self) -> None:
+        candidates = [
+            {
+                "rcept_no": "20260429000012",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "투자설명서(집합투자증권)(ETF(주식))",
+            },
+            {
+                "rcept_no": "20260429000103",
+                "rcept_dt": "20260429",
+                "corp_code": "00104500",
+                "corp_name": "KB자산운용",
+                "report_nm": "[기재정정]투자설명서(집합투자증권)(ETF(주식))",
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            records_dir = base_dir / "records"
+
+            with (
+                patch("new_etf_insight.daily_pipeline.collect_candidates", return_value=candidates),
+                patch("new_etf_insight.daily_pipeline.fetch_fund_code_from_dart_viewer", return_value="ET942"),
+                patch("new_etf_insight.daily_pipeline.download_representative_prospectus_pdf", side_effect=ValueError("PDF link missing")),
+                patch("new_etf_insight.daily_pipeline.analyze_pdf") as analyze_pdf_mock,
+            ):
+                result = run_daily_pipeline("20260429", "20260429", records_dir, base_dir / "pdfs")
+
+        analyze_pdf_mock.assert_not_called()
+        self.assertEqual(result["results"][0]["action"], "failed")
+        self.assertEqual(result["results"][0]["reason"], "pdf_analysis_failed")
+        self.assertEqual(result["results"][0]["error_type"], "ValueError")
+        self.assertEqual(result["results"][1]["action"], "skipped")
+        self.assertEqual(result["results"][1]["reason"], "correction_without_existing_record")
 
     def test_skips_correction_at_least_60_days_after_first_rcept(self) -> None:
         candidates = [

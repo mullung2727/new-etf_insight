@@ -1,13 +1,13 @@
-const BASE = process.env.NEXT_PUBLIC_BROKER_API_URL ?? "http://localhost:8001";
+import { brokerBase } from "./broker-base";
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { cache: "no-store" });
+  const res = await fetch(`${brokerBase()}${path}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
   return res.json();
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${brokerBase()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -20,7 +20,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${brokerBase()}${path}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -33,13 +33,13 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  const res = await fetch(`${brokerBase()}${path}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
   return res.json();
 }
 
 async function del204(path: string): Promise<void> {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  const res = await fetch(`${brokerBase()}${path}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
 }
 
@@ -114,6 +114,20 @@ export interface OrderResult {
   message: string;
 }
 
+export interface UnfilledOrder {
+  order_no: string;
+  ticker: string;
+  stk_nm: string;
+  ord_qty: number;
+  ord_price: number;
+  oso_qty: number;
+  ord_stt: string;
+  io_tp_nm: string;
+  tm: string;
+  raw: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 // --- Notes types ---
 
 export type NoteStatus = "open" | "partial" | "closed";
@@ -172,9 +186,47 @@ export interface EventCreate {
   memo?: string | null;
 }
 
+// --- Close-bet types ---
+
+// 매수 원장 + 청산결과 통합 행. 미청산은 sell_* = null.
+export interface CloseBetBuy {
+  date: string;
+  ticker: string;
+  score: number | null;
+  cntr_price: number | null;
+  status: string;
+  order_no: string;
+  created_at: string | null;
+  // 청산결과 (sell_status=null이면 미청산)
+  sell_status: string | null;
+  sell_price: number | null;
+  sell_qty: number | null;
+  sold_at: string | null;
+  exit_reason: string | null;
+  pnl_pct: number | null;      // net 손익율(수수료·세금 차감)
+  sell_cmsn: number | null;    // 수수료(원)
+  sell_tax: number | null;     // 세금(원)
+  sell_pl_won: number | null;  // net 실현손익(원)
+}
+
+export interface CloseBetWatch {
+  date: string;
+  ticker: string;
+  score: number | null;
+  cntr_price: number | null;
+  qty: number;
+}
+
+export interface CloseBetPositions {
+  buys: CloseBetBuy[];
+  watching: CloseBetWatch[];
+}
+
 // --- API calls ---
 
 export const brokerClient = {
+  getCloseBetPositions: () =>
+    get<CloseBetPositions>("/close-bet/positions"),
   getQuote: (symbol: string) => get<Quote>(`/quotes/${symbol}`),
   getOrderbook: (symbol: string) => get<Record<string, unknown>>(`/quotes/${symbol}/orderbook`),
   getDailyChart: (symbol: string, baseDt?: string) =>
@@ -186,6 +238,10 @@ export const brokerClient = {
   placeOrder: (req: OrderRequest) => post<OrderResult>("/orders", req),
   cancelOrder: (orderNo: string, symbol: string, qty = 0) =>
     del<OrderResult>(`/orders/${orderNo}?symbol=${symbol}&qty=${qty}`),
+  listUnfilled: (side: "buy" | "sell" | "all" = "all") =>
+    get<UnfilledOrder[]>(`/orders/unfilled?side=${side}`),
+  modifyOrder: (orderNo: string, symbol: string, price: number, qty = 0) =>
+    patch<OrderResult>(`/orders/${orderNo}`, { symbol, price, qty }),
 
   // settings
   getSettings: () => get<Settings>("/settings"),

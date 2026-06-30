@@ -1,7 +1,7 @@
 """Order guards — hard caps enforced before any order leaves the process.
 
 All orders flow through ``orders.place_order`` which calls ``check_order`` here,
-so there is no bypass path. Caps come from MAX_ORDER_AMOUNT / MAX_ORDER_QTY.
+so there is no bypass path. Cap comes from MAX_ORDER_AMOUNT.
 """
 
 from __future__ import annotations
@@ -16,10 +16,6 @@ class OrderRejected(Exception):
 def check_order(cfg: Config, *, qty: int, price: int, market: bool) -> None:
     if qty <= 0:
         raise OrderRejected(f"수량은 1 이상이어야 함: qty={qty}")
-    if qty > cfg.max_order_qty:
-        raise OrderRejected(
-            f"수량 상한 초과: qty={qty} > MAX_ORDER_QTY={cfg.max_order_qty}"
-        )
 
     # Market orders have no price; estimate notional from price only when known.
     if not market:

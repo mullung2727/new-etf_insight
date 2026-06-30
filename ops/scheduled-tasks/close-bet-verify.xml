@@ -40,7 +40,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NonInteractive -ExecutionPolicy Bypass -Command "$logDir='C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl\logs'; New-Item -Force -ItemType Directory $logDir | Out-Null; $log=Join-Path $logDir ('close-bet-verify-'+(Get-Date -Format 'yyyyMMdd')+'.log'); Set-Location 'C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl'; [Console]::OutputEncoding=[System.Text.Encoding]::UTF8; &amp; '.venv\Scripts\python.exe' 'scripts\run_verify.py' '--broker-url' 'http://localhost:8001' 2&gt;&amp;1 | Tee-Object -FilePath $log -Encoding UTF8"</Arguments>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-close-bet-verify.ps1"</Arguments>
     </Exec>
   </Actions>
 </Task>
