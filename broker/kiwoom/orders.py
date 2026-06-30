@@ -133,6 +133,25 @@ def get_realized_by_date(symbol: str, date: str) -> list[dict[str, Any]]:
     return rows
 
 
+def modify_order(order_no: str, symbol: str, price: int, qty: int = 0) -> OrderResult:
+    """kt10002 — 미체결 주문 정정. qty=0이면 잔량 전부 정정. price=정정단가."""
+    body = {
+        "dmst_stex_tp": "KRX",
+        "orig_ord_no": str(order_no),
+        "stk_cd": symbol,
+        "mdfy_qty": str(qty) if qty else "0",
+        "mdfy_uv": str(price),
+    }
+    res = request(tr.TR_ORDER_MODIFY, tr.EP_ORDR, body)
+    data = res.data
+    return OrderResult(
+        accepted=True,
+        order_no=str(data.get("ord_no") or order_no),
+        message=str(data.get("return_msg", "")),
+        raw=data,
+    )
+
+
 def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
     """Cancel a resting order. qty=0 cancels the full remaining quantity."""
     body = {

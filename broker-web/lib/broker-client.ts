@@ -114,6 +114,20 @@ export interface OrderResult {
   message: string;
 }
 
+export interface UnfilledOrder {
+  order_no: string;
+  ticker: string;
+  stk_nm: string;
+  ord_qty: number;
+  ord_price: number;
+  oso_qty: number;
+  ord_stt: string;
+  io_tp_nm: string;
+  tm: string;
+  raw: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 // --- Notes types ---
 
 export type NoteStatus = "open" | "partial" | "closed";
@@ -224,6 +238,10 @@ export const brokerClient = {
   placeOrder: (req: OrderRequest) => post<OrderResult>("/orders", req),
   cancelOrder: (orderNo: string, symbol: string, qty = 0) =>
     del<OrderResult>(`/orders/${orderNo}?symbol=${symbol}&qty=${qty}`),
+  listUnfilled: (side: "buy" | "sell" | "all" = "all") =>
+    get<UnfilledOrder[]>(`/orders/unfilled?side=${side}`),
+  modifyOrder: (orderNo: string, symbol: string, price: number, qty = 0) =>
+    patch<OrderResult>(`/orders/${orderNo}`, { symbol, price, qty }),
 
   // settings
   getSettings: () => get<Settings>("/settings"),

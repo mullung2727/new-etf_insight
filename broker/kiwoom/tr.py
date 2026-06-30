@@ -34,6 +34,7 @@ TR_RLZT_PL_DATE = "ka10072"   # 일자별종목별실현손익_일자 (과거 �
 # --- Orders (주문) ---
 TR_ORDER_BUY = "kt10000"    # 주식 매수주문 → EP_ORDR
 TR_ORDER_SELL = "kt10001"   # 주식 매도주문 → EP_ORDR
+TR_ORDER_MODIFY = "kt10002" # 주식 정정주문 → EP_ORDR
 TR_ORDER_CANCEL = "kt10003" # 주식 취소주문 → EP_ORDR
 
 # --- Condition search (조건검색) — WebSocket only, not REST ---

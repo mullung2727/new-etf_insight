@@ -45,7 +45,8 @@ export function FillToast() {
             <div className="flex items-center justify-between">
               <span className="font-mono font-semibold">{fill.symbol}</span>
               <span className="text-xs text-muted-foreground">
-                {fill.side === "1" ? "매수" : "매도"} 체결
+                {/* 키움 FID 905 매도수구분: 1=매도, 2=매수 (kt00007 sell_tp 동일). "+매수" 변형도 방어 */}
+                {fill.side === "2" || fill.side.includes("매수") ? "매수" : "매도"} 체결
               </span>
             </div>
             <div className="text-sm tabular-nums">

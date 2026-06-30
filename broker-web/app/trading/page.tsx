@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AccountPanel } from "@/components/trading/account-panel";
+import { AccountTabs } from "@/components/trading/account-tabs";
 import { QuoteCard } from "@/components/trading/quote-card";
 import { OrderForm } from "@/components/trading/order-form";
 import { ConditionPanel } from "@/components/trading/condition-panel";
@@ -27,9 +27,9 @@ export default function TradingPage() {
           </div>
         </div>
 
-        {/* RIGHT: account (wider for holdings) */}
+        {/* RIGHT: 잔고/미체결 탭 (wider for holdings) */}
         <div className="overflow-y-auto min-h-0">
-          <AccountPanel />
+          <AccountTabs />
         </div>
     </div>
   );

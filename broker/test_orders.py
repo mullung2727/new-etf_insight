@@ -272,16 +272,23 @@ class TestUnfilledRoute(_OrdersTestBase):
     """GET /orders/unfilled — 정규화(접두 제거 + int 파싱)."""
 
     def test_normalizes_response(self):
-        raw = [{"ord_no": "0000070", "stk_cd": "A005930",
-                "oso_qty": "0000000001", "ord_stt": "접수"}]
+        raw = [{"ord_no": "0000070", "stk_cd": "A005930", "stk_nm": "삼성전자",
+                "ord_qty": "0000000010", "ord_pric": "0000070000",
+                "oso_qty": "0000000001", "ord_stt": "접수",
+                "io_tp_nm": "+매수", "tm": "093015"}]
         with patch("routers.orders.orders.get_unfilled", return_value=raw):
             resp = self.client.get("/orders/unfilled", params={"side": "sell"})
         self.assertEqual(resp.status_code, 200)
         item = resp.json()[0]
         self.assertEqual(item["order_no"], "0000070")
         self.assertEqual(item["ticker"], "005930")
+        self.assertEqual(item["stk_nm"], "삼성전자")
+        self.assertEqual(item["ord_qty"], 10)
+        self.assertEqual(item["ord_price"], 70000)
         self.assertEqual(item["oso_qty"], 1)
         self.assertEqual(item["ord_stt"], "접수")
+        self.assertEqual(item["io_tp_nm"], "+매수")
+        self.assertEqual(item["tm"], "093015")
 
     def test_passes_side(self):
         seen: list[str] = []
@@ -289,6 +296,64 @@ class TestUnfilledRoute(_OrdersTestBase):
                    side_effect=lambda side: seen.append(side) or []):
             self.client.get("/orders/unfilled", params={"side": "sell"})
         self.assertEqual(seen, ["sell"])
+
+
+class TestModifyWrapper(unittest.TestCase):
+    """kiwoom.orders.modify_order — kt10002 body."""
+
+    def test_body_fields(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body)})
+            return TrResult(data={"ord_no": "0000099"}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            res = korders.modify_order("0000070", "005930", 71000, qty=5)
+
+        self.assertEqual(res.order_no, "0000099")
+        self.assertEqual(calls[0]["api_id"], "kt10002")
+        b = calls[0]["body"]
+        self.assertEqual(b["orig_ord_no"], "0000070")
+        self.assertEqual(b["mdfy_uv"], "71000")
+        self.assertEqual(b["mdfy_qty"], "5")
+
+    def test_qty_zero_full(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        seen: list[str] = []
+        with patch("kiwoom.orders.request",
+                   side_effect=lambda *a, **k: seen.append(a[2]["mdfy_qty"]) or
+                   TrResult(data={"ord_no": "1"}, cont_yn="N", next_key="")):
+            korders.modify_order("0000070", "005930", 71000)
+        self.assertEqual(seen, ["0"])
+
+
+class TestModifyRoute(_OrdersTestBase):
+    """PATCH /orders/{order_no} — modify_order 위임 + 친화 에러."""
+
+    def test_delegates(self):
+        fake = OrderResult(accepted=True, order_no="0000099", message="", raw={})
+        seen: list[tuple] = []
+        with patch("routers.orders.orders.modify_order",
+                   side_effect=lambda *a: seen.append(a) or fake):
+            resp = self.client.patch("/orders/0000070",
+                                     json={"symbol": "005930", "price": 71000, "qty": 5})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["order_no"], "0000099")
+        self.assertEqual(seen[0], ("0000070", "005930", 71000, 5))
+
+    def test_kiwoom_error_422(self):
+        from kiwoom.client import KiwoomError
+        with patch("routers.orders.orders.modify_order",
+                   side_effect=KiwoomError("kt10002 return_code=1: 장 종료")):
+            resp = self.client.patch("/orders/0000070",
+                                     json={"symbol": "005930", "price": 71000})
+        self.assertEqual(resp.status_code, 422)
 
 
 class TestRealizedWrapper(unittest.TestCase):

@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from kiwoom import orders
 from kiwoom.client import KiwoomError
@@ -130,8 +131,13 @@ def get_unfilled(side: str = "sell") -> list[dict[str, Any]]:
         {
             "order_no": str(item.get("ord_no", "") or ""),
             "ticker": _TICKER_PREFIX.sub("", str(item.get("stk_cd", "") or "")),
+            "stk_nm": str(item.get("stk_nm", "") or ""),
+            "ord_qty": _to_int(item.get("ord_qty")),
+            "ord_price": _to_int(item.get("ord_pric")),
             "oso_qty": _to_int(item.get("oso_qty")),
             "ord_stt": str(item.get("ord_stt", "") or ""),
+            "io_tp_nm": str(item.get("io_tp_nm", "") or ""),
+            "tm": str(item.get("tm", "") or ""),
             "raw": item,
         }
         for item in rows
@@ -181,3 +187,24 @@ def get_today_realized(ticker: str, date: str | None = None) -> dict[str, Any]:
 def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
     """미체결 주문을 취소한다. qty=0이면 잔량 전부 취소."""
     return orders.cancel_order(order_no, symbol, qty)
+
+
+class ModifyRequest(BaseModel):
+    symbol: str
+    price: int
+    qty: int = 0  # 0=잔량 전부
+
+
+@router.patch(
+    "/{order_no}",
+    operation_id="modify_order",
+    summary="미체결 주문 정정 (kt10002)",
+    response_model=OrderResult,
+)
+def modify_order(order_no: str, req: ModifyRequest) -> OrderResult:
+    """미체결 주문 가격을 정정한다. qty=0이면 잔량 전부."""
+    try:
+        return orders.modify_order(order_no, req.symbol, req.price, req.qty)
+    except KiwoomError as exc:
+        logger.warning("modify error raw: %s", exc)
+        raise HTTPException(status_code=422, detail=_friendly_order_error(exc)) from exc
