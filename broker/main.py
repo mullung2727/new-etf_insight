@@ -15,20 +15,65 @@ from routers import orders as orders_router
 from routers import quotes as quotes_router
 from routers import settings as settings_router
 
+import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+
+from kiwoom.ws.event_bus import bus
 from kiwoom.ws.manager import KiwoomWSManager
+from notes import autolink
 from routers import events as events_router
 
-
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 _ws_manager = KiwoomWSManager()
 
+# 한국은 DST가 없으므로 고정 오프셋(notes/trades.py와 동일 패턴).
+_KST = timezone(timedelta(hours=9))
+_FILL_DEBOUNCE = 3.0  # 연속 체결을 모아 한 번만 재동기화
+
+
+def _seoul_today() -> str:
+    return datetime.now(_KST).strftime("%Y%m%d")
+
+
+async def _fill_sync_loop() -> None:
+    """WS 체결통보("00", 913=="체결") 수신 시 노트를 재동기화한다.
+
+    실시간 경로는 증분을 직접 쓰지 않고 sync_trades(=kt00007 재조회) 트리거
+    역할만 한다. 체결 한 건이 오면 3초 디바운스 후 그 창에 모인 체결을 한 번에
+    반영한다. kt00007 호출은 sync requests라 to_thread로 오프로드한다.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    bus.subscribe("00", queue)
+    try:
+        while True:
+            ev = await queue.get()
+            if (ev.get("payload") or {}).get("913") != "체결":
+                continue
+            await asyncio.sleep(_FILL_DEBOUNCE)
+            while not queue.empty():  # 창에 모인 후속 통보 흡수
+                queue.get_nowait()
+            try:
+                await asyncio.to_thread(autolink.sync_trades, _seoul_today())
+            except Exception:  # noqa: BLE001 — 동기화 실패가 루프를 죽이지 않도록
+                logger.exception("실시간 체결 동기화 실패")
+    finally:
+        bus.unsubscribe("00", queue)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ws_manager.start()
+    fill_task = asyncio.create_task(_fill_sync_loop())
     yield
+    fill_task.cancel()
+    try:
+        await fill_task
+    except asyncio.CancelledError:
+        pass
     await _ws_manager.stop()
 
 logging.basicConfig(

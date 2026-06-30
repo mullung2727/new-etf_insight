@@ -42,11 +42,14 @@ CREATE TABLE IF NOT EXISTS note_events (
     qty         INTEGER NOT NULL,
     executed_at TEXT NOT NULL,
     memo        TEXT,
+    order_no    TEXT,
     created_at  TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_notes_symbol ON notes(symbol);
 CREATE INDEX IF NOT EXISTS idx_events_note_uid ON note_events(note_uid);
+-- idx_events_order_no(자동연결 멱등 키)는 _migrate에서 생성 — 구버전 DB의
+-- note_events에는 order_no 컬럼이 없어 ALTER 이후에 만들어야 하기 때문.
 
 -- 거래 원장: broker를 통과한 모든 주문 기록. notes와 무관한 독립 테이블.
 CREATE TABLE IF NOT EXISTS kiwoom_trade_history (
@@ -67,6 +70,24 @@ CREATE INDEX IF NOT EXISTS idx_trade_history_date ON kiwoom_trade_history(date);
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """기존 DB를 현재 스키마로 끌어올린다. 멱등.
+
+    ``CREATE TABLE IF NOT EXISTS``는 이미 존재하는 테이블에 새 컬럼을 추가하지
+    않으므로, 누락 컬럼만 ALTER로 보강한다. 컬럼 추가 후 부분 유니크 인덱스도
+    (스키마에 이미 있지만 구버전 DB 대비) 보장한다.
+    """
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(note_events)")}
+    if "order_no" not in cols:
+        conn.execute("ALTER TABLE note_events ADD COLUMN order_no TEXT")
+    # 컬럼 존재가 보장된 뒤 생성(신규 DB·구버전 DB 공통). 레거시 수동 이벤트는
+    # order_no NULL 다수 허용 → 부분 유니크 인덱스.
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_order_no "
+        "ON note_events(order_no) WHERE order_no IS NOT NULL"
+    )
+
+
 def init() -> sqlite3.Connection:
     """연결을 열고 테이블이 없으면 생성한다. 멱등."""
     global _conn
@@ -77,6 +98,7 @@ def init() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     conn.commit()
     _conn = conn
     logger.info("notes SQLite ready: %s", NOTES_DB_PATH)

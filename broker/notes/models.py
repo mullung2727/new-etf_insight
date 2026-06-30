@@ -78,6 +78,7 @@ class NoteEvent(_Base):
     qty: int
     executed_at: str
     memo: str | None = None
+    order_no: str | None = None
     created_at: str
 
 

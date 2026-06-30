@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<!-- Windows 작업 스케줄러 정의 — 키움 체결 → 투자노트 동기화 배치
+     장중(09:30~15:30) 매시 POST /notes/sync-trades 로 kt00007 체결을 노트에 반영.
+     실시간 WS 체결통보(즉시 반영)의 누락/끊김 보정용 백스톱.
+     파라미터 변경: Arguments 수정 후 아래 명령으로 재등록
+       Register-ScheduledTask -Xml (Get-Content -Path notes-sync.xml -Raw -Encoding UTF8) -TaskName "notes-sync" -TaskPath "\OpenClaw\" -Force
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>키움 체결 → 투자노트 동기화 (평일 장중 매시, kt00007 폴링 보정)</Description>
+    <URI>\OpenClaw\notes-sync</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-06-16T09:30:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT1H</Interval>
+        <Duration>PT6H</Duration>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday />
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-notes-sync.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

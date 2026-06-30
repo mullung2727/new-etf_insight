@@ -147,6 +147,42 @@ def add_event(note_uid: str, data: EventCreate) -> NoteEvent | None:
     return NoteEvent(**dict(row))
 
 
+def upsert_event(
+    note_uid: str,
+    order_no: str,
+    event_type: str,
+    price: int,
+    qty: int,
+    executed_at: str,
+) -> NoteEvent:
+    """order_no 기준 멱등 upsert (자동연결 전용).
+
+    kt00007은 주문번호 단위 누적 집계라 부분→전량 체결 시 같은 order_no의 qty가
+    커진다. order_no 부분 유니크 인덱스로 충돌 시 qty/price/type/시각을 갱신한다.
+    수동 입력 이벤트(order_no NULL)와는 충돌하지 않는다.
+    """
+    conn = get_conn()
+    now = _now()
+    conn.execute(
+        """
+        INSERT INTO note_events
+            (note_uid, event_type, price, qty, executed_at, order_no, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(order_no) WHERE order_no IS NOT NULL DO UPDATE SET
+            event_type  = excluded.event_type,
+            price       = excluded.price,
+            qty         = excluded.qty,
+            executed_at = excluded.executed_at
+        """,
+        (note_uid, event_type, price, qty, executed_at, order_no, now),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM note_events WHERE order_no = ?", (order_no,)
+    ).fetchone()
+    return NoteEvent(**dict(row))
+
+
 def delete_event(note_uid: str, event_id: int) -> bool:
     conn = get_conn()
     cur = conn.execute(

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, HTTPException, Response
 
-from notes import store
+from notes import autolink, store
 from notes.models import (
     EventCreate,
     Note,
@@ -14,6 +16,13 @@ from notes.models import (
 )
 
 router = APIRouter(prefix="/notes", tags=["notes"])
+
+# 한국은 DST가 없으므로 고정 오프셋(notes/trades.py와 동일 패턴).
+_KST = timezone(timedelta(hours=9))
+
+
+def _seoul_today() -> str:
+    return datetime.now(_KST).strftime("%Y%m%d")
 
 
 @router.post(
@@ -46,6 +55,21 @@ def list_notes(
         status=status.value if status else None,
         user_id=user_id,
     )
+
+
+@router.post(
+    "/sync-trades",
+    operation_id="sync_trades",
+    summary="키움 체결내역을 투자노트에 동기화 (kt00007)",
+)
+def sync_trades(date: str | None = None) -> dict[str, int]:
+    """당일(또는 지정일) 계좌 전체 체결을 투자노트에 자동 반영한다.
+
+    date 생략 시 오늘(KST). kt00007을 권위 소스로 매수/매도 체결을 order_no
+    멱등 키로 upsert하고 노트 status를 재계산한다. 반환은
+    {"created", "updated", "notes"} 요약. 시간당 폴링·실시간 체결통보가 호출한다.
+    """
+    return autolink.sync_trades(date or _seoul_today())
 
 
 @router.get(
