@@ -353,6 +353,19 @@ def fetch_price_via_broker(broker_url: str, ticker: str) -> int | None:
         return None
 
 
+def fetch_available_cash_via_broker(broker_url: str) -> int | None:
+    """GET {broker_url}/account/deposit → ord_alow_amt(주문가능금액, 원). 실패 시 None."""
+    try:
+        resp = requests.get(f"{broker_url}/account/deposit", timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        raw = resp.json().get("ord_alow_amt")
+        if raw is None:
+            return None
+        return int(raw)  # 0-padding·부호 포함 문자열 → int 안전
+    except Exception:
+        return None
+
+
 def place_order_via_broker(broker_url: str, ticker: str, qty: int, dry_run: bool) -> dict:
     """POST {broker_url}/orders 시장가 매수. dry_run=True면 HTTP 호출 없이 반환."""
     if dry_run:
@@ -488,8 +501,23 @@ def main() -> None:
     # score 1순위·시총 2순위로 상위 N개. 시총은 krx_ohlcv(별 DuckDB) → Python에서 동점깸.
     caps = fetch_market_caps(DEFAULT_KRX_DB, [c["ticker"] for c in pool], date) if DEFAULT_KRX_DB.exists() else {}
     candidates = rank_and_cut(pool, caps, n=_TOP_N)
-    budget = budget_for(len(candidates))
-    print(f"[close_bet] 후보 {len(pool)}건 → 선정 {len(candidates)}건 (threshold={args.score_threshold}), 종목당 예산 {budget:,}원")
+    n_sel = len(candidates)
+    if n_sel == 0:
+        print(f"[close_bet] 주문 대상 없음 (선정 0건)")
+        send_discord(f"[종가베팅] {date} 주문 대상 없음{dry_tag}\n선정 0건")
+        return
+
+    # 주문가능금액(예수금) 조회 → 가용을 종목수로 나눈 몫과 전략 예산 중 작은 값으로 cap.
+    # 계좌에 돈이 적으면 실제 현금에 맞춰 주문해 증거금 부족 거부를 막는다.
+    cash = fetch_available_cash_via_broker(broker_url)
+    if cash is None:
+        print(f"[close_bet] ABORT: 주문가능금액(예수금) 조회 실패")
+        send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\n주문가능금액(예수금) 조회 실패")
+        sys.exit(1)
+    strat_budget = budget_for(n_sel)
+    budget = min(strat_budget, cash // n_sel)
+    print(f"[close_bet] 후보 {len(pool)}건 → 선정 {n_sel}건 (threshold={args.score_threshold}), "
+          f"가용 {cash:,}원, 전략 종목당 {strat_budget:,}원 → 종목당 예산 {budget:,}원")
 
     submitted = skipped = failed = 0
     fill_pending: dict[str, str] = {}  # ticker → order_no (체결확정 대기)

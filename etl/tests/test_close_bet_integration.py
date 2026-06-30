@@ -102,6 +102,7 @@ def _run_main(
     order_result: dict | None = None,
     mock_place_order: bool = True,
     krx_db: Path | None = None,
+    cash: int | None = 1_000_000_000,
 ) -> int:
     """main() 실행 헬퍼. sys.exit 코드 반환 (정상 종료 = 0).
 
@@ -117,6 +118,7 @@ def _run_main(
         stack.enter_context(patch("scripts.run_close_bet.DEFAULT_KRX_DB", krx_db or _NO_KRX))
         stack.enter_context(patch("scripts.run_close_bet._now_seoul", return_value=mock_now))
         stack.enter_context(patch("scripts.run_close_bet.fetch_price_via_broker", return_value=cur_prc))
+        stack.enter_context(patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=cash))
         stack.enter_context(patch("scripts.run_close_bet.load_dotenv"))
         stack.enter_context(patch("time.sleep"))
         stack.enter_context(patch("sys.argv", ["run_close_bet.py"] + argv))
@@ -287,6 +289,30 @@ class TestBudgetSizing(unittest.TestCase):
         # 1,666,666 // 5000 = 333
         self.assertEqual(_order_qty(self.db), {"A": 333, "B": 333, "C": 333})
 
+    def test_cash_below_strategy_caps_per_stock(self):
+        # 가용 300만, N=3 → 종목당 min(167만, 300만//3=100만)=100만. 100만//5000=200.
+        self.db = _fresh_db()
+        _seed(self.db, [("A", 90), ("B", 88), ("C", 85)])
+        _run_main(["--date", _DATE, "--allow-order-outside-close-window"],
+                  self.db, cur_prc=5000, cash=3_000_000)
+        self.assertEqual(_order_qty(self.db), {"A": 200, "B": 200, "C": 200})
+
+    def test_cash_above_strategy_uses_strategy(self):
+        # 가용 넉넉(1억), N=1 → min(300만, 1억)=300만. 300만//5000=600 (전략 그대로).
+        self.db = _fresh_db()
+        _seed(self.db, [("005930", 85)])
+        _run_main(["--date", _DATE, "--allow-order-outside-close-window"],
+                  self.db, cur_prc=5000, cash=100_000_000)
+        self.assertEqual(_order_qty(self.db), {"005930": 600})
+
+    def test_aborts_when_deposit_unavailable(self):
+        self.db = _fresh_db()
+        _seed(self.db, [("005930", 85)])
+        code = _run_main(["--date", _DATE, "--allow-order-outside-close-window"],
+                         self.db, cash=None)
+        self.assertEqual(code, 1)
+        self.assertEqual(_order_rows(self.db), [])
+
     def test_budget_below_price_skips_without_order(self):
         self.db = _fresh_db()
         _seed(self.db, [("005930", 85)])
@@ -300,6 +326,7 @@ class TestBudgetSizing(unittest.TestCase):
              patch("scripts.run_close_bet.DEFAULT_KRX_DB", _NO_KRX), \
              patch("scripts.run_close_bet._now_seoul", return_value=_DEFAULT_NOW), \
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=4_000_000), \
+             patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=1_000_000_000), \
              patch("scripts.run_close_bet.place_order_via_broker", side_effect=fake_place), \
              patch("scripts.run_close_bet.confirm_fills", return_value={}), \
              patch("scripts.run_close_bet.load_dotenv"), \
@@ -357,6 +384,7 @@ class TestDeadlineMidLoop(unittest.TestCase):
              patch("scripts.run_close_bet.DEFAULT_KRX_DB", _NO_KRX), \
              patch("scripts.run_close_bet._now_seoul", side_effect=advancing_now), \
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=5000), \
+             patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=1_000_000_000), \
              patch("scripts.run_close_bet.place_order_via_broker",
                    return_value={"order_no": "0000001", "status": "submitted", "message": ""}), \
              patch("scripts.run_close_bet.confirm_fills", return_value={}), \
