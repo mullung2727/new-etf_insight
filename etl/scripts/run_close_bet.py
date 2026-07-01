@@ -411,6 +411,7 @@ def confirm_fills(
     interval: float = 1.0,
     now: datetime | None = None,
     sleep=time.sleep,
+    history_date: str | None = None,
 ) -> dict[str, str]:
     """매수 직후 kt00007(GET /orders/history) 폴링으로 cntr_price를 즉시 확정한다.
 
@@ -418,10 +419,15 @@ def confirm_fills(
     status='confirmed'로 만든다(별도 16:00 체결대조 배치 의존 제거).
     `pending`: {ticker: order_no}. 반환: 폴링 안에 확정 못 한 {ticker: order_no}.
     미확정분은 submitted로 남아 16:00 run_verify가 백업 대조한다.
+
+    `date`는 close_bet_orders 행 매칭용 버킷 날짜(--date override 가능,
+    실제 주문일과 다를 수 있음). kt00007 조회는 항상 주문이 실제로 체결된
+    "오늘"을 써야 하므로 `history_date`(기본: 실제 오늘)로 분리한다.
     """
+    query_date = history_date or _now_seoul().strftime("%Y%m%d")
     remaining = dict(pending)
     for attempt in range(max_attempts):
-        history = fetch_order_history(broker_url, date)
+        history = fetch_order_history(broker_url, query_date)
         if history:
             by_no: dict[str, dict] = {}
             for item in history:

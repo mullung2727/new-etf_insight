@@ -131,6 +131,9 @@ def main() -> None:
     args = parser.parse_args()
 
     date = args.date or _now_seoul().strftime("%Y%m%d")
+    # kt00007은 실제 주문일(오늘)만 조회 가능. `date`(--date override 가능)는 close_bet_orders
+    # 버킷 매칭용이라 override 시 실제 체결일과 다를 수 있음 — 분리한다.
+    history_date = _now_seoul().strftime("%Y%m%d")
     broker_url = args.broker_url or os.getenv("BROKER_API_URL", "http://localhost:8001")
     watchlist_db = DEFAULT_WATCHLIST_DB
 
@@ -140,7 +143,7 @@ def main() -> None:
         print("[verify] 대조 대상 없음 — 종료")
         return
 
-    history = fetch_order_history(broker_url, date)
+    history = fetch_order_history(broker_url, history_date)
     if history is None:
         print("[verify] ABORT: broker 체결내역 조회 실패 — DB 변경 없이 종료")
         send_discord(f"[종가베팅] {date} 체결 대조 ABORT\nbroker 체결내역 조회 실패 — 확인 필요 (대조 대상 {len(orders)}건)")
