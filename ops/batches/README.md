@@ -2,10 +2,15 @@
 
 This directory keeps the project-owned source of truth for OpenClaw cron jobs.
 
-OpenClaw cron still owns scheduling and wake-up execution, but each cron payload
-should read the matching file in this directory before running the batch. Keep
-the runtime script, schedule, purpose, and reporting rules here so the batch can
-be reviewed together with the project code.
+OpenClaw cron still owns wake-up execution, but this project owns the intended
+job configuration:
+
+- `openclaw-cron.registry.json` — job name, id, schedule, timeout, delivery,
+  and instruction file.
+- `*.md` — execution steps, verification, and reporting rules for each job.
+
+When schedule, timeout, delivery, or an instruction-file binding changes, update
+`openclaw-cron.registry.json` first and then sync OpenClaw cron from that file.
 
 ## File reading
 
@@ -23,17 +28,36 @@ reader before composing the Discord report.
 ## Jobs
 
 - `daily-etf-watchlist-krx-ohlcv.md`
-  - Schedule: Tue-Sat 08:00 Asia/Seoul
   - Purpose: fetch previous-day KRX full-market OHLCV only.
 - `daily-etf-watchlist-intraday-kiwoom.md`
-  - Schedule: Mon-Fri 15:10 Asia/Seoul
   - Purpose: build same-day Kiwoom intraday watchlist candidates and score them (pre-close, feeds 15:19 close-bet order window).
 - `daily-new-etf-insight-batch.md`
-  - Schedule: daily 19:50 Asia/Seoul
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
 - `daily-close-bet-order.md`
-  - Schedule: Mon-Fri 15:21 Asia/Seoul
   - Purpose: report the Windows Task Scheduler 15:19 close-bet order result.
+
+See `openclaw-cron.registry.json` for the active schedules and Discord delivery
+target. Do not duplicate schedules in this README.
+
+## Registry checks
+
+Validate the project registry:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Test-OpenClawBatchRegistry.ps1
+```
+
+Export desired OpenClaw cron specs from the registry:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Export-OpenClawCronSpecs.ps1
+```
+
+Export one job:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Export-OpenClawCronSpecs.ps1 -JobName daily-new-etf-insight-batch
+```
 
 ## Windows Task Scheduler execution
 

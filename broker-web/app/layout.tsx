@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/common/nav";
 import { FillToast } from "@/components/common/fill-toast";
+import { BrokerEventsProvider } from "@/lib/use-broker-events";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,9 +31,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
       <body className="min-h-full flex flex-col">
-        <Nav />
-        <main className="flex-1">{children}</main>
-        <FillToast />
+        <BrokerEventsProvider>
+          <Nav />
+          <main className="flex-1">{children}</main>
+          <FillToast />
+        </BrokerEventsProvider>
       </body>
     </html>
   );

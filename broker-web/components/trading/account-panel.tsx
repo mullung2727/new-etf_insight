@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { brokerClient, type BalanceData, type DepositData, type Holding, type Settings } from "@/lib/broker-client";
+import { useBrokerEvents, isFillEvent } from "@/lib/use-broker-events";
 import { StatCard } from "@/components/common/stat-card";
 import { DataTable, type Column } from "@/components/common/data-table";
 import { ChangeBadge } from "@/components/common/change-badge";
@@ -73,24 +74,38 @@ export function AccountPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [envSwitching, setEnvSwitching] = useState(false);
+  // 체결 연타 시 재조회가 겹칠 수 있음 → 최신 호출만 state에 반영 (stale 응답 무시)
+  const reqSeq = useRef(0);
 
-  const load = async () => {
+  // 잔고+예수금만 재조회 (체결 이벤트 경로 — settings 토글과 무관)
+  const loadAccount = async () => {
+    const seq = ++reqSeq.current;
     setLoading(true);
     setError(null);
     try {
-      const [balance, deposit, s] = await Promise.all([
+      const [balance, deposit] = await Promise.all([
         brokerClient.getBalance(),
         brokerClient.getDeposit(),
-        brokerClient.getSettings(),
       ]);
+      if (seq !== reqSeq.current) return; // 더 최신 재조회가 이미 진행됨
       setData(balance);
       setDepositData(deposit);
-      setSettings(s);
     } catch (e) {
+      if (seq !== reqSeq.current) return;
       setError(String(e));
     } finally {
-      setLoading(false);
+      if (seq === reqSeq.current) setLoading(false);
     }
+  };
+
+  // settings(모의/실전) 포함 전체 로드 (초기·새로고침)
+  const load = async () => {
+    try {
+      setSettings(await brokerClient.getSettings());
+    } catch (e) {
+      setError(String(e));
+    }
+    await loadAccount();
   };
 
   const toggleEnv = async () => {
@@ -100,7 +115,7 @@ export function AccountPanel() {
     try {
       const s = await brokerClient.updateSettings(next);
       setSettings(s);
-      await load();
+      await loadAccount();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -109,6 +124,9 @@ export function AccountPanel() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // 체결 통보(913=체결) 오면 주문가능/총평가금액 즉시 재조회
+  useBrokerEvents((e) => { if (isFillEvent(e)) loadAccount(); });
 
   const deposit = parseKrwString(depositData?.entr);
   const ordAlow = parseKrwString(depositData?.ord_alow_amt);

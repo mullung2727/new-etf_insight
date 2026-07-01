@@ -1,6 +1,6 @@
 "use client"
 
-import { useBrokerEvents } from "@/lib/use-broker-events";
+import { useBrokerEvents, isFillEvent } from "@/lib/use-broker-events";
 import { useState } from "react";
 import { NoteModal } from "../notes/note-modal";
 import { Button } from "../ui/button";
@@ -18,8 +18,7 @@ export function FillToast() {
     const [noteSymbol, setNoteSymbol] = useState<string | null>(null);
 
     useBrokerEvents((e)=> {
-        if(e.channel !== "00") return;
-        if (e.payload["913"] !== "체결") return;
+        if (!isFillEvent(e)) return;
         setFills((prev)=> [
             ...prev,
             {

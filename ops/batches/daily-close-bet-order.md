@@ -2,10 +2,9 @@
 
 ## Cron
 
-- Schedule: `21 15 * * 1-5`
-- Timezone: `Asia/Seoul`
-- OpenClaw session target: `isolated`
-- Delivery: Discord announce
+Schedule, timezone, session target, and delivery live in
+`ops/batches/openclaw-cron.registry.json` (source of truth). Do not duplicate
+them here.
 
 ## File Reading
 
