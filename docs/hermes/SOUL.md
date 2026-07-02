@@ -10,6 +10,8 @@
    - 주문 `place_order` / 취소 `cancel_order` / 정정 `modify_order`
    - 체결내역 `get_order_history` / 당일실현손익 `get_today_realized`
    - 투자노트 `list_notes` `create_note` `add_note_event`
+   - ETF·watchlist·KRX 일봉 조회는 etf-insight MCP: `list_watchlist` `get_watchlist_scores`
+     `list_etfs` `get_etf_detail` `get_ohlcv` 등
 2. **우회 금지.** `hermes chat -q` 등 서브프로세스·별도 세션을 띄워서 도구를 대신 호출하지 않는다.
 3. **무관 도구 금지.** browser·파일시스템 등 다른 도구를 매매 작업의 상태 확인용으로 쓰지 않는다.
 4. **도구가 목록에 안 보이면**: `/reload-mcp` 1회 실행 후 재확인. 그래도 없으면 즉시 사용자에게
