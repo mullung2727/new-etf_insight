@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from . import pnl as pnl_calc
 from .db import get_conn
 from .models import (
     EventCreate,
@@ -12,6 +13,7 @@ from .models import (
     NoteCreate,
     NoteDetail,
     NoteEvent,
+    NotePnlSummaryItem,
     NoteUpdate,
 )
 
@@ -227,3 +229,74 @@ def delete_event(note_uid: str, event_id: int) -> bool:
     )
     conn.commit()
     return cur.rowcount > 0
+
+
+# --- 손익 (pnl.py 계산 + 현재가 조회 연결) ---
+#
+# 현재가 조회 필요 여부는 note.status가 아니라 이벤트에서 직접 계산한
+# remaining_qty로 판단한다. status는 autolink._reclassify가 갱신하는데,
+# 수동 add_note_event 경로는 이걸 안 태워 status가 낡을 수 있어서다.
+
+
+def _current_price(symbol: str) -> int | None:
+    try:
+        from kiwoom.quotes import get_quote
+
+        return get_quote(symbol).price
+    except Exception:  # 조회 실패해도 gross 손익 없이 죽지 않게
+        return None
+
+
+def get_note_with_pnl(uid: str) -> NoteDetail | None:
+    """노트 상세 + 손익. 보유수량이 남아있으면 현재가를 1회 조회한다."""
+    note = get_note(uid)
+    if note is None:
+        return None
+    provisional = pnl_calc.compute(note.events, None)
+    if provisional.remaining_qty > 0:
+        note.pnl = pnl_calc.compute(note.events, _current_price(note.symbol))
+    else:
+        note.pnl = provisional
+    return note
+
+
+def list_notes_with_pnl(
+    symbol: str | None = None,
+    status: str | None = None,
+    user_id: str | None = None,
+) -> list[NotePnlSummaryItem]:
+    """목록 손익 배치 계산. 보유수량 남은 노트들 종목만 모아 시세 1콜로 조회한다."""
+    from kiwoom.quotes import get_watchlist_quotes
+
+    notes = list_notes(symbol=symbol, status=status, user_id=user_id)
+    details = {n.uid: d for n in notes if (d := get_note(n.uid)) is not None}
+    provisional = {uid: pnl_calc.compute(d.events, None) for uid, d in details.items()}
+
+    live_symbols = sorted(
+        {details[uid].symbol for uid, p in provisional.items() if p.remaining_qty > 0}
+    )
+    price_map: dict[str, int | None] = {}
+    if live_symbols:
+        try:
+            for row in get_watchlist_quotes(live_symbols):
+                price_map[row["stk_cd"]] = row.get("cur_prc")
+        except Exception:  # 시세 조회 실패해도 gross 없이 계속(needs_price로 표시)
+            pass
+
+    out: list[NotePnlSummaryItem] = []
+    for n in notes:
+        detail = details.get(n.uid)
+        if detail is None:
+            continue
+        prov = provisional[n.uid]
+        pnl_result = (
+            pnl_calc.compute(detail.events, price_map.get(n.symbol))
+            if prov.remaining_qty > 0
+            else prov
+        )
+        out.append(
+            NotePnlSummaryItem(
+                uid=n.uid, symbol=n.symbol, name=n.name, status=n.status, pnl=pnl_result
+            )
+        )
+    return out

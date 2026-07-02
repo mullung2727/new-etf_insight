@@ -14,7 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatKrw } from "@/lib/formatters";
+import { cn } from "@/lib/utils";
+import { formatKrw, formatPercent } from "@/lib/formatters";
 
 const EVENT_LABEL: Record<EventType, string> = {
   buy: "매수",
@@ -224,6 +225,48 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
             <div className="flex items-center gap-2">
               <Badge variant="outline">{STATUS_LABEL[detail.status]}</Badge>
             </div>
+
+            {detail.pnl && (
+              <div className="rounded-lg border border-border p-3 flex flex-col gap-1.5">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs text-muted-foreground">순손익</span>
+                  <span
+                    className={cn(
+                      "text-lg font-semibold tabular-nums",
+                      detail.pnl.net_pnl > 0
+                        ? "text-status-profit"
+                        : detail.pnl.net_pnl < 0
+                          ? "text-status-loss"
+                          : "text-foreground"
+                    )}
+                  >
+                    {detail.pnl.net_pnl >= 0 ? "+" : ""}
+                    {formatKrw(detail.pnl.net_pnl)}
+                    <span className="ml-1.5 text-sm font-normal">
+                      ({formatPercent(detail.pnl.net_pnl_pct)})
+                    </span>
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
+                  <span>매수원가 {formatKrw(detail.pnl.invested_amt)}</span>
+                  <span>
+                    {detail.pnl.remaining_qty > 0 ? "평가+매도금액" : "매도금액"}{" "}
+                    {formatKrw(detail.pnl.recovered_amt)}
+                  </span>
+                </div>
+                {!detail.pnl.fee_applied && (
+                  <span className="text-[11px] text-muted-foreground/70">
+                    수수료·세금 미반영 (설정 필요)
+                  </span>
+                )}
+                {detail.pnl.needs_price && (
+                  <span className="text-[11px] text-status-loss">
+                    현재가 조회 실패 — 평가금액 미반영
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-col gap-2 text-sm">
               {detail.target_price != null && (
                 <div className="flex justify-between">

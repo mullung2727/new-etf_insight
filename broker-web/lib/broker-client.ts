@@ -158,8 +158,29 @@ export interface NoteEvent {
   created_at: string;
 }
 
+// 노트 손익. 매수원가/평가·매도금액은 수수료·세금(설정 시) 반영된 net.
+export interface NotePnl {
+  remaining_qty: number;
+  avg_cost: number | null;
+  invested_amt: number;
+  recovered_amt: number;
+  net_pnl: number;
+  net_pnl_pct: number | null;
+  fee_applied: boolean;   // false면 수수료율 미설정 → gross 손익
+  needs_price: boolean;   // true면 보유분 있는데 현재가 조회 실패
+}
+
 export interface NoteDetail extends Note {
   events: NoteEvent[];
+  pnl: NotePnl | null;
+}
+
+export interface NotePnlSummaryItem {
+  uid: string;
+  symbol: string;
+  name: string | null;
+  status: NoteStatus;
+  pnl: NotePnl;
 }
 
 export interface NoteCreate {
@@ -257,6 +278,13 @@ export const brokerClient = {
     return get<Note[]>(`/notes${qs ? `?${qs}` : ""}`);
   },
   getNote: (uid: string) => get<NoteDetail>(`/notes/${uid}`),
+  getNotesPnlSummary: (params?: { symbol?: string; status?: NoteStatus }) => {
+    const q = new URLSearchParams();
+    if (params?.symbol) q.set("symbol", params.symbol);
+    if (params?.status) q.set("status", params.status);
+    const qs = q.toString();
+    return get<NotePnlSummaryItem[]>(`/notes/pnl-summary${qs ? `?${qs}` : ""}`);
+  },
   createNote: (req: NoteCreate) => post<Note>("/notes", req),
   updateNote: (uid: string, req: NoteUpdate) => patch<NoteDetail>(`/notes/${uid}`, req),
   deleteNote: (uid: string) => del204(`/notes/${uid}`),

@@ -2,8 +2,8 @@
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { formatKrw } from "@/lib/formatters";
-import type { Note, NoteStatus } from "@/lib/broker-client";
+import { formatKrw, formatPercent } from "@/lib/formatters";
+import type { Note, NotePnl, NoteStatus } from "@/lib/broker-client";
 
 const STATUS_LABEL: Record<NoteStatus, string> = {
   open: "진행중",
@@ -19,10 +19,14 @@ const STATUS_CLASS: Record<NoteStatus, string> = {
 
 interface NoteCardProps {
   note: Note;
+  pnl?: NotePnl;
   onClick: () => void;
 }
 
-export function NoteCard({ note, onClick }: NoteCardProps) {
+export function NoteCard({ note, pnl, onClick }: NoteCardProps) {
+  const pnlColor =
+    pnl == null ? "text-muted-foreground" : pnl.net_pnl > 0 ? "text-status-profit" : pnl.net_pnl < 0 ? "text-status-loss" : "text-muted-foreground";
+
   return (
     <div
       role="button"
@@ -36,9 +40,17 @@ export function NoteCard({ note, onClick }: NoteCardProps) {
           {note.name && <span className="font-semibold text-sm">{note.name}</span>}
           <span className="font-mono text-xs text-muted-foreground">{note.symbol}</span>
         </span>
-        <Badge variant="outline" className={cn("text-xs", STATUS_CLASS[note.status])}>
-          {STATUS_LABEL[note.status]}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {pnl && (
+            <span className={cn("text-xs font-medium tabular-nums", pnlColor)}>
+              {formatPercent(pnl.net_pnl_pct)} {pnl.net_pnl >= 0 ? "▲" : "▼"}
+              {formatKrw(Math.abs(pnl.net_pnl))}
+            </span>
+          )}
+          <Badge variant="outline" className={cn("text-xs", STATUS_CLASS[note.status])}>
+            {STATUS_LABEL[note.status]}
+          </Badge>
+        </div>
       </div>
       {note.buy_reason && (
         <p className="text-sm text-foreground/80 line-clamp-1">{note.buy_reason}</p>

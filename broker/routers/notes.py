@@ -11,6 +11,7 @@ from notes.models import (
     NoteCreate,
     NoteDetail,
     NoteEvent,
+    NotePnlSummaryItem,
     NoteStatus,
     NoteUpdate,
 )
@@ -57,6 +58,28 @@ def list_notes(
     )
 
 
+@router.get(
+    "/pnl-summary",
+    operation_id="get_notes_pnl_summary",
+    summary="투자노트 손익 일괄 조회(현재가 배치조회 포함)",
+    response_model=list[NotePnlSummaryItem],
+)
+def get_notes_pnl_summary(
+    symbol: str | None = None,
+    status: NoteStatus | None = None,
+    user_id: str | None = "local",
+) -> list[NotePnlSummaryItem]:
+    """전체 노트의 손익을 계산한다. open/partial 노트의 종목만 모아 시세를
+    1콜로 배치조회하고(closed는 현재가 불요), 노트별 순손익·수익률을 반환한다.
+    목록 화면에서 한눈에 손익을 보여주거나 주기적으로 폴링할 때 쓴다.
+    """
+    return store.list_notes_with_pnl(
+        symbol=symbol,
+        status=status.value if status else None,
+        user_id=user_id,
+    )
+
+
 @router.post(
     "/sync-trades",
     operation_id="sync_trades",
@@ -79,8 +102,9 @@ def sync_trades(date: str | None = None) -> dict[str, int]:
     response_model=NoteDetail,
 )
 def get_note(uid: str) -> NoteDetail:
-    """투자노트 한 건을 매수/매도 이벤트와 함께 반환한다."""
-    note = store.get_note(uid)
+    """투자노트 한 건을 매수/매도 이벤트·손익(pnl)과 함께 반환한다.
+    open/partial이면 현재가를 1회 조회해 평가손익을 포함한다."""
+    note = store.get_note_with_pnl(uid)
     if note is None:
         raise HTTPException(status_code=404, detail="note not found")
     return note

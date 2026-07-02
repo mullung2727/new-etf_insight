@@ -83,5 +83,25 @@ class NoteEvent(_Base):
     created_at: str
 
 
+class NotePnl(_Base):
+    remaining_qty: int
+    avg_cost: float | None = None  # 남은 보유분 평단가(주당)
+    invested_amt: int              # 총 매수원가 + 매수수수료(sunk)
+    recovered_amt: int             # 실현매도금액(수수료·세금 차감) + 평가금액(청산가정 차감)
+    net_pnl: int                   # recovered_amt - invested_amt
+    net_pnl_pct: float | None = None
+    fee_applied: bool              # 수수료율이 하나라도 설정돼 있으면 True
+    needs_price: bool              # 남은 보유분 있어 현재가 필요한데 못 받았으면 True
+
+
 class NoteDetail(Note):
     events: list[NoteEvent] = Field(default_factory=list)
+    pnl: NotePnl | None = None
+
+
+class NotePnlSummaryItem(_Base):
+    uid: str
+    symbol: str
+    name: str | None = None
+    status: NoteStatus
+    pnl: NotePnl
