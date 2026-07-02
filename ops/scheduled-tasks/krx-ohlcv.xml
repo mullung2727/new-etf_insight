@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<!-- Register:
+     Register-ScheduledTask -Xml (Get-Content -Path krx-ohlcv.xml -Raw -Encoding UTF8) -TaskName "daily-etf-watchlist-krx-ohlcv" -TaskPath "\new-etf_insight\" -Force
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>new_etf_insight previous-day KRX OHLCV fetch-only batch and Discord webhook report</Description>
+    <URI>\new-etf_insight\daily-etf-watchlist-krx-ohlcv</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-07-02T08:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+          <Saturday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-krx-ohlcv.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

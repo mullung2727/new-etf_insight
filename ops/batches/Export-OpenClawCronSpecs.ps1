@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # registry 유효성 먼저 검증 (schema/필수필드/중복/instruction 파일 존재)
-& "$PSScriptRoot\Test-OpenClawBatchRegistry.ps1" -RegistryPath $RegistryPath | Out-Null
+& "$PSScriptRoot\Test-OpenClawBatchRegistry.ps1" -RegistryPath $RegistryPath -Quiet | Out-Null
 
 $registryFile = Resolve-Path -LiteralPath $RegistryPath
 $projectRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..")

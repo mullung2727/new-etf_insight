@@ -1,10 +1,10 @@
 # daily-new-etf-insight-batch
 
-## Cron
+## Schedule
 
-Schedule, timezone, session target, and delivery live in
-`ops/batches/openclaw-cron.registry.json` (source of truth). Do not duplicate
-them here.
+Schedule, timezone, Windows Task binding, legacy OpenClaw cron metadata, and
+delivery live in `ops/batches/openclaw-cron.registry.json` (source of truth).
+Do not duplicate them here.
 
 ## Purpose
 
@@ -38,6 +38,10 @@ After the pipeline:
 
 If dependencies or env are missing, report the exact blocker and do not run
 unrelated projects.
+
+For production Windows Task runs, send the concise result summary through
+`scripts/send_report_messages.py`, which sends to the channel set by
+`NOTIFY_CHANNEL` (default discord via `DISCORD_WEBHOOK_URL`; see notify.py).
 
 ## PowerShell Safety
 

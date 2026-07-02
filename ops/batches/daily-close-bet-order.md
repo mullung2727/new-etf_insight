@@ -1,10 +1,10 @@
 # daily-close-bet-order
 
-## Cron
+## Schedule
 
-Schedule, timezone, session target, and delivery live in
-`ops/batches/openclaw-cron.registry.json` (source of truth). Do not duplicate
-them here.
+Schedule, timezone, Windows Task binding, legacy OpenClaw cron metadata, and
+delivery live in `ops/batches/openclaw-cron.registry.json` (source of truth).
+Do not duplicate them here.
 
 ## File Reading
 
@@ -21,8 +21,9 @@ reread with a UTF-8-safe reader before reporting to Discord.
 Report the result of the Windows Task Scheduler close-bet order job.
 
 The actual order job is `\OpenClaw\close-bet-order`, scheduled at 15:19 KST,
-and runs `etl/scripts/run_close_bet.py` directly. This OpenClaw job is a
-report-only follow-up around 15:21 KST.
+and runs `etl/scripts/run_close_bet.py` directly. The 15:21 production report
+job is also a Windows Task and posts directly to Discord via webhook. OpenClaw
+cron may exist only as a legacy/fallback report path.
 
 ## Required References
 
@@ -90,3 +91,7 @@ Include:
 
 If `close_bet_orders` is empty while candidates existed, say the order did not
 proceed and include the exact observed blocker.
+
+For production Windows Task runs, send the report through
+`scripts/send_report_messages.py`, which sends to the channel set by
+`NOTIFY_CHANNEL` (default discord via `DISCORD_WEBHOOK_URL`; see notify.py).

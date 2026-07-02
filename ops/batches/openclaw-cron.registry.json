@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "owner": "new-etf_insight",
-  "description": "Project-owned OpenClaw cron registry. OpenClaw cron executes these jobs; this file is the source of truth for their intended configuration.",
+  "description": "Project-owned batch registry. Windows Task Scheduler is the primary executor for production batches; OpenClaw cron specs are kept as legacy/fallback metadata. Report delivery channel is NOT set per-job here — it is controlled globally by NOTIFY_CHANNEL in .env (default discord); see etl/scripts/notify.py to switch or add channels. windowsTask.delivery below records the default channel's env only.",
   "defaults": {
     "agentId": "main",
     "sessionTarget": "isolated",
@@ -19,7 +19,7 @@
       "id": "51ed51c4-41a1-4977-b65f-f5d603e76eed",
       "name": "daily-etf-watchlist-intraday-kiwoom",
       "description": "Mon-Fri 15:10 Kiwoom intraday watchlist build + immediate LLM scoring",
-      "enabled": true,
+      "enabled": false,
       "schedule": {
         "kind": "cron",
         "expr": "10 15 * * 1-5",
@@ -27,6 +27,17 @@
       },
       "instructionFile": "ops/batches/daily-etf-watchlist-intraday-kiwoom.md",
       "timeoutSeconds": 7200,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-etf-watchlist-intraday-kiwoom",
+        "xmlFile": "ops/scheduled-tasks/watchlist-intraday.xml",
+        "runnerScript": "ops/scheduled-tasks/run-watchlist-intraday.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
       "delivery": {
         "mode": "announce",
         "channel": "discord",
@@ -37,7 +48,7 @@
       "id": "e9221469-32d8-49e8-bb8f-5403648206ce",
       "name": "daily-close-bet-order",
       "description": "Mon-Fri 15:21 report close-bet order results after Windows scheduled task",
-      "enabled": true,
+      "enabled": false,
       "schedule": {
         "kind": "cron",
         "expr": "21 15 * * 1-5",
@@ -46,6 +57,17 @@
       "instructionFile": "ops/batches/daily-close-bet-order.md",
       "timeoutSeconds": 1800,
       "runNote": "Report-only OpenClaw cron. Do not run scripts/run_close_bet.py, do not place orders, and do not retry order execution from this cron.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-close-bet-order-report",
+        "xmlFile": "ops/scheduled-tasks/close-bet-order-report.xml",
+        "runnerScript": "ops/scheduled-tasks/run-close-bet-order-report.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
       "delivery": {
         "mode": "announce",
         "channel": "discord",
@@ -56,7 +78,7 @@
       "id": "6f00e20f-1b73-4c15-ae50-0d0c7d9fb15e",
       "name": "daily-new-etf-insight-batch",
       "description": "Daily 07:00 KST previous-day new_etf_insight ETF batch and DuckDB sync",
-      "enabled": true,
+      "enabled": false,
       "schedule": {
         "kind": "cron",
         "expr": "0 7 * * *",
@@ -64,6 +86,17 @@
       },
       "instructionFile": "ops/batches/daily-new-etf-insight-batch.md",
       "timeoutSeconds": 7200,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-new-etf-insight-batch",
+        "xmlFile": "ops/scheduled-tasks/new-etf-insight-batch.xml",
+        "runnerScript": "ops/scheduled-tasks/run-new-etf-insight-batch.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
       "delivery": {
         "mode": "announce",
         "channel": "discord",
@@ -74,7 +107,7 @@
       "id": "decbbe13-7b6a-455c-acaa-b4f988766b44",
       "name": "daily-etf-watchlist-krx-ohlcv",
       "description": "Tue-Sat 08:00 fetch previous-day KRX full-market OHLCV only; no watchlist build or LLM scoring",
-      "enabled": true,
+      "enabled": false,
       "schedule": {
         "kind": "cron",
         "expr": "0 8 * * 2-6",
@@ -82,6 +115,17 @@
       },
       "instructionFile": "ops/batches/daily-etf-watchlist-krx-ohlcv.md",
       "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-etf-watchlist-krx-ohlcv",
+        "xmlFile": "ops/scheduled-tasks/krx-ohlcv.xml",
+        "runnerScript": "ops/scheduled-tasks/run-krx-ohlcv.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
       "delivery": {
         "mode": "announce",
         "channel": "discord",

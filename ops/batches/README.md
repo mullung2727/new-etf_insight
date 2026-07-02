@@ -1,16 +1,21 @@
-# OpenClaw Batch Jobs
+# Project Batch Jobs
 
-This directory keeps the project-owned source of truth for OpenClaw cron jobs.
+This directory keeps the project-owned source of truth for production batch jobs.
 
-OpenClaw cron still owns wake-up execution, but this project owns the intended
-job configuration:
+Windows Task Scheduler is the primary executor for production batches, so the
+jobs keep running even when the OpenClaw gateway is down. OpenClaw cron specs
+are kept as legacy/fallback metadata for diagnostics and manual recovery.
 
 - `openclaw-cron.registry.json` — job name, id, schedule, timeout, delivery,
-  and instruction file.
+  instruction file, and Windows Task binding.
 - `*.md` — execution steps, verification, and reporting rules for each job.
+- `../scheduled-tasks/*.ps1` — direct batch runners.
+- `../scheduled-tasks/*.xml` — Windows Task Scheduler definitions.
 
 When schedule, timeout, delivery, or an instruction-file binding changes, update
-`openclaw-cron.registry.json` first and then sync OpenClaw cron from that file.
+`openclaw-cron.registry.json` first and then export/register the Windows task
+definitions from that file. Keep OpenClaw cron synchronized only if you still
+want the legacy fallback jobs.
 
 ## File reading
 
@@ -36,8 +41,8 @@ reader before composing the Discord report.
 - `daily-close-bet-order.md`
   - Purpose: report the Windows Task Scheduler 15:19 close-bet order result.
 
-See `openclaw-cron.registry.json` for the active schedules and Discord delivery
-target. Do not duplicate schedules in this README.
+See `openclaw-cron.registry.json` for the active schedules, Windows task
+bindings, and Discord webhook env key. Do not duplicate schedules in this README.
 
 ## Registry checks
 
@@ -53,6 +58,18 @@ Export desired OpenClaw cron specs from the registry:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Export-OpenClawCronSpecs.ps1
 ```
 
+Export Windows Task Scheduler registration specs from the registry:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Export-WindowsScheduledTaskSpecs.ps1
+```
+
+Export registration commands only:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Export-WindowsScheduledTaskSpecs.ps1 -CommandsOnly
+```
+
 Export one job:
 
 ```powershell
@@ -61,12 +78,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Export-OpenCla
 
 ## Windows Task Scheduler execution
 
-Close-bet order/verify execution does not run through OpenClaw. Windows Task
-Scheduler runs the scripts directly. OpenClaw may run report-only follow-up jobs
-that inspect logs, scheduler status, and DB rows; those follow-up jobs must not
-place or retry orders.
+Production execution does not rely on OpenClaw. Windows Task Scheduler runs the
+project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
 
+- `\new_etf_insight\daily-new-etf-insight-batch` — daily 07:00,
+  `ops/scheduled-tasks/run-new-etf-insight-batch.ps1`.
+- `\new_etf_insight\daily-etf-watchlist-krx-ohlcv` — Tue-Sat 08:00,
+  `ops/scheduled-tasks/run-krx-ohlcv.ps1`.
+- `\new_etf_insight\daily-etf-watchlist-intraday-kiwoom` — Mon-Fri 15:10,
+  `ops/scheduled-tasks/run-watchlist-intraday.ps1`.
+- `\new_etf_insight\daily-close-bet-order-report` — Mon-Fri 15:21,
+  `ops/scheduled-tasks/run-close-bet-order-report.ps1`.
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).
 - `\OpenClaw\close-bet-verify` — Mon-Fri 16:00, `etl/scripts/run_verify.py`
   (defined in `ops/scheduled-tasks/close-bet-verify.xml`).
+
+The 15:21 report task is report-only and must not place or retry orders.

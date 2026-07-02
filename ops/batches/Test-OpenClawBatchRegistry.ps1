@@ -1,5 +1,6 @@
 param(
-    [string]$RegistryPath = "$PSScriptRoot\openclaw-cron.registry.json"
+    [string]$RegistryPath = "$PSScriptRoot\openclaw-cron.registry.json",
+    [switch]$Quiet
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,6 +52,36 @@ foreach ($job in $registry.jobs) {
     if (-not (Test-Path -LiteralPath $instructionPath -PathType Leaf)) {
         throw "Instruction file is missing for $($job.name): $instructionPath"
     }
+
+    if ($job.windowsTask) {
+        foreach ($field in @("enabled", "taskPath", "taskName", "xmlFile", "runnerScript", "delivery")) {
+            if ($null -eq $job.windowsTask.$field -or ($job.windowsTask.$field -is [string] -and $job.windowsTask.$field -eq "")) {
+                throw "windowsTask is missing required field '$field' for $($job.name)"
+            }
+        }
+        if ($job.windowsTask.delivery.kind -ne "discordWebhook") {
+            throw "Unsupported windowsTask delivery kind for $($job.name): $($job.windowsTask.delivery.kind)"
+        }
+        if (-not $job.windowsTask.delivery.env) {
+            throw "windowsTask Discord delivery needs env for $($job.name)"
+        }
+
+        $xmlPath = Join-Path $projectRoot $job.windowsTask.xmlFile
+        if (-not (Test-Path -LiteralPath $xmlPath -PathType Leaf)) {
+            throw "Windows task XML is missing for $($job.name): $xmlPath"
+        }
+        [xml]$xml = Get-Content -LiteralPath $xmlPath -Raw -Encoding UTF8
+        if (-not $xml.Task.Actions.Exec.Command) {
+            throw "Windows task XML has no Exec command for $($job.name): $xmlPath"
+        }
+
+        $runnerPath = Join-Path $projectRoot $job.windowsTask.runnerScript
+        if (-not (Test-Path -LiteralPath $runnerPath -PathType Leaf)) {
+            throw "Windows task runner is missing for $($job.name): $runnerPath"
+        }
+    }
 }
 
-Write-Host "OK: $($registry.jobs.Count) OpenClaw batch jobs validated from $registryFile"
+if (-not $Quiet) {
+    Write-Host "OK: $($registry.jobs.Count) project batch jobs validated from $registryFile"
+}

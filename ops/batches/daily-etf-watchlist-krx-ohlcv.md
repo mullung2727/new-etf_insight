@@ -1,10 +1,10 @@
 # daily-etf-watchlist-krx-ohlcv
 
-## Cron
+## Schedule
 
-Schedule, timezone, session target, and delivery live in
-`ops/batches/openclaw-cron.registry.json` (source of truth). Do not duplicate
-them here.
+Schedule, timezone, Windows Task binding, legacy OpenClaw cron metadata, and
+delivery live in `ops/batches/openclaw-cron.registry.json` (source of truth).
+Do not duplicate them here.
 
 ## Purpose
 
@@ -82,6 +82,10 @@ On non-trading day or KRX empty data, announce a concise skip/empty message for
 the explicit target date. On failure, report the exact blocker and do not run
 unrelated projects.
 
+For production Windows Task runs, send the report through
+`scripts/send_report_messages.py`, which sends to the channel set by
+`NOTIFY_CHANNEL` (default discord via `DISCORD_WEBHOOK_URL`; see notify.py).
+
 ## PowerShell Safety
 
 Do not use Bash heredoc syntax. For multiline Python, use:
@@ -91,4 +95,3 @@ Do not use Bash heredoc syntax. For multiline Python, use:
 print("ok")
 '@ | .\.venv\Scripts\python.exe -
 ```
-

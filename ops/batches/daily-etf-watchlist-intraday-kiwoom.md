@@ -1,10 +1,10 @@
 # daily-etf-watchlist-intraday-kiwoom
 
-## Cron
+## Schedule
 
-Schedule, timezone, session target, and delivery live in
-`ops/batches/openclaw-cron.registry.json` (source of truth). Do not duplicate
-them here.
+Schedule, timezone, Windows Task binding, legacy OpenClaw cron metadata, and
+delivery live in `ops/batches/openclaw-cron.registry.json` (source of truth).
+Do not duplicate them here.
 
 ## Purpose
 
@@ -113,6 +113,10 @@ After `run_watchlist_research.py` completes, run:
 Use only the generated `messages` array as the Discord report. If Discord length
 limits are hit, send the array entries as separate messages in order. Wrap source
 links in angle brackets exactly as emitted by the formatter.
+
+For production Windows Task runs, send the generated `messages` array through
+`scripts/send_report_messages.py`, which sends to the channel set by
+`NOTIFY_CHANNEL` (default discord via `DISCORD_WEBHOOK_URL`; see notify.py).
 
 For each item, the formatter displays DB-backed fields:
 
