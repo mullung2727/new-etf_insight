@@ -131,6 +131,35 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "63151323-4106-434f-a4a8-1680ef7d990b",
+      "name": "daily-telegram-public-channel",
+      "description": "Daily 18:00 KST collect Telegram public channels + download broker stock-report PDFs (companyreport)",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 18 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-telegram-public-channel.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-telegram-public-channel",
+        "xmlFile": "ops/scheduled-tasks/telegram-public-channel.xml",
+        "runnerScript": "ops/scheduled-tasks/run-telegram-public-channel.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }

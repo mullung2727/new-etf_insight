@@ -41,6 +41,7 @@ env/
 htmlcov/
 etl/runs/
 etl/db/
+etl/exports/
 etl/current_graph.png
 bash.exe.stackdump
 etl/bash.exe.stackdump
