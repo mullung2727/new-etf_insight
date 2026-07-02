@@ -44,9 +44,13 @@ class _Base(unittest.TestCase):
         self._sells: list[dict] = []
         self._orig = orders.get_order_history
         orders.get_order_history = self._fake_history
+        # create_note가 실제 키움 ka10001을 때리지 않도록 종목명 조회 스텁.
+        self._orig_resolve = store.resolve_name
+        store.resolve_name = lambda symbol: None
 
     def tearDown(self):
         orders.get_order_history = self._orig
+        store.resolve_name = self._orig_resolve
         if db._conn is not None:
             db._conn.close()
             db._conn = None

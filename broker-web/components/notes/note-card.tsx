@@ -32,7 +32,10 @@ export function NoteCard({ note, onClick }: NoteCardProps) {
       className="flex flex-col gap-2 rounded-lg border border-border p-4 cursor-pointer hover:bg-muted/30 transition-colors"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono font-semibold text-sm">{note.symbol}</span>
+        <span className="flex items-baseline gap-1.5">
+          {note.name && <span className="font-semibold text-sm">{note.name}</span>}
+          <span className="font-mono text-xs text-muted-foreground">{note.symbol}</span>
+        </span>
         <Badge variant="outline" className={cn("text-xs", STATUS_CLASS[note.status])}>
           {STATUS_LABEL[note.status]}
         </Badge>

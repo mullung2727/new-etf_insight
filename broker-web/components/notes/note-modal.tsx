@@ -130,7 +130,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
 
   const handleDelete = async () => {
     if (!detail) return;
-    if (!confirm(`${detail.symbol} 노트를 삭제하시겠습니까?`)) return;
+    if (!confirm(`${detail.name ?? detail.symbol} 노트를 삭제하시겠습니까?`)) return;
     setSaving(true);
     try {
       await brokerClient.deleteNote(detail.uid);
@@ -148,7 +148,11 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {isNew ? "새 투자노트" : detail ? `${detail.symbol} 투자노트` : "투자노트"}
+            {isNew
+              ? "새 투자노트"
+              : detail
+                ? `${detail.name ?? detail.symbol} 투자노트`
+                : "투자노트"}
           </DialogTitle>
         </DialogHeader>
 

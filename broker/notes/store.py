@@ -20,6 +20,17 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def resolve_name(symbol: str) -> str | None:
+    """종목코드 → 종목명. 키움 ka10001(stk_nm). 조회 실패 시 None(이름 없이 저장)."""
+    try:
+        from kiwoom.quotes import get_quote
+
+        name = str(get_quote(symbol).raw.get("stk_nm", "") or "").strip()
+        return name or None
+    except Exception:  # 키움 다운·토큰만료 등 — 이름은 부가정보라 저장을 막지 않는다
+        return None
+
+
 # --- notes ---
 
 
@@ -27,16 +38,18 @@ def create_note(data: NoteCreate) -> Note:
     conn = get_conn()
     uid = uuid.uuid4().hex
     now = _now()
+    name = resolve_name(data.symbol)
     conn.execute(
         """
         INSERT INTO notes
-            (uid, symbol, status, target_price, holding_period,
+            (uid, symbol, name, status, target_price, holding_period,
              buy_reason, memo, user_id, created_at, updated_at)
-        VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             uid,
             data.symbol,
+            name,
             data.target_price,
             data.holding_period,
             data.buy_reason,

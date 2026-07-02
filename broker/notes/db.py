@@ -24,6 +24,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
     uid            TEXT PRIMARY KEY,
     symbol         TEXT NOT NULL,
+    name           TEXT,
     status         TEXT NOT NULL DEFAULT 'open',
     target_price   INTEGER,
     holding_period TEXT,
@@ -77,6 +78,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     않으므로, 누락 컬럼만 ALTER로 보강한다. 컬럼 추가 후 부분 유니크 인덱스도
     (스키마에 이미 있지만 구버전 DB 대비) 보장한다.
     """
+    note_cols = {row["name"] for row in conn.execute("PRAGMA table_info(notes)")}
+    if "name" not in note_cols:
+        conn.execute("ALTER TABLE notes ADD COLUMN name TEXT")
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(note_events)")}
     if "order_no" not in cols:
         conn.execute("ALTER TABLE note_events ADD COLUMN order_no TEXT")

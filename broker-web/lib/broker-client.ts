@@ -136,6 +136,7 @@ export type EventType = "buy" | "add_buy" | "partial_sell" | "sell";
 export interface Note {
   uid: string;
   symbol: string;
+  name: string | null;
   status: NoteStatus;
   target_price: number | null;
   holding_period: string | null;

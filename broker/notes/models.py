@@ -52,6 +52,7 @@ class NoteUpdate(_Base):
 class Note(_Base):
     uid: str
     symbol: str
+    name: str | None = None
     status: NoteStatus
     target_price: int | None = None
     holding_period: str | None = None
