@@ -118,12 +118,15 @@ mcp = FastApiMCP(
     app,
     name="kiwoom-broker",
     description="키움증권 매매 게이트웨이. 시세·잔고·주문·조건검색.",
-    exclude_operations=["health_check"],
 )
 mcp.mount()
 
 
-@app.get("/health", operation_id="health_check")
+@app.get("/health", operation_id="health_check", summary="broker 상태 확인")
 def health() -> dict:
+    """broker 생존·환경(paper/real)·계좌번호 확인. 응답이 오면 주문 가능 상태.
+
+    주문 전 상태 점검은 이 도구 하나로 끝낸다(포트·프로세스 탐색 불요).
+    """
     cfg = load_config()
     return {"status": "ok", "env": cfg.env, "account": cfg.account_no or "<unset>"}

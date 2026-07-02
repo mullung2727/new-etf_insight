@@ -58,8 +58,13 @@ def _friendly_order_error(exc: KiwoomError) -> str:
     response_model=OrderResult,
 )
 def place_order(req: OrderRequest) -> OrderResult:
-    """주문을 실행한다. 금액/수량 상한 가드 초과 시 422로 거부된다.
+    """키움 주식 매수/매도 주문 실행 (모의/실전 공용). 주문은 반드시 이 도구로만 한다.
 
+    예: "삼성전자 1주 시장가 매수" → symbol="005930", side="buy",
+    order_type="market", qty=1 (market이면 price 생략). 지정가는
+    order_type="limit" + price. terminal/browser로 주문을 우회하지 않는다.
+
+    금액/수량 상한 가드 초과 시 422로 거부된다.
     성공(accepted=True + order_no) 시 거래 원장(kiwoom_trade_history)에 기록한다.
     거부/실패는 order_no가 없어 기록하지 않는다(호출자가 422로 인지).
     """
