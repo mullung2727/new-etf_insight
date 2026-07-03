@@ -10,7 +10,7 @@ $log = Join-Path $logDir ("naver-research-" + (Get-Date).ToString("yyyyMMdd") + 
 
 Set-Location $etlDir
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false  # BOM 없이 — here-string을 python - 로 파이프할 때 stdin U+FEFF 오염 방지
 $env:PYTHONUTF8 = "1"
 
 function Invoke-Step {

@@ -9,7 +9,7 @@ $log = Join-Path $logDir ("new-etf-insight-" + $target + ".log")
 
 Set-Location $etlDir
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false  # BOM 없이 — here-string을 python - 로 파이프할 때 stdin U+FEFF 오염 방지
 $env:PYTHONUTF8 = "1"
 $env:PYTHONPATH = "src"
 
@@ -24,6 +24,8 @@ function Invoke-Step {
 }
 
 try {
+  # 파이프라인 실행 + 사람용 요약을 한 번의 python 호출로(멀티라인 -c 인자 깨짐 회피).
+  # 상세 JSON은 파이썬이 직접 로그에 쓰고, stdout 은 Discord 보고용 요약만.
   $runner = @'
 import json
 from pathlib import Path
@@ -36,27 +38,22 @@ result = run_daily_pipeline(
     Path("runs") / date / "records",
     Path("runs") / date / "pdfs",
 )
-print(json.dumps(result, ensure_ascii=False, indent=2))
-'@.Replace("__DATE__", $target)
-
-  $resultJson = $runner | .\.venv\Scripts\python.exe -
-  $resultJson | Tee-Object -FilePath $log -Append | Write-Output
-
-  $summary = $resultJson | .\.venv\Scripts\python.exe -c @'
-import json, sys
-data = json.load(sys.stdin)
-results = data.get("results") or []
+with open(r"__LOG__", "a", encoding="utf-8") as f:
+    f.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
 actions = {}
-for item in results:
-    actions[item.get("action") or "unknown"] = actions.get(item.get("action") or "unknown", 0) + 1
+for item in (result.get("results") or []):
+    a = item.get("action") or "unknown"
+    actions[a] = actions.get(a, 0) + 1
 print(
-    "[new_etf_insight daily] " + str(data.get("begin")) + "\n"
-    + f"- candidates: {data.get('candidate_count')}\n"
+    "[new_etf_insight daily] " + str(result.get("begin")) + "\n"
+    + f"- candidates: {result.get('candidate_count')}\n"
     + f"- result actions: {actions}\n"
-    + f"- DB synced: {data.get('db_synced')}\n"
-    + f"- DB: {data.get('db_path')}"
+    + f"- DB synced: {result.get('db_synced')}\n"
+    + f"- DB: {result.get('db_path')}"
 )
-'@
+'@.Replace("__DATE__", $target).Replace("__LOG__", $log)
+
+  $summary = $runner | .\.venv\Scripts\python.exe -
   $summary | Tee-Object -FilePath $log -Append | Write-Output
   Invoke-Step "send Discord report" ".\.venv\Scripts\python.exe" @("scripts\send_report_messages.py", "--message", $summary)
   exit 0
