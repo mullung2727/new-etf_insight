@@ -262,8 +262,8 @@ export default function ResearchPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.reports.map((r) => (
-                <TableRow key={r.researchId}>
+              {data.reports.map((r, i) => (
+                <TableRow key={`${r.researchId}-${i}`}>
                   <TableCell className="whitespace-nowrap">{r.writeDate}</TableCell>
                   <TableCell className="whitespace-nowrap">{r.brokerName}</TableCell>
                   <TableCell>{r.title}</TableCell>

@@ -82,7 +82,7 @@ def _resolve_name(code: str) -> str:
 def _dest_for(report: dict) -> Path:
     return dnr.dest_path(
         dnr.DEFAULT_EXPORT_BASE, report["itemName"], report["itemCode"],
-        report["writeDate"], report["brokerName"], report["researchId"],
+        report["writeDate"], report["brokerName"], dnr.pdf_key(report["pdf_url"]),
     )
 
 

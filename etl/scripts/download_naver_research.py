@@ -87,6 +87,7 @@ def list_stock_reports(code, name, since=None, until=None, max_pages=20, fetch_f
     """
     enc_name = quote(name, encoding="euc-kr")
     out: list[dict] = []
+    seen: set[str] = set()
     for page in range(1, max_pages + 1):
         html = fetch_fn(STOCK_LIST_URL.format(name=enc_name, code=code, page=page))
         matched = _STOCK_ROW_RE.findall(html)
@@ -100,6 +101,9 @@ def list_stock_reports(code, name, since=None, until=None, max_pages=20, fetch_f
             if since and wd < since:
                 stop = True        # 시작일 이전 → 이후는 더 과거뿐, 중단
                 break
+            if pdf in seen:
+                continue          # 페이지 겹침 등 중복 pdf 제거(안정 식별자 기준)
+            seen.add(pdf)
             out.append({
                 "researchId": nid,
                 "itemCode": code,
@@ -120,7 +124,7 @@ def run_stock(code, name, out_dir=DEFAULT_EXPORT_BASE, since=None, until=None, m
     reports = list_stock_reports(code, name, since=since, until=until, max_pages=max_pages, fetch_fn=list_fetch)
     stats = {"listed": len(reports), "downloaded": 0, "skipped_exists": 0, "no_pdf": 0}
     for r in reports:
-        dest = dest_path(out_dir, r["itemName"], r["itemCode"], r["writeDate"], r["brokerName"], r["researchId"])
+        dest = dest_path(out_dir, r["itemName"], r["itemCode"], r["writeDate"], r["brokerName"], pdf_key(r["pdf_url"]))
         if dest.exists():
             stats["skipped_exists"] += 1
             continue
@@ -171,8 +175,19 @@ def fetch_detail(research_id, fetch_fn=_urlopen) -> dict:
     return data.get("researchContent", {}) or {}
 
 
-def dest_path(out_dir: Path, name: str, code: str, date_kst: str, broker: str, research_id) -> Path:
-    return out_dir / f"{sanitize(name)}_{code}" / f"{date_kst}_{sanitize(broker)}_{research_id}.pdf"
+def pdf_key(pdf_url: str) -> str:
+    """pstatic PDF의 안정 식별자(파일 stem). 모바일 API·데스크톱 목록이 부여하는
+    researchId/nid 는 서로 다르지만 attachUrl/pdf_url 은 동일 pstatic 파일을 가리킨다
+    → 이걸 파일명 키로 써야 두 경로 간 교차 중복제거가 맞는다.
+    예: '.../20260702_company_957350000.pdf' → '20260702_company_957350000'
+    """
+    stem = pdf_url.rstrip("/").split("/")[-1]
+    return stem[:-4] if stem.lower().endswith(".pdf") else stem
+
+
+def dest_path(out_dir: Path, name: str, code: str, date_kst: str, broker: str, key) -> Path:
+    """key = pdf_key(pdf_url) (안정 식별자). 파일명: {날짜}_{증권사}_{key}.pdf"""
+    return out_dir / f"{sanitize(name)}_{code}" / f"{date_kst}_{sanitize(broker)}_{key}.pdf"
 
 
 def download_pdf(url: str, dest: Path, fetch_fn=_urlopen) -> bool:
@@ -192,15 +207,15 @@ def run(date_kst, out_dir=DEFAULT_EXPORT_BASE, *, list_fetch=_urlopen, detail_fe
     reports = list_reports(date_kst, fetch_fn=list_fetch)
     stats = {"listed": len(reports), "downloaded": 0, "skipped_exists": 0, "no_pdf": 0}
     for r in reports:
-        # dest 는 목록 데이터만으로 계산 가능 → 이미 있으면 상세 API도 건너뜀(멱등 + 요청 최소).
-        dest = dest_path(out_dir, r["itemName"], r["itemCode"], date_kst, r["brokerName"], r["researchId"])
-        if dest.exists():
-            stats["skipped_exists"] += 1
-            continue
+        # 안정 키(pdf_key)는 attachUrl 에서만 나오므로 상세를 먼저 받는다.
         detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch)
         url = str(detail.get("attachUrl", "") or "")
         if not url:
             stats["no_pdf"] += 1
+            continue
+        dest = dest_path(out_dir, r["itemName"], r["itemCode"], date_kst, r["brokerName"], pdf_key(url))
+        if dest.exists():
+            stats["skipped_exists"] += 1
             continue
         ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
         stats["downloaded" if ok else "no_pdf"] += 1

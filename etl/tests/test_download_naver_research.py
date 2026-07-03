@@ -14,6 +14,7 @@ from scripts.download_naver_research import (
     fetch_detail,
     list_reports,
     list_stock_reports,
+    pdf_key,
     run,
     run_stock,
     sanitize,
@@ -84,6 +85,13 @@ class TestDestAndDownload(unittest.TestCase):
     def test_sanitize_strips_illegal(self):
         self.assertEqual(sanitize("삼성/전자:우"), "삼성_전자_우")
 
+    def test_pdf_key_is_pstatic_stem(self):
+        # 모바일/데스크톱이 부여하는 id는 달라도 pdf_url은 동일 → 이 키로 교차 중복제거
+        self.assertEqual(
+            pdf_key("https://stock.pstatic.net/stock-research/company/62/20260701_company_957350000.pdf"),
+            "20260701_company_957350000",
+        )
+
     def test_dest_path_layout(self):
         p = dest_path(Path("/out"), "삼성전자", "005930", "2026-07-03", "대신증권", 93876)
         self.assertEqual(p, Path("/out/삼성전자_005930/2026-07-03_대신증권_93876.pdf"))
@@ -122,25 +130,25 @@ class TestRunIdempotent(unittest.TestCase):
             return json.dumps({"researchContent": {"attachUrl": "http://x/a.pdf"}}).encode()
         return f
 
-    def test_rerun_skips_without_detail_or_pdf_fetch(self):
+    def test_rerun_skips_pdf_fetch(self):
         with TemporaryDirectory() as d:
             out = Path(d)
             detail_calls, pdf_calls = [], []
             def pdf(url):
                 pdf_calls.append(url)
                 return b"%PDF-1.7 x"
-            # 1차: 다운로드
+            # 1차: 다운로드 (대상일 1건)
             s1 = run("2026-07-03", out_dir=out, list_fetch=self._list(),
                      detail_fetch=self._detail(detail_calls), pdf_fetch=pdf, sleep_fn=lambda s: None)
             self.assertEqual(s1["downloaded"], 1)
             self.assertEqual(s1["skipped_exists"], 0)
-            self.assertEqual(len(detail_calls), 1)  # 대상일 1건만(다른날 제외)
+            self.assertEqual(len(detail_calls), 1)
 
-            # 2차: 같은 날 재실행 → 파일 존재 → 상세/PDF 요청 0
-            def boom(url):
-                raise AssertionError(f"재실행에서 요청 발생: {url}")
+            # 2차: 재실행 → 파일 존재 → 다운로드(pdf_fetch) 안 함. 상세는 안정키 위해 조회함.
+            def boom_pdf(url):
+                raise AssertionError(f"이미 받은 건 재다운 금지: {url}")
             s2 = run("2026-07-03", out_dir=out, list_fetch=self._list(),
-                     detail_fetch=boom, pdf_fetch=boom, sleep_fn=lambda s: None)
+                     detail_fetch=self._detail(detail_calls), pdf_fetch=boom_pdf, sleep_fn=lambda s: None)
             self.assertEqual(s2["skipped_exists"], 1)
             self.assertEqual(s2["downloaded"], 0)
 
@@ -202,7 +210,8 @@ class TestRunStock(unittest.TestCase):
             s1 = run_stock("005930", "삼성전자", out_dir=out, max_pages=2,
                            list_fetch=list_fetch, pdf_fetch=pdf_fetch, sleep_fn=lambda s: None)
             self.assertEqual(s1["downloaded"], 1)
-            saved = out / "삼성전자_005930" / "2026-07-02_대신증권_777.pdf"
+            # 파일명 키 = pstatic pdf stem(안정 식별자), researchId 아님
+            saved = out / "삼성전자_005930" / "2026-07-02_대신증권_20260703_company_9.pdf"
             self.assertTrue(saved.exists())
             # 재실행 → 스킵, PDF 요청 없음
             s2 = run_stock("005930", "삼성전자", out_dir=out, max_pages=2,
