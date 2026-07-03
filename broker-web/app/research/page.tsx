@@ -1,0 +1,285 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiBase } from "@/lib/api-base";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+type Candidate = { code: string; name: string };
+type Report = {
+  researchId: string;
+  brokerName: string;
+  title: string;
+  writeDate: string;
+  downloaded: boolean;
+};
+type ReportsResp = {
+  code: string;
+  name: string;
+  total: number;
+  already: number;
+  reports: Report[];
+};
+type Job = {
+  job_id: string;
+  status: string;
+  total: number;
+  downloaded: number;
+  skipped: number;
+  failed: number;
+  error?: string | null;
+};
+
+export default function ResearchPage() {
+  const [q, setQ] = useState("");
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [selected, setSelected] = useState<Candidate | null>(null);
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
+  const [data, setData] = useState<ReportsResp | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [job, setJob] = useState<Job | null>(null);
+  const [error, setError] = useState("");
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  // 자동완성 (디바운스 250ms)
+  useEffect(() => {
+    if (selected && q === `${selected.name} (${selected.code})`) return;
+    clearTimeout(debounceRef.current);
+    if (!q.trim()) {
+      setCandidates([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const r = await fetch(
+          `${apiBase()}/research/search?q=${encodeURIComponent(q.trim())}`
+        );
+        setCandidates(r.ok ? await r.json() : []);
+      } catch {
+        setCandidates([]);
+      }
+    }, 250);
+    return () => clearTimeout(debounceRef.current);
+  }, [q, selected]);
+
+  function pick(c: Candidate) {
+    setSelected(c);
+    setQ(`${c.name} (${c.code})`);
+    setCandidates([]);
+  }
+
+  const loadReports = useCallback(async () => {
+    if (!selected) return;
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({ name: selected.name });
+      if (since) params.set("since", since);
+      if (until) params.set("until", until);
+      const r = await fetch(
+        `${apiBase()}/research/stock/${selected.code}/reports?${params}`
+      );
+      if (!r.ok) throw new Error(`조회 실패 (${r.status})`);
+      setData(await r.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오류");
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [selected, since, until]);
+
+  function poll(id: string) {
+    clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`${apiBase()}/research/jobs/${id}`);
+        const j: Job = await r.json();
+        setJob(j);
+        if (j.status !== "running") {
+          clearInterval(pollRef.current);
+          loadReports(); // 완료 후 다운로드 여부 갱신
+        }
+      } catch {
+        clearInterval(pollRef.current);
+      }
+    }, 1500);
+  }
+
+  async function startDownload() {
+    if (!selected) return;
+    setError("");
+    try {
+      const r = await fetch(
+        `${apiBase()}/research/stock/${selected.code}/download`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: selected.name,
+            since: since || null,
+            until: until || null,
+          }),
+        }
+      );
+      if (r.status === 429) {
+        setError("동시 다운로드 최대 3개 — 잠시 후 다시 시도");
+        return;
+      }
+      if (!r.ok) throw new Error(`다운로드 시작 실패 (${r.status})`);
+      const j: Job = await r.json();
+      setJob(j);
+      poll(j.job_id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오류");
+    }
+  }
+
+  useEffect(
+    () => () => {
+      clearInterval(pollRef.current);
+      clearTimeout(debounceRef.current);
+    },
+    []
+  );
+
+  const done = job ? job.downloaded + job.skipped + job.failed : 0;
+  const pct = job && job.total ? Math.round((done / job.total) * 100) : 0;
+  const running = job?.status === "running";
+
+  return (
+    <div className="mx-auto max-w-4xl p-6 space-y-6">
+      <h1 className="text-2xl font-bold">증권사 종목 리포트</h1>
+
+      {/* 검색 + 기간 */}
+      <div className="space-y-3">
+        <div className="relative">
+          <label className="text-sm font-medium">종목 (코드 또는 종목명)</label>
+          <Input
+            value={q}
+            placeholder="예: 삼성전자 또는 005930"
+            onChange={(e) => {
+              setQ(e.target.value);
+              setSelected(null);
+            }}
+          />
+          {candidates.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full max-h-64 overflow-auto rounded-md border bg-white shadow">
+              {candidates.map((c) => (
+                <li
+                  key={c.code}
+                  className="cursor-pointer px-3 py-2 text-sm hover:bg-gray-100"
+                  onClick={() => pick(c)}
+                >
+                  {c.name}{" "}
+                  <span className="text-gray-400">{c.code}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-sm font-medium">시작일</label>
+            <Input
+              type="date"
+              value={since}
+              onChange={(e) => setSince(e.target.value)}
+              className="w-40"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">종료일</label>
+            <Input
+              type="date"
+              value={until}
+              onChange={(e) => setUntil(e.target.value)}
+              className="w-40"
+            />
+          </div>
+          <Button onClick={loadReports} disabled={!selected || loading}>
+            {loading ? "조회 중…" : "조회"}
+          </Button>
+          <Button
+            variant="default"
+            onClick={startDownload}
+            disabled={!selected || running}
+          >
+            {running ? "다운로드 중…" : "다운로드"}
+          </Button>
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {/* 진행률 */}
+      {job && (
+        <div className="rounded-md border p-3 text-sm">
+          <div className="mb-1 flex justify-between">
+            <span>
+              다운로드 {job.status === "done" ? "완료" : job.status === "error" ? "오류" : "진행 중"}
+              {" — "}
+              받음 {job.downloaded} · 스킵 {job.skipped} · 실패 {job.failed} / 총 {job.total}
+            </span>
+            <span>{pct}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded bg-gray-200">
+            <div
+              className="h-full bg-blue-600 transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          {job.error && <p className="mt-1 text-red-600">{job.error}</p>}
+        </div>
+      )}
+
+      {/* 목록 */}
+      {data && (
+        <div>
+          <p className="mb-2 text-sm text-gray-600">
+            {data.name} ({data.code}) — 총 {data.total}건, 이미 받음 {data.already}건
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>날짜</TableHead>
+                <TableHead>증권사</TableHead>
+                <TableHead>제목</TableHead>
+                <TableHead className="text-right">상태</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.reports.map((r) => (
+                <TableRow key={r.researchId}>
+                  <TableCell className="whitespace-nowrap">{r.writeDate}</TableCell>
+                  <TableCell className="whitespace-nowrap">{r.brokerName}</TableCell>
+                  <TableCell>{r.title}</TableCell>
+                  <TableCell className="text-right">
+                    {r.downloaded ? (
+                      <Badge variant="secondary">받음</Badge>
+                    ) : (
+                      <Badge variant="outline">미다운</Badge>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
