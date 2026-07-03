@@ -121,12 +121,20 @@ def _parse_int(value: str | None) -> int | None:
         return None
 
 
-def fetch_day(date: str, key: str, session: requests.Session | None = None) -> list[tuple]:
+def fetch_day(
+    date: str,
+    key: str,
+    session: requests.Session | None = None,
+    names_out: list | None = None,
+) -> list[tuple]:
     """그날 KOSPI+KOSDAQ 전종목 OHLCV → 행 튜플 리스트 (거래일당 2콜).
 
     KRX는 인증 실패 등은 4xx로 주지만(raise_for_status가 잡음),
     방어적으로 200인데 OutBlock_1 키가 없는 응답은 에러로 처리한다
     — 빈 거래일로 위장되는 것 방지.
+
+    names_out 리스트를 주면 같은 응답의 (code, ISU_NM) 도 append 한다
+    — 추가 API콜 없이 stock_names 매핑 갱신용(ensure_ohlcv 가 사용).
     """
     http = session or requests
     rows: list[tuple] = []
@@ -145,6 +153,11 @@ def fetch_day(date: str, key: str, session: requests.Session | None = None) -> l
                 f"KRX unexpected response ({market} {date}): {resp.text[:200]}"
             )
         for x in data["OutBlock_1"]:
+            if names_out is not None:
+                code = str(x.get("ISU_CD", "") or "").strip()
+                name = str(x.get("ISU_NM", "") or "").strip()
+                if code and name:
+                    names_out.append((code, name))
             rows.append(
                 (
                     x["BAS_DD"],
@@ -198,9 +211,11 @@ def ensure_ohlcv(
     inserted_rows = 0
     failed_days = 0
     empty_dates: list[str] = []
+    latest_names: list[tuple[str, str]] = []   # 최신 fetch 거래일의 (code, name)
     for date in missing:
+        day_names: list[tuple[str, str]] = []
         try:
-            rows = fetch_day(date, key, session=session)
+            rows = fetch_day(date, key, session=session, names_out=day_names)
         except Exception as exc:
             print(f"  {date}: fetch failed - {exc} (retry next run)")
             failed_days += 1
@@ -213,7 +228,18 @@ def ensure_ohlcv(
         )
         fetched_days += 1
         inserted_rows += len(rows)
+        latest_names = day_names   # missing 오름차순 → 마지막이 최신 거래일
         print(f"  {date}: {len(rows)} rows")
+
+    # 종목명 매핑 갱신 — 최신 거래일 응답에 이미 들어온 이름 재활용(추가 API콜 0).
+    # 이름은 이력 불필요 → 최신 1일만 upsert. 지연 import 로 순환참조 회피.
+    if latest_names:
+        try:
+            from scripts.stock_names import upsert_names
+        except ImportError:
+            from stock_names import upsert_names
+        upsert_names(con, latest_names)
+        print(f"  stock_names: {len(latest_names)} names upserted")
 
     # 휴장일 확정: 빈 응답 날짜보다 나중 날짜에 데이터가 있으면 휴장일.
     # (마지막 빈 날짜는 당일 미공시일 수 있으므로 기록하지 않고 재시도 대상으로 남김)

@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 from scripts.run_watchlist_research import (
     _is_past_deadline,
     _research_with_timeout,
+    ticker_name,
     upsert_one_score,
 )
 from scripts.wl_sqlite import connect_ro
@@ -133,6 +134,25 @@ class TestPerSymbolTimeout(unittest.TestCase):
         required = {"date", "ticker", "name", "score", "category", "reason_summary",
                     "final_opinion", "evidence_board", "evidence_news", "evidence_web", "sources"}
         self.assertTrue(required.issubset(result.keys()))
+
+
+class TestTickerName(unittest.TestCase):
+    """code→name: stock_names 매핑 우선, 미스만 네이버 폴백."""
+
+    def test_uses_mapping_without_network(self):
+        with patch("scripts.run_watchlist_research._stock_name_map", return_value={"005930": "삼성전자"}), \
+             patch("scripts.run_watchlist_research.request_text", side_effect=AssertionError("네트워크 호출 금지")):
+            self.assertEqual(ticker_name("005930"), "삼성전자")
+
+    def test_falls_back_to_naver_on_miss(self):
+        with patch("scripts.run_watchlist_research._stock_name_map", return_value={}), \
+             patch("scripts.run_watchlist_research.request_text", return_value="<title> 카카오 : 네이버 </title>"):
+            self.assertEqual(ticker_name("035720"), "카카오")
+
+    def test_returns_ticker_when_all_fail(self):
+        with patch("scripts.run_watchlist_research._stock_name_map", return_value={}), \
+             patch("scripts.run_watchlist_research.request_text", side_effect=RuntimeError("boom")):
+            self.assertEqual(ticker_name("999999"), "999999")
 
 
 if __name__ == "__main__":

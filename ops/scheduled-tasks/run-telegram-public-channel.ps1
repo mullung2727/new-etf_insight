@@ -52,12 +52,12 @@ print("\n".join(lines))
 '@.Replace("__DATE__", $target)
   $message = $report | .\.venv\Scripts\python.exe -
   $message | Tee-Object -FilePath $log -Append | Write-Output
-  Invoke-Step "send Discord report" ".\.venv\Scripts\python.exe" @("scripts\send_report_messages.py", "--message", $message)
+  Invoke-Step "send Discord report" ".\.venv\Scripts\python.exe" @("scripts\send_report_messages.py", "--message", $message, "--channel", "telegram_report")
   exit 0
 } catch {
   $message = "[Telegram 공개채널] $target FAILED`n$($_.Exception.Message)`nlog: $log"
   try {
-    & ".\.venv\Scripts\python.exe" "scripts\send_report_messages.py" "--message" $message "--best-effort" | Tee-Object -FilePath $log -Append | Write-Output
+    & ".\.venv\Scripts\python.exe" "scripts\send_report_messages.py" "--message" $message "--channel" "telegram_report" "--best-effort" | Tee-Object -FilePath $log -Append | Write-Output
   } catch {}
   throw
 }

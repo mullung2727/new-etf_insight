@@ -79,6 +79,20 @@ class TestFetchDay(unittest.TestCase):
         self.assertEqual(rows[0][:3], ("20250102", "005930", "KOSPI"))
         self.assertEqual(rows[1][2], "KOSDAQ")
 
+    def test_names_out_collects_code_name(self):
+        session = MagicMock()
+        session.get.return_value = self._resp(
+            {"OutBlock_1": [{"BAS_DD": "20250102", "ISU_CD": "005930", "ISU_NM": "삼성전자",
+                             "TDD_OPNPRC": "1", "TDD_HGPRC": "1", "TDD_LWPRC": "1",
+                             "TDD_CLSPRC": "1", "ACC_TRDVOL": "1", "ACC_TRDVAL": "1",
+                             "MKTCAP": "1", "LIST_SHRS": "1"}]}
+        )
+        names: list = []
+        with patch("scripts.build_krx_ohlcv.time.sleep"):
+            fetch_day("20250102", "k", session=session, names_out=names)
+        # KOSPI+KOSDAQ 각 1행 → 2건
+        self.assertEqual(names, [("005930", "삼성전자"), ("005930", "삼성전자")])
+
 
 class TestEnsureOhlcv(unittest.TestCase):
     def setUp(self):
@@ -89,7 +103,7 @@ class TestEnsureOhlcv(unittest.TestCase):
 
     def _run(self, from_date, to_date, day_map, force=False):
         """day_map: date -> rows(list) | Exception. 미지정 날짜는 빈 응답."""
-        def fake_fetch(date, key, session=None):
+        def fake_fetch(date, key, session=None, names_out=None):
             v = day_map.get(date, [])
             if isinstance(v, Exception):
                 raise v
@@ -107,6 +121,20 @@ class TestEnsureOhlcv(unittest.TestCase):
         self.assertEqual(stats["inserted_rows"], 2)
         n = self.con.execute("SELECT count(*) FROM ohlcv").fetchone()[0]
         self.assertEqual(n, 2)
+
+    def test_fetched_day_upserts_stock_names(self):
+        # names_out 를 채우는 fake → ensure_ohlcv 가 stock_names 로 upsert 하는지
+        def fake_fetch(date, key, session=None, names_out=None):
+            if names_out is not None:
+                names_out.append(("005930", "삼성전자"))
+            return [_row(date, "005930")]
+
+        with patch("scripts.build_krx_ohlcv.fetch_day", side_effect=fake_fetch):
+            ensure_ohlcv(self.con, "20250102", "20250102", "k")
+        name = self.con.execute(
+            "SELECT name FROM stock_names WHERE code='005930'"
+        ).fetchone()
+        self.assertEqual(name[0], "삼성전자")
 
     def test_empty_day_with_later_data_recorded_as_holiday(self):
         # 1/1(수) 휴장 → 빈 응답, 1/2 데이터 있음 → 1/1 휴장일 확정
@@ -135,7 +163,7 @@ class TestEnsureOhlcv(unittest.TestCase):
         })
         calls = []
 
-        def fake_fetch(date, key, session=None):
+        def fake_fetch(date, key, session=None, names_out=None):
             calls.append(date)
             return [_row(date, "005930")]
 

@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
+from functools import lru_cache
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -36,6 +37,11 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.wl_sqlite import connect_ro, connect_rw
 except ImportError:
     from wl_sqlite import connect_ro, connect_rw
+
+try:
+    from scripts.stock_names import load_code_to_name
+except ImportError:
+    from stock_names import load_code_to_name
 
 ROOT = Path(__file__).resolve().parents[2]
 ETL_DIR = Path(__file__).resolve().parents[1]
@@ -292,7 +298,28 @@ def fetch_web(query: str, limit: int = 5) -> list[LinkItem]:
         return [LinkItem(title=f"웹 조사 실패: {exc}")]
 
 
+@lru_cache(maxsize=1)
+def _stock_name_map() -> dict[str, str]:
+    """code→name (stock_names 캐시). 종목당 네이버 스크래핑 대신 1회 로드.
+
+    테이블/DB 없으면 {} → ticker_name 이 네이버 폴백으로 자연 처리.
+    """
+    _wl, krx, _rp = load_paths()
+    try:
+        with duckdb.connect(str(krx), read_only=True) as con:
+            exists = con.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_name='stock_names'"
+            ).fetchone()
+            return load_code_to_name(con) if exists else {}
+    except Exception:
+        return {}
+
+
 def ticker_name(ticker: str) -> str:
+    # 1순위: stock_names 매핑(전종목, 네트워크 0). 미스(신규상장 등)만 네이버 폴백.
+    mapped = _stock_name_map().get(ticker)
+    if mapped:
+        return mapped
     try:
         text = request_text(f"https://finance.naver.com/item/main.naver?code={ticker}")
         match = re.search(r"<title>\s*(.*?)\s*[:：]", text, re.I | re.S)

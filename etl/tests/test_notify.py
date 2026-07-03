@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from scripts.notify import notify, send_discord, send_telegram
+from scripts.notify import notify, send_discord, send_telegram, send_telegram_report
 
 
 class TestSendDiscord(unittest.TestCase):
@@ -60,6 +60,31 @@ class TestSendTelegram(unittest.TestCase):
         self.assertEqual(post.call_args[1]["json"]["chat_id"], "42")
 
 
+class TestSendTelegramReport(unittest.TestCase):
+    """텔레그램 배치 전용 Discord 채널(별도 웹훅). 기존 4종 discord 웹훅과 분리."""
+
+    def test_skips_when_webhook_unset(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertFalse(send_telegram_report("hi"))
+
+    def test_posts_to_report_webhook(self):
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        with patch.dict(
+            "os.environ",
+            {"TELEGRAM_REPORT_TO_DISCORD_WEBHOOK_URL": "https://report/hook"},
+            clear=True,
+        ), patch("scripts.notify.requests.post", return_value=resp) as post:
+            ok = send_telegram_report("hello")
+        self.assertTrue(ok)
+        self.assertEqual(post.call_args[0][0], "https://report/hook")
+
+    def test_ignores_default_discord_webhook(self):
+        # DISCORD_WEBHOOK_URL(기존 4종용)만 있고 리포트 웹훅 없으면 skip
+        with patch.dict("os.environ", {"DISCORD_WEBHOOK_URL": "https://main/hook"}, clear=True):
+            self.assertFalse(send_telegram_report("hi"))
+
+
 class TestNotifyDispatch(unittest.TestCase):
     def test_routes_by_env_channel(self):
         with patch.dict("os.environ", {"NOTIFY_CHANNEL": "telegram"}, clear=True), \
@@ -80,6 +105,14 @@ class TestNotifyDispatch(unittest.TestCase):
              patch("scripts.notify.send_discord", return_value=True) as dc:
             notify("m")
         dc.assert_called_once()
+
+    def test_routes_telegram_report_channel(self):
+        with patch.dict("os.environ", {}, clear=True), \
+             patch("scripts.notify.send_telegram_report", return_value=True) as tr, \
+             patch("scripts.notify.send_discord", return_value=True) as dc:
+            notify("m", channel="telegram_report")
+        tr.assert_called_once()
+        dc.assert_not_called()
 
     def test_default_is_discord(self):
         with patch.dict("os.environ", {}, clear=True), \
