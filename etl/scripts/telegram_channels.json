@@ -1,11 +1,6 @@
 {
   "companyreport": {
-    "source_url": "https://t.me/s/companyreport",
-    "attachments": {
-      "link_pattern": "stockinfo7\\.com/stock/report/url/\\d+",
-      "ticker_pattern": "([^()\\[\\]]+?)\\((\\d{6})\\.(?:KS|KQ)[^)]*\\)",
-      "out_subdir": "stock_reports"
-    }
+    "source_url": "https://t.me/s/companyreport"
   },
   "butler_works": {
     "source_url": "https://t.me/s/butler_works"

@@ -3,7 +3,7 @@
 검증 항목:
   1. load_all_channels: json 전체를 dict로 로드
   2. load_channel_config: 채널 하나 반환, 없는 채널은 KeyError
-  3. 실제 telegram_channels.json: companyreport에 attachments, butler_works엔 없음
+  3. 실제 telegram_channels.json: 채널은 순수 텍스트 수집(attachments 없음 — 리포트는 네이버 배치)
 """
 import json
 import tempfile
@@ -45,16 +45,12 @@ class LoaderTest(unittest.TestCase):
 
 
 class RealConfigTest(unittest.TestCase):
-    def test_companyreport_has_attachments(self):
-        cfg = load_channel_config("companyreport")
-        att = cfg["attachments"]
-        self.assertIn("link_pattern", att)
-        self.assertIn("ticker_pattern", att)
-        self.assertEqual(att["out_subdir"], "stock_reports")
-
-    def test_butler_works_has_no_attachments(self):
-        cfg = load_channel_config("butler_works")
-        self.assertNotIn("attachments", cfg)
+    def test_channels_are_collect_only(self):
+        # 리포트 PDF는 네이버 별도 배치 → 채널 config엔 attachments 없음(순수 수집)
+        for ch in ("companyreport", "butler_works"):
+            cfg = load_channel_config(ch)
+            self.assertTrue(cfg["source_url"].startswith("https://t.me/s/"))
+            self.assertNotIn("attachments", cfg)
 
     def test_default_config_path_points_to_scripts(self):
         self.assertTrue(DEFAULT_CONFIG.name == "telegram_channels.json")
