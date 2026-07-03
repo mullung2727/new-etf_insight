@@ -105,14 +105,15 @@ def run(date_kst, out_dir=DEFAULT_EXPORT_BASE, *, list_fetch=_urlopen, detail_fe
     reports = list_reports(date_kst, fetch_fn=list_fetch)
     stats = {"listed": len(reports), "downloaded": 0, "skipped_exists": 0, "no_pdf": 0}
     for r in reports:
-        detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch)
-        url = str(detail.get("attachUrl", "") or "")
+        # dest 는 목록 데이터만으로 계산 가능 → 이미 있으면 상세 API도 건너뜀(멱등 + 요청 최소).
         dest = dest_path(out_dir, r["itemName"], r["itemCode"], date_kst, r["brokerName"], r["researchId"])
-        if not url:
-            stats["no_pdf"] += 1
-            continue
         if dest.exists():
             stats["skipped_exists"] += 1
+            continue
+        detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch)
+        url = str(detail.get("attachUrl", "") or "")
+        if not url:
+            stats["no_pdf"] += 1
             continue
         ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
         stats["downloaded" if ok else "no_pdf"] += 1

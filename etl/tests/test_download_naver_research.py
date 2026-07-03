@@ -13,6 +13,7 @@ from scripts.download_naver_research import (
     download_pdf,
     fetch_detail,
     list_reports,
+    run,
     sanitize,
 )
 
@@ -93,6 +94,41 @@ class TestDestAndDownload(unittest.TestCase):
             ok = download_pdf("http://x/b", dest, fetch_fn=lambda u: b"<!doctype html><html>")
             self.assertFalse(ok)
             self.assertFalse(dest.exists())
+
+
+class TestRunIdempotent(unittest.TestCase):
+    def _list(self):
+        row = {"researchId": 5, "itemName": "삼성전자", "itemCode": "005930",
+               "writeDate": "2026-07-03", "brokerName": "대신증권", "title": "t"}
+        return lambda url: json.dumps([row, {**row, "researchId": 4, "writeDate": "2026-07-02"}]).encode()
+
+    def _detail(self, counter):
+        def f(url):
+            counter.append(url)
+            return json.dumps({"researchContent": {"attachUrl": "http://x/a.pdf"}}).encode()
+        return f
+
+    def test_rerun_skips_without_detail_or_pdf_fetch(self):
+        with TemporaryDirectory() as d:
+            out = Path(d)
+            detail_calls, pdf_calls = [], []
+            def pdf(url):
+                pdf_calls.append(url)
+                return b"%PDF-1.7 x"
+            # 1차: 다운로드
+            s1 = run("2026-07-03", out_dir=out, list_fetch=self._list(),
+                     detail_fetch=self._detail(detail_calls), pdf_fetch=pdf, sleep_fn=lambda s: None)
+            self.assertEqual(s1["downloaded"], 1)
+            self.assertEqual(s1["skipped_exists"], 0)
+            self.assertEqual(len(detail_calls), 1)  # 대상일 1건만(다른날 제외)
+
+            # 2차: 같은 날 재실행 → 파일 존재 → 상세/PDF 요청 0
+            def boom(url):
+                raise AssertionError(f"재실행에서 요청 발생: {url}")
+            s2 = run("2026-07-03", out_dir=out, list_fetch=self._list(),
+                     detail_fetch=boom, pdf_fetch=boom, sleep_fn=lambda s: None)
+            self.assertEqual(s2["skipped_exists"], 1)
+            self.assertEqual(s2["downloaded"], 0)
 
 
 if __name__ == "__main__":
