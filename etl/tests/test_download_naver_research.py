@@ -13,9 +13,23 @@ from scripts.download_naver_research import (
     download_pdf,
     fetch_detail,
     list_reports,
+    list_stock_reports,
     run,
+    run_stock,
     sanitize,
 )
+
+
+def _stock_row(nid, title, broker, pdf, date):
+    return (
+        f'<tr><td><a href="/item/main.naver?code=005930" class="stock_item">삼성전자</a></td>'
+        f'<td><a href="company_read.naver?nid={nid}&page=1&searchType=itemCode&itemCode=005930">{title}</a>'
+        f'<img src="x.gif" class="ico_new" alt="NEW"></td>'
+        f'<td>{broker}</td>'
+        f'<td class="file"><a href="{pdf}" target="_blank"><img src="down.gif" alt="pdf"></a></td>'
+        f'<td class="date" style="padding-left:5px">{date}</td>'
+        f'<td class="date">100</td></tr>'
+    )
 
 
 def _fake_list(pages: dict[int, list]):
@@ -129,6 +143,74 @@ class TestRunIdempotent(unittest.TestCase):
                      detail_fetch=boom, pdf_fetch=boom, sleep_fn=lambda s: None)
             self.assertEqual(s2["skipped_exists"], 1)
             self.assertEqual(s2["downloaded"], 0)
+
+
+class TestListStockReports(unittest.TestCase):
+    def _pages(self, pagemap):
+        def fetch(url):
+            page = int(url.split("page=")[1].split("&")[0])
+            return pagemap.get(page, "")
+        return fetch
+
+    def test_parses_rows_and_normalizes_date(self):
+        pdf = "https://stock.pstatic.net/stock-research/company/61/20260703_company_1.pdf"
+        html = "<table>" + _stock_row(93863, "실적 상향", "iM증권", pdf, "26.07.03") + "</table>"
+        rows = list_stock_reports("005930", "삼성전자", max_pages=1, fetch_fn=self._pages({1: html}))
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual(r["researchId"], "93863")
+        self.assertEqual(r["brokerName"], "iM증권")
+        self.assertEqual(r["pdf_url"], pdf)
+        self.assertEqual(r["writeDate"], "2026-07-03")  # 26.07.03 → 정규화
+        self.assertEqual(r["itemCode"], "005930")
+
+    def test_paginates_until_empty(self):
+        p = "https://stock.pstatic.net/stock-research/company/61/20260703_company_{}.pdf"
+        pages = {
+            1: _stock_row(2, "a", "A증권", p.format(2), "26.07.03"),
+            2: _stock_row(1, "b", "B증권", p.format(1), "26.07.01"),
+            3: "",  # 빈 페이지 → 중단
+        }
+        rows = list_stock_reports("005930", "삼성전자", max_pages=5, fetch_fn=self._pages(pages))
+        self.assertEqual(len(rows), 2)
+
+    def test_date_range_filters_and_stops(self):
+        p = "https://stock.pstatic.net/stock-research/company/61/x_{}.pdf"
+        # 날짜 desc: 07-05(범위밖 최신), 07-03(범위내), 07-01(범위내), 06-20(since 미만→중단)
+        pages = {
+            1: (_stock_row(5, "e", "E", p.format(5), "26.07.05")
+                + _stock_row(3, "c", "C", p.format(3), "26.07.03")
+                + _stock_row(1, "a", "A", p.format(1), "26.07.01")
+                + _stock_row(0, "z", "Z", p.format(0), "26.06.20")),
+        }
+        rows = list_stock_reports("005930", "삼성전자", since="2026-07-01", until="2026-07-03",
+                                  max_pages=3, fetch_fn=self._pages(pages))
+        self.assertEqual([r["researchId"] for r in rows], ["3", "1"])  # 07-05 제외, 06-20 전 중단
+
+
+class TestRunStock(unittest.TestCase):
+    def test_downloads_and_idempotent(self):
+        pdf = "https://stock.pstatic.net/stock-research/company/61/20260703_company_9.pdf"
+        html = _stock_row(777, "제목", "대신증권", pdf, "26.07.02")
+        with TemporaryDirectory() as d:
+            out = Path(d)
+            pdf_calls = []
+            def pdf_fetch(url):
+                pdf_calls.append(url)
+                return b"%PDF-1.7 z"
+            list_fetch = lambda url: (html if "page=1" in url else "")
+            s1 = run_stock("005930", "삼성전자", out_dir=out, max_pages=2,
+                           list_fetch=list_fetch, pdf_fetch=pdf_fetch, sleep_fn=lambda s: None)
+            self.assertEqual(s1["downloaded"], 1)
+            saved = out / "삼성전자_005930" / "2026-07-02_대신증권_777.pdf"
+            self.assertTrue(saved.exists())
+            # 재실행 → 스킵, PDF 요청 없음
+            s2 = run_stock("005930", "삼성전자", out_dir=out, max_pages=2,
+                           list_fetch=list_fetch, pdf_fetch=lambda u: (_ for _ in ()).throw(AssertionError("no refetch")),
+                           sleep_fn=lambda s: None)
+            self.assertEqual(s2["skipped_exists"], 1)
+            self.assertEqual(s2["downloaded"], 0)
+            self.assertEqual(len(pdf_calls), 1)
 
 
 if __name__ == "__main__":
