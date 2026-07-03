@@ -15,9 +15,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = "1"
 
 function Invoke-Step {
-  param([string]$Label, [string]$Exe, [string[]]$Args)
+  param([string]$Label, [string]$Exe, [string[]]$StepArgs)
   "[$(Get-Date -Format o)] $Label" | Tee-Object -FilePath $log -Append | Write-Output
-  & $Exe @Args 2>&1 | Tee-Object -FilePath $log -Append | Write-Output
+  & $Exe @StepArgs 2>&1 | Tee-Object -FilePath $log -Append | Write-Output
   $code = $LASTEXITCODE
   if ($code -ne 0) {
     throw "$Label failed with exit code $code"
