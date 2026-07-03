@@ -10,6 +10,7 @@ load_dotenv()
 
 from duck import DUCKDB_PATH
 from routers import etfs as etfs_router
+from routers import research as research_router
 from routers import stats as stats_router
 from routers import watchlist as watchlist_router
 
@@ -34,7 +35,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -42,6 +43,7 @@ app.add_middleware(
 app.include_router(etfs_router.router)
 app.include_router(stats_router.router)
 app.include_router(watchlist_router.router)
+app.include_router(research_router.router)
 
 mcp = FastApiMCP(
     app,
