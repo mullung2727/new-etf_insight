@@ -83,6 +83,41 @@ test("선택한 리포트만 다운로드 요청에 담긴다", async ({ page })
     .toEqual(["22"]);
 });
 
+test("전체선택/해제/재선택/개별선택 토글", async ({ page }) => {
+  await page.route(`${API}/research/search*`, (r) =>
+    r.fulfill({ json: [{ code: "005930", name: "삼성전자" }] })
+  );
+  await page.route(`${API}/research/stock/005930/reports*`, (r) =>
+    r.fulfill({
+      json: { code: "005930", name: "삼성전자", total: REPORTS.length,
+        already: REPORTS.filter((x) => x.downloaded).length, reports: REPORTS },
+    })
+  );
+  await page.goto("/research");
+  await page.getByPlaceholder("예: 삼성전자 또는 005930").fill("삼성");
+  await page.getByText("삼성전자", { exact: false }).click();
+  await page.getByRole("button", { name: "조회" }).click();
+
+  const header = page.getByRole("checkbox", { name: "전체 선택" });
+  const c11 = page.getByRole("checkbox", { name: "대신증권 2026-07-03 선택" });
+  const c22 = page.getByRole("checkbox", { name: "교보증권 2026-07-02 선택" });
+  const c33 = page.getByRole("checkbox", { name: "iM증권 2026-07-01 선택" });
+
+  await header.click(); // 전체선택
+  await expect(c11).toBeChecked();
+  await expect(c33).toBeChecked();
+  await header.click(); // 전체해제
+  await expect(c11).not.toBeChecked();
+  await expect(c22).not.toBeChecked();
+  await header.click(); // 재선택
+  await expect(c22).toBeChecked();
+  await header.click(); // 다시 해제
+  await c22.click(); // 개별선택
+  await expect(c22).toBeChecked();
+  await expect(c11).not.toBeChecked();
+  await expect(page.getByText("1건 선택됨")).toBeVisible();
+});
+
 test("선택 0건이면 다운로드 버튼 비활성", async ({ page }) => {
   await page.route(`${API}/research/search*`, (r) =>
     r.fulfill({ json: [{ code: "005930", name: "삼성전자" }] })
