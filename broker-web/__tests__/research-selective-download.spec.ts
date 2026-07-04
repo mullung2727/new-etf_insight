@@ -10,12 +10,13 @@ type Report = {
   title: string;
   writeDate: string;
   downloaded: boolean;
+  pdfKey: string;
 };
 
 const REPORTS: Report[] = [
-  { researchId: "11", brokerName: "대신증권", title: "실적 상향", writeDate: "2026-07-03", downloaded: false },
-  { researchId: "22", brokerName: "교보증권", title: "목표가 유지", writeDate: "2026-07-02", downloaded: false },
-  { researchId: "33", brokerName: "iM증권", title: "리스크 점검", writeDate: "2026-07-01", downloaded: true },
+  { researchId: "11", brokerName: "대신증권", title: "실적 상향", writeDate: "2026-07-03", downloaded: false, pdfKey: "11" },
+  { researchId: "22", brokerName: "교보증권", title: "목표가 유지", writeDate: "2026-07-02", downloaded: false, pdfKey: "22" },
+  { researchId: "33", brokerName: "iM증권", title: "리스크 점검", writeDate: "2026-07-01", downloaded: true, pdfKey: "33" },
 ];
 
 test("선택한 리포트만 다운로드 요청에 담긴다", async ({ page }) => {
@@ -126,7 +127,7 @@ test("선택 0건이면 다운로드 버튼 비활성", async ({ page }) => {
     r.fulfill({
       json: {
         code: "005930", name: "삼성전자", total: 1, already: 1,
-        reports: [{ researchId: "33", brokerName: "iM증권", title: "t", writeDate: "2026-07-01", downloaded: true }],
+        reports: [{ researchId: "33", brokerName: "iM증권", title: "t", writeDate: "2026-07-01", downloaded: true, pdfKey: "33" }],
       },
     })
   );
@@ -138,4 +139,29 @@ test("선택 0건이면 다운로드 버튼 비활성", async ({ page }) => {
 
   // 기본 선택 없음(유일 항목이 이미 받음) → 다운로드 버튼 disabled
   await expect(page.getByRole("button", { name: /다운로드/ })).toBeDisabled();
+});
+
+test("받은 리포트만 보기 링크가 뜨고 pdf 엔드포인트로 연결된다", async ({ page }) => {
+  await page.route(`${API}/research/search*`, (r) =>
+    r.fulfill({ json: [{ code: "005930", name: "삼성전자" }] })
+  );
+  await page.route(`${API}/research/stock/005930/reports*`, (r) =>
+    r.fulfill({
+      json: { code: "005930", name: "삼성전자", total: REPORTS.length,
+        already: REPORTS.filter((x) => x.downloaded).length, reports: REPORTS },
+    })
+  );
+  await page.goto("/research");
+  await page.getByPlaceholder("예: 삼성전자 또는 005930").fill("삼성");
+  await page.getByText("삼성전자", { exact: false }).click();
+  await page.getByRole("button", { name: "조회" }).click();
+
+  // 받은 것(33)만 보기 링크, 안 받은 것(11,22)엔 없음
+  const viewLinks = page.getByRole("link", { name: "보기" });
+  await expect(viewLinks).toHaveCount(1);
+  const href = await viewLinks.getAttribute("href");
+  expect(href).toContain(`${API}/research/stock/005930/reports/33/pdf?`);
+  expect(href).toContain("writeDate=2026-07-01");
+  expect(href).toContain("brokerName=iM%EC%A6%9D%EA%B6%8C");
+  expect(href).toContain("pdfKey=33");
 });

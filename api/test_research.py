@@ -39,6 +39,46 @@ def test_reports_marks_downloaded(monkeypatch, tmp_path):
     assert d["total"] == 2 and d["already"] == 1
     flags = {x["researchId"]: x["downloaded"] for x in d["reports"]}
     assert flags == {"11": False, "22": True}
+    keys = {x["researchId"]: x["pdfKey"] for x in d["reports"]}
+    assert keys == {"11": "11", "22": "22"}  # _report()의 pdf_url = http://x/{rid}.pdf
+
+
+def test_pdf_serves_existing_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    dest = research.dnr.dest_path(tmp_path, "삼성전자", "005930", "2026-07-01", "X증권", "22")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(b"%PDF-x")
+
+    r = client.get("/research/stock/005930/reports/22/pdf", params={
+        "name": "삼성전자", "writeDate": "2026-07-01", "brokerName": "X증권", "pdfKey": "22",
+    })
+    assert r.status_code == 200
+    assert r.content == b"%PDF-x"
+    assert r.headers["content-type"] == "application/pdf"
+
+
+def test_pdf_missing_file_404(monkeypatch, tmp_path):
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    r = client.get("/research/stock/005930/reports/22/pdf", params={
+        "name": "삼성전자", "writeDate": "2026-07-01", "brokerName": "X증권", "pdfKey": "22",
+    })
+    assert r.status_code == 404
+
+
+def test_pdf_path_traversal_blocked(monkeypatch, tmp_path):
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    # dest_path 구조상 파일명 첫/끝 세그먼트는 접두/접미가 붙어 무력화되므로,
+    # 중간 세그먼트만으로 실제 tmp_path 밖(부모)까지 나가는 key를 구성해 검증.
+    escape_target = tmp_path.parent / "escaped.pdf"
+    escape_target.write_bytes(b"%PDF-secret")
+    try:
+        r = client.get("/research/stock/005930/reports/22/pdf", params={
+            "name": "삼성전자", "writeDate": "2026-07-01", "brokerName": "X증권",
+            "pdfKey": "x/../../../escaped",
+        })
+        assert r.status_code == 404
+    finally:
+        escape_target.unlink(missing_ok=True)
 
 
 def test_download_job_lifecycle(monkeypatch, tmp_path):

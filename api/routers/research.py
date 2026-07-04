@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from duck_watchlist import krx_cursor
@@ -42,6 +43,7 @@ class ReportItem(BaseModel):
     title: str
     writeDate: str
     downloaded: bool
+    pdfKey: str
 
 
 class ReportsResponse(BaseModel):
@@ -117,8 +119,26 @@ def stock_reports(code: str, since: str | None = None, until: str | None = None,
         items.append(ReportItem(
             researchId=r["researchId"], brokerName=r["brokerName"],
             title=r["title"], writeDate=r["writeDate"], downloaded=dl,
+            pdfKey=dnr.pdf_key(r["pdf_url"]),
         ))
     return ReportsResponse(code=code, name=name, total=len(items), already=already, reports=items)
+
+
+@router.get("/stock/{code}/reports/{research_id}/pdf", operation_id="research_stock_report_pdf")
+def stock_report_pdf(code: str, research_id: str,
+                     write_date: str = Query(alias="writeDate"),
+                     broker_name: str = Query(alias="brokerName"),
+                     pdf_key: str = Query(alias="pdfKey"),
+                     name: str | None = None) -> FileResponse:
+    """이미 받은 PDF 원본을 그대로 서빙. 네이버 재조회 없음 — reports 응답이 이미 준 경로정보로 재조립.
+    research_id는 라우팅/가독성용일 뿐 경로 조립엔 안 쓰임(파일 위치는 write_date/broker_name/pdf_key로만 결정)."""
+    name = name or _resolve_name(code)
+    dest = dnr.dest_path(dnr.DEFAULT_EXPORT_BASE, name, code, write_date, broker_name, pdf_key)
+    base = dnr.DEFAULT_EXPORT_BASE.resolve()
+    resolved = dest.resolve()
+    if not resolved.is_relative_to(base) or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="파일 없음")
+    return FileResponse(resolved, media_type="application/pdf")
 
 
 def _run_job(job: dict, since: str | None, until: str | None,
