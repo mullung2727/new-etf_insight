@@ -56,6 +56,7 @@ class DownloadRequest(BaseModel):
     name: str | None = None
     since: str | None = None
     until: str | None = None
+    researchIds: list[str] | None = None  # 지정 시 해당 리포트만; None=기간 전체(기존 동작)
 
 
 class JobStatus(BaseModel):
@@ -120,9 +121,13 @@ def stock_reports(code: str, since: str | None = None, until: str | None = None,
     return ReportsResponse(code=code, name=name, total=len(items), already=already, reports=items)
 
 
-def _run_job(job: dict, since: str | None, until: str | None) -> None:
+def _run_job(job: dict, since: str | None, until: str | None,
+             research_ids: list[str] | None = None) -> None:
     try:
         reports = dnr.list_stock_reports(job["code"], job["name"], since=since, until=until)
+        if research_ids is not None:
+            wanted = set(research_ids)
+            reports = [r for r in reports if r["researchId"] in wanted]
         job["total"] = len(reports)
         for r in reports:
             dest = _dest_for(r)
@@ -153,7 +158,8 @@ def start_download(code: str, req: DownloadRequest) -> JobStatus:
         job = {"job_id": job_id, "status": "running", "code": code, "name": name,
                "total": 0, "downloaded": 0, "skipped": 0, "failed": 0, "error": None}
         _JOBS[job_id] = job
-    threading.Thread(target=_run_job, args=(job, req.since, req.until), daemon=True).start()
+    threading.Thread(target=_run_job, args=(job, req.since, req.until, req.researchIds),
+                     daemon=True).start()
     return JobStatus(**job)
 
 

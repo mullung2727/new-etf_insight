@@ -87,6 +87,70 @@ def test_rerun_skips_downloaded(monkeypatch, tmp_path):
     assert s["status"] == "done" and s["skipped"] == 1 and s["downloaded"] == 0
 
 
+def _await_done(jid):
+    for _ in range(60):
+        s = client.get(f"/research/jobs/{jid}").json()
+        if s["status"] != "running":
+            return s
+        time.sleep(0.05)
+    return s
+
+
+def test_download_only_selected_reports(monkeypatch, tmp_path):
+    reports = [_report("11", "2026-07-03"), _report("22", "2026-07-01")]
+    called = []
+
+    def fake_dl(url, dest, **k):
+        called.append(url)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"%PDF")
+        return True
+
+    monkeypatch.setattr(research.dnr, "list_stock_reports", lambda *a, **k: reports)
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    monkeypatch.setattr(research.dnr, "download_pdf", fake_dl)
+    monkeypatch.setattr(research.dnr, "REQUEST_SLEEP", 0)
+
+    jid = client.post("/research/stock/005930/download",
+                      json={"name": "삼성전자", "researchIds": ["22"]}).json()["job_id"]
+    s = _await_done(jid)
+    assert s["status"] == "done"
+    assert s["total"] == 1 and s["downloaded"] == 1
+    assert called == ["http://x/22.pdf"]  # 11 은 다운 안 함
+
+
+def test_selected_download_skips_existing(monkeypatch, tmp_path):
+    reports = [_report("11", "2026-07-03"), _report("22", "2026-07-01")]
+    monkeypatch.setattr(research.dnr, "list_stock_reports", lambda *a, **k: reports)
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    dest = research.dnr.dest_path(tmp_path, "삼성전자", "005930", "2026-07-01", "X증권", "22")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(b"%PDF")  # 22 이미 받음
+    monkeypatch.setattr(research.dnr, "download_pdf",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("재다운 금지")))
+    monkeypatch.setattr(research.dnr, "REQUEST_SLEEP", 0)
+
+    jid = client.post("/research/stock/005930/download",
+                      json={"name": "삼성전자", "researchIds": ["22"]}).json()["job_id"]
+    s = _await_done(jid)
+    assert s["status"] == "done" and s["total"] == 1 and s["skipped"] == 1 and s["downloaded"] == 0
+
+
+def test_selected_ids_missing_from_query_ignored(monkeypatch, tmp_path):
+    reports = [_report("11", "2026-07-03")]
+    monkeypatch.setattr(research.dnr, "list_stock_reports", lambda *a, **k: reports)
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    monkeypatch.setattr(research.dnr, "download_pdf",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("호출 금지")))
+    monkeypatch.setattr(research.dnr, "REQUEST_SLEEP", 0)
+
+    jid = client.post("/research/stock/005930/download",
+                      json={"name": "삼성전자", "researchIds": ["not-found"]}).json()["job_id"]
+    s = _await_done(jid)
+    assert s["status"] == "done"
+    assert s["total"] == 0 and s["downloaded"] == 0 and s["skipped"] == 0
+
+
 def test_max_3_concurrent(monkeypatch):
     research._JOBS.clear()
     for i in range(3):

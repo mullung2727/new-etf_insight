@@ -5,6 +5,7 @@ import { apiBase } from "@/lib/api-base";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -46,6 +47,7 @@ export default function ResearchPage() {
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
   const [data, setData] = useState<ReportsResp | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState("");
@@ -92,7 +94,12 @@ export default function ResearchPage() {
         `${apiBase()}/research/stock/${selected.code}/reports?${params}`
       );
       if (!r.ok) throw new Error(`조회 실패 (${r.status})`);
-      setData(await r.json());
+      const d: ReportsResp = await r.json();
+      setData(d);
+      // 기본 선택: 아직 안 받은 항목만
+      setSelectedIds(
+        new Set(d.reports.filter((x) => !x.downloaded).map((x) => x.researchId))
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류");
       setData(null);
@@ -100,6 +107,21 @@ export default function ResearchPage() {
       setLoading(false);
     }
   }, [selected, since, until]);
+
+  function toggleOne(id: string, on: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleAll(on: boolean) {
+    setSelectedIds(
+      on && data ? new Set(data.reports.map((r) => r.researchId)) : new Set()
+    );
+  }
 
   function poll(id: string) {
     clearInterval(pollRef.current);
@@ -120,6 +142,10 @@ export default function ResearchPage() {
 
   async function startDownload() {
     if (!selected) return;
+    if (selectedIds.size === 0) {
+      setError("다운로드할 리포트를 선택해줘");
+      return;
+    }
     setError("");
     try {
       const r = await fetch(
@@ -131,6 +157,7 @@ export default function ResearchPage() {
             name: selected.name,
             since: since || null,
             until: until || null,
+            researchIds: Array.from(selectedIds),
           }),
         }
       );
@@ -158,6 +185,9 @@ export default function ResearchPage() {
   const done = job ? job.downloaded + job.skipped + job.failed : 0;
   const pct = job && job.total ? Math.round((done / job.total) * 100) : 0;
   const running = job?.status === "running";
+  const rowCount = data?.reports.length ?? 0;
+  const allChecked = rowCount > 0 && selectedIds.size === rowCount;
+  const someChecked = selectedIds.size > 0 && !allChecked;
 
   return (
     <div className="mx-auto max-w-4xl p-6 space-y-6">
@@ -216,9 +246,11 @@ export default function ResearchPage() {
           <Button
             variant="default"
             onClick={startDownload}
-            disabled={!selected || running}
+            disabled={!selected || running || selectedIds.size === 0}
           >
-            {running ? "다운로드 중…" : "다운로드"}
+            {running
+              ? "다운로드 중…"
+              : `다운로드${selectedIds.size ? ` (${selectedIds.size})` : ""}`}
           </Button>
         </div>
       </div>
@@ -251,10 +283,20 @@ export default function ResearchPage() {
         <div>
           <p className="mb-2 text-sm text-gray-600">
             {data.name} ({data.code}) — 총 {data.total}건, 이미 받음 {data.already}건
+            {selectedIds.size > 0 && ` · ${selectedIds.size}건 선택됨`}
           </p>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8">
+                  <Checkbox
+                    checked={allChecked}
+                    indeterminate={someChecked}
+                    disabled={rowCount === 0}
+                    onCheckedChange={(v) => toggleAll(v === true)}
+                    aria-label="전체 선택"
+                  />
+                </TableHead>
                 <TableHead>날짜</TableHead>
                 <TableHead>증권사</TableHead>
                 <TableHead>제목</TableHead>
@@ -264,6 +306,13 @@ export default function ResearchPage() {
             <TableBody>
               {data.reports.map((r, i) => (
                 <TableRow key={`${r.researchId}-${i}`}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(r.researchId)}
+                      onCheckedChange={(v) => toggleOne(r.researchId, v === true)}
+                      aria-label={`${r.brokerName} ${r.writeDate} 선택`}
+                    />
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">{r.writeDate}</TableCell>
                   <TableCell className="whitespace-nowrap">{r.brokerName}</TableCell>
                   <TableCell>{r.title}</TableCell>
