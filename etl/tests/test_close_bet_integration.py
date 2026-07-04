@@ -25,6 +25,10 @@ import duckdb
 from scripts.run_close_bet import create_close_bet_orders_table
 from scripts.wl_sqlite import connect_ro, connect_rw
 
+# Integration tests exercise notification branches. Never let a developer
+# environment webhook leak real Discord messages from fixture data.
+os.environ.pop("DISCORD_WEBHOOK_URL", None)
+
 # 실재하지 않는 경로 → DEFAULT_KRX_DB.exists()=False → 시총 동점깸 생략(caps={}).
 _NO_KRX = Path("__no_krx_db__.duckdb")
 

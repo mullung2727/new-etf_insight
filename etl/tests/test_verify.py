@@ -18,6 +18,10 @@ from scripts.run_close_bet import create_close_bet_orders_table
 from scripts.run_verify import normalize_order_no
 from scripts.wl_sqlite import connect_ro, connect_rw
 
+# Verification tests send status summaries in production. Keep fixture runs
+# isolated from any real Discord webhook inherited from the shell.
+os.environ.pop("DISCORD_WEBHOOK_URL", None)
+
 _DATE = "20260615"
 _NOW = datetime(2026, 6, 15, 16, 0, 0)
 

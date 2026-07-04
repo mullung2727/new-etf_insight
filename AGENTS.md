@@ -1,9 +1,10 @@
-# Project Instructions
+﻿# Project Instructions
 
 ## Skills
 
 - When running or debugging the ETF batch pipeline, first read `skills/new-etf-insight-batch/SKILL.md`.
 - When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
+- When starting, restarting, checking, or debugging local project servers, first read `skills/new-etf-insight-server-dev/SKILL.md`.
 
 이 문서는 `new-etf-insight` 프로젝트에서 에이전트가 항상 따라야 하는 최상위 작업 지침이다.
 코드 수정, 설계, 테스트, 응답 방식은 반드시 이 문서를 우선한다.
@@ -114,3 +115,4 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let Codex loop independently. Weak criteria such as "make it work" require clarification.
+

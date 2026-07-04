@@ -64,3 +64,6 @@ memory/
 
 # Temp scripts / ad-hoc tests
 temp/
+
+# Local server restart PID files
+.server-pids/
