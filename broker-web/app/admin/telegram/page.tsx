@@ -93,10 +93,7 @@ export default function TelegramAdminPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-base font-semibold">텔레그램 채널 관리</h1>
-          <p className="text-sm text-muted-foreground">
-            수집 대상 채널 목록. <b>종목탐색 소스</b>(discovery_source)로 표시된 채널은 원문에서
-            종목 후보를 추출하는 데 쓰입니다.
-          </p>
+          <p className="text-sm text-muted-foreground">수집 대상 텔레그램 채널 목록.</p>
         </div>
         <Button onClick={saveAll} disabled={!data.active.some(dirty)}>
           저장
@@ -108,6 +105,20 @@ export default function TelegramAdminPage() {
           {error}
         </p>
       )}
+
+      {/* feed_role 설명 — 자주 까먹어서 화면에 고정 */}
+      <div className="rounded-md border border-border bg-muted/40 px-4 py-3 text-sm">
+        <p className="mb-1 font-medium">종목탐색 소스 (feed_role = discovery_source) 란?</p>
+        <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
+          <li>
+            <b>체크</b> → 이 채널 원문을 스캔해 <b>종목 후보를 발굴</b>합니다(종목명·6자리코드
+            추출 → telegram_stock_insights → LLM 분석).
+          </li>
+          <li>
+            <b>해제</b> → 원문 <b>수집만</b> 하고 종목탐색에는 쓰지 않습니다(리포트성 채널 등).
+          </li>
+        </ul>
+      </div>
 
       <table className="w-full text-sm">
         <thead>

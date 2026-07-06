@@ -40,15 +40,19 @@ test("단일 저장 버튼: 편집 시 활성화, 저장 후 유지", async ({ p
   const saveBtn = page.getByRole("button", { name: "저장" });
   await expect(saveBtn).toBeDisabled(); // 변경 없으면 비활성
 
-  const companyRow = page.locator("tr", { hasText: "t.me/s/companyreport" });
-  await companyRow.getByRole("checkbox").click(); // discovery 켜기(base-ui = 버튼형)
+  // 실채널 오염 방지 — throwaway 채널 추가 후 그걸로 토글/저장
+  await page.getByPlaceholder(/채널 URL 붙여넣기/).fill("https://t.me/s/e2e_save_zzz");
+  await page.getByRole("button", { name: "+ 채널 추가" }).click();
+  const row = page.locator("tr", { hasText: "e2e_save_zzz" });
+  await expect(row).toBeVisible();
+  await expect(saveBtn).toBeDisabled(); // 추가는 즉시반영이라 dirty 아님
+
+  await row.getByRole("checkbox").click(); // discovery 켜기(base-ui = 버튼형)
   await expect(saveBtn).toBeEnabled();
   await saveBtn.click();
 
   await page.reload();
-  await expect(
-    page.locator("tr", { hasText: "t.me/s/companyreport" }).getByRole("checkbox")
-  ).toBeChecked();
+  await expect(page.locator("tr", { hasText: "e2e_save_zzz" }).getByRole("checkbox")).toBeChecked();
 });
 
 test("추가 → 삭제(삭제섹션 이동) → 복구 전체 흐름", async ({ page }) => {
