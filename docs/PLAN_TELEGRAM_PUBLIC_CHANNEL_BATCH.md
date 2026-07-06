@@ -188,22 +188,28 @@ UNIQUE(channel, date_kst, summary_type)
 | 컬럼 | 타입 | 설명 |
 | --- | --- | --- |
 | `date_kst` | TEXT NOT NULL | 대상 일자 |
+| `session` | TEXT NOT NULL | 실행 세션. `morning`\|`close`\|`evening` (하루 3회 증분 분석 — LangGraph 분석 계획서 참조) |
 | `ticker` | TEXT NOT NULL | 종목코드 |
 | `name` | TEXT NOT NULL | 종목명 |
 | `mention_channels` | TEXT NOT NULL | JSON 배열. 이 종목을 언급한 채널 목록(복수 채널 동시언급 자체가 신호) |
 | `source_post_refs` | TEXT NOT NULL | JSON 배열. 근거 원문 `telegram_posts.post_ref` — 인용/재검증용 |
-| `discovery_reason` | TEXT NOT NULL | 후보로 뽑힌 이유. 예: `52주 신고가 + 뉴스 동시언급` |
-| `analysis` | TEXT NULL | 분석 단계 결과(Markdown/JSON). 탐색만 끝난 상태면 NULL |
+| `discovery_reason` | TEXT NOT NULL | 후보로 뽑힌 이유(파이썬 규칙). 예: `다채널 동시언급` |
+| `analysis` | TEXT NULL | LLM 변화판단 결과(JSON: change_type/변화서술/themes/evidence). 미분석 시 NULL |
 | `created_at` | TEXT NOT NULL | ISO8601 |
 | `updated_at` | TEXT NOT NULL | ISO8601 |
 
 제약:
 
 ```sql
-UNIQUE(date_kst, ticker)
+UNIQUE(date_kst, session, ticker)
 ```
 
-재실행 정책: 같은 `(date_kst, ticker)` 재탐색/재분석 시 upsert. `analysis`는 분석 단계 전엔 NULL 유지, 분석 완료 후 덮어쓴다.
+재실행 정책: 같은 `(date_kst, session, ticker)` 재분석 시 upsert(그 세션 결과 덮어씀).
+
+> **v2 변경(LangGraph 분석 계획서와 동기화)**: `session` 컬럼 추가 + 키를
+> `(date_kst, ticker)` → `(date_kst, session, ticker)`로 확장. 하루 3회 증분 분석이라
+> 같은 종목이 세션별로 별도 행(신규→지속 이력이 세션 단위로 쌓임). 상세는
+> `docs/telegram_langgraph_analysis_plan.md`.
 
 `ticker`는 종목명/코드가 텍스트에 직접 언급된 경우만 대상이다. 특정 종목명 없이 섹터/테마만 언급되는 글(예: "2차전지 섹터 강세")은 이 테이블로 안 잡히고 아래 `telegram_theme_mentions`로 간다.
 

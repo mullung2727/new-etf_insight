@@ -91,6 +91,7 @@ def aggregate_candidates(
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", required=True, help="KST date YYYY-MM-DD")
+    ap.add_argument("--session", default="close", help="세션 라벨 morning|close|evening")
     ap.add_argument("--db", default=str(DEFAULT_DB))
     ap.add_argument("--stock-db", default=str(DEFAULT_STOCK_DB))
     ap.add_argument("--dry-run", action="store_true")
@@ -125,7 +126,7 @@ def main() -> None:
         ensure_schema(con)
         for code, entry in candidates.items():
             upsert_candidate(
-                con, args.date, code, entry["name"],
+                con, args.date, args.session, code, entry["name"],
                 mention_channels=entry["mention_channels"],
                 source_post_refs=entry["source_post_refs"],
                 discovery_reason=entry["discovery_reason"],

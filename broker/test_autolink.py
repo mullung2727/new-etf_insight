@@ -15,7 +15,7 @@ from pathlib import Path
 
 from kiwoom import orders
 from notes import autolink, db, store
-from notes.models import NoteStatus
+from notes.models import EventCreate, EventType, NoteCreate, NoteStatus
 
 
 def _row(ord_no: str, stk_cd: str, cntr_qty: int, cntr_uv: int, ord_tm: str = "093000") -> dict:
@@ -190,6 +190,68 @@ class TestSyncTrades(_Base):
         self.assertEqual(by_no["0000003"], "sell")
         self.assertEqual(note.status, NoteStatus.closed)
 
+    def test_create_note_normalizes_prefixed_symbol(self):
+        note = store.create_note(NoteCreate(symbol="A005930"))
+        notes = store.list_notes(symbol="005930")
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0].symbol, "005930")
+        self.assertEqual(len(store.list_notes(symbol="A005930")), 1)
+
+        conn = db.get_conn()
+        conn.execute("UPDATE notes SET symbol = ? WHERE uid = ?", ("A005930", note.uid))
+        conn.commit()
+        self.assertEqual(len(store.list_notes(symbol="005930")), 1)
+        store.merge_notes_by_symbol("005930")
+        self.assertEqual(store.get_note(note.uid).symbol, "005930")
+
+    def test_buy_after_closed_reuses_existing_note(self):
+        self._buys = [_row("0000001", "A005930", 1, 70000, "090000")]
+        self._sells = [_row("0000002", "A005930", 1, 71000, "100000")]
+        autolink.sync_trades("20260630")
+        note = self._only_note()
+        self.assertEqual(note.status, NoteStatus.closed)
+
+        self._buys = [_row("0000003", "A005930", 1, 72000, "110000")]
+        self._sells = []
+        res = autolink.sync_trades("20260701")
+        self.assertEqual(res, {"created": 1, "updated": 0, "notes": 0})
+        note = self._only_note()
+        self.assertEqual(note.status, NoteStatus.open)
+        self.assertEqual(len(note.events), 3)
+        self.assertEqual(note.events[-1].order_no, "0000003")
+
+    def test_duplicate_symbol_notes_merge_into_oldest(self):
+        old = store.create_note(NoteCreate(symbol="005930", buy_reason="old"))
+        newer = store.create_note(NoteCreate(symbol="005930", buy_reason="new"))
+        store.add_event(
+            old.uid,
+            EventCreate(
+                event_type=EventType.buy,
+                price=70000,
+                qty=1,
+                executed_at="2026-06-30 09:00:00",
+            ),
+        )
+        store.add_event(
+            newer.uid,
+            EventCreate(
+                event_type=EventType.add_buy,
+                price=71000,
+                qty=1,
+                executed_at="2026-06-30 10:00:00",
+            ),
+        )
+
+        self._buys = [_row("0000003", "A005930", 1, 72000, "110000")]
+        res = autolink.sync_trades("20260701")
+        self.assertEqual(res, {"created": 1, "updated": 0, "notes": 0})
+        notes = store.list_notes(symbol="005930")
+        self.assertEqual(len(notes), 1)
+        note = store.get_note(notes[0].uid)
+        self.assertEqual(note.uid, old.uid)
+        self.assertEqual(note.buy_reason, "old")
+        self.assertEqual(len(note.events), 3)
+        self.assertEqual([e.event_type.value for e in note.events], ["buy", "add_buy", "add_buy"])
 
 if __name__ == "__main__":
     unittest.main()

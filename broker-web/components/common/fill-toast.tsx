@@ -5,6 +5,8 @@ import { useState } from "react";
 import { NoteModal } from "../notes/note-modal";
 import { Button } from "../ui/button";
 
+const normalizeSymbol = (value: string) => value.replace(/^\D+/, "");
+
 interface Fill {
     id: number;
     symbol: string;
@@ -23,7 +25,7 @@ export function FillToast() {
             ...prev,
             {
                 id: Date.now(),
-                symbol: String(e.payload["9001"] ?? ""),
+                symbol: normalizeSymbol(String(e.payload["9001"] ?? "")),
                 side:   String(e.payload["905"]  ?? ""),
                 price:  String(e.payload["910"]  ?? ""),
                 qty:    String(e.payload["911"]  ?? ""),

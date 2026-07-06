@@ -14,6 +14,7 @@ import sqlite3
 _CREATE_STOCK_INSIGHTS = """
 CREATE TABLE IF NOT EXISTS telegram_stock_insights (
     date_kst TEXT NOT NULL,
+    session TEXT NOT NULL,
     ticker TEXT NOT NULL,
     name TEXT NOT NULL,
     mention_channels TEXT NOT NULL,
@@ -22,7 +23,7 @@ CREATE TABLE IF NOT EXISTS telegram_stock_insights (
     analysis TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    UNIQUE(date_kst, ticker)
+    UNIQUE(date_kst, session, ticker)
 )
 """
 
@@ -34,6 +35,7 @@ def ensure_schema(con: sqlite3.Connection) -> None:
 def upsert_candidate(
     con: sqlite3.Connection,
     date_kst: str,
+    session: str,
     ticker: str,
     name: str,
     *,
@@ -41,15 +43,18 @@ def upsert_candidate(
     source_post_refs: list[str],
     discovery_reason: str,
 ) -> None:
-    """탐색 단계 upsert. `analysis`는 절대 건드리지 않는다."""
+    """탐색 단계 upsert. `analysis`는 절대 건드리지 않는다.
+
+    키는 `(date_kst, session, ticker)` — 하루 3회 증분 분석이라 같은 종목이
+    세션별로 별도 행(신규→지속 이력이 세션 단위로 쌓임)."""
     now = dt.datetime.now(dt.timezone.utc).isoformat()
     con.execute(
         """
         INSERT INTO telegram_stock_insights(
-            date_kst, ticker, name, mention_channels, source_post_refs,
+            date_kst, session, ticker, name, mention_channels, source_post_refs,
             discovery_reason, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(date_kst, ticker) DO UPDATE SET
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date_kst, session, ticker) DO UPDATE SET
             name=excluded.name,
             mention_channels=excluded.mention_channels,
             source_post_refs=excluded.source_post_refs,
@@ -57,7 +62,7 @@ def upsert_candidate(
             updated_at=excluded.updated_at
         """,
         (
-            date_kst, ticker, name,
+            date_kst, session, ticker, name,
             json.dumps(mention_channels, ensure_ascii=False),
             json.dumps(source_post_refs, ensure_ascii=False),
             discovery_reason, now, now,
@@ -65,10 +70,13 @@ def upsert_candidate(
     )
 
 
-def update_analysis(con: sqlite3.Connection, date_kst: str, ticker: str, analysis: str) -> None:
+def update_analysis(
+    con: sqlite3.Connection, date_kst: str, session: str, ticker: str, analysis: str
+) -> None:
     """분석 단계 upsert. 탐색 필드는 건드리지 않는다."""
     now = dt.datetime.now(dt.timezone.utc).isoformat()
     con.execute(
-        "UPDATE telegram_stock_insights SET analysis=?, updated_at=? WHERE date_kst=? AND ticker=?",
-        (analysis, now, date_kst, ticker),
+        "UPDATE telegram_stock_insights SET analysis=?, updated_at=? "
+        "WHERE date_kst=? AND session=? AND ticker=?",
+        (analysis, now, date_kst, session, ticker),
     )

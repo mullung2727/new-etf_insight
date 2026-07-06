@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["stocks"],
+  "properties": {
+    "stocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "code", "change_type", "change_summary", "themes", "evidence_summary"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "change_type": {
+            "type": "string",
+            "enum": ["new", "continued"]
+          },
+          "change_summary": {
+            "type": "string"
+          },
+          "themes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_summary": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

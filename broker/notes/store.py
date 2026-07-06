@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -17,9 +18,15 @@ from .models import (
     NoteUpdate,
 )
 
+_TICKER_PREFIX = re.compile(r"^\D+")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def normalize_symbol(symbol: str) -> str:
+    return _TICKER_PREFIX.sub("", str(symbol or "").strip())
 
 
 def resolve_name(symbol: str) -> str | None:
@@ -40,7 +47,8 @@ def create_note(data: NoteCreate) -> Note:
     conn = get_conn()
     uid = uuid.uuid4().hex
     now = _now()
-    name = resolve_name(data.symbol)
+    symbol = normalize_symbol(data.symbol)
+    name = resolve_name(symbol)
     conn.execute(
         """
         INSERT INTO notes
@@ -50,7 +58,7 @@ def create_note(data: NoteCreate) -> Note:
         """,
         (
             uid,
-            data.symbol,
+            symbol,
             name,
             data.target_price,
             data.holding_period,
@@ -75,9 +83,7 @@ def list_notes(
     conn = get_conn()
     clauses: list[str] = []
     params: list[object] = []
-    if symbol:
-        clauses.append("symbol = ?")
-        params.append(symbol)
+    normalized_symbol = normalize_symbol(symbol) if symbol else None
     if status:
         clauses.append("status = ?")
         params.append(status)
@@ -88,7 +94,48 @@ def list_notes(
     rows = conn.execute(
         f"SELECT * FROM notes {where} ORDER BY created_at DESC", params
     ).fetchall()
-    return [Note(**dict(r)) for r in rows]
+    notes = [Note(**dict(r)) for r in rows]
+    if normalized_symbol:
+        notes = [n for n in notes if normalize_symbol(n.symbol) == normalized_symbol]
+    return notes
+
+
+def merge_notes_by_symbol(symbol: str) -> str | None:
+    """Merge duplicate notes for one symbol into the oldest note."""
+    symbol = normalize_symbol(symbol)
+    if not symbol:
+        return None
+    notes = sorted(list_notes(symbol=symbol), key=lambda n: (n.created_at, n.uid))
+    if not notes:
+        return None
+    keep = notes[0]
+    duplicates = [n.uid for n in notes[1:]]
+    if not duplicates:
+        if keep.symbol != symbol:
+            conn = get_conn()
+            conn.execute(
+                "UPDATE notes SET symbol = ?, updated_at = ? WHERE uid = ?",
+                (symbol, _now(), keep.uid),
+            )
+            conn.commit()
+        return keep.uid
+
+    conn = get_conn()
+    placeholders = ", ".join("?" for _ in duplicates)
+    conn.execute(
+        f"UPDATE note_events SET note_uid = ? WHERE note_uid IN ({placeholders})",
+        [keep.uid, *duplicates],
+    )
+    conn.execute(
+        f"DELETE FROM notes WHERE uid IN ({placeholders})",
+        duplicates,
+    )
+    conn.execute(
+        "UPDATE notes SET symbol = ?, updated_at = ? WHERE uid = ?",
+        (symbol, _now(), keep.uid),
+    )
+    conn.commit()
+    return keep.uid
 
 
 def get_note(uid: str) -> NoteDetail | None:

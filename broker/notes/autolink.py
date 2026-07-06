@@ -53,13 +53,12 @@ def _executed_at(date: str, ord_tm: str) -> str:
     return f"{d} {t}".strip()
 
 
-def _active_note(ticker: str):
-    """해당 종목의 미청산(open/partial) 최근 노트. 없으면 None."""
-    notes = store.list_notes(symbol=ticker)
-    for note in notes:  # list_notes는 created_at DESC 정렬
-        if note.status in (NoteStatus.open, NoteStatus.partial):
-            return note
-    return None
+def _target_note(ticker: str):
+    """Return the single note that should own trades for ticker."""
+    uid = store.merge_notes_by_symbol(ticker)
+    if uid is None:
+        return None
+    return store.get_note(uid)
 
 
 def _reclassify(uid: str) -> None:
@@ -80,11 +79,15 @@ def _reclassify(uid: str) -> None:
     saw_sell = False
     for e in events:
         if e.event_type.value in _BUY_TYPES:
-            new = EventType.buy.value if holdings == 0 else EventType.add_buy.value
+            if holdings <= 0:
+                saw_sell = False
+                new = EventType.buy.value
+            else:
+                new = EventType.add_buy.value
             holdings += e.qty
         else:
-            saw_sell = True
             holdings -= e.qty
+            saw_sell = holdings > 0
             new = EventType.sell.value if holdings <= 0 else EventType.partial_sell.value
         if e.event_type.value != new:
             store.update_event_type(e.id, new)
@@ -116,7 +119,7 @@ def _reconcile(date: str, side: str, row: dict[str, Any], summary: dict[str, int
     note_uid = store.find_note_uid_by_order_no(order_no)
     is_update = note_uid is not None
     if note_uid is None:
-        active = _active_note(ticker)
+        active = _target_note(ticker)
         if active is None:
             # 매수면 새 사이클. 매도인데 active 없으면(도입 전 HTS 매수분) 기록만
             # 남긴다 — 사용자 목표는 "전부 기록". 재계산 시 net 음수 → closed.
