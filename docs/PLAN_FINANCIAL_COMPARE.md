@@ -89,9 +89,9 @@ Step 2가 커서 **behavior-neutral 리팩터 → 순수 로직 → 배선** 순
 | ~~**2-1**~~ ✅ | `periods` number[]→**string[]** 마이그레이션 (연간 라벨 불변) | `types/dart.ts`, `lib/dart.ts`, `api-compare.spec.ts` | 기존 spec 24 green |
 | ~~**2-2**~~ ✅ | `fetchAcntRaw`/`fetchIndxRaw` **reprtCode 파라미터화**(기본 11011) | `lib/dart.ts` | 기존 spec 24 green |
 | ~~**2-3**~~ ✅ | **Q4 파생 순수함수** `deriveQ4List` — IS차감/BS통과 | `lib/dart-quarterly.ts` + 유닛 | 유닛 4 green |
-| **2-4** | 분기 fetch 경로(`determineQuarterlyBase` probe + 분기 응답 조립 + `deriveQ4List` 연결) + `fetchCompare(corp,count,mode)` 배선. 행조립 공유는 여기서 판단 | `lib/dart.ts` | (3서 통합검증) |
-| **3** | route `?mode=quarterly` + 분기 API 통합테스트 (Red→Green) | `route.ts` + spec | 삼성·바이브 8분기 |
-| **4** | UI 연간/분기 토글 + `CompareTable` 모드 라벨 + e2e | 컴포넌트 + spec | e2e green |
+| ~~**2-4**~~ ✅ | 분기 fetch 경로(`determineQuarterlyBase` probe + `fetchQuarterlyAcnt` 연도단위 4보고서 + `deriveQ4List`) + `fetchCompare(corp,count,mode)` 배선. 조립부는 `resolve/topNList/ratioByIndex/n` 인젝션으로 인라인 공유(별도 함수 추출 안 함) | `lib/dart.ts` | 연간 24 green, tsc 클린 |
+| ~~**3**~~ ✅ | route `?mode=quarterly&count=` + 분기 API 통합테스트 | `route.ts` + `api-compare-quarterly.spec.ts` | 삼성·바이브 8 green |
+| **4** | UI 연간/분기 토글 + `CompareTable` 모드 라벨(현재 "연간" 하드코딩) + e2e | 컴포넌트 + spec | e2e green |
 
 각 단계 완료 후 결과 보고 → 확인 → 다음. 독립 커밋.
 

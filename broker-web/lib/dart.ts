@@ -7,6 +7,9 @@ import { AMOUNT_ACCOUNTS, RATIO_INDICES } from "@/lib/dart-compare-keys";
 import {
   AmountField, BsRowDef, selectBsTopAccounts, extractBsRowAmount,
 } from "@/lib/dart-bs-topn";
+import { buildPeriods, QUARTER_REPRT } from "@/lib/dart-periods";
+import type { CompareMode, PeriodDesc, Quarter } from "@/lib/dart-periods";
+import { deriveQ4List } from "@/lib/dart-quarterly";
 
 const BASE_URL = "https://opendart.fss.or.kr";
 
@@ -144,62 +147,152 @@ async function determineFsDiv(corpCode: string): Promise<{
   throw new Error(`${corpCode}: 유효한 사업보고서를 찾지 못했습니다.`);
 }
 
+// ── 분기 모드 헬퍼 ────────────────────────────────────────────────────────────
+
+/** 오늘 기준 최신 "제출 가능성 높은" 분기 추정 (DART 제출기한 대략치).
+ *  실제 가용은 determineQuarterlyBase 가 probe 로 확정. */
+function estimateLatestQuarter(d: Date): { year: number; quarter: Quarter } {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  if (m >= 11) return { year: y, quarter: 3 };   // Q3 ~11월 제출
+  if (m >= 8)  return { year: y, quarter: 2 };    // 반기 ~8월
+  if (m >= 5)  return { year: y, quarter: 1 };    // Q1 ~5월
+  return { year: y - 1, quarter: 4 };             // 1~4월: 전년 FY(파생 Q4)
+}
+
+/** 추정 기준점에서 뒤로 probe 하며 실제 데이터 있는 최신 분기 확정. */
+async function determineQuarterlyBase(
+  corpCode: string,
+  fsDiv: FsDivType
+): Promise<{ year: number; quarter: Quarter }> {
+  let { year, quarter } = estimateLatestQuarter(new Date());
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const data = await fetchAcntRaw(corpCode, String(year), fsDiv, QUARTER_REPRT[quarter]);
+    if (data.status === "000" && data.list.length > 0) return { year, quarter };
+    if (quarter === 1) { quarter = 4; year -= 1; } else { quarter = (quarter - 1) as Quarter; }
+  }
+  throw new Error(`${corpCode}: 유효한 분기보고서를 찾지 못했습니다.`);
+}
+
+/** 기간 descs 를 채우는 금액 응답 배열(오름차순 정렬).
+ *  연도 단위로 4보고서(11013/12/14/11011) 통째 fetch → window 경계와 무관하게
+ *  Q4 파생에 필요한 같은해 Q1~Q3 를 항상 확보. */
+async function fetchQuarterlyAcnt(
+  corpCode: string,
+  fsDiv: FsDivType,
+  descs: PeriodDesc[]
+): Promise<FinancialResponse[]> {
+  const years = [...new Set(descs.map(d => d.year))];
+  const byYear = new Map<number, { q1: FinancialResponse; q2: FinancialResponse; q3: FinancialResponse; fy: FinancialResponse }>();
+  await Promise.all(
+    years.map(async y => {
+      const [q1, q2, q3, fy] = await Promise.all([
+        fetchAcntRaw(corpCode, String(y), fsDiv, "11013"),
+        fetchAcntRaw(corpCode, String(y), fsDiv, "11012"),
+        fetchAcntRaw(corpCode, String(y), fsDiv, "11014"),
+        fetchAcntRaw(corpCode, String(y), fsDiv, "11011"),
+      ]);
+      byYear.set(y, { q1, q2, q3, fy });
+    })
+  );
+
+  const ok = (r: FinancialResponse) => r.status === "000";
+  return descs.map(d => {
+    const y = byYear.get(d.year)!;
+    switch (d.quarter) {
+      case 1: return y.q1;
+      case 2: return y.q2;
+      case 3: return y.q3;
+      default: // Q4 = FY − (Q1+Q2+Q3), 넷 다 있어야 파생
+        return ok(y.fy) && ok(y.q1) && ok(y.q2) && ok(y.q3)
+          ? { status: "000", message: "", list: deriveQ4List(y.fy, y.q1, y.q2, y.q3) }
+          : { status: "ERR", message: "Q4 파생 불가", list: [] };
+    }
+  });
+}
+
 // ── fetchCompare ──────────────────────────────────────────────────────────────
 
 export async function fetchCompare(
   corpCode: string,
-  years = 5
+  count = 5,
+  mode: CompareMode = "annual"
 ): Promise<CompareResponse> {
   const { baseYear, fsDiv, baseData } = await determineFsDiv(corpCode);
-  const periods = Array.from({ length: years }, (_, i) => baseYear - years + 1 + i);
+  const n = count;
 
-  // 금액: 각 연도 병렬 호출 (기준 연도는 determineFsDiv 결과 재사용)
-  const acntResults = await Promise.all(
-    periods.map(year =>
-      year === baseYear
-        ? Promise.resolve(baseData)
-        : fetchAcntRaw(corpCode, String(year), fsDiv)
-    )
-  );
-
-  // 비율: 2023+ 연도 × 3개 분류 병렬 호출
-  const ratioYears = periods.filter(y => y >= 2023);
-  const ratioMap = new Map<number, Map<string, FinancialIndexResponse>>();
-
-  await Promise.all(
-    ratioYears.flatMap(year =>
-      RATIO_INDICES.map(async ri => {
-        const data = await fetchIndxRaw(corpCode, String(year), ri.idx_cl_code);
-        if (!ratioMap.has(year)) ratioMap.set(year, new Map());
-        ratioMap.get(year)!.set(ri.idx_cl_code, data);
-      })
-    )
-  );
-
-  // 연도별 금액 — 직접 조회 실패 연도(status≠000)는 이후 연도 보고서의
-  // 전기(frmtrm)/전전기(bfefrmtrm) 금액으로 백필 (예: 금융지주 2021/2022)
-  const valuesWithBackfill = (
+  // 모드별로 아래 4개를 채운다:
+  //   periodLabels — 기간 라벨, resolve — (추출함수→기간별 값 배열),
+  //   topNList — BS top-N 선정 기준 list, ratioByIndex — 기간 index→비율 응답
+  let periodLabels: string[];
+  let resolve: (
     extract: (list: FinancialResponse["list"], field: AmountField) => number | null
-  ): (number | null)[] =>
-    acntResults.map((res, i) => {
-      if (res.status === "000") return extract(res.list, "thstrm");
-      const backfills: { donor: FinancialResponse | undefined; field: AmountField }[] = [
-        { donor: acntResults[i + 1], field: "frmtrm" },
-        { donor: acntResults[i + 2], field: "bfefrmtrm" },
-      ];
-      for (const { donor, field } of backfills) {
-        if (donor?.status !== "000") continue;
-        const v = extract(donor.list, field);
-        if (v !== null) return v;
-      }
-      return null;
-    });
+  ) => (number | null)[];
+  let topNList: FinancialResponse["list"];
+  const ratioByIndex = new Map<number, Map<string, FinancialIndexResponse>>();
+
+  if (mode === "annual") {
+    const periods = Array.from({ length: n }, (_, i) => baseYear - n + 1 + i);
+    // 금액: 각 연도 병렬 (기준 연도는 determineFsDiv 결과 재사용)
+    const acntResults = await Promise.all(
+      periods.map(year =>
+        year === baseYear ? Promise.resolve(baseData) : fetchAcntRaw(corpCode, String(year), fsDiv)
+      )
+    );
+    // 직접 조회 실패 연도(status≠000)는 이후 연도 보고서의 전기/전전기로 백필
+    resolve = (extract) =>
+      acntResults.map((res, i) => {
+        if (res.status === "000") return extract(res.list, "thstrm");
+        const backfills: { donor: FinancialResponse | undefined; field: AmountField }[] = [
+          { donor: acntResults[i + 1], field: "frmtrm" },
+          { donor: acntResults[i + 2], field: "bfefrmtrm" },
+        ];
+        for (const { donor, field } of backfills) {
+          if (donor?.status !== "000") continue;
+          const v = extract(donor.list, field);
+          if (v !== null) return v;
+        }
+        return null;
+      });
+    topNList = baseData.list;
+    // 비율: 2023+ 연도 × 3분류, 기간 index 로 저장
+    await Promise.all(
+      periods.flatMap((year, i) =>
+        year < 2023 ? [] : RATIO_INDICES.map(async ri => {
+          const data = await fetchIndxRaw(corpCode, String(year), ri.idx_cl_code);
+          if (!ratioByIndex.has(i)) ratioByIndex.set(i, new Map());
+          ratioByIndex.get(i)!.set(ri.idx_cl_code, data);
+        })
+      )
+    );
+    periodLabels = periods.map(String);
+  } else {
+    const base = await determineQuarterlyBase(corpCode, fsDiv);
+    const descs = buildPeriods("quarterly", n, base);
+    const acntResults = await fetchQuarterlyAcnt(corpCode, fsDiv, descs);
+    // 분기 thstrm은 이미 단독값 → 백필 없이 직접 추출 (Q4는 파생 응답)
+    resolve = (extract) =>
+      acntResults.map(res => (res.status === "000" ? extract(res.list, "thstrm") : null));
+    // BS top-N 기준 = 최신 유효 분기 응답
+    topNList = acntResults.slice().reverse().find(r => r.status === "000")?.list ?? baseData.list;
+    // 비율: 2023+ 기간 × 3분류 (Q4는 reprt 11011=연간 비율)
+    await Promise.all(
+      descs.flatMap((d, i) =>
+        d.year < 2023 ? [] : RATIO_INDICES.map(async ri => {
+          const data = await fetchIndxRaw(corpCode, String(d.year), ri.idx_cl_code, d.reprtCode);
+          if (!ratioByIndex.has(i)) ratioByIndex.set(i, new Map());
+          ratioByIndex.get(i)!.set(ri.idx_cl_code, data);
+        })
+      )
+    );
+    periodLabels = descs.map(d => d.label);
+  }
 
   // 고정 계정 (IS 3개 + BS 총계 3개)
   const amountValues = new Map<string, (number | null)[]>(
     AMOUNT_ACCOUNTS.map(acnt => [
       acnt.key,
-      valuesWithBackfill((list, field) =>
+      resolve((list, field) =>
         extractAmount(list, acnt.account_id, acnt.sj_div, field)
       ),
     ])
@@ -213,14 +306,14 @@ export async function fetchCompare(
   });
 
   // BS 동적 행 — 최신 연도 기준 자산 top5 / 부채 top3 선정 (docs/PLAN_FINANCIAL_BS_TOPN.md)
-  const topDefs = selectBsTopAccounts(baseData.list);
+  const topDefs = selectBsTopAccounts(topNList);
   const dynRows = (defs: BsRowDef[], prefix: string): CompareRow[] =>
     defs.map((def, i) => ({
       key: `${prefix}${i}`,
       label: def.nm,
       type: "amount",
       section: "bs",
-      values: valuesWithBackfill((list, field) => extractBsRowAmount(list, def, field)),
+      values: resolve((list, field) => extractBsRowAmount(list, def, field)),
     }));
   const assetRows = dynRows(topDefs.assets, "bsAsset");
   const liabRows = dynRows(topDefs.liabilities, "bsLiab");
@@ -263,7 +356,7 @@ export async function fetchCompare(
   // 영업이익률 계산
   const revenues = amountValues.get("revenue")!;
   const opProfits = amountValues.get("opProfit")!;
-  const opMarginValues: (number | null)[] = periods.map((_, i) => {
+  const opMarginValues: (number | null)[] = Array.from({ length: n }, (_, i) => {
     const rev = revenues[i];
     const op = opProfits[i];
     if (rev == null || op == null || rev === 0) return null;
@@ -278,10 +371,10 @@ export async function fetchCompare(
       label: ri.label,
       type: "ratio" as const,
       section: "ratio" as const,
-      values: periods.map(year => {
-        const yearMap = ratioMap.get(year);
-        if (!yearMap) return null;
-        const res = yearMap.get(ri.idx_cl_code);
+      values: Array.from({ length: n }, (_, i) => {
+        const m = ratioByIndex.get(i);
+        if (!m) return null;
+        const res = m.get(ri.idx_cl_code);
         return extractRatio(res?.list, ri.idx_code);
       }),
     })),
@@ -292,7 +385,7 @@ export async function fetchCompare(
   return {
     corpName: corpInfo.corp_name,
     fsDiv,
-    periods: periods.map(String),
+    periods: periodLabels,
     rows: [...bsRows, ...isRows, ...ratioRows],
   };
 }
