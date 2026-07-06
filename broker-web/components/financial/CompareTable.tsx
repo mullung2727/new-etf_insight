@@ -43,6 +43,7 @@ function inlineBaseKey(rowKey: string): string | null {
 
 export default function CompareTable({ data }: Props) {
   const { corpName, fsDiv, periods, rows } = data;
+  const isQuarterly = periods.some(p => /Q/.test(p));
 
   // 기준값 조회용 맵 (key → values[])
   const baseValMap = new Map(rows.map(r => [r.key, r.values]));
@@ -74,7 +75,7 @@ export default function CompareTable({ data }: Props) {
             {corpName}
           </span>
           <span className="text-fin-muted text-fin-xs tracking-[0.1em]">·</span>
-          <span className="text-fin-label text-fin-xs tracking-[0.15em] uppercase">연간</span>
+          <span className="text-fin-label text-fin-xs tracking-[0.15em] uppercase">{isQuarterly ? "분기" : "연간"}</span>
           <span className="text-fin-muted text-fin-xs">·</span>
           <span className="text-fin-label text-fin-xs tracking-[0.15em]">
             {fsDiv === "CFS" ? "연결" : "별도"}

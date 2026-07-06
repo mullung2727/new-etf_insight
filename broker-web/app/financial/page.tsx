@@ -5,18 +5,22 @@ import CompareSearchBar from "@/components/financial/CompareSearchBar";
 import CompareTable from "@/components/financial/CompareTable";
 import { CompareResponse } from "@/types/dart";
 
+type Mode = "annual" | "quarterly";
+
 export default function FinancialPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<CompareResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>("annual");
+  const [lastCorp, setLastCorp] = useState<string | null>(null);
 
-  const handleSearch = useCallback(async (corpCode: string) => {
+  const load = useCallback(async (corpCode: string, m: Mode) => {
     setLoading(true);
     setError(null);
     setData(null);
-
     try {
-      const res = await fetch(`/api/financial/compare?corp_code=${corpCode}&years=5`);
+      const url = `/api/financial/compare?corp_code=${corpCode}${m === "quarterly" ? "&mode=quarterly" : ""}`;
+      const res = await fetch(url);
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error ?? "조회 실패");
       setData(json);
@@ -27,6 +31,16 @@ export default function FinancialPage() {
     }
   }, []);
 
+  const handleSearch = useCallback((corpCode: string) => {
+    setLastCorp(corpCode);
+    load(corpCode, mode);
+  }, [load, mode]);
+
+  const handleModeChange = useCallback((m: Mode) => {
+    setMode(m);
+    if (lastCorp) load(lastCorp, m);
+  }, [load, lastCorp]);
+
   return (
     <div className="fin-scope min-h-screen bg-background font-terminal">
       <div className="fixed inset-0 pointer-events-none bg-grid" />
@@ -34,6 +48,26 @@ export default function FinancialPage() {
       <div className="relative max-w-[1200px] mx-auto px-6 py-10">
         <section className="mb-6">
           <CompareSearchBar onSearch={handleSearch} loading={loading} />
+        </section>
+
+        <section className="mb-6 flex items-center gap-2" data-testid="mode-toggle">
+          {(["annual", "quarterly"] as const).map(m => (
+            <button
+              key={m}
+              data-testid={`mode-${m}`}
+              onClick={() => handleModeChange(m)}
+              disabled={loading}
+              aria-pressed={mode === m}
+              className={[
+                "px-4 py-[6px] text-fin-xs tracking-[0.15em] uppercase rounded-[2px] border transition-colors",
+                mode === m
+                  ? "border-fin-gold/60 text-fin-gold bg-fin-gold/[0.08]"
+                  : "border-fin-gold/15 text-fin-muted hover:text-fin-label hover:border-fin-gold/30",
+              ].join(" ")}
+            >
+              {m === "annual" ? "연간 5년" : "분기 8개"}
+            </button>
+          ))}
         </section>
 
         {error && (

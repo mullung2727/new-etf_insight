@@ -91,7 +91,10 @@ Step 2가 커서 **behavior-neutral 리팩터 → 순수 로직 → 배선** 순
 | ~~**2-3**~~ ✅ | **Q4 파생 순수함수** `deriveQ4List` — IS차감/BS통과 | `lib/dart-quarterly.ts` + 유닛 | 유닛 4 green |
 | ~~**2-4**~~ ✅ | 분기 fetch 경로(`determineQuarterlyBase` probe + `fetchQuarterlyAcnt` 연도단위 4보고서 + `deriveQ4List`) + `fetchCompare(corp,count,mode)` 배선. 조립부는 `resolve/topNList/ratioByIndex/n` 인젝션으로 인라인 공유(별도 함수 추출 안 함) | `lib/dart.ts` | 연간 24 green, tsc 클린 |
 | ~~**3**~~ ✅ | route `?mode=quarterly&count=` + 분기 API 통합테스트 | `route.ts` + `api-compare-quarterly.spec.ts` | 삼성·바이브 8 green |
-| **4** | UI 연간/분기 토글 + `CompareTable` 모드 라벨(현재 "연간" 하드코딩) + e2e | 컴포넌트 + spec | e2e green |
+| ~~**4**~~ ✅ | UI 연간/분기 토글(page mode state+재fetch) + `CompareTable` 모드 라벨(periods에서 유도) + e2e | `financial/page.tsx`, `CompareTable.tsx`, `financial-toggle.e2e.spec.ts` | 전체 74 green |
+
+**✅ v2 완료 (2026-07-06).** Step 0~4 전부 green, 전체 스위트 74 passed.
+연간⇄분기 토글 동작, 분기=단독 Q1~Q4(Q4 파생), 비율 분기 지원.
 
 각 단계 완료 후 결과 보고 → 확인 → 다음. 독립 커밋.
 
