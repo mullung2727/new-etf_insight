@@ -13,7 +13,7 @@ const links = [
   { href: "/watchlist", label: "watchlist" },
   { href: "/close-bet", label: "종가배팅" },
   { href: "/research", label: "리포트" },
-  { href: "/admin/json", label: "설정" },
+  { href: "/admin/telegram", label: "채널" },
 ];
 
 export function Nav() {
