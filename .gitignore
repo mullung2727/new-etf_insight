@@ -67,3 +67,6 @@ temp/
 
 # Local server restart PID files
 .server-pids/
+
+# JSON admin 편집기 백업(직전 버전 롤백용)
+*.json.bak
