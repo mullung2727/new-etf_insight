@@ -20,3 +20,9 @@ def load_channel_config(channel: str, config_path: Path | str = DEFAULT_CONFIG) 
     if channel not in channels:
         raise KeyError(f"channel '{channel}' not in {config_path}")
     return channels[channel]
+
+
+def load_discovery_channels(config_path: Path | str = DEFAULT_CONFIG) -> dict:
+    """`feed_role=discovery_source`인 채널만 필터."""
+    channels = load_all_channels(config_path)
+    return {ch: cfg for ch, cfg in channels.items() if cfg.get("feed_role") == "discovery_source"}

@@ -53,6 +53,7 @@ Telegram 공개 채널(`https://t.me/s/<channel>`)의 원문 글을 **채널 + �
 
 ### 1차 목표
 
+- 채널 목록/주소/처리규칙은 `etl/scripts/telegram_channels.json`에 데이터로 관리한다(채널별 하드코딩 금지).
 - 공개 Telegram 채널 URL과 KST 일자를 입력받아 해당 날짜 글을 수집한다.
 - 수집 결과를 `etl/db/telegram_public.sqlite3`에 upsert한다.
 - 같은 채널/글을 여러 번 수집해도 중복 저장하지 않는다.
@@ -77,6 +78,7 @@ etl/
   exports/
     telegram/                            # export 결과물. .gitignore에 etl/exports/ 추가
   scripts/
+    telegram_channels.json               # 채널 목록/처리규칙 source of truth
     collect_telegram_public.py           # 수집: URL/channel/date → SQLite
     export_telegram_public.py            # export: SQLite → JSON/Markdown
     summarize_telegram_public.py         # 후속 요약: SQLite → 요약 결과
@@ -114,8 +116,11 @@ etl/db/telegram_public.sqlite3
 | `channel` | TEXT PRIMARY KEY | URL slug. 예: `butler_works` |
 | `source_url` | TEXT NOT NULL | 입력 URL 또는 정규화 URL |
 | `title` | TEXT NULL | 가져올 수 있으면 채널명 |
+| `feed_role` | TEXT NULL | `discovery_source`면 종목탐색 파이프라인(아래 `telegram_stock_insights`) 입력에 포함. NULL이면 개별 채널요약(`telegram_summaries`)만 적용 |
 | `created_at` | TEXT NOT NULL | ISO8601 |
 | `updated_at` | TEXT NOT NULL | ISO8601 |
+
+`telegram_channels.json`에서 채널별로 지정. 데이터 기반 플래그이며, 채널마다 다른 파서/스크립트를 만들지 않는다(기존 방침 유지).
 
 ### `telegram_posts`
 
@@ -174,6 +179,57 @@ UNIQUE(channel, date_kst, summary_type)
 
 재실행 정책: 같은 `(channel, date_kst, summary_type)` 재요약 시 upsert로 `content`/`source_post_count`/`updated_at`을 덮어쓴다. 에러로 두지 않는다.
 
+이 테이블은 **채널 단위 개별 요약** 전용이다. `feed_role=discovery_source`가 아닌 채널(예: `butler_works`)만 여기로 간다.
+
+### `telegram_stock_insights` — 2차 단계 (크로스채널 종목탐색/분석)
+
+`feed_role=discovery_source` 채널들의 원문을 종목(ticker) 기준으로 재조합한 결과. `telegram_summaries`와 키가 다르므로 별도 테이블로 둔다 — channel 단위 요약과 ticker 단위 교차분석은 자연 키 자체가 다르다(하나의 스키마에 억지로 합치면 어색해진다).
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `date_kst` | TEXT NOT NULL | 대상 일자 |
+| `ticker` | TEXT NOT NULL | 종목코드 |
+| `name` | TEXT NOT NULL | 종목명 |
+| `mention_channels` | TEXT NOT NULL | JSON 배열. 이 종목을 언급한 채널 목록(복수 채널 동시언급 자체가 신호) |
+| `source_post_refs` | TEXT NOT NULL | JSON 배열. 근거 원문 `telegram_posts.post_ref` — 인용/재검증용 |
+| `discovery_reason` | TEXT NOT NULL | 후보로 뽑힌 이유. 예: `52주 신고가 + 뉴스 동시언급` |
+| `analysis` | TEXT NULL | 분석 단계 결과(Markdown/JSON). 탐색만 끝난 상태면 NULL |
+| `created_at` | TEXT NOT NULL | ISO8601 |
+| `updated_at` | TEXT NOT NULL | ISO8601 |
+
+제약:
+
+```sql
+UNIQUE(date_kst, ticker)
+```
+
+재실행 정책: 같은 `(date_kst, ticker)` 재탐색/재분석 시 upsert. `analysis`는 분석 단계 전엔 NULL 유지, 분석 완료 후 덮어쓴다.
+
+`ticker`는 종목명/코드가 텍스트에 직접 언급된 경우만 대상이다. 특정 종목명 없이 섹터/테마만 언급되는 글(예: "2차전지 섹터 강세")은 이 테이블로 안 잡히고 아래 `telegram_theme_mentions`로 간다.
+
+### `telegram_theme_mentions` — 스키마만 기록, 구현은 미정 (LangGraph 분석 설계 때 진행)
+
+종목명 없이 섹터/테마 단위로만 언급되는 글을 위한 테이블. **테마 판별 자체를 규칙/키워드 사전이 아니라 LLM이 하기로 함** — 그래서 `telegram_stock_insights`처럼 "저비용 규칙기반 탐색 → LLM 분석" 2단계로 안 나뉜다. discover 스크립트 없이, 아래 LangGraph 분석 단계 안에서 테마 판별+row 생성이 한번에 일어난다.
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `date_kst` | TEXT NOT NULL | 대상 일자 |
+| `theme` | TEXT NOT NULL | LLM이 판단한 테마명 (예: `2차전지`, `AI`) — 고정 사전 없음 |
+| `mention_channels` | TEXT NOT NULL | JSON 배열 |
+| `source_post_refs` | TEXT NOT NULL | JSON 배열. 근거 원문 `telegram_posts.post_ref` |
+| `discovery_reason` | TEXT NOT NULL | LLM이 이 테마로 분류한 근거 |
+| `analysis` | TEXT NULL | 분석 결과 |
+| `created_at` | TEXT NOT NULL | ISO8601 |
+| `updated_at` | TEXT NOT NULL | ISO8601 |
+
+제약:
+
+```sql
+UNIQUE(date_kst, theme)
+```
+
+구현(테이블 생성 코드, LangGraph 노드, 프롬프트)은 여기 스키마만 기록해두고 별도 세션에서 진행한다.
+
 ---
 
 ## CLI 설계
@@ -217,7 +273,7 @@ uv run python etl/scripts/export_telegram_public.py \
 - `json`: 원문 전달/debug용
 - `md`: 사람이 읽는 요약 전 단계 확인용
 
-### 요약 — 2차 단계
+### 요약 — 2차 단계 (채널 단위, `feed_role` 없는 채널만)
 
 ```bash
 uv run python etl/scripts/summarize_telegram_public.py \
@@ -238,6 +294,20 @@ uv run python etl/scripts/summarize_telegram_public.py \
 - 핵심 bullet 1~2개
 
 LLM 요약은 나중에 `summary_type=llm`으로 추가한다.
+
+### 종목탐색/분석 — 2차 단계 (크로스채널, `feed_role=discovery_source` 채널만)
+
+`telegram_channels.json`에서 `feed_role=discovery_source`로 표시된 채널들의 해당일 원문 전체를 대상으로 한다. 채널요약과 별개 스크립트 2개, 파이프라인 순차 실행:
+
+```bash
+# 1) 탐색: 원문 스캔 → 종목 후보 추출(저비용, 규칙/정규식 우선). analysis는 NULL로 upsert
+uv run python etl/scripts/discover_telegram_stock_candidates.py --date 2026-07-01
+
+# 2) 분석: 후보 종목별로 source_post_refs 재조회(채널 안 가리고 전부) → 에이전트팀 투입 → analysis 채움
+uv run python etl/scripts/analyze_telegram_stock_candidates.py --date 2026-07-01
+```
+
+탐색 단계는 채널요약과 마찬가지로 규칙 기반 우선(종목명/코드 패턴 매칭). 분석 단계에서만 LLM/에이전트팀 투입 — 탐색까지 LLM 태우면 비용만 늘고 이득 없다.
 
 ---
 

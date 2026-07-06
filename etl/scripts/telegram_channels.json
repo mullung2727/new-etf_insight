@@ -4,5 +4,25 @@
   },
   "butler_works": {
     "source_url": "https://t.me/s/butler_works"
+  },
+  "getfeed": {
+    "source_url": "https://t.me/s/getfeed",
+    "feed_role": "discovery_source"
+  },
+  "corevalue": {
+    "source_url": "https://t.me/s/corevalue",
+    "feed_role": "discovery_source"
+  },
+  "infomarketopen": {
+    "source_url": "https://t.me/s/infomarketopen",
+    "feed_role": "discovery_source"
+  },
+  "awake_realtimeCheck": {
+    "source_url": "https://t.me/s/awake_realtimeCheck",
+    "feed_role": "discovery_source"
+  },
+  "kimcharger": {
+    "source_url": "https://t.me/s/kimcharger",
+    "feed_role": "discovery_source"
   }
 }

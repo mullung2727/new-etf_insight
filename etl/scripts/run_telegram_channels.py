@@ -22,7 +22,7 @@ if hasattr(sys.stdout, "reconfigure"):
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.collect_telegram_public import (
         DEFAULT_DB,
-        crawl_date,
+        crawl_range,
         ensure_schema,
         fetch,
         upsert_channel,
@@ -32,7 +32,7 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
 except ImportError:
     from collect_telegram_public import (
         DEFAULT_DB,
-        crawl_date,
+        crawl_range,
         ensure_schema,
         fetch,
         upsert_channel,
@@ -46,13 +46,20 @@ def process_channel(
     channel: str,
     cfg: dict,
     date_kst: str,
+    end_date: str | None = None,
     *,
     collect_fetch_fn=fetch,
     sleep_fn=time.sleep,
 ) -> dict:
-    """채널 1개: 텍스트 수집(crawl+upsert)."""
+    """채널 1개: [date_kst, end_date] 텍스트 수집(역방향 1패스+upsert).
+
+    end_date 미지정 시 date_kst 하루만.
+    """
     source_url = cfg.get("source_url") or f"https://t.me/s/{channel}"
-    messages = crawl_date(channel, date_kst, fetch_fn=collect_fetch_fn, sleep_fn=sleep_fn)
+    messages = crawl_range(
+        channel, date_kst, end_date or date_kst,
+        fetch_fn=collect_fetch_fn, sleep_fn=sleep_fn,
+    )
     upsert_channel(con, channel, source_url)
     inserted, updated = upsert_posts(con, channel, messages)
     con.commit()
@@ -68,6 +75,7 @@ def run_all(
     con: sqlite3.Connection,
     channels: dict,
     date_kst: str,
+    end_date: str | None = None,
     *,
     only: str | None = None,
     collect_fetch_fn=fetch,
@@ -80,7 +88,7 @@ def run_all(
     for ch in targets:
         try:
             results.append(process_channel(
-                con, ch, channels[ch], date_kst,
+                con, ch, channels[ch], date_kst, end_date,
                 collect_fetch_fn=collect_fetch_fn,
                 sleep_fn=sleep_fn,
             ))
@@ -91,12 +99,14 @@ def run_all(
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--date", required=True, help="KST date YYYY-MM-DD")
+    ap.add_argument("--date", required=True, help="KST 시작일 YYYY-MM-DD")
+    ap.add_argument("--end", help="KST 종료일 YYYY-MM-DD. 미지정 시 --date 하루만")
     ap.add_argument("--channel", help="지정 시 해당 채널만. 미지정 시 config 전체")
     ap.add_argument("--db", default=str(DEFAULT_DB))
     args = ap.parse_args()
 
     channels = load_all_channels()
+    period = args.date if not args.end else f"{args.date}~{args.end}"
 
     db_path = Path(args.db)
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -104,17 +114,17 @@ def main() -> None:
     con.execute("PRAGMA journal_mode=WAL")
     try:
         ensure_schema(con)
-        results, errors = run_all(con, channels, args.date, only=args.channel)
+        results, errors = run_all(con, channels, args.date, args.end, only=args.channel)
     finally:
         con.close()
 
     for r in results:
         print(
-            f"[run_telegram_channels] channel={r['channel']} date={args.date} "
+            f"[run_telegram_channels] channel={r['channel']} date={period} "
             f"fetched={r['fetched']} inserted={r['inserted']} updated={r['updated']}"
         )
     for ch, err in errors:
-        print(f"[run_telegram_channels] ERROR channel={ch} date={args.date}: {err}", file=sys.stderr)
+        print(f"[run_telegram_channels] ERROR channel={ch} date={period}: {err}", file=sys.stderr)
 
     if errors:
         sys.exit(1)

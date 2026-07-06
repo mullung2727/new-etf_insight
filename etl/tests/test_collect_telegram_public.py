@@ -15,6 +15,7 @@ from pathlib import Path
 from scripts.collect_telegram_public import (
     clean_text,
     crawl_date,
+    crawl_range,
     ensure_schema,
     normalize_channel,
     parse_messages,
@@ -171,6 +172,58 @@ class CrawlDateTest(unittest.TestCase):
 
         crawl_date("butler_works", "2026-07-01", max_pages=3, fetch_fn=fake_fetch, sleep_fn=lambda s: None)
         self.assertEqual(call_count["n"], 3)
+
+
+class CrawlRangeTest(unittest.TestCase):
+    def test_collects_all_dates_in_one_backward_pass(self):
+        # 한 번의 역방향 패스로 07-01~07-03 전부 버킷팅. 각 날짜를 따로 되감지 않는다.
+        page1 = (
+            _msg_html(30, "2026-07-03T02:00:00+00:00", "d3")   # KST 07-03
+            + _msg_html(29, "2026-07-02T02:00:00+00:00", "d2")  # KST 07-02
+        )
+        page2 = (
+            _msg_html(28, "2026-07-01T02:00:00+00:00", "d1")   # KST 07-01 (범위 하한)
+            + _msg_html(27, "2026-06-30T02:00:00+00:00", "d0")  # KST 06-30 (범위 밖)
+        )
+        pages = {None: page1, 29: page2}
+        calls = []
+
+        def fake_fetch(channel, before=None, timeout=40):
+            calls.append(before)
+            return pages.get(before, "")
+
+        msgs = crawl_range(
+            "butler_works", "2026-07-01", "2026-07-03",
+            fetch_fn=fake_fetch, sleep_fn=lambda s: None,
+        )
+        # 07-01~07-03 세 글만, 06-30 제외
+        self.assertEqual([m["id"] for m in msgs], [28, 29, 30])
+        # 06-30(하한 미만)에 닿았으므로 3페이지째 호출 없이 중단 — 날짜별 재크롤 없음
+        self.assertEqual(calls, [None, 29])
+
+    def test_excludes_dates_newer_than_end(self):
+        # end보다 최신 글은 버림, 범위 내만 수집
+        page1 = (
+            _msg_html(30, "2026-07-05T02:00:00+00:00", "future")  # end 초과 -> 제외
+            + _msg_html(29, "2026-07-03T02:00:00+00:00", "in")    # 범위 내
+        )
+        page2 = _msg_html(28, "2026-06-30T02:00:00+00:00", "past")  # 하한 미만 -> 중단
+
+        def fake_fetch(channel, before=None, timeout=40):
+            return {None: page1, 29: page2}.get(before, "")
+
+        msgs = crawl_range(
+            "butler_works", "2026-07-01", "2026-07-03",
+            fetch_fn=fake_fetch, sleep_fn=lambda s: None,
+        )
+        self.assertEqual([m["id"] for m in msgs], [29])
+
+    def test_empty_first_page_raises(self):
+        def fake_fetch(channel, before=None, timeout=40):
+            return "<html>no posts</html>"
+
+        with self.assertRaises(RuntimeError):
+            crawl_range("dead", "2026-07-01", "2026-07-03", fetch_fn=fake_fetch, sleep_fn=lambda s: None)
 
 
 class SqliteUpsertTest(unittest.TestCase):

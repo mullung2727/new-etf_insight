@@ -26,7 +26,7 @@ if hasattr(sys.stdout, "reconfigure"):
 KST = dt.timezone(dt.timedelta(hours=9))
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
 FETCH_TIMEOUT = 40
-PAGE_DELAY = 1.0
+PAGE_DELAY = 0.3
 
 _BLOCK_START_RE = re.compile(r'<div class="tgme_widget_message[^>]*data-post="([^"]+)"')
 _TIME_RE = re.compile(r'<time datetime="([^"]+)"')
@@ -119,18 +119,25 @@ def parse_messages(page: str) -> list[dict]:
     return out
 
 
-def crawl_date(
+def crawl_range(
     channel: str,
-    target_date: str,
-    max_pages: int = 30,
+    start_date: str,
+    end_date: str,
+    max_pages: int = 200,
     fetch_fn=fetch,
     sleep_fn=time.sleep,
 ) -> list[dict]:
-    """target_date(KST) 글만 모아 반환. 웹 미리보기가 막힌 채널은 RuntimeError."""
+    """[start_date, end_date](KST) 글을 역방향 1회 패스로 모아 반환.
+
+    t.me/s 미리보기는 최신→과거로 20글씩만 준다. 날짜별로 따로 되감으면 최근 페이지를
+    날짜 수만큼 중복 요청하게 되므로, 여기서 한 번만 역방향으로 내려가며 범위 내 글을
+    전부 버킷팅한다. start_date 미만 글에 닿으면 중단.
+    웹 미리보기가 막힌 채널은 RuntimeError.
+    """
+    start = dt.date.fromisoformat(start_date)
     before = None
     seen: set[int] = set()
     result: list[dict] = []
-    target = dt.date.fromisoformat(target_date)
     for page_no in range(max_pages):
         page = fetch_fn(channel, before)
         msgs = parse_messages(page)
@@ -144,14 +151,30 @@ def crawl_date(
         new = [m for m in msgs if m["id"] not in seen]
         for m in new:
             seen.add(m["id"])
-            if m["date_kst"] == target_date:
+            if start_date <= m["date_kst"] <= end_date:
                 result.append(m)
+        # 글은 시간역순. 이 페이지 최소 날짜가 하한 미만이면 이후 페이지는 전부 범위 밖 -> 중단
+        # (범위 내 글은 이미 위에서 버킷팅됨)
         dates = [dt.date.fromisoformat(m["date_kst"]) for m in new]
-        if dates and min(dates) < target and max(dates) < target:
+        if dates and min(dates) < start:
             break
         before = min(m["id"] for m in msgs)
         sleep_fn(PAGE_DELAY)
     return sorted(result, key=lambda m: m["id"])
+
+
+def crawl_date(
+    channel: str,
+    target_date: str,
+    max_pages: int = 30,
+    fetch_fn=fetch,
+    sleep_fn=time.sleep,
+) -> list[dict]:
+    """target_date(KST) 글만 모아 반환. crawl_range의 단일 날짜 특수형."""
+    return crawl_range(
+        channel, target_date, target_date,
+        max_pages=max_pages, fetch_fn=fetch_fn, sleep_fn=sleep_fn,
+    )
 
 
 def ensure_schema(con: sqlite3.Connection) -> None:

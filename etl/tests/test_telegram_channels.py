@@ -4,6 +4,7 @@
   1. load_all_channels: json 전체를 dict로 로드
   2. load_channel_config: 채널 하나 반환, 없는 채널은 KeyError
   3. 실제 telegram_channels.json: 채널은 순수 텍스트 수집(attachments 없음 — 리포트는 네이버 배치)
+  4. load_discovery_channels: feed_role=discovery_source 채널만 필터
 """
 import json
 import tempfile
@@ -14,6 +15,7 @@ from scripts.telegram_channels import (
     DEFAULT_CONFIG,
     load_all_channels,
     load_channel_config,
+    load_discovery_channels,
 )
 
 
@@ -24,6 +26,7 @@ class LoaderTest(unittest.TestCase):
         self.cfg.write_text(json.dumps({
             "chanA": {"source_url": "https://t.me/s/chanA", "attachments": {"link_pattern": "x"}},
             "chanB": {"source_url": "https://t.me/s/chanB"},
+            "chanC": {"source_url": "https://t.me/s/chanC", "feed_role": "discovery_source"},
         }), encoding="utf-8")
 
     def tearDown(self):
@@ -32,7 +35,7 @@ class LoaderTest(unittest.TestCase):
 
     def test_load_all_channels(self):
         data = load_all_channels(self.cfg)
-        self.assertEqual(set(data), {"chanA", "chanB"})
+        self.assertEqual(set(data), {"chanA", "chanB", "chanC"})
 
     def test_load_channel_config_found(self):
         cfg = load_channel_config("chanA", self.cfg)
@@ -42,6 +45,10 @@ class LoaderTest(unittest.TestCase):
     def test_load_channel_config_missing_raises(self):
         with self.assertRaises(KeyError):
             load_channel_config("nope", self.cfg)
+
+    def test_load_discovery_channels(self):
+        data = load_discovery_channels(self.cfg)
+        self.assertEqual(set(data), {"chanC"})
 
 
 class RealConfigTest(unittest.TestCase):
@@ -55,6 +62,13 @@ class RealConfigTest(unittest.TestCase):
     def test_default_config_path_points_to_scripts(self):
         self.assertTrue(DEFAULT_CONFIG.name == "telegram_channels.json")
         self.assertTrue(DEFAULT_CONFIG.exists())
+
+    def test_real_discovery_channels(self):
+        expected = {
+            "getfeed", "corevalue", "infomarketopen",
+            "awake_realtimeCheck", "kimcharger",
+        }
+        self.assertEqual(set(load_discovery_channels()), expected)
 
 
 if __name__ == "__main__":

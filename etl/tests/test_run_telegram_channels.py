@@ -52,6 +52,28 @@ class ProcessChannelTest(unittest.TestCase):
         self.assertEqual(result["inserted"], 1)
         self.assertNotIn("attachments", result)
 
+    def test_collects_date_range_single_pass(self):
+        # 04-13~04-15 한 번의 역방향 패스로 수집(날짜별 재크롤 없음)
+        pages = {
+            None: _page(3, "2026-04-15T00:00:00+00:00", "d15"),
+            3: _page(2, "2026-04-14T00:00:00+00:00", "d14"),
+            2: _page(1, "2026-04-13T00:00:00+00:00", "d13"),
+            1: _page(0, "2026-04-12T00:00:00+00:00", "d12"),  # 하한 미만 -> 중단
+        }
+        calls = []
+
+        def collect_fetch(channel, before=None, timeout=40):
+            calls.append(before)
+            return pages.get(before, "")
+
+        result = process_channel(
+            self.con, "companyreport", cfg={"source_url": "https://t.me/s/companyreport"},
+            date_kst="2026-04-13", end_date="2026-04-15",
+            collect_fetch_fn=collect_fetch, sleep_fn=lambda s: None,
+        )
+        self.assertEqual(result["fetched"], 3)  # d13,d14,d15
+        self.assertEqual(calls, [None, 3, 2, 1])  # 단일 역방향 패스
+
 
 class RunAllTest(unittest.TestCase):
     def setUp(self):
