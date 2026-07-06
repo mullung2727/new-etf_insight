@@ -53,7 +53,23 @@ export default function TelegramAdminPage() {
   const patchRow = (c: Channel, p: Partial<{ label: string; discovery: boolean }>) =>
     setEdit((e) => ({ ...e, [c.key]: { ...rowOf(c), ...p } }));
 
-  const save = (c: Channel) => send("PUT", { key: c.key, ...rowOf(c) });
+  const saveAll = async () => {
+    // send()가 성공 시 edit을 비우므로 루프 전에 payload 스냅샷
+    const payloads = data.active.filter(dirty).map((c) => ({ key: c.key, ...rowOf(c) }));
+    setError(null);
+    for (const p of payloads) {
+      const res = await fetch("/api/telegram-channels", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(p),
+      });
+      if (!res.ok) {
+        setError((await res.json()).error ?? `오류 ${res.status}`);
+        break;
+      }
+    }
+    await reload();
+  };
   const del = (c: Channel) => send("DELETE", { key: c.key });
   const restore = (c: Channel) => send("POST", { action: "restore", key: c.key });
 
@@ -74,12 +90,17 @@ export default function TelegramAdminPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div>
-        <h1 className="text-base font-semibold">텔레그램 채널 관리</h1>
-        <p className="text-sm text-muted-foreground">
-          수집 대상 채널 목록. <b>종목탐색 소스</b>(discovery_source)로 표시된 채널은 원문에서
-          종목 후보를 추출하는 데 쓰입니다.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-base font-semibold">텔레그램 채널 관리</h1>
+          <p className="text-sm text-muted-foreground">
+            수집 대상 채널 목록. <b>종목탐색 소스</b>(discovery_source)로 표시된 채널은 원문에서
+            종목 후보를 추출하는 데 쓰입니다.
+          </p>
+        </div>
+        <Button onClick={saveAll} disabled={!data.active.some(dirty)}>
+          저장
+        </Button>
       </div>
 
       {error && (
@@ -128,9 +149,6 @@ export default function TelegramAdminPage() {
                   />
                 </td>
                 <td className="py-2 text-right whitespace-nowrap">
-                  <Button size="xs" onClick={() => save(c)} disabled={!dirty(c)}>
-                    저장
-                  </Button>{" "}
                   <Button size="xs" variant="destructive" onClick={() => del(c)}>
                     삭제
                   </Button>
