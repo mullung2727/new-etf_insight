@@ -54,15 +54,14 @@ export default function CompareTable({ data }: Props) {
 
   return (
     <div
-      className="w-full border border-fin-gold/25 rounded-[2px] overflow-hidden font-terminal"
+      className="w-full bg-card border border-fin-gold/25 rounded-[2px] overflow-hidden font-terminal"
       style={{
-        background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 50%, #0A1628 100%)",
-        boxShadow: "0 0 0 1px rgba(240,180,41,0.08), 0 20px 60px rgba(0,0,0,0.5)",
+        boxShadow: "0 0 0 1px rgba(194,239,78,0.08), 0 20px 60px rgba(0,0,0,0.5)",
       }}
     >
-      {/* 상단 골드 라인 */}
+      {/* 상단 라임 라인 */}
       <div className="absolute top-0 left-0 right-0 h-[2px]"
-        style={{ background: "linear-gradient(90deg, transparent, #F0B429 30%, #F0B429 70%, transparent)" }} />
+        style={{ background: "linear-gradient(90deg, transparent, var(--color-fin-gold) 30%, var(--color-fin-gold) 70%, transparent)" }} />
 
       {/* 헤더 */}
       <div

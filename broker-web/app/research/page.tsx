@@ -378,7 +378,7 @@ export default function ResearchPage() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {/* 진행률 */}
       {job && (
@@ -391,13 +391,13 @@ export default function ResearchPage() {
             </span>
             <span>{pct}%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded bg-gray-200">
+          <div className="h-2 w-full overflow-hidden rounded bg-muted">
             <div
-              className="h-full bg-blue-600 transition-all"
+              className="h-full bg-ring transition-all"
               style={{ width: `${pct}%` }}
             />
           </div>
-          {job.error && <p className="mt-1 text-red-600">{job.error}</p>}
+          {job.error && <p className="mt-1 text-destructive">{job.error}</p>}
         </div>
       )}
 

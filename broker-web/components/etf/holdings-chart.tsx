@@ -6,13 +6,8 @@ import {
 } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import type { HoldingStat } from "@/lib/queries";
+import { CHART_BAR_COLOR as BAR_COLOR, CHART_CATEGORICAL as PIE_COLORS } from "@/lib/tokens";
 
-const BAR_COLOR = "#6366f1";
-const PIE_COLORS = [
-  "#6366f1","#f59e0b","#10b981","#ef4444","#8b5cf6",
-  "#ec4899","#14b8a6","#f97316","#84cc16","#06b6d4",
-  "#3b82f6","#a855f7","#22c55e","#f43f5e","#0ea5e9",
-];
 const THRESHOLD = 3;
 
 const barConfig = { avg_weight: { label: "평균 비중", color: BAR_COLOR } } satisfies ChartConfig;

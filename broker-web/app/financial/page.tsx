@@ -71,7 +71,7 @@ export default function FinancialPage() {
         </section>
 
         {error && (
-          <div className="mb-6 flex items-center gap-[10px] bg-up/10 border border-up/30 rounded-[2px] px-[18px] py-[14px] text-[#fca5a5] text-xs tracking-[0.05em]">
+          <div className="mb-6 flex items-center gap-[10px] bg-up/10 border border-up/30 rounded-[2px] px-[18px] py-[14px] text-up text-xs tracking-[0.05em]">
             <span className="text-up text-sm">✕</span>
             {error}
           </div>

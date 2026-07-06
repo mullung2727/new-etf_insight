@@ -64,10 +64,10 @@ export function OrderForm({ symbol: initSymbol = "", price: initPrice = 0 }: Ord
 
       <Tabs value={side} onValueChange={(v) => setSide(v as "buy" | "sell")}>
         <TabsList className="w-full">
-          <TabsTrigger value="buy" className="flex-1 data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+          <TabsTrigger value="buy" className="flex-1 data-[state=active]:bg-buy data-[state=active]:text-white">
             매수
           </TabsTrigger>
-          <TabsTrigger value="sell" className="flex-1 data-[state=active]:bg-red-600 data-[state=active]:text-white">
+          <TabsTrigger value="sell" className="flex-1 data-[state=active]:bg-sell data-[state=active]:text-white">
             매도
           </TabsTrigger>
         </TabsList>
@@ -141,7 +141,7 @@ export function OrderForm({ symbol: initSymbol = "", price: initPrice = 0 }: Ord
             )}
 
             <Button
-              className={cn("w-full mt-1", s === "buy" ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700")}
+              className={cn("w-full mt-1 text-white", s === "buy" ? "bg-buy hover:bg-buy/90" : "bg-sell hover:bg-sell/90")}
               onClick={submit}
               disabled={loading || !symbol}
             >

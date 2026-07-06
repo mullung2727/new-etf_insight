@@ -149,7 +149,7 @@ export default function CandleChart({ data, baseDate }: Props) {
       trigger: "axis",
       axisPointer: { type: "cross" },
       backgroundColor: "rgba(6,14,28,0.95)",
-      borderColor: "rgba(240,180,41,0.2)",
+      borderColor: "rgba(194,239,78,0.2)",
       textStyle: {
         color: "rgba(255,255,255,0.7)",
         fontSize: 11,

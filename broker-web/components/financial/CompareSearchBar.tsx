@@ -71,14 +71,13 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
 
   return (
     <div
-      className="w-full relative overflow-visible font-terminal border border-fin-gold/25 rounded-[2px]"
+      className="w-full relative overflow-visible font-terminal bg-card border border-fin-gold/25 rounded-[2px]"
       style={{
-        background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 50%, #0A1628 100%)",
-        boxShadow: "0 0 0 1px rgba(240,180,41,0.08), 0 20px 60px rgba(0,0,0,0.5)",
+        boxShadow: "0 0 0 1px rgba(194,239,78,0.08), 0 20px 60px rgba(0,0,0,0.5)",
       }}
     >
       <div className="absolute top-0 left-0 right-0 h-[2px]"
-        style={{ background: "linear-gradient(90deg, transparent, #F0B429 30%, #F0B429 70%, transparent)" }} />
+        style={{ background: "linear-gradient(90deg, transparent, var(--color-fin-gold) 30%, var(--color-fin-gold) 70%, transparent)" }} />
 
       <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-fin-gold/[0.12]">
         <div className="flex items-center gap-3">
@@ -114,11 +113,11 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
               style={{
                 width: "100%",
                 background: "rgba(255,255,255,0.04)",
-                border: corpCode ? "1px solid #F0B429" : "1px solid rgba(240,180,41,0.2)",
-                borderBottom: corpCode ? "2px solid #F0B429" : "1px solid rgba(240,180,41,0.2)",
+                border: corpCode ? "1px solid var(--color-fin-gold)" : "1px solid rgba(194,239,78,0.2)",
+                borderBottom: corpCode ? "2px solid var(--color-fin-gold)" : "1px solid rgba(194,239,78,0.2)",
                 borderRadius: "1px",
                 padding: "10px 40px 10px 12px",
-                color: corpCode ? "#F0B429" : "rgba(255,255,255,0.85)",
+                color: corpCode ? "var(--color-fin-gold)" : "rgba(255,255,255,0.85)",
                 fontSize: "13px",
                 letterSpacing: "0.02em",
                 outline: "none",
@@ -129,7 +128,7 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
               <div className="absolute right-[10px] top-1/2 -translate-y-1/2">
                 <svg width="12" height="12" viewBox="0 0 24 24" style={{ animation: "spin 0.8s linear infinite" }}>
                   <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-                  <circle cx="12" cy="12" r="10" stroke="#F0B429" strokeWidth="3" fill="none" strokeDasharray="31.4" strokeDashoffset="10" />
+                  <circle cx="12" cy="12" r="10" style={{ stroke: "var(--color-fin-gold)" }} strokeWidth="3" fill="none" strokeDasharray="31.4" strokeDashoffset="10" />
                 </svg>
               </div>
             )}
@@ -142,7 +141,7 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
             <div
               ref={dropdownRef}
               className="absolute top-[calc(100%+4px)] left-0 right-0 border border-fin-gold/30 rounded-[1px] z-50 max-h-60 overflow-y-auto"
-              style={{ background: "#0D1B35", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}
+              style={{ background: "var(--color-card)", boxShadow: "0 8px 32px rgba(0,0,0,0.6)" }}
             >
               {suggestions.map((corp, i) => (
                 <div
@@ -151,10 +150,10 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
                   onMouseDown={() => handleSelect(corp)}
                   onMouseEnter={() => setActiveIndex(i)}
                   className="flex items-center justify-between px-3 py-[9px] cursor-pointer border-b border-white/[0.04] transition-colors duration-100"
-                  style={{ background: i === activeIndex ? "rgba(240,180,41,0.12)" : "transparent" }}
+                  style={{ background: i === activeIndex ? "rgba(194,239,78,0.12)" : "transparent" }}
                 >
                   <span className="text-xs font-[inherit]"
-                    style={{ color: i === activeIndex ? "#F0B429" : "rgba(255,255,255,0.8)" }}>
+                    style={{ color: i === activeIndex ? "var(--color-fin-gold)" : "rgba(255,255,255,0.8)" }}>
                     {corp.corp_name}
                   </span>
                   <span className="text-fin-gold/40 text-fin-sm tracking-[0.1em] font-[inherit]">

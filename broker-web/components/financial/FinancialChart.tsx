@@ -19,10 +19,10 @@ function toEok(val: number | null): number | null {
 }
 
 export default function FinancialChart({ items, year, corpName }: FinancialChartProps) {
-  const { gold: C_PRIMARY, up: C_UP, down: C_DOWN, profit: C_GREEN } = getChartTokens();
+  const { gold: C_PRIMARY, up: C_UP, down: C_DOWN, profit: C_GREEN, surface: C_SURFACE } = getChartTokens();
   if (items.length === 0) {
     return (
-      <div className="bg-[#0A1628]/80 border border-fin-gold/[0.12] rounded-[2px] h-[400px] flex items-center justify-center font-terminal">
+      <div className="bg-card/80 border border-fin-gold/[0.12] rounded-[2px] h-[400px] flex items-center justify-center font-terminal">
         <div className="text-center">
           <div
             className="w-60 h-20 bg-white/[0.03] rounded-[2px] mb-3 mx-auto"
@@ -47,14 +47,14 @@ export default function FinancialChart({ items, year, corpName }: FinancialChart
     backgroundColor: "transparent",
     tooltip: {
       trigger: "axis",
-      backgroundColor: "#0D1B35",
-      borderColor: "rgba(240,180,41,0.3)",
+      backgroundColor: C_SURFACE,
+      borderColor: "rgba(194,239,78,0.3)",
       textStyle: { color: "rgba(255,255,255,0.85)", fontFamily: "IBM Plex Mono, monospace", fontSize: 11 },
       formatter: (params: { name: string; value: number; seriesName: string }[]) => {
         return params
           .map(
             (p) =>
-              `<span style="color:rgba(240,180,41,0.7);font-size:9px;letter-spacing:0.1em">${p.seriesName}</span><br/>` +
+              `<span style="color:rgba(194,239,78,0.7);font-size:9px;letter-spacing:0.1em">${p.seriesName}</span><br/>` +
               `<span style="font-size:13px;font-weight:700">${p.value !== null ? p.value.toLocaleString("ko-KR") + " 억원" : "—"}</span>`
           )
           .join("<br/><br/>");
@@ -71,7 +71,7 @@ export default function FinancialChart({ items, year, corpName }: FinancialChart
     xAxis: {
       type: "category",
       data: [corpName || year],
-      axisLine: { lineStyle: { color: "rgba(240,180,41,0.2)" } },
+      axisLine: { lineStyle: { color: "rgba(194,239,78,0.2)" } },
       axisTick: { show: false },
       axisLabel: { color: "rgba(255,255,255,0.4)", fontSize: 10, fontFamily: "IBM Plex Mono, monospace" },
     },
@@ -170,10 +170,7 @@ export default function FinancialChart({ items, year, corpName }: FinancialChart
   };
 
   return (
-    <div
-      className="border border-fin-gold/20 rounded-[2px] overflow-hidden font-terminal"
-      style={{ background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 100%)" }}
-    >
+    <div className="bg-card border border-fin-gold/20 rounded-[2px] overflow-hidden font-terminal">
       {/* 상단 골드 라인 */}
       <div
         className="h-[2px]"

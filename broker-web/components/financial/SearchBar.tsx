@@ -124,17 +124,16 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
 
   return (
     <div
-      className="w-full relative overflow-visible font-terminal border border-fin-gold/25 rounded-[2px]"
+      className="w-full relative overflow-visible font-terminal bg-card border border-fin-gold/25 rounded-[2px]"
       style={{
-        background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 50%, #0A1628 100%)",
-        boxShadow: "0 0 0 1px rgba(240,180,41,0.08), 0 20px 60px rgba(0,0,0,0.5)",
+        boxShadow: "0 0 0 1px rgba(194,239,78,0.08), 0 20px 60px rgba(0,0,0,0.5)",
       }}
     >
-      {/* 상단 골드 라인 */}
+      {/* 상단 라임 라인 */}
       <div
         className="absolute top-0 left-0 right-0 h-[2px]"
         style={{
-          background: "linear-gradient(90deg, transparent, #F0B429 30%, #F0B429 70%, transparent)",
+          background: "linear-gradient(90deg, transparent, var(--color-fin-gold) 30%, var(--color-fin-gold) 70%, transparent)",
         }}
       />
 
@@ -174,11 +173,11 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
               style={{
                 width: "100%",
                 background: "rgba(255,255,255,0.04)",
-                border: corpCode ? "1px solid #F0B429" : "1px solid rgba(240,180,41,0.2)",
-                borderBottom: corpCode ? "2px solid #F0B429" : "1px solid rgba(240,180,41,0.2)",
+                border: corpCode ? "1px solid var(--color-fin-gold)" : "1px solid rgba(194,239,78,0.2)",
+                borderBottom: corpCode ? "2px solid var(--color-fin-gold)" : "1px solid rgba(194,239,78,0.2)",
                 borderRadius: "1px",
                 padding: "10px 40px 10px 12px",
-                color: corpCode ? "#F0B429" : "rgba(255,255,255,0.85)",
+                color: corpCode ? "var(--color-fin-gold)" : "rgba(255,255,255,0.85)",
                 fontSize: "13px",
                 letterSpacing: "0.02em",
                 outline: "none",
@@ -186,13 +185,13 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
                 fontFamily: "inherit",
               }}
               onFocusCapture={(e) => {
-                (e.target as HTMLInputElement).style.borderColor = "rgba(240,180,41,0.6)";
+                (e.target as HTMLInputElement).style.borderColor = "rgba(194,239,78,0.6)";
                 (e.target as HTMLInputElement).style.background = "rgba(255,255,255,0.06)";
               }}
               onBlurCapture={(e) => {
                 (e.target as HTMLInputElement).style.borderColor = corpCode
-                  ? "#F0B429"
-                  : "rgba(240,180,41,0.2)";
+                  ? "var(--color-fin-gold)"
+                  : "rgba(194,239,78,0.2)";
                 (e.target as HTMLInputElement).style.background = "rgba(255,255,255,0.04)";
               }}
             />
@@ -209,7 +208,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
               ref={dropdownRef}
               className="absolute top-[calc(100%+4px)] left-0 right-0 border border-fin-gold/30 rounded-[1px] z-50 max-h-60 overflow-y-auto"
               style={{
-                background: "#0D1B35",
+                background: "var(--color-card)",
                 boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
               }}
             >
@@ -221,12 +220,12 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
                   onMouseEnter={() => setActiveIndex(i)}
                   className="flex items-center justify-between px-3 py-[9px] cursor-pointer border-b border-white/[0.04] transition-colors duration-100"
                   style={{
-                    background: i === activeIndex ? "rgba(240,180,41,0.12)" : "transparent",
+                    background: i === activeIndex ? "rgba(194,239,78,0.12)" : "transparent",
                   }}
                 >
                   <span
                     className="text-xs font-[inherit]"
-                    style={{ color: i === activeIndex ? "#F0B429" : "rgba(255,255,255,0.8)" }}
+                    style={{ color: i === activeIndex ? "var(--color-fin-gold)" : "rgba(255,255,255,0.8)" }}
                   >
                     {corp.corp_name}
                   </span>
@@ -272,12 +271,12 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
             className="flex items-center justify-center gap-2 px-6 py-[10px] rounded-[1px] text-fin-base font-bold tracking-[0.15em] uppercase whitespace-nowrap transition-all duration-200 font-[inherit]"
             style={{
               background: canSearch
-                ? "linear-gradient(135deg, #F0B429, #d49a1f)"
-                : "rgba(240,180,41,0.15)",
+                ? "var(--color-fin-gold)"
+                : "rgba(194,239,78,0.15)",
               border: "none",
-              color: canSearch ? "#0A1628" : "rgba(240,180,41,0.3)",
+              color: canSearch ? "var(--color-primary)" : "rgba(194,239,78,0.3)",
               cursor: canSearch ? "pointer" : "not-allowed",
-              boxShadow: canSearch ? "0 4px 20px rgba(240,180,41,0.3)" : "none",
+              boxShadow: canSearch ? "0 4px 20px rgba(194,239,78,0.3)" : "none",
             }}
           >
             {loading ? (
@@ -327,10 +326,10 @@ function SelectControl({
       className="w-full rounded-[1px] text-white/85 text-xs tracking-[0.02em] outline-none cursor-pointer font-[inherit]"
       style={{
         background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(240,180,41,0.2)",
+        border: "1px solid rgba(194,239,78,0.2)",
         padding: "10px 28px 10px 12px",
         appearance: "none",
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(240,180,41,0.4)'/%3E%3C/svg%3E")`,
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(194,239,78,0.4)'/%3E%3C/svg%3E")`,
         backgroundRepeat: "no-repeat",
         backgroundPosition: "right 10px center",
       }}
@@ -339,7 +338,7 @@ function SelectControl({
         <option
           key={opt.value}
           value={opt.value}
-          style={{ background: "#0D1B35", color: "rgba(255,255,255,0.85)" }}
+          style={{ background: "var(--color-card)", color: "rgba(255,255,255,0.85)" }}
         >
           {opt.label}
         </option>
@@ -356,7 +355,7 @@ function Spinner() {
         cx="12"
         cy="12"
         r="10"
-        stroke="#0A1628"
+        stroke="currentColor"
         strokeWidth="3"
         fill="none"
         strokeDasharray="31.4"

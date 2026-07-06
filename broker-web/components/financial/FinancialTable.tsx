@@ -32,7 +32,7 @@ export default function FinancialTable({ items }: FinancialTableProps) {
 
   if (items.length === 0) {
     return (
-      <div className="bg-[#0A1628]/80 border border-fin-gold/[0.12] rounded-[2px] py-12 px-6 text-center font-terminal">
+      <div className="bg-card/80 border border-fin-gold/[0.12] rounded-[2px] py-12 px-6 text-center font-terminal">
         <div className="text-fin-gold/30 text-[32px] mb-3">▭</div>
         <p className="text-fin-muted text-fin-base tracking-[0.15em]">
           NO DATA — 기업을 검색하세요
@@ -42,15 +42,12 @@ export default function FinancialTable({ items }: FinancialTableProps) {
   }
 
   return (
-    <div
-      className="border border-fin-gold/20 rounded-[2px] font-terminal overflow-hidden"
-      style={{ background: "linear-gradient(135deg, #0A1628 0%, #0f1f3d 100%)" }}
-    >
-      {/* 상단 골드 라인 */}
+    <div className="bg-card border border-fin-gold/20 rounded-[2px] font-terminal overflow-hidden">
+      {/* 상단 라임 라인 */}
       <div
         className="h-[2px]"
         style={{
-          background: "linear-gradient(90deg, transparent, #F0B429 30%, #F0B429 70%, transparent)",
+          background: "linear-gradient(90deg, transparent, var(--color-fin-gold) 30%, var(--color-fin-gold) 70%, transparent)",
         }}
       />
 
