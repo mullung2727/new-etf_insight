@@ -57,13 +57,14 @@ export async function fetchFinancial(
 async function fetchAcntRaw(
   corpCode: string,
   year: string,
-  fsDiv: FsDivType
+  fsDiv: FsDivType,
+  reprtCode: ReprtCode = "11011"
 ): Promise<FinancialResponse> {
   try {
     const key = getApiKey();
     const url =
       `${BASE_URL}/api/fnlttSinglAcntAll.json` +
-      `?crtfc_key=${key}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=11011&fs_div=${fsDiv}`;
+      `?crtfc_key=${key}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=${reprtCode}&fs_div=${fsDiv}`;
     const res = await fetch(url);
     if (!res.ok) return { status: "ERR", message: `HTTP ${res.status}`, list: [] };
     return res.json();
@@ -75,13 +76,14 @@ async function fetchAcntRaw(
 async function fetchIndxRaw(
   corpCode: string,
   year: string,
-  idxClCode: string
+  idxClCode: string,
+  reprtCode: ReprtCode = "11011"
 ): Promise<FinancialIndexResponse> {
   try {
     const key = getApiKey();
     const url =
       `${BASE_URL}/api/fnlttSinglIndx.json` +
-      `?crtfc_key=${key}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=11011&idx_cl_code=${idxClCode}`;
+      `?crtfc_key=${key}&corp_code=${corpCode}&bsns_year=${year}&reprt_code=${reprtCode}&idx_cl_code=${idxClCode}`;
     const res = await fetch(url);
     if (!res.ok) return { status: "ERR", message: `HTTP ${res.status}`, list: [] };
     return res.json();
@@ -290,7 +292,7 @@ export async function fetchCompare(
   return {
     corpName: corpInfo.corp_name,
     fsDiv,
-    periods,
+    periods: periods.map(String),
     rows: [...bsRows, ...isRows, ...ratioRows],
   };
 }

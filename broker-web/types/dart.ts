@@ -59,6 +59,7 @@ export interface CompareRow {
 export interface CompareResponse {
   corpName: string;
   fsDiv: FsDivType;
-  periods: number[];
+  /** 기간 라벨 — 연간 "2024", 분기 "2024Q3" */
+  periods: string[];
   rows: CompareRow[];
 }

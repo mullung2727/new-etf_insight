@@ -10,7 +10,7 @@ type CompareRow = {
 type CompareBody = {
   corpName: string;
   fsDiv: "CFS" | "OFS";
-  periods: number[];
+  periods: string[];
   rows: CompareRow[];
 };
 
@@ -71,7 +71,7 @@ test("삼성전자 — BS 동적 행 키·순서·레이블", () => {
 
 // ── 자본 고정 행 (방안 2 — 표준 계정 전 종목 존재, fixture 6개사 확인) ────────
 test("삼성전자 — 자본 구성 정확값 (2025)", () => {
-  const idx = samsung.periods.indexOf(2025);
+  const idx = samsung.periods.indexOf("2025");
   expect(idx).toBeGreaterThanOrEqual(0);
   const get = (key: string) => samsung.rows.find(r => r.key === key)!.values[idx];
   expect(get("equityCapital")).toBe(897_514_000_000);
@@ -84,7 +84,7 @@ test("삼성전자 — 자본 구성 정확값 (2025)", () => {
 test("신한지주 — 자본 행 2021/2022 백필", () => {
   const row = shinhan.rows.find(r => r.key === "equityRetained")!;
   for (const year of [2021, 2022]) {
-    const idx = shinhan.periods.indexOf(year);
+    const idx = shinhan.periods.indexOf(String(year));
     if (idx < 0) continue;
     expect(row.values[idx], `신한지주 이익잉여금 ${year}`).not.toBeNull();
     expect(row.values[idx]!).toBeGreaterThan(0);
@@ -92,7 +92,7 @@ test("신한지주 — 자본 행 2021/2022 백필", () => {
 });
 
 test("삼성전자 — 그 외 자산 = 자산총계 − top5 합 (2025)", () => {
-  const idx = samsung.periods.indexOf(2025);
+  const idx = samsung.periods.indexOf("2025");
   expect(idx).toBeGreaterThanOrEqual(0);
   const etc = samsung.rows.find(r => r.key === "bsAssetEtc")!;
   // 566,942,110M − (215,304,784 + 67,965,021 + 57,856,378 + 52,636,828 + 51,127,642)M
@@ -103,7 +103,7 @@ test("신한지주 — BS 동적 행 2021/2022 백필", () => {
   const row = shinhan.rows.find(r => r.key === "bsAsset0")!;
   expect(row.label).toBe("상각후원가측정대출채권");
   for (const year of [2021, 2022]) {
-    const idx = shinhan.periods.indexOf(year);
+    const idx = shinhan.periods.indexOf(String(year));
     if (idx < 0) continue;
     expect(row.values[idx], `신한지주 bsAsset0 ${year}`).not.toBeNull();
     expect(row.values[idx]!).toBeGreaterThan(0);
@@ -124,7 +124,7 @@ test("삼성전자 매출액 — 5년 전부 값 존재", () => {
   const row = samsung.rows.find(r => r.key === "revenue")!;
   expect(row.values.every(v => v !== null)).toBe(true);
   // 2024 매출액은 양수
-  const idx2024 = samsung.periods.indexOf(2024);
+  const idx2024 = samsung.periods.indexOf("2024");
   if (idx2024 >= 0) expect(row.values[idx2024]).toBeGreaterThan(0);
 });
 
@@ -141,18 +141,18 @@ test("삼성전자 비율 4행 레이블·타입", () => {
 test("삼성전자 비율 — 2023 이전 null, 2024 이상 값 존재", () => {
   const roeRow = samsung.rows.find(r => r.key === "roe")!;
   for (const year of [2021, 2022]) {
-    const idx = samsung.periods.indexOf(year);
+    const idx = samsung.periods.indexOf(String(year));
     if (idx >= 0) expect(roeRow.values[idx], `ROE ${year}`).toBeNull();
   }
   for (const year of [2024, 2025]) {
-    const idx = samsung.periods.indexOf(year);
+    const idx = samsung.periods.indexOf(String(year));
     if (idx >= 0) expect(roeRow.values[idx], `ROE ${year}`).not.toBeNull();
   }
 });
 
 test("삼성전자 영업이익률 — 금액 계산, 2024 양수", () => {
   const row = samsung.rows.find(r => r.key === "opMargin")!;
-  const idx2024 = samsung.periods.indexOf(2024);
+  const idx2024 = samsung.periods.indexOf("2024");
   if (idx2024 >= 0) {
     expect(row.values[idx2024]).not.toBeNull();
     expect(row.values[idx2024]).toBeGreaterThan(0);
@@ -164,14 +164,14 @@ test("삼성전자 영업이익률 — 금액 계산, 2024 양수", () => {
 //       frmtrm/bfefrmtrm(전기/전전기)에 값이 존재 → 백필로 표시
 test("M83 2021 금액 행 null (백필 커버 범위 밖)", () => {
   const revenueRow = m83.rows.find(r => r.key === "revenue")!;
-  const idx = m83.periods.indexOf(2021);
+  const idx = m83.periods.indexOf("2021");
   if (idx >= 0) expect(revenueRow.values[idx], "revenue 2021").toBeNull();
 });
 
 test("M83 2022~2023 금액 행 백필 값 존재", () => {
   const revenueRow = m83.rows.find(r => r.key === "revenue")!;
   for (const year of [2022, 2023]) {
-    const idx = m83.periods.indexOf(year);
+    const idx = m83.periods.indexOf(String(year));
     if (idx < 0) continue;
     expect(revenueRow.values[idx], `revenue ${year}`).not.toBeNull();
     expect(revenueRow.values[idx]!).toBeGreaterThan(0);
@@ -181,7 +181,7 @@ test("M83 2022~2023 금액 행 백필 값 존재", () => {
 test("M83 2024~2025 금액 행 값 존재", () => {
   const revenueRow = m83.rows.find(r => r.key === "revenue")!;
   for (const year of [2024, 2025]) {
-    const idx = m83.periods.indexOf(year);
+    const idx = m83.periods.indexOf(String(year));
     if (idx >= 0) expect(revenueRow.values[idx], `revenue ${year}`).not.toBeNull();
   }
 });
@@ -220,7 +220,7 @@ test("신한지주 — 5개 기간 반환", () => {
 test("신한지주 — 2023/2024 영업이익 양수", () => {
   const row = shinhan.rows.find(r => r.key === "opProfit")!;
   for (const year of [2023, 2024]) {
-    const idx = shinhan.periods.indexOf(year);
+    const idx = shinhan.periods.indexOf(String(year));
     if (idx < 0) continue;
     expect(row.values[idx], `신한지주 opProfit ${year}`).not.toBeNull();
     expect(row.values[idx]!).toBeGreaterThan(0);
@@ -238,7 +238,7 @@ test("신한지주 — 2021/2022 금액 백필 (전기/전전기 값)", () => {
   for (const [key, byYear] of Object.entries(expected)) {
     const row = shinhan.rows.find(r => r.key === key)!;
     for (const [year, val] of Object.entries(byYear)) {
-      const idx = shinhan.periods.indexOf(Number(year));
+      const idx = shinhan.periods.indexOf(year);
       if (idx < 0) continue;
       expect(row.values[idx], `신한지주 ${key} ${year}`).toBe(val);
     }
@@ -249,7 +249,7 @@ test("신한지주 — 2021/2022 부채·자본총계 백필 값 존재", () => 
   for (const key of ["totalLiab", "totalEquity"]) {
     const row = shinhan.rows.find(r => r.key === key)!;
     for (const year of [2021, 2022]) {
-      const idx = shinhan.periods.indexOf(year);
+      const idx = shinhan.periods.indexOf(String(year));
       if (idx < 0) continue;
       expect(row.values[idx], `신한지주 ${key} ${year}`).not.toBeNull();
     }
@@ -264,7 +264,7 @@ test("신한지주 — revenue 전 연도 null (금융업 단일 매출 계정 �
 test("KB금융 — 2023/2024 영업이익 양수", () => {
   const row = kb.rows.find(r => r.key === "opProfit")!;
   for (const year of [2023, 2024]) {
-    const idx = kb.periods.indexOf(year);
+    const idx = kb.periods.indexOf(String(year));
     if (idx < 0) continue;
     expect(row.values[idx], `KB금융 opProfit ${year}`).not.toBeNull();
     expect(row.values[idx]!).toBeGreaterThan(0);
@@ -274,7 +274,7 @@ test("KB금융 — 2023/2024 영업이익 양수", () => {
 test("하나금융지주 — 2023/2024 영업이익 양수", () => {
   const row = hana.rows.find(r => r.key === "opProfit")!;
   for (const year of [2023, 2024]) {
-    const idx = hana.periods.indexOf(year);
+    const idx = hana.periods.indexOf(String(year));
     if (idx < 0) continue;
     expect(row.values[idx], `하나금융지주 opProfit ${year}`).not.toBeNull();
     expect(row.values[idx]!).toBeGreaterThan(0);
