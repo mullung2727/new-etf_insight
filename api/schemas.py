@@ -100,3 +100,30 @@ class OhlcvCandle(_Base):
     close: int | None = None
     volume: int | None = None
     trading_value: int | None = None
+
+
+class MetricInfo(_Base):
+    """랭킹 셀렉터 항목 (financial_indicators)."""
+
+    key: str
+    label: str
+    unit: str          # "pct" | "won"
+    source: str        # "indicators" | "accounts"
+    default_order: str  # "asc" | "desc"
+
+
+class PeriodInfo(_Base):
+    """적재된 기간 (연간/분기)."""
+
+    year: str
+    reprt: str
+    label: str          # "2025 연간" / "2026 1분기"
+
+
+class RankingRow(_Base):
+    """랭킹 한 행."""
+
+    rank: int
+    stock_code: str | None = None
+    corp_name: str | None = None
+    value: float | None = None

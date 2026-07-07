@@ -10,6 +10,7 @@ load_dotenv()
 
 from duck import DUCKDB_PATH
 from routers import etfs as etfs_router
+from routers import rankings as rankings_router
 from routers import research as research_router
 from routers import stats as stats_router
 from routers import watchlist as watchlist_router
@@ -44,6 +45,7 @@ app.include_router(etfs_router.router)
 app.include_router(stats_router.router)
 app.include_router(watchlist_router.router)
 app.include_router(research_router.router)
+app.include_router(rankings_router.router)
 
 mcp = FastApiMCP(
     app,

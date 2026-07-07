@@ -36,6 +36,9 @@ WATCHLIST_DB_PATH = _resolve_project_path(
 KRX_DB_PATH = _resolve_project_path(
     os.getenv("KRX_DB_PATH"), ETL_DB_DIR / "krx_ohlcv.duckdb"
 )
+FINANCIAL_DB_PATH = _resolve_project_path(
+    os.getenv("FINANCIAL_DB_PATH"), ETL_DB_DIR / "financial_indicators.sqlite3"
+)
 
 
 @contextmanager
@@ -43,6 +46,19 @@ def watchlist_cursor() -> Iterator[sqlite3.Connection]:
     if not WATCHLIST_DB_PATH.exists():
         raise FileNotFoundError(f"SQLite file not found: {WATCHLIST_DB_PATH}")
     con = sqlite3.connect(str(WATCHLIST_DB_PATH))
+    con.execute("PRAGMA query_only=ON")
+    try:
+        yield con
+    finally:
+        con.close()
+
+
+@contextmanager
+def financial_cursor() -> Iterator[sqlite3.Connection]:
+    """financial_indicators.sqlite3 reader (지표+금액 랭킹). WAL 회피 위해 query_only."""
+    if not FINANCIAL_DB_PATH.exists():
+        raise FileNotFoundError(f"SQLite file not found: {FINANCIAL_DB_PATH}")
+    con = sqlite3.connect(str(FINANCIAL_DB_PATH))
     con.execute("PRAGMA query_only=ON")
     try:
         yield con

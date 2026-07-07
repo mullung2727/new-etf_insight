@@ -78,3 +78,34 @@ export const getStatsSummaryByKeys = (keys: string[]) =>
   apiGet<StatsSummary>("/stats/summary", { etf_keys: keys });
 
 export const getCountries = () => apiGet<string[]>("/countries");
+
+// ── 재무지표 랭킹 (financial_indicators) ──────────────────────────────────────
+export interface MetricInfo {
+  key: string;
+  label: string;
+  unit: "pct" | "won";
+  source: "indicators" | "accounts";
+  default_order: "asc" | "desc";
+}
+export interface PeriodInfo {
+  year: string;
+  reprt: string;
+  label: string;
+}
+export interface RankingRow {
+  rank: number;
+  stock_code: string | null;
+  corp_name: string | null;
+  value: number | null;
+}
+
+export const getRankingMetrics = () => apiGet<MetricInfo[]>("/rankings/metrics");
+export const getRankingPeriods = () => apiGet<PeriodInfo[]>("/rankings/periods");
+export const getRankings = (params: {
+  metric: string; year: string; reprt: string;
+  excludeImpaired: boolean; order?: string; limit?: number;
+}) =>
+  apiGet<RankingRow[]>("/rankings", {
+    metric: params.metric, year: params.year, reprt: params.reprt,
+    exclude_impaired: params.excludeImpaired, order: params.order, limit: params.limit,
+  });
