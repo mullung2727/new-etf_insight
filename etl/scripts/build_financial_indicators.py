@@ -29,7 +29,7 @@ import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path: etl/·scripts/·
 
 import requests  # noqa: E402
 
-from new_etf_insight.dart_client import get_api_key  # noqa: E402
+from new_etf_insight.dart_client import fetch_dart_list, get_api_key  # noqa: E402
 from wl_sqlite import connect_rw  # noqa: E402
 
 BASE_URL = "https://opendart.fss.or.kr/api"
@@ -62,23 +62,18 @@ def fetch_indicators_chunk(
     순수: DB·sleep 안 함. status 000이면 list, 013(무자료)·기타는 [].
     year·reprt를 인자로 받으므로 분기 확장 시 그대로 재사용.
     """
-    http = session or requests
-    resp = http.get(
+    return fetch_dart_list(
         INDX_API_URL,
-        params={
-            "crtfc_key": key,
+        {
             "corp_code": ",".join(corp_codes),
             "bsns_year": year,
             "reprt_code": reprt,
             "idx_cl_code": idx_cl_code,
         },
+        key,
+        session=session,
         timeout=REQUEST_TIMEOUT,
     )
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("status") != "000":
-        return []
-    return data.get("list") or []
 
 
 def fetch_accounts_chunk(
@@ -92,22 +87,17 @@ def fetch_accounts_chunk(
 
     지표와 달리 카테고리 루프 없이 1콜로 전 계정. status 013/기타는 [].
     """
-    http = session or requests
-    resp = http.get(
+    return fetch_dart_list(
         ACNT_API_URL,
-        params={
-            "crtfc_key": key,
+        {
             "corp_code": ",".join(corp_codes),
             "bsns_year": year,
             "reprt_code": reprt,
         },
+        key,
+        session=session,
         timeout=REQUEST_TIMEOUT,
     )
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("status") != "000":
-        return []
-    return data.get("list") or []
 
 
 # ── DB ────────────────────────────────────────────────────────────────────────
