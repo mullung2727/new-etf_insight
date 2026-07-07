@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path 보장)
 
+from dotenv import load_dotenv  # noqa: E402
 from notify import notify  # noqa: E402
 from wl_sqlite import connect_ro  # noqa: E402
 
@@ -87,6 +88,7 @@ def run(date_kst: str, session: str, db_path: Path, dry_run: bool, channel: str 
     if dry_run:
         print(msg)
         return 0
+    load_dotenv()  # notify는 os.getenv로 웹훅 조회 — 진입점에서 .env 로드 필수(안 하면 조용히 스킵)
     ok = notify(msg, channel=channel)
     print(f"[digest] {date_kst} {session}: {len(rows)}종목 전송 {'OK' if ok else 'FAIL'}")
     return 0 if ok else 1
