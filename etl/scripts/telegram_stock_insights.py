@@ -1,8 +1,7 @@
 """크로스채널 종목탐색/분석 결과 — `telegram_stock_insights` 테이블.
 
-`telegram_summaries`(채널 단위 요약)와 별도. 이 테이블은 종목(ticker) 기준이며
-`feed_role=discovery_source` 채널들의 원문을 재조합한 결과를 담는다.
-탐색(upsert_candidate)과 분석(update_analysis)은 별개 단계 — 탐색 재실행이
+종목(ticker) 기준이며 `feed_role=discovery_source` 채널들의 원문을 재조합한 결과를
+담는다. 탐색(upsert_candidate)과 분석(update_analysis)은 별개 단계 — 탐색 재실행이
 이미 채워진 analysis를 지우면 안 된다.
 """
 from __future__ import annotations

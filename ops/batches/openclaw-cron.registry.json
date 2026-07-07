@@ -162,6 +162,35 @@
       }
     },
     {
+      "id": "9f7e83e7-c722-44cc-9e64-486aa0c91068",
+      "name": "daily-telegram-stock-digest",
+      "description": "Daily 18:30 KST cross-channel stock digest: discover -> analyze(LLM) -> send summary to telegram_report Discord channel",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 18 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-telegram-stock-digest.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-telegram-stock-digest",
+        "xmlFile": "ops/scheduled-tasks/telegram-stock-digest.xml",
+        "runnerScript": "ops/scheduled-tasks/run-telegram-stock-digest.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "8b6d2f4a-9c1e-4a7b-bf10-2d3e5f6a7b8c",
       "name": "daily-naver-research",
       "description": "Daily 18:00 KST download broker stock-report PDFs from Naver research (원본), report to telegram_report Discord channel",
