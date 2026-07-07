@@ -164,7 +164,7 @@
     {
       "id": "9f7e83e7-c722-44cc-9e64-486aa0c91068",
       "name": "daily-telegram-stock-digest",
-      "description": "Daily 18:30 KST cross-channel stock digest: discover -> analyze(LLM) -> send summary to telegram_report Discord channel",
+      "description": "Daily 18:10 KST cross-channel stock digest: discover -> analyze(LLM) -> send summary to telegram_report Discord channel",
       "enabled": false,
       "schedule": {
         "kind": "cron",

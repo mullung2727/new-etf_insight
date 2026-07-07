@@ -23,7 +23,7 @@ ops/scheduled-tasks/run-telegram-stock-digest.ps1  (당일 KST, session=close)
 
 ## 스케줄
 
-- 매일 18:30 KST, `session=close`. (수집 18:00 다음)
+- 매일 18:10 KST, `session=close`. (수집 18:00 다음, 10분 갭)
 - 아침/저녁 세션도 돌리려면 registry에 job 추가(같은 러너, session 인자만 다르게)
   하거나 러너를 세션 인자화. 지금은 close 1회.
 
