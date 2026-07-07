@@ -1,15 +1,15 @@
 <?xml version="1.0"?>
 <!-- Register:
-     Register-ScheduledTask -Xml (Get-Content -Path telegram-stock-digest.xml -Raw -Encoding UTF8) -TaskName "daily-telegram-stock-digest" -TaskPath "\new-etf_insight\" -Force
+     Register-ScheduledTask -Xml (Get-Content -Path telegram-session-close.xml -Raw -Encoding UTF8) -TaskName "daily-telegram-session-close" -TaskPath "\new-etf_insight\" -Force
 -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>new_etf_insight daily cross-channel stock digest: discover -> analyze(LLM) -> Discord webhook summary</Description>
-    <URI>\new-etf_insight\daily-telegram-stock-digest</URI>
+    <Description>new_etf_insight telegram session (close 16:00): collect -> discover -> analyze(LLM) -> Discord digest</Description>
+    <URI>\new-etf_insight\daily-telegram-session-close</URI>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
-      <StartBoundary>2026-07-03T18:10:00</StartBoundary>
+      <StartBoundary>2026-07-03T16:00:00</StartBoundary>
       <Enabled>true</Enabled>
       <ScheduleByDay>
         <DaysInterval>1</DaysInterval>
@@ -32,7 +32,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-telegram-stock-digest.ps1"</Arguments>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-telegram-session.ps1" -Session close</Arguments>
     </Exec>
   </Actions>
 </Task>

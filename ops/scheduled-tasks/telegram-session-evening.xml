@@ -1,15 +1,16 @@
 <?xml version="1.0"?>
 <!-- Register:
-     Register-ScheduledTask -Xml (Get-Content -Path telegram-public-channel.xml -Raw -Encoding UTF8) -TaskName "daily-telegram-public-channel" -TaskPath "\new-etf_insight\" -Force
+     Register-ScheduledTask -Xml (Get-Content -Path telegram-session-evening.xml -Raw -Encoding UTF8) -TaskName "daily-telegram-session-evening" -TaskPath "\new-etf_insight\" -Force
+     참고: StartBoundary 00:00 = 24시. 러너가 -3h 오프셋으로 전일 date_kst 에 귀속.
 -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>new_etf_insight daily Telegram public channel collect + broker stock-report PDF download, Discord webhook report</Description>
-    <URI>\new-etf_insight\daily-telegram-public-channel</URI>
+    <Description>new_etf_insight telegram session (evening 24:00/00:00): collect -> discover -> analyze(LLM) -> Discord digest. 전일 마감분 요약(러너 -3h 귀속).</Description>
+    <URI>\new-etf_insight\daily-telegram-session-evening</URI>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
-      <StartBoundary>2026-07-03T18:00:00</StartBoundary>
+      <StartBoundary>2026-07-03T00:00:00</StartBoundary>
       <Enabled>true</Enabled>
       <ScheduleByDay>
         <DaysInterval>1</DaysInterval>
@@ -32,7 +33,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-telegram-public-channel.ps1"</Arguments>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-telegram-session.ps1" -Session evening</Arguments>
     </Exec>
   </Actions>
 </Task>
