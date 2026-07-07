@@ -1,6 +1,6 @@
 /**
  * DART API 실호출(2026-06-10)로 확정된 키 매핑
- * 출처: scripts/probe-dart.mjs → __tests__/fixtures/
+ * 검증: bs-topn.spec + acnt-*-2025-cfs.json fixture
  */
 
 /** fnlttSinglAcntAll에서 추출할 고정 계정
