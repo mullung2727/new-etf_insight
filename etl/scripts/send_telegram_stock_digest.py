@@ -17,14 +17,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows cp949 가드
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path 보장)
 
-try:
-    from scripts.notify import notify
-except ImportError:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from notify import notify
+from notify import notify  # noqa: E402
+from wl_sqlite import connect_ro  # noqa: E402
 
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
 
@@ -81,8 +78,7 @@ def format_digest(date_kst: str, session: str, rows: list[dict]) -> str | None:
 
 
 def run(date_kst: str, session: str, db_path: Path, dry_run: bool, channel: str | None) -> int:
-    with sqlite3.connect(str(db_path)) as con:
-        con.execute("PRAGMA query_only=ON")
+    with connect_ro(db_path) as con:  # wl_sqlite: query_only + 명시 close (sqlite `with`는 close 안 함)
         rows = fetch_insights(con, date_kst, session)
     msg = format_digest(date_kst, session, rows)
     if msg is None:
@@ -99,7 +95,7 @@ def run(date_kst: str, session: str, db_path: Path, dry_run: bool, channel: str 
 def _self_check() -> None:
     """seed 데이터로 포맷 검증 (LLM/전송 없음)."""
     con = sqlite3.connect(":memory:")
-    tsi = _import_tsi()
+    import telegram_stock_insights as tsi  # scripts/ on path (via _bootstrap)
     tsi.ensure_schema(con)
     tsi.upsert_candidate(con, "2026-07-06", "close", "005930", "삼성전자",
                          mention_channels=["a", "b", "c"], source_post_refs=["a/1"],
@@ -125,15 +121,6 @@ def _self_check() -> None:
     assert format_digest("2026-07-06", "close", []) is None
     print(msg)
     print("\nself-check PASS")
-
-
-def _import_tsi():
-    try:
-        from scripts import telegram_stock_insights as tsi
-    except ImportError:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import telegram_stock_insights as tsi
-    return tsi
 
 
 def main() -> int:

@@ -24,22 +24,13 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows cp949 크래시 가드
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path: etl/·scripts/·src/)
 
-import requests
+import requests  # noqa: E402
 
-_SRC = Path(__file__).resolve().parents[1] / "src"
-try:
-    from new_etf_insight.dart_client import get_api_key
-except ImportError:  # scripts/ 직접 실행 경로 폴백
-    sys.path.insert(0, str(_SRC))
-    from new_etf_insight.dart_client import get_api_key
-
-try:
-    from scripts.wl_sqlite import connect_rw
-except ImportError:
-    from wl_sqlite import connect_rw
+from new_etf_insight.dart_client import get_api_key  # noqa: E402
+from wl_sqlite import connect_rw  # noqa: E402
 
 BASE_URL = "https://opendart.fss.or.kr/api"
 INDX_API_URL = f"{BASE_URL}/fnlttCmpnyIndx.json"
