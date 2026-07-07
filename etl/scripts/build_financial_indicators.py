@@ -43,6 +43,9 @@ IDX_CATEGORIES = ["M210000", "M220000", "M230000", "M240000"]
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "financial_indicators.sqlite3"
 # 현재 상장 종목코드(KRX). corpCode.xml stock_code는 상폐사도 유지하므로 이걸로 교차 필터.
 KRX_OHLCV_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
+# corpCode.xml zip 로컬 캐시 (신규상장/상폐로만 변동 → 하루 1회 갱신 충분)
+CORPCODE_CACHE = Path(__file__).resolve().parents[1] / "db" / "corpcode.zip"
+CORPCODE_TTL_SEC = 24 * 3600
 
 BATCH = 10       # corp_code / 호출 (콤마 다중)
 DELAY = 0.1      # sec / 호출
@@ -233,13 +236,45 @@ def existing_corps(con, table: str, year: str, reprt: str) -> set[str]:
 
 # ── 유니버스 (corpCode.xml) ─────────────────────────────────────────────────────
 
-def fetch_listed_corps(key: str) -> list[tuple[str, str, str]]:
-    """corpCode.xml → 상장사(stock_code 있는 것)만 (corp_code, stock_code, corp_name)."""
+def _download_corpcode(key: str) -> bytes:
     resp = requests.get(CORPCODE_API_URL, params={"crtfc_key": key}, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
-    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-        xml_name = next(n for n in zf.namelist() if n.endswith(".xml"))
-        xml = zf.read(xml_name)
+    return resp.content
+
+
+def _corpcode_zip(
+    key: str,
+    cache_path: Path = CORPCODE_CACHE,
+    ttl_sec: int = CORPCODE_TTL_SEC,
+    downloader=_download_corpcode,
+) -> bytes:
+    """corpCode.xml zip 바이트. cache_path가 ttl 이내면 재사용, 아니면 받아서 캐시.
+
+    corpCode.xml은 신규상장/상폐로만 바뀌어 하루 1회면 충분 — 배치마다 ~수MB zip
+    재다운로드·재파싱 낭비. 캐시 손상 시 zipfile 파싱에서 터지므로 호출부에서 폴백.
+    downloader는 테스트 주입용.
+    """
+    if cache_path.exists() and (time.time() - cache_path.stat().st_mtime) < ttl_sec:
+        return cache_path.read_bytes()
+    data = downloader(key)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_bytes(data)
+    return data
+
+
+def fetch_listed_corps(key: str) -> list[tuple[str, str, str]]:
+    """corpCode.xml → 상장사(stock_code 있는 것)만 (corp_code, stock_code, corp_name)."""
+    try:
+        zip_bytes = _corpcode_zip(key)
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            xml_name = next(n for n in zf.namelist() if n.endswith(".xml"))
+            xml = zf.read(xml_name)
+    except (zipfile.BadZipFile, StopIteration):
+        # 캐시 손상 → 강제 재다운로드 후 1회 재시도
+        CORPCODE_CACHE.unlink(missing_ok=True)
+        with zipfile.ZipFile(io.BytesIO(_corpcode_zip(key))) as zf:
+            xml_name = next(n for n in zf.namelist() if n.endswith(".xml"))
+            xml = zf.read(xml_name)
     root = ET.fromstring(xml)
     out: list[tuple[str, str, str]] = []
     for el in root.iter("list"):
