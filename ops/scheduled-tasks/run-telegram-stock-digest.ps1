@@ -26,14 +26,9 @@ function Invoke-Step {
 }
 
 try {
-  Invoke-Step "discover stock candidates" `
-    ".\.venv\Scripts\python.exe" @("scripts\discover_telegram_stock_candidates.py", "--date", $target, "--session", $session)
-
-  Invoke-Step "analyze candidates (LLM)" `
-    ".\.venv\Scripts\python.exe" @("scripts\telegram_langgraph\telegram_analysis_langgraph.py", "--date", $target, "--session", $session)
-
-  Invoke-Step "send stock digest" `
-    ".\.venv\Scripts\python.exe" @("scripts\send_telegram_stock_digest.py", "--date", $target, "--session", $session, "--channel", "telegram_report")
+  # 오케스트레이션(순서·에러전파)은 run_telegram_pipeline.py 로 이관(단위테스트 있음).
+  Invoke-Step "telegram stock digest pipeline (discover->analyze->digest)" `
+    ".\.venv\Scripts\python.exe" @("scripts\run_telegram_pipeline.py", "--date", $target, "--session", $session, "--channel", "telegram_report")
   exit 0
 } catch {
   $message = "[Telegram 종목요약] $target FAILED`n$($_.Exception.Message)`nlog: $log"

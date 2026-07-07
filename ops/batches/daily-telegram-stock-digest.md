@@ -10,9 +10,10 @@
 
 ```text
 ops/scheduled-tasks/run-telegram-stock-digest.ps1  (당일 KST, session=close)
-  1) discover_telegram_stock_candidates.py   원문 스캔 → 종목후보 upsert (규칙기반, analysis NULL)
-  2) telegram_langgraph/telegram_analysis_langgraph.py   후보 LLM 분석 → analysis 채움
-  3) send_telegram_stock_digest.py           telegram_stock_insights 읽기 → 요약 메시지 → notify
+  → run_telegram_pipeline.py  (오케스트레이션·순서·에러전파, 단위테스트 있음)
+      1) discover_telegram_stock_candidates.py   원문 스캔 → 종목후보 upsert (규칙기반, analysis NULL)
+      2) telegram_langgraph/telegram_analysis_langgraph.py   후보 LLM 분석 → analysis 채움
+      3) send_telegram_stock_digest.py           telegram_stock_insights 읽기 → 요약 메시지 → notify
 ```
 
 - 대상 채널: `etl/scripts/telegram_channels.json`의 `feed_role=discovery_source`.
@@ -48,8 +49,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Test-OpenClawB
 ```
 
 ```bash
-# 수동 단발(개발용, uv). LLM 비용 발생 주의.
-uv run python etl/scripts/discover_telegram_stock_candidates.py --date 2026-07-06 --session close
-uv run python etl/scripts/telegram_langgraph/telegram_analysis_langgraph.py --date 2026-07-06 --session close
-uv run python etl/scripts/send_telegram_stock_digest.py --date 2026-07-06 --session close --dry-run
+# 수동 단발(개발용, uv). LLM 비용 발생 주의. cwd=etl.
+uv run python scripts/run_telegram_pipeline.py --date 2026-07-06 --session close --dry-run
+# 단계 개별 실행도 가능:
+uv run python scripts/discover_telegram_stock_candidates.py --date 2026-07-06 --session close
+uv run python scripts/telegram_langgraph/telegram_analysis_langgraph.py --date 2026-07-06 --session close
+uv run python scripts/send_telegram_stock_digest.py --date 2026-07-06 --session close --dry-run
 ```
