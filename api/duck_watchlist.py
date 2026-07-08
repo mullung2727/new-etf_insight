@@ -39,6 +39,9 @@ KRX_DB_PATH = _resolve_project_path(
 FINANCIAL_DB_PATH = _resolve_project_path(
     os.getenv("FINANCIAL_DB_PATH"), ETL_DB_DIR / "financial_indicators.sqlite3"
 )
+TELEGRAM_DB_PATH = _resolve_project_path(
+    os.getenv("TELEGRAM_DB_PATH"), ETL_DB_DIR / "telegram_public.sqlite3"
+)
 
 
 @contextmanager
@@ -59,6 +62,19 @@ def financial_cursor() -> Iterator[sqlite3.Connection]:
     if not FINANCIAL_DB_PATH.exists():
         raise FileNotFoundError(f"SQLite file not found: {FINANCIAL_DB_PATH}")
     con = sqlite3.connect(str(FINANCIAL_DB_PATH))
+    con.execute("PRAGMA query_only=ON")
+    try:
+        yield con
+    finally:
+        con.close()
+
+
+@contextmanager
+def telegram_cursor() -> Iterator[sqlite3.Connection]:
+    """telegram_public.sqlite3 reader (크로스채널 종목요약). WAL 회피 위해 query_only."""
+    if not TELEGRAM_DB_PATH.exists():
+        raise FileNotFoundError(f"SQLite file not found: {TELEGRAM_DB_PATH}")
+    con = sqlite3.connect(str(TELEGRAM_DB_PATH))
     con.execute("PRAGMA query_only=ON")
     try:
         yield con

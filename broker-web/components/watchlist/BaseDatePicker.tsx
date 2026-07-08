@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { stockHubHref } from "@/lib/stock-hub";
 
 interface Props {
   code: string;
@@ -22,9 +23,7 @@ export default function BaseDatePicker({ code, baseDate, name }: Props) {
       onChange={(e) => {
         const next = e.target.value.replace(/-/g, "");
         if (!next) return;
-        const q = new URLSearchParams({ date: next });
-        if (name) q.set("name", name);
-        router.push(`/watchlist/${code}?${q.toString()}`);
+        router.push(stockHubHref(code, { tab: "chart", date: next, name }));
       }}
       style={{ colorScheme: "dark" }}
       className="bg-transparent border border-primary/30 rounded px-2 py-1 text-[13px] text-white/70 font-terminal cursor-pointer hover:border-primary/50"

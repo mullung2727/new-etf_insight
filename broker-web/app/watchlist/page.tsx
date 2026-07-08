@@ -1,5 +1,6 @@
 import { apiGet } from "@/lib/api-client";
 import { fetchCorpCodes } from "@/lib/dart";
+import { stockHubHref } from "@/lib/stock-hub";
 import Link from "next/link";
 import {
   Table,
@@ -53,7 +54,7 @@ export default async function WatchlistPage() {
                   {codes.map((code) => (
                     <Link
                       key={code}
-                      href={`/watchlist/${code}?date=${date}&name=${encodeURIComponent(nameMap[code] ?? code)}`}
+                      href={stockHubHref(code, { tab: "chart", date, name: nameMap[code] ?? code })}
                     >
                       <Badge variant="secondary" title={code} className="cursor-pointer hover:bg-secondary/80">
                         {nameMap[code] ?? code}

@@ -390,6 +390,14 @@ export async function fetchCompare(
   };
 }
 
+// stock_code(6자리 상장코드) → corp_code(DART 8자리). 미상장/미매칭은 null.
+// 빈 입력은 CorpCode[]의 빈 stock_code 행(비상장)과 오매칭되면 안 되므로 가드.
+export function corpCodeForStock(corps: CorpCode[], stockCode: string): string | null {
+  const code = stockCode.trim();
+  if (!code) return null;
+  return corps.find((c) => c.stock_code === code)?.corp_code ?? null;
+}
+
 export async function fetchCorpCodes(): Promise<CorpCode[]> {
   try {
     const key = getApiKey();

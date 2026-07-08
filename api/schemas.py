@@ -127,3 +127,43 @@ class RankingRow(_Base):
     stock_code: str | None = None
     corp_name: str | None = None
     value: float | None = None
+
+
+class DigestItem(_Base):
+    """텔레그램 크로스채널 요약의 종목 한 건 (analysis JSON 파싱 결과)."""
+
+    ticker: str
+    name: str
+    channels: int                       # 언급 채널 수
+    change_type: str | None = None      # "new" | "continued" | ...
+    change_summary: str | None = None
+    themes: list[str] = []
+
+
+class DigestLatest(_Base):
+    """가장 최근 (date, session)의 분석완료 종목요약. 데이터 없으면 엔드포인트가 null 반환."""
+
+    date: str
+    session: str
+    count: int
+    items: list[DigestItem]
+
+
+class TelegramMention(_Base):
+    """한 종목의 텔레그램 언급 1건(= 1 date_kst/session). analysis 없으면 change_* 는 null."""
+
+    date_kst: str
+    session: str
+    channels: list[str] = []            # 소스채널명
+    post_refs: list[str] = []           # 원문 post_ref ("channel/postid")
+    change_type: str | None = None
+    change_summary: str | None = None
+    themes: list[str] = []
+
+
+class ThemePeer(_Base):
+    """대상 종목과 텔레그램 테마를 공유하는 다른 종목."""
+
+    ticker: str
+    name: str
+    themes: list[str] = []              # 공유 테마만

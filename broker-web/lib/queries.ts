@@ -99,6 +99,44 @@ export interface RankingRow {
   value: number | null;
 }
 
+export interface DigestItem {
+  ticker: string;
+  name: string;
+  channels: number;
+  change_type: string | null;
+  change_summary: string | null;
+  themes: string[];
+}
+export interface DigestLatest {
+  date: string;
+  session: string;
+  count: number;
+  items: DigestItem[];
+}
+export const getLatestDigest = () => apiGetOrNull<DigestLatest>("/telegram/digest/latest");
+
+export interface TelegramMention {
+  date_kst: string;
+  session: string;
+  channels: string[];
+  post_refs: string[];
+  change_type: string | null;
+  change_summary: string | null;
+  themes: string[];
+}
+export const getTelegramMentions = (
+  ticker: string,
+  params?: { from?: string; to?: string; session?: string },
+) => apiGet<TelegramMention[]>(`/telegram/mentions/${ticker}`, params);
+
+export interface ThemePeer {
+  ticker: string;
+  name: string;
+  themes: string[];
+}
+export const getThemePeers = (ticker: string) =>
+  apiGet<ThemePeer[]>(`/telegram/theme-peers/${ticker}`);
+
 export const getRankingMetrics = () => apiGet<MetricInfo[]>("/rankings/metrics");
 export const getRankingPeriods = () => apiGet<PeriodInfo[]>("/rankings/periods");
 export const getRankings = (params: {
