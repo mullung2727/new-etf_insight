@@ -26,6 +26,8 @@ if hasattr(sys.stdout, "reconfigure"):
 KST = dt.timezone(dt.timedelta(hours=9))
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
 FETCH_TIMEOUT = 40
+FETCH_RETRIES = 2  # 일시적 read timeout 흡수 (총 3회 시도)
+FETCH_RETRY_BACKOFF = 2.0  # 초, attempt마다 선형 증가
 PAGE_DELAY = 0.3
 
 _BLOCK_START_RE = re.compile(r'<div class="tgme_widget_message[^>]*data-post="([^"]+)"')
@@ -72,13 +74,32 @@ def normalize_channel(channel_url: str | None, channel: str | None) -> str:
     return channel_url.rstrip("/").split("/")[-1].lstrip("@")
 
 
-def fetch(channel: str, before: int | None = None, timeout: int = FETCH_TIMEOUT) -> str:
+def fetch(
+    channel: str,
+    before: int | None = None,
+    timeout: int = FETCH_TIMEOUT,
+    *,
+    _opener=urllib.request.urlopen,
+    _sleep=time.sleep,
+) -> str:
+    """t.me/s 한 페이지 HTML. read timeout 등 일시적 네트워크 오류는 재시도.
+
+    한 채널의 간헐 timeout이 run_telegram_channels 세션 전체를 FAILED로 만들던 문제.
+    """
     url = f"https://t.me/s/{channel}"
     if before:
         url += f"?before={before}"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8", "ignore")
+    last: OSError | None = None
+    for attempt in range(FETCH_RETRIES + 1):
+        try:
+            with _opener(req, timeout=timeout) as r:
+                return r.read().decode("utf-8", "ignore")
+        except OSError as exc:  # socket.timeout/URLError 모두 OSError 하위
+            last = exc
+            if attempt < FETCH_RETRIES:
+                _sleep(FETCH_RETRY_BACKOFF * (attempt + 1))
+    raise last  # type: ignore[misc]
 
 
 def clean_text(raw: str) -> str:

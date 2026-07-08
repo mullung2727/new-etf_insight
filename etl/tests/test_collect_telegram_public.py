@@ -17,6 +17,7 @@ from scripts.collect_telegram_public import (
     crawl_date,
     crawl_range,
     ensure_schema,
+    fetch,
     normalize_channel,
     parse_messages,
     upsert_channel,
@@ -53,6 +54,44 @@ class NormalizeChannelTest(unittest.TestCase):
     def test_requires_one_of(self):
         with self.assertRaises(ValueError):
             normalize_channel(None, None)
+
+
+class _FakeResp:
+    def __init__(self, body: str):
+        self._body = body.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self._body
+
+
+class FetchRetryTest(unittest.TestCase):
+    """t.me/s 간헐 read timeout이 채널 전체·세션을 죽이면 안 됨 → fetch 재시도."""
+
+    def test_retries_transient_timeout_then_succeeds(self):
+        calls = {"n": 0}
+
+        def opener(req, timeout=40):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise TimeoutError("The read operation timed out")
+            return _FakeResp("<html>ok</html>")
+
+        body = fetch("getfeed", _opener=opener, _sleep=lambda s: None)
+        self.assertEqual(body, "<html>ok</html>")
+        self.assertEqual(calls["n"], 2)  # 1 fail + 1 success
+
+    def test_raises_after_exhausting_retries(self):
+        def opener(req, timeout=40):
+            raise TimeoutError("The read operation timed out")
+
+        with self.assertRaises(TimeoutError):
+            fetch("getfeed", _opener=opener, _sleep=lambda s: None)
 
 
 class CleanTextTest(unittest.TestCase):
