@@ -44,13 +44,15 @@ _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 def _is_retryable_send(exc: Exception) -> bool:
     """일시적(재시도 가치 있음) 전송 오류인가.
 
-    429(rate-limit)/5xx(서버) 또는 네트워크/타임아웃은 재시도. 4xx(잘못된 웹훅 등)는
-    영구 오류라 재시도 무의미 → 바로 False로 스킵.
+    서버가 **확실히 미처리**한 경우만 재시도 — 429(rate-limit)/5xx(서버 거부) +
+    연결단계 실패(ConnectionError, ConnectTimeout 포함). ReadTimeout 은 서버가 이미
+    메시지를 받아 처리했을 수 있어(웹훅은 멱등키 없음) 재시도하면 **중복 전송**이 되므로
+    제외. 4xx(잘못된 웹훅 등)도 영구 오류라 스킵.
     """
     if isinstance(exc, requests.exceptions.HTTPError):
         resp = exc.response
         return resp is not None and resp.status_code in _RETRYABLE_STATUS
-    return isinstance(exc, requests.exceptions.RequestException)
+    return isinstance(exc, requests.exceptions.ConnectionError)
 
 
 def send_discord(message: str, webhook_url: str | None = None, *, _sleep=time.sleep) -> bool:

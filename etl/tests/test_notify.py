@@ -79,6 +79,18 @@ class TestSendDiscord(unittest.TestCase):
         self.assertEqual(post.call_count, 3)  # 총 3회 후 포기
         self.assertEqual(sleeps, [2.0, 4.0])
 
+    def test_does_not_retry_on_read_timeout(self):
+        # ReadTimeout = 서버가 이미 처리했을 수 있음 → 재시도 시 중복 전송 → 제외
+        sleeps: list[float] = []
+        with patch(
+            "scripts.notify.requests.post",
+            side_effect=requests.exceptions.ReadTimeout("slow"),
+        ) as post:
+            ok = send_discord("x", webhook_url="https://h", _sleep=sleeps.append)
+        self.assertFalse(ok)
+        self.assertEqual(post.call_count, 1)  # 재시도 없음 (중복 방지)
+        self.assertEqual(sleeps, [])
+
     def test_does_not_retry_on_4xx(self):
         resp_4xx = MagicMock()
         resp_4xx.raise_for_status.side_effect = _http_error(404)  # 잘못된 웹훅 = 영구
