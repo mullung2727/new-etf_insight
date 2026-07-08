@@ -11,12 +11,18 @@ from scripts.pdf_langgraph.pdf_analysis_langgraph import (
     CORRECTION_UPDATE_SCHEMA_PATH,
     EXTERNAL_RESEARCH_SCHEMA_PATH,
     SUMMARY_SCHEMA_PATH,
+    build_external_research_source_context,
+    discover_fnindex_holdings,
+    discover_official_holding_sources,
     call_codex,
     call_llm,
     enrich_missing_holding_identifiers,
     extract_classification_hints,
     normalize_summary,
+    prepare_external_research,
+    research_external_holdings,
     review_correction_filing,
+    route_holdings,
     update_record_from_correction,
 )
 from new_etf_insight.llm import generate_json, get_provider
@@ -531,6 +537,192 @@ class CorrectionReviewTest(unittest.TestCase):
         self.assertIsNone(summary["holdings"]["items"][0]["exchange"])
         self.assertIn("non_theme_bucket_normalized_to_none", warnings)
         self.assertIn("holding_ticker_blank_normalized_to_null", warnings)
+
+
+
+
+    def test_routes_weightless_pdf_holdings_to_external_research(self) -> None:
+        route = route_holdings(
+            {
+                "summary": {
+                    "holdings": {
+                        "available_in_pdf": True,
+                        "items": [
+                            {"name": "Applied Optoelectronics Inc", "ticker": "AAOI", "exchange": "NASDAQ", "weight": None}
+                        ],
+                    }
+                }
+            }
+        )
+
+        self.assertEqual(route, "prepare_external_research")
+
+    def test_routes_weighted_pdf_holdings_to_finalize(self) -> None:
+        route = route_holdings(
+            {
+                "summary": {
+                    "holdings": {
+                        "available_in_pdf": True,
+                        "items": [
+                            {"name": "삼성전자", "ticker": "005930", "exchange": "KOSPI", "weight": "10"}
+                        ],
+                    }
+                }
+            }
+        )
+
+        self.assertEqual(route, "finalize_pdf_result")
+
+    def test_skips_fnindex_discovery_for_non_fnguide_provider(self) -> None:
+        class FailingSession:
+            def get(self, url, **kwargs):
+                raise AssertionError("FnIndex should not be queried for non-FnGuide indices")
+
+        result = discover_fnindex_holdings(
+            {
+                "fund_name": "HANARO 미국 AI 광통신 TOP10",
+                "asset_manager": "NH-Amundi 자산운용",
+                "index": {"name": "INDXX US AI Optical Communication Top10 Index", "provider": "INDXX"},
+            },
+            session=FailingSession(),
+        )
+
+        self.assertIsNone(result)
+    def test_discovers_fnindex_holdings_from_scored_index_candidate(self) -> None:
+        class FakeResponse:
+            def __init__(self, payload=None, text=""):
+                self._payload = payload
+                self.text = text
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return self._payload
+
+        class FakeSession:
+            def get(self, url, **kwargs):
+                return FakeResponse(
+                    text='{"value":"FI00.WLT.KB5","label":"FnGuide 네트워크 인프라 지수"}'
+                )
+
+            def post(self, url, **kwargs):
+                self.post_kwargs = kwargs
+                return FakeResponse(
+                    payload=[
+                        {"CMP_CD": "A000660", "CMP_NM": "SK하이닉스", "WE": 23.46},
+                        {"CMP_CD": "A005930", "CMP_NM": "삼성전자", "WE": 22.17},
+                    ]
+                )
+
+        result = discover_fnindex_holdings(
+            {
+                "fund_name": "KoAct 광통신&위성네트워크",
+                "asset_manager": "삼성액티브자산운용",
+                "index": {"name": "FnGuide 네트워크 인프라 지수", "provider": "FnGuide"},
+            },
+            session=FakeSession(),
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["index_code"], "FI00.WLT.KB5")
+        self.assertEqual(result["source_url"], "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.KB5")
+        self.assertEqual(result["items"][0], {"name": "SK하이닉스", "ticker": "000660", "exchange": None, "weight": 23.46})
+
+    def test_official_source_node_fills_holdings_without_llm_research(self) -> None:
+        state = {
+            "summary": {
+                "fund_name": "KoAct 광통신&위성네트워크",
+                "asset_manager": "삼성액티브자산운용",
+                "index": {"name": "FnGuide 네트워크 인프라 지수", "provider": "FnGuide"},
+                "market_exposure": {"primary_country": "KR"},
+                "holdings": {"available_in_pdf": False, "items": [], "where_to_find_more": []},
+                "missing_info": [],
+            },
+            "validation_warnings": [],
+            "official_source_candidates": [],
+            "route": "external_research_required",
+        }
+
+        with patch(
+            "scripts.pdf_langgraph.pdf_analysis_langgraph.discover_fnindex_holdings",
+            return_value={
+                "holdings_found": True,
+                "weights_found": True,
+                "source_url": "https://www.fnindex.co.kr/overview/detail/I/FI00.WLT.KB5",
+                "source_name": "FnGuide 네트워크 인프라 지수",
+                "source_type": "index_page",
+                "as_of_date": None,
+                "items": [{"name": "SK하이닉스", "ticker": "000660", "exchange": None, "weight": 23.46}],
+                "missing_info": [],
+                "provider": "FnIndex",
+                "index_code": "FI00.WLT.KB5",
+            },
+        ):
+            result = discover_official_holding_sources(state)
+
+        self.assertEqual(result["route"], "external_research_completed")
+        self.assertEqual(result["summary"]["holdings"]["items"][0]["name"], "SK하이닉스")
+        self.assertEqual(result["official_source_candidates"][0]["index_code"], "FI00.WLT.KB5")
+    def test_external_research_prompt_runs_without_where_to_find_more(self) -> None:
+        state = {
+            "summary": {
+                "fund_name": "KoAct 테스트 ETF",
+                "asset_manager": "테스트운용",
+                "index": {"name": "테스트 지수", "provider": "테스트 산출기관"},
+                "holdings": {"available_in_pdf": False, "items": [], "where_to_find_more": []},
+                "missing_info": [],
+            },
+            "source": {
+                "rcept_no": "20260706000006",
+                "rcept_dt": "20260706",
+                "corp_name": "테스트운용",
+                "report_nm": "투자설명서",
+                "fund_code": "EV488",
+            },
+        }
+
+        result = prepare_external_research(state)
+
+        self.assertEqual(result["route"], "external_research_required")
+        self.assertIn("KoAct 테스트 ETF", result["research_prompt"])
+        self.assertIn("DART 공시: https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260706000006", result["research_prompt"])
+        self.assertIn("PDF에서 구체 출처를 제시하지 못함", result["research_prompt"])
+        self.assertNotIn("외부 검색 단서 부족", result["summary"].get("missing_info", []))
+
+    def test_builds_external_research_source_context(self) -> None:
+        context = build_external_research_source_context(
+            {
+                "rcept_no": "20260706000006",
+                "rcept_dt": "20260706",
+                "corp_name": "삼성액티브자산운용",
+                "report_nm": "투자설명서",
+                "fund_code": "EV488",
+            }
+        )
+
+        self.assertIn("https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260706000006", context)
+        self.assertIn("펀드코드: EV488", context)
+
+    def test_empty_external_research_keeps_pdf_holdings(self) -> None:
+        pdf_items = [
+            {"name": "Applied Optoelectronics Inc", "ticker": "AAOI", "exchange": "NASDAQ", "weight": None}
+        ]
+        state = {
+            "summary": {"holdings": {"available_in_pdf": True, "items": pdf_items}, "missing_info": []},
+            "validation_warnings": [],
+            "research_prompt": "find holdings",
+            "route": "external_research_required",
+        }
+
+        with patch(
+            "scripts.pdf_langgraph.pdf_analysis_langgraph.call_llm",
+            return_value='{"source_name": null, "source_url": null, "as_of_date": null, "items": []}',
+        ):
+            result = research_external_holdings(state)
+
+        self.assertEqual(result["route"], "external_research_completed")
+        self.assertEqual(result["summary"]["holdings"]["items"], pdf_items)
 
     def test_normalizes_theme_bucket_none_for_theme(self) -> None:
         summary, warnings = normalize_summary(

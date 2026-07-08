@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import re
 import json
+from html import unescape
 from pathlib import Path
 from typing import Any, TypedDict
 import argparse
 
+import requests
 from langgraph.graph import END, StateGraph
 
 from new_etf_insight.dart_viewer import fetch_dart_viewer_text
@@ -15,6 +17,129 @@ from new_etf_insight.holding_identifier import HoldingIdentifierResolver
 from new_etf_insight.llm import generate_json
 from new_etf_insight.pdf_text import extract_pdf_text
 
+
+
+FNINDEX_INFO_URLS = [
+    "https://www.fnindex.co.kr/overview/info/TIS",
+]
+FNINDEX_DETAIL_BASE_URL = "https://www.fnindex.co.kr/overview/detail/I/{code}"
+FNINDEX_DATA_URL = "https://www.fnindex.co.kr/api/getData"
+REQUEST_TIMEOUT_SECONDS = 20
+
+
+def normalize_search_text(value: str | None) -> str:
+    return re.sub(r"[^0-9A-Za-z가-힣]+", "", value or "").lower()
+
+
+def extract_search_tokens(*values: str | None) -> list[str]:
+    stopwords = {"증권", "상장", "지수", "투자", "신탁", "주식", "액티브", "인덱스", "fnguide", "koact"}
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for token in re.findall(r"[0-9A-Za-z가-힣]+", value or ""):
+            normalized = normalize_search_text(token)
+            if len(normalized) < 2 or normalized in stopwords or normalized in seen:
+                continue
+            seen.add(normalized)
+            tokens.append(normalized)
+    return tokens
+
+
+def score_index_candidate(name: str, tokens: list[str]) -> int:
+    normalized_name = normalize_search_text(name)
+    return sum(1 for token in tokens if token and token in normalized_name)
+
+
+def parse_fnindex_candidates(html: str) -> list[dict]:
+    decoded = unescape(html)
+    candidates: dict[str, dict] = {}
+
+    for match in re.finditer(r'"value"\s*:\s*"(FI[^"]+)"\s*,\s*"label"\s*:\s*"([^"]+)"', decoded):
+        code, name = match.groups()
+        candidates[code] = {"code": code, "name": name}
+
+    for match in re.finditer(r'"(?:IDX_CD|IDX_CD2|F16013)"\s*:\s*"(FI[^"]+)"[^{}]{0,300}?"(?:IDX_NM|IDX_NM_KOR|F16002)"\s*:\s*"([^"]+)"', decoded):
+        code, name = match.groups()
+        candidates.setdefault(code, {"code": code, "name": name})
+
+    return list(candidates.values())
+
+
+def fetch_fnindex_constituents(index_code: str, session: Any = requests) -> list[dict]:
+    response = session.post(
+        FNINDEX_DATA_URL,
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "Mozilla/5.0"},
+        data={"url": f"/FI/cons/{index_code}/weight"},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    rows = response.json()
+    if not isinstance(rows, list):
+        return []
+
+    items = []
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("CMP_NM"):
+            continue
+        ticker = str(row.get("CMP_CD") or "")
+        if ticker.startswith("A") and len(ticker) == 7:
+            ticker = ticker[1:]
+        items.append(
+            {
+                "name": row.get("CMP_NM"),
+                "ticker": ticker or None,
+                "exchange": None,
+                "weight": row.get("WE"),
+            }
+        )
+    return items
+
+
+def discover_fnindex_holdings(summary: dict, session: Any = requests) -> dict | None:
+    index = summary.get("index") or {}
+    provider_hint = normalize_search_text(str(index.get("provider") or "") + " " + str(index.get("name") or ""))
+    if not any(hint in provider_hint for hint in ("fnguide", "fnindex", "에프앤가이드")):
+        return None
+    tokens = extract_search_tokens(
+        summary.get("fund_name"),
+        summary.get("asset_manager"),
+        index.get("name"),
+        index.get("provider"),
+    )
+    if not tokens:
+        return None
+
+    scored_candidates: list[tuple[int, dict]] = []
+    for url in FNINDEX_INFO_URLS:
+        response = session.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        for candidate in parse_fnindex_candidates(response.text):
+            score = score_index_candidate(candidate["name"], tokens)
+            if score > 0:
+                scored_candidates.append((score, candidate))
+
+    seen: set[str] = set()
+    for _, candidate in sorted(scored_candidates, key=lambda item: item[0], reverse=True)[:10]:
+        code = candidate["code"]
+        if code in seen:
+            continue
+        seen.add(code)
+        items = fetch_fnindex_constituents(code, session=session)
+        if items:
+            return {
+                "holdings_found": True,
+                "weights_found": any(item.get("weight") is not None for item in items),
+                "source_url": FNINDEX_DETAIL_BASE_URL.format(code=code),
+                "source_name": candidate["name"],
+                "source_type": "index_page",
+                "as_of_date": None,
+                "items": items,
+                "missing_info": [],
+                "provider": "FnIndex",
+                "index_code": code,
+            }
+
+    return None
 
 SUMMARY_SCHEMA_PATH = Path(__file__).with_name("summary_schema.json")
 EXTERNAL_RESEARCH_SCHEMA_PATH = Path(__file__).with_name("external_research_schema.json")
@@ -32,6 +157,7 @@ class State(TypedDict):
     validation_warnings: list[str]
     route: str
     research_prompt: str
+    official_source_candidates: list[dict]
     source: dict
     holding_identifier_resolver: Any
 
@@ -285,38 +411,46 @@ def normalize_summary(summary: dict) -> tuple[dict, list[str]]:
     return normalized, warnings
 
 def route_holdings(state: State) -> str:
-    available = state["summary"]["holdings"]["available_in_pdf"]
+    holdings = state["summary"]["holdings"]
+    available = holdings["available_in_pdf"]
+    items = holdings.get("items") or []
+    has_weight = any(item.get("weight") is not None for item in items if isinstance(item, dict))
 
-    if available:
+    if available and items and has_weight:
         return "finalize_pdf_result"
 
     return "prepare_external_research"
-
 def finalize_pdf_result(state: State) -> State:
     return {
         **state,
         "route": "pdf_holdings_available",
     }
 
+def build_external_research_source_context(source: dict) -> str:
+    if not source:
+        return "- 없음"
+
+    lines = []
+    rcept_no = source.get("rcept_no")
+    if rcept_no:
+        lines.append(f"- DART 공시: https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}")
+
+    for label, key in (
+        ("공시일", "rcept_dt"),
+        ("운용사", "corp_name"),
+        ("보고서명", "report_nm"),
+        ("펀드코드", "fund_code"),
+    ):
+        value = source.get(key)
+        if value:
+            lines.append(f"- {label}: {value}")
+
+    return "\n".join(lines) if lines else "- 없음"
+
 def prepare_external_research(state: State) -> State:
     summary = state["summary"]
     holdings = summary["holdings"]
-    where_to_find_more = holdings["where_to_find_more"]
-    if not where_to_find_more:
-        summary = {
-            **summary,
-            "missing_info": [
-                *summary.get("missing_info", []),
-                "구성종목/비중 외부 검색 단서 부족",
-            ],
-        }
-
-        return {
-            **state,
-            "summary": summary,
-            "route": "external_research_required",
-            "research_prompt": "",
-        }
+    where_to_find_more = holdings.get("where_to_find_more") or []
     
     template = load_prompt_template("external_research.md")
     index = summary.get('index', {})
@@ -328,7 +462,8 @@ def prepare_external_research(state: State) -> State:
         index_provider=index.get("provider"),
         where_to_find_more="\n".join(
             f"- {item}" for item in where_to_find_more
-        ),
+        ) or "- PDF에서 구체 출처를 제시하지 못함. 아래 공시/ETF/지수 정보를 기준으로 공식 출처를 찾아라.",
+        source_context=build_external_research_source_context(state.get("source") or {}),
     ).strip()
 
     return {
@@ -338,7 +473,69 @@ def prepare_external_research(state: State) -> State:
         "research_prompt": research_prompt,
     }
 
+
+def discover_official_holding_sources(state: State) -> State:
+    try:
+        research_result = discover_fnindex_holdings(state["summary"])
+    except requests.RequestException as exc:
+        return {
+            **state,
+            "official_source_candidates": [
+                *state.get("official_source_candidates", []),
+                {"provider": "FnIndex", "status": "failed", "error": str(exc)},
+            ],
+        }
+
+    if not research_result:
+        return state
+
+    summary = state["summary"]
+    holdings = summary["holdings"]
+    resolved_missing = {"개별 구성종목명"}
+    if research_result.get("weights_found"):
+        resolved_missing.add("개별 구성종목별 비중")
+    missing_info = [
+        item for item in summary.get("missing_info", []) if item not in resolved_missing
+    ]
+    holdings_summary_parts = [
+        f"공식 출처: {research_result['source_name']}",
+        f"URL: {research_result['source_url']}",
+        f"기준일: {research_result['as_of_date']}",
+    ]
+    summary, warnings = normalize_summary(
+        {
+            **summary,
+            "missing_info": missing_info,
+            "holdings": {
+                **holdings,
+                "items": research_result["items"],
+                "summary": ", ".join(
+                    part for part in holdings_summary_parts if not part.endswith(": None")
+                ),
+            },
+        }
+    )
+
+    return {
+        **state,
+        "summary": summary,
+        "validation_warnings": [*state.get("validation_warnings", []), *warnings],
+        "official_source_candidates": [
+            *state.get("official_source_candidates", []),
+            {
+                "provider": research_result["provider"],
+                "index_code": research_result["index_code"],
+                "source_url": research_result["source_url"],
+                "source_name": research_result["source_name"],
+                "item_count": len(research_result["items"]),
+            },
+        ],
+        "route": "external_research_completed",
+    }
 def research_external_holdings(state: State) -> State:
+    if state.get("route") == "external_research_completed":
+        return state
+
     if not state["research_prompt"]:
         return state
 
@@ -352,6 +549,12 @@ def research_external_holdings(state: State) -> State:
 
     summary = state["summary"]
     holdings = summary["holdings"]
+
+    external_items = research_result.get("items") or []
+    if not external_items:
+        # 외부 리서치가 종목을 못 찾으면 PDF에서 확보한 종목을 덮어쓰지 않는다.
+        return {**state, "route": "external_research_completed"}
+
     missing_info = [
         item
         for item in summary.get("missing_info", [])
@@ -369,7 +572,7 @@ def research_external_holdings(state: State) -> State:
             "missing_info": missing_info,
             "holdings": {
                 **holdings,
-                "items": research_result["items"],
+                "items": external_items,
                 "summary": ", ".join(
                     part for part in holdings_summary_parts if not part.endswith(": None")
                 ),
@@ -424,6 +627,7 @@ def build_graph():
     graph.add_edge("call_llm", "parse_summary_json")
     graph.add_node("finalize_pdf_result", finalize_pdf_result)
     graph.add_node("prepare_external_research", prepare_external_research)
+    graph.add_node("discover_official_holding_sources", discover_official_holding_sources)
     graph.add_node("research_external_holdings", research_external_holdings)
     graph.add_node("enrich_missing_holding_identifiers", enrich_missing_holding_identifiers)
 
@@ -437,7 +641,8 @@ def build_graph():
     )
 
     graph.add_edge("finalize_pdf_result", "enrich_missing_holding_identifiers")
-    graph.add_edge("prepare_external_research", "research_external_holdings")
+    graph.add_edge("prepare_external_research", "discover_official_holding_sources")
+    graph.add_edge("discover_official_holding_sources", "research_external_holdings")
     graph.add_edge("research_external_holdings", "enrich_missing_holding_identifiers")
     graph.add_edge("enrich_missing_holding_identifiers", END)
 
@@ -463,6 +668,7 @@ def analyze_pdf(
             "validation_warnings": [],
             "route": "",
             "research_prompt": "",
+            "official_source_candidates": [],
             "source": source or {},
             "holding_identifier_resolver": holding_identifier_resolver,
         }
@@ -475,6 +681,7 @@ def analyze_pdf(
         "summary": result["summary"],
         "validation_warnings": result["validation_warnings"],
         "research_prompt": result["research_prompt"],
+        "official_source_candidates": result.get("official_source_candidates", []),
     }
 
     if result["source"]:
