@@ -267,8 +267,10 @@ class TestScheduledTaskContract(unittest.TestCase):
         args = re.findall(r'"([^"]*)"', match.group(1))
         self.assertEqual(args[0], "scripts\\run_close_bet.py")
 
+        # score_threshold 는 close_bet.json(config)이 소스 → ps1 인자에서 제거됨.
+        self.assertNotIn("--score-threshold", text)
         parsed = parse_args(args[1:])
-        self.assertEqual(parsed.score_threshold, 70)
+        self.assertIsNone(parsed.score_threshold)  # 미지정 → main 에서 config 값
         self.assertEqual(parsed.dry_run, "false")
         self.assertEqual(parsed.broker_url, "http://localhost:8001")
 

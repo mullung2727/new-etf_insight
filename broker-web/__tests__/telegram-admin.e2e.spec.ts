@@ -23,7 +23,7 @@ test.afterAll(async () => {
 });
 
 test("표에 채널·URL·종목탐색 체크박스 렌더", async ({ page }) => {
-  await page.goto("/admin/telegram");
+  await page.goto("/admin/settings");
   await expect(page.getByRole("heading", { name: "텔레그램 채널 관리" })).toBeVisible();
   // getfeed 행 URL 링크
   await expect(page.getByRole("link", { name: /t\.me\/s\/getfeed/ })).toBeVisible();
@@ -36,7 +36,7 @@ test("표에 채널·URL·종목탐색 체크박스 렌더", async ({ page }) =>
 });
 
 test("단일 저장 버튼: 편집 시 활성화, 저장 후 유지", async ({ page }) => {
-  await page.goto("/admin/telegram");
+  await page.goto("/admin/settings");
   const saveBtn = page.getByRole("button", { name: "저장" });
   await expect(saveBtn).toBeDisabled(); // 변경 없으면 비활성
 
@@ -56,7 +56,7 @@ test("단일 저장 버튼: 편집 시 활성화, 저장 후 유지", async ({ p
 });
 
 test("추가 → 삭제(삭제섹션 이동) → 복구 전체 흐름", async ({ page }) => {
-  await page.goto("/admin/telegram");
+  await page.goto("/admin/settings");
 
   // 추가
   await page.getByPlaceholder(/채널 URL 붙여넣기/).fill("https://t.me/s/e2e_ui_channel_zzz");

@@ -43,10 +43,12 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
         normalize_order_no,
     )
     from scripts.wl_sqlite import connect_ro, connect_rw
+    from scripts.close_bet_config import load as load_close_bet_config
 except ImportError:
     from notify import send_discord
     from run_verify import fetch_order_history, mark_confirmed, normalize_order_no
     from wl_sqlite import connect_ro, connect_rw
+    from close_bet_config import load as load_close_bet_config
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
@@ -272,12 +274,13 @@ def upsert_order_result(watchlist_db: Path, row: dict) -> None:
 # ── 예산 배분 / 수량 환산 ──────────────────────────────────────────────────────
 
 # 총 500만원. 선정 종목 수 N별 종목당 예산(1→300만, 2→200만, 3→500만÷3 floor).
+# config(close_bet.json) 폴백 기본값과 동일. 실사용 예산은 main 에서 config 로 주입.
 _BUDGET_BY_COUNT = {1: 3_000_000, 2: 2_000_000, 3: 5_000_000 // 3}
 
 
-def budget_for(n: int) -> int:
+def budget_for(n: int, budget_map: dict[int, int] = _BUDGET_BY_COUNT) -> int:
     """선정 종목 수 N별 종목당 예산(원). 정의역 밖(N∉{1,2,3})은 0."""
-    return _BUDGET_BY_COUNT.get(n, 0)
+    return budget_map.get(n, 0)
 
 
 def qty_from_budget(budget: int, price: int) -> int:
@@ -458,7 +461,8 @@ def confirm_fills(
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="종가배팅 주문 배치")
     parser.add_argument("--date", help="대상 날짜 YYYYMMDD; 기본: 오늘(Asia/Seoul)")
-    parser.add_argument("--score-threshold", type=int, default=70)
+    parser.add_argument("--score-threshold", type=int, default=None,
+                        help="미지정 시 close_bet.json 의 score_threshold 사용")
     parser.add_argument("--order-time", default="15:19:00")
     parser.add_argument("--order-deadline-time", default="15:20:00")
     parser.add_argument("--allow-order-outside-close-window", action="store_true")
@@ -475,6 +479,11 @@ def main() -> None:
     load_dotenv(ENV_PATH)
 
     args = parse_args()
+
+    # 전략값 config(close_bet.json). CLI 로 주면 override, 없으면 config 값.
+    cfg = load_close_bet_config()
+    if args.score_threshold is None:
+        args.score_threshold = cfg["score_threshold"]
 
     dry_run = args.dry_run.lower() not in ("false", "0", "no")
     date = normalize_date_key(args.date)
@@ -520,7 +529,7 @@ def main() -> None:
         print(f"[close_bet] ABORT: 주문가능금액(예수금) 조회 실패")
         send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\n주문가능금액(예수금) 조회 실패")
         sys.exit(1)
-    strat_budget = budget_for(n_sel)
+    strat_budget = budget_for(n_sel, cfg["budget_by_count"])
     budget = min(strat_budget, cash // n_sel)
     print(f"[close_bet] 후보 {len(pool)}건 → 선정 {n_sel}건 (threshold={args.score_threshold}), "
           f"가용 {cash:,}원, 전략 종목당 {strat_budget:,}원 → 종목당 예산 {budget:,}원")

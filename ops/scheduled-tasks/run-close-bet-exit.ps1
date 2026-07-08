@@ -10,8 +10,6 @@ Set-Location $etlDir
 & ".venv\Scripts\python.exe" "scripts\run_close_bet_exit.py" `
   "--dry-run" "false" `
   "--broker-url" "http://localhost:8001" `
-  "--tp" "0.05" `
-  "--sl" "0.03" `
   "--poll-sec" "3" `
   "--force-exit-time" "15:19:00" `
   "--stop-time" "15:25:00" 2>&1 | Tee-Object -FilePath $log

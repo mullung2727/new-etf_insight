@@ -9,8 +9,6 @@ Set-Location $etlDir
 
 $pythonArgs = @(
   "scripts\run_close_bet.py",
-  "--score-threshold",
-  "70",
   "--dry-run",
   "false",
   "--broker-url",

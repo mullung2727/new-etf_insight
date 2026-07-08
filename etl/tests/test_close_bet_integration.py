@@ -240,6 +240,7 @@ class TestDryRun(unittest.TestCase):
              patch("scripts.run_close_bet.DEFAULT_KRX_DB", _NO_KRX), \
              patch("scripts.run_close_bet._now_seoul", return_value=_DEFAULT_NOW), \
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=5000), \
+             patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=1_000_000_000), \
              patch("scripts.run_close_bet.place_order_via_broker", side_effect=fake_place), \
              patch("scripts.run_close_bet.confirm_fills", return_value={}), \
              patch("scripts.run_close_bet.load_dotenv"), \

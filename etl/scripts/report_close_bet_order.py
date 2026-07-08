@@ -8,8 +8,10 @@ from pathlib import Path
 
 try:
     from scripts.run_close_bet import DEFAULT_WATCHLIST_DB, load_close_bet_status, normalize_date_key
+    from scripts.close_bet_config import load as load_close_bet_config
 except ImportError:
     from run_close_bet import DEFAULT_WATCHLIST_DB, load_close_bet_status, normalize_date_key
+    from close_bet_config import load as load_close_bet_config
 
 
 def _task_status(task_name: str) -> dict:
@@ -62,12 +64,16 @@ def build_report(status: dict, task: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Report close-bet order status")
     parser.add_argument("--date", help="YYYYMMDD or YYYY-MM-DD; default today KST")
-    parser.add_argument("--score-threshold", type=int, default=70)
+    parser.add_argument("--score-threshold", type=int, default=None,
+                        help="미지정 시 close_bet.json 의 score_threshold 사용")
     parser.add_argument("--watchlist-db", type=Path, default=DEFAULT_WATCHLIST_DB)
     parser.add_argument("--log-dir", type=Path, default=Path("logs"))
     parser.add_argument("--task-name", default=r"\OpenClaw\close-bet-order")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
+
+    if args.score_threshold is None:
+        args.score_threshold = load_close_bet_config()["score_threshold"]
 
     date_key = normalize_date_key(args.date)
     status = load_close_bet_status(

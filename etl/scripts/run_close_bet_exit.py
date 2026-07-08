@@ -34,11 +34,13 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.run_close_bet import ensure_exit_columns
     from scripts.run_verify import normalize_order_no
     from scripts.wl_sqlite import connect_ro, connect_rw
+    from scripts.close_bet_config import load as load_close_bet_config
 except ImportError:
     from notify import send_discord
     from run_close_bet import ensure_exit_columns
     from run_verify import normalize_order_no
     from wl_sqlite import connect_ro, connect_rw
+    from close_bet_config import load as load_close_bet_config
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
@@ -478,8 +480,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="종가베팅 청산 워커 (판정+실매도)")
     parser.add_argument("--broker-url", default=None)
     parser.add_argument("--poll-sec", type=float, default=3.0)
-    parser.add_argument("--tp", type=float, default=0.05)
-    parser.add_argument("--sl", type=float, default=0.03)
+    parser.add_argument("--tp", type=float, default=None,
+                        help="미지정 시 close_bet.json 의 tp 사용")
+    parser.add_argument("--sl", type=float, default=None,
+                        help="미지정 시 close_bet.json 의 sl 사용")
     parser.add_argument("--force-exit-time", default="15:19:00")
     parser.add_argument("--stop-time", default="15:25:00")
     parser.add_argument("--window-start", default="09:00:00")
@@ -487,6 +491,13 @@ def main() -> None:
     parser.add_argument("--watch-codes", default="")
     parser.add_argument("--dry-run", default="true")
     args = parser.parse_args()
+
+    # 전략값 config(close_bet.json). CLI 로 주면 override, 없으면 config 값.
+    cfg = load_close_bet_config()
+    if args.tp is None:
+        args.tp = cfg["tp"]
+    if args.sl is None:
+        args.sl = cfg["sl"]
 
     args.dry_run = args.dry_run.lower() not in ("false", "0", "no")
     if not args.dry_run and args.watch_codes:
