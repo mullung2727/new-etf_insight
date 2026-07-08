@@ -2,7 +2,22 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from scripts.notify import notify, send_discord, send_telegram, send_telegram_report
+
+
+def _http_error(status: int) -> requests.exceptions.HTTPError:
+    """status_code 실린 HTTPError (raise_for_status가 던지는 형태)."""
+    resp = MagicMock()
+    resp.status_code = status
+    return requests.exceptions.HTTPError(response=resp)
+
+
+def _ok_resp() -> MagicMock:
+    resp = MagicMock()
+    resp.raise_for_status.return_value = None
+    return resp
 
 
 class TestSendDiscord(unittest.TestCase):
@@ -42,6 +57,37 @@ class TestSendDiscord(unittest.TestCase):
     def test_swallows_post_exception(self):
         with patch("scripts.notify.requests.post", side_effect=RuntimeError("boom")):
             self.assertFalse(send_discord("x", webhook_url="https://h"))
+
+    def test_retries_on_5xx_then_succeeds(self):
+        resp_5xx = MagicMock()
+        resp_5xx.raise_for_status.side_effect = _http_error(503)
+        sleeps: list[float] = []
+        with patch("scripts.notify.requests.post", side_effect=[resp_5xx, _ok_resp()]) as post:
+            ok = send_discord("x", webhook_url="https://h", _sleep=sleeps.append)
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(sleeps, [2.0])
+
+    def test_retries_on_network_error_then_gives_up(self):
+        sleeps: list[float] = []
+        with patch(
+            "scripts.notify.requests.post",
+            side_effect=requests.exceptions.ConnectionError("down"),
+        ) as post:
+            ok = send_discord("x", webhook_url="https://h", _sleep=sleeps.append)
+        self.assertFalse(ok)
+        self.assertEqual(post.call_count, 3)  # 총 3회 후 포기
+        self.assertEqual(sleeps, [2.0, 4.0])
+
+    def test_does_not_retry_on_4xx(self):
+        resp_4xx = MagicMock()
+        resp_4xx.raise_for_status.side_effect = _http_error(404)  # 잘못된 웹훅 = 영구
+        sleeps: list[float] = []
+        with patch("scripts.notify.requests.post", return_value=resp_4xx) as post:
+            ok = send_discord("x", webhook_url="https://h", _sleep=sleeps.append)
+        self.assertFalse(ok)
+        self.assertEqual(post.call_count, 1)  # 재시도 없음
+        self.assertEqual(sleeps, [])
 
 
 class TestSendTelegram(unittest.TestCase):

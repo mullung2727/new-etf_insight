@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 import requests
 
@@ -35,21 +36,47 @@ _TIMEOUT = 10
 _DISCORD_MAX_LEN = 1900   # Discord content 2000자 제한 여유
 _TELEGRAM_MAX_LEN = 4000  # Telegram sendMessage 4096자 제한 여유
 
+_SEND_RETRIES = 2  # 일시적 전송 오류 흡수 — 총 3회 (analyze LLM 재시도와 대칭)
+_SEND_RETRY_BACKOFF = 2.0  # 초, attempt마다 선형 증가
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
-def send_discord(message: str, webhook_url: str | None = None) -> bool:
-    """Discord로 message를 POST. 성공 True, 미설정/실패 False (예외 안 던짐)."""
+
+def _is_retryable_send(exc: Exception) -> bool:
+    """일시적(재시도 가치 있음) 전송 오류인가.
+
+    429(rate-limit)/5xx(서버) 또는 네트워크/타임아웃은 재시도. 4xx(잘못된 웹훅 등)는
+    영구 오류라 재시도 무의미 → 바로 False로 스킵.
+    """
+    if isinstance(exc, requests.exceptions.HTTPError):
+        resp = exc.response
+        return resp is not None and resp.status_code in _RETRYABLE_STATUS
+    return isinstance(exc, requests.exceptions.RequestException)
+
+
+def send_discord(message: str, webhook_url: str | None = None, *, _sleep=time.sleep) -> bool:
+    """Discord로 message를 POST. 성공 True, 미설정/실패 False (예외 안 던짐).
+
+    일시적 오류(429/5xx/타임아웃)는 재시도 — 한 번의 웹훅 blip이 digest 전송 실패로
+    텔레그램 세션 전체를 FAILED로 만들던 문제. _sleep 은 테스트 주입용.
+    """
     url = webhook_url if webhook_url is not None else os.getenv("DISCORD_WEBHOOK_URL", "")
     if not url:
         # ASCII only: cp949 콘솔에서도 안전 (stdout 재설정 안 한 호출자 대비)
         print("[notify] DISCORD_WEBHOOK_URL not set - skip Discord notify")
         return False
-    try:
-        resp = requests.post(url, json={"content": message[:_DISCORD_MAX_LEN]}, timeout=_TIMEOUT)
-        resp.raise_for_status()
-        return True
-    except Exception as exc:
-        print(f"[notify] Discord send failed: {exc}")
-        return False
+    payload = {"content": message[:_DISCORD_MAX_LEN]}
+    for attempt in range(_SEND_RETRIES + 1):
+        try:
+            resp = requests.post(url, json=payload, timeout=_TIMEOUT)
+            resp.raise_for_status()
+            return True
+        except Exception as exc:
+            if attempt < _SEND_RETRIES and _is_retryable_send(exc):
+                _sleep(_SEND_RETRY_BACKOFF * (attempt + 1))
+                continue
+            print(f"[notify] Discord send failed: {exc}")
+            return False
+    return False  # 도달 불가 (루프가 반환/처리) — 타입체커 안심용
 
 
 def send_telegram(message: str) -> bool:
