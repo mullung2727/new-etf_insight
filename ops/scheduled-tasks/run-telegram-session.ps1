@@ -26,8 +26,15 @@ $env:PYTHONUTF8 = "1"
 function Invoke-Step {
   param([string]$Label, [string]$Exe, [string[]]$StepArgs)
   "[$(Get-Date -Format o)] $Label" | Tee-Object -FilePath $log -Append | Write-Output
+  # $ErrorActionPreference=Stop + `& native 2>&1` 는 PowerShell 함정: 네이티브 프로세스가
+  # stderr 에 한 줄만 써도(예: codex 시작 배너 "OpenAI Codex v0.142.5") exit 0 이어도
+  # 종료에러로 승격돼 세션을 FAILED 로 만든다. 성공판정은 $LASTEXITCODE 로만 하도록
+  # 이 호출 구간만 Continue 로 낮춘다(진짜 exit≠0 는 아래에서 여전히 잡힘).
+  $prevEAP = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
   & $Exe @StepArgs 2>&1 | Tee-Object -FilePath $log -Append | Write-Output
   $code = $LASTEXITCODE
+  $ErrorActionPreference = $prevEAP
   if ($code -ne 0) {
     throw "$Label failed with exit code $code"
   }
