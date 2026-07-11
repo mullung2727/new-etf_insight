@@ -10,9 +10,7 @@ from pathlib import Path
 import requests
 
 from new_etf_insight.llm.base import LlmProvider
-from new_etf_insight.llm.chatgpt_oauth_provider import ChatGptOAuthProvider
 from new_etf_insight.llm.codex_provider import CodexProvider
-from new_etf_insight.llm.openclaw_provider import OpenClawProvider
 
 
 DEFAULT_PROVIDER = "codex"
@@ -29,7 +27,7 @@ def _is_transient(exc: Exception) -> bool:
 
     - OpenAI HTTP: 네트워크/타임아웃/SSE 스트림끊김(requests) + 429/5xx.
       provider가 non-ok를 RuntimeError("... (NNN): ...")로 던져 상태코드 파싱.
-    - codex/openclaw CLI: subprocess 비정상 종료(일시 blip)는 재시도.
+    - codex CLI: subprocess 비정상 종료(일시 blip)는 재시도.
     영구 오류(401 인증, 스키마/파싱)는 즉시 전파 — 재시도 낭비 안 함.
     """
     if isinstance(exc, (requests.exceptions.RequestException, subprocess.CalledProcessError)):
@@ -46,10 +44,6 @@ def get_provider(provider_name: str | None = None) -> LlmProvider:
 
     if name in {"codex", "codex_cli"}:
         return CodexProvider()
-    if name in {"chatgpt_oauth", "oauth", "openai_oauth"}:
-        return ChatGptOAuthProvider()
-    if name == "openclaw":
-        return OpenClawProvider()
 
     raise ValueError(f"Unsupported LLM provider: {name}")
 

@@ -52,7 +52,7 @@ etf_key = "{corp_code}_{fund_code}"   # 예: 00104500_AL415
 | `src/new_etf_insight/dart_viewer.py` | DART viewer HTML 파싱, fund_code/etf_key 추출 |
 | `src/new_etf_insight/dart_pdf.py` | 투자설명서 PDF 다운로드 |
 | `src/new_etf_insight/filing_filter.py` | ETF 후보 필터 (포함/제외 키워드) |
-| `src/new_etf_insight/llm/` | LLM 프로바이더 추상화 (Codex / OpenClaw) |
+| `src/new_etf_insight/llm/` | LLM 프로바이더 추상화 (Codex CLI) |
 | `scripts/pdf_langgraph/pdf_analysis_langgraph.py` | LangGraph 상태머신. PDF → LLM → JSON |
 | `scripts/pdf_langgraph/prompts/` | LLM 프롬프트 (pdf_summary, correction_review 등) |
 | `scripts/pdf_langgraph/*.json` | LLM 출력 JSON 스키마 |
@@ -106,7 +106,7 @@ runs/ 전체에서 etf_key 기준 최신 rcept_dt 레코드만 upsert.
 `.env`에서 설정 (`etl/` 상위 디렉토리):
 
 ```
-ETF_LLM_PROVIDER=codex          # 또는 openclaw
+ETF_LLM_PROVIDER=codex          # codex CLI 단일
 DART_API_KEY=...
 ```
 
