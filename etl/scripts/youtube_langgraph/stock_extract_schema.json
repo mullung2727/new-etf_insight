@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["stocks"],
+  "properties": {
+    "stocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "note"],
+        "properties": {
+          "name": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

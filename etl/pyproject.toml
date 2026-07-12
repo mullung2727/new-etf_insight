@@ -9,6 +9,7 @@ dependencies = [
     "pypdf>=6.11.0",
     "python-dotenv>=1.2.2",
     "requests>=2.34.1",
+    "youtube-transcript-api>=1.2.0,<2",
 ]
 
 [build-system]

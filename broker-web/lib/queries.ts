@@ -1,4 +1,4 @@
-import { apiGet, apiGetOrNull } from "./api-client";
+import { apiGet, apiGetOrNull, apiPost } from "./api-client";
 
 export interface EtfListItem {
   etf_key: string;
@@ -136,6 +136,78 @@ export interface ThemePeer {
 }
 export const getThemePeers = (ticker: string) =>
   apiGet<ThemePeer[]>(`/telegram/theme-peers/${ticker}`);
+
+export interface YoutubeMention {
+  date_kst: string;
+  name: string;
+  channels: string[];
+  video_ids: string[];
+  discovery_reason: string;
+  analysis: string | null;
+}
+export const getYoutubeMentions = (
+  ticker: string,
+  params?: { from?: string; to?: string },
+) => apiGet<YoutubeMention[]>(`/youtube/mentions/${ticker}`, params);
+
+export interface YoutubeVideoSummary {
+  channel_id: string;
+  channel_label: string | null;
+  video_id: string;
+  date_kst: string;
+  title: string | null;
+  url: string;
+  headline: string | null;
+  issues: { title?: string; summary?: string; time_hint?: string | null }[];
+  bullets: string[];
+  risk_or_caveat: string | null;
+}
+export const getYoutubeSummaries = (params?: { from?: string; to?: string; date?: string }) =>
+  apiGet<YoutubeVideoSummary[]>("/youtube/summaries", params);
+
+export interface YoutubePendingItem {
+  channel_id: string;
+  channel_label: string | null;
+  video_id: string;
+  date_kst: string;
+  title: string | null;
+  url: string;
+  transcript_chars: number | null;
+  has_transcript?: boolean;
+  status?: string; // ready | no_transcript
+}
+export const getYoutubePending = (params?: {
+  from?: string;
+  to?: string;
+  channel?: string | string[];
+}) => apiGet<YoutubePendingItem[]>("/youtube/pending", params);
+
+export function postYoutubeCollect(body: {
+  from_date: string;
+  to_date: string;
+  channel_ids?: string[];
+}): Promise<{
+  channels: number;
+  results: { channel_id: string; matched_date: number; inserted: number; updated: number }[];
+  errors: { channel_id: string; error: string }[];
+}> {
+  return apiPost("/youtube/collect", body);
+}
+
+export function postYoutubeSummarize(body: {
+  from_date?: string;
+  to_date?: string;
+  channel_ids?: string[];
+  video_ids?: string[];
+  force?: boolean;
+}): Promise<{
+  targets: number;
+  ok: number;
+  skipped: number;
+  errors: { channel_id: string; video_id: string; error: string }[];
+}> {
+  return apiPost("/youtube/summarize", body);
+}
 
 export const getRankingMetrics = () => apiGet<MetricInfo[]>("/rankings/metrics");
 export const getRankingPeriods = () => apiGet<PeriodInfo[]>("/rankings/periods");

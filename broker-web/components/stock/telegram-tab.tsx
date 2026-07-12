@@ -87,7 +87,7 @@ export default async function TelegramTab({
                     href={`https://t.me/${ref}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] tracking-[0.05em] text-primary/70 hover:text-primary underline"
+                    className="text-[11px] tracking-[0.05em] text-fin-gold hover:underline"
                   >
                     원문↗
                   </a>

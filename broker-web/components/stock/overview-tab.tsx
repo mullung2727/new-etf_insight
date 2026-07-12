@@ -146,7 +146,7 @@ export default async function OverviewTab({ code, holding }: { code: string; hol
       </div>
 
       {/* 핵심 재무지표: 재무탭 위임(heavy DART 호출 회피) */}
-      <Link href={stockHubHref(code, { tab: "financial" })} className="text-[13px] text-primary/70 hover:text-primary underline">
+      <Link href={stockHubHref(code, { tab: "financial" })} className="text-[13px] text-fin-gold hover:underline">
         핵심 재무지표 보기 → 재무 탭
       </Link>
 

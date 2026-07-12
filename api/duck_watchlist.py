@@ -42,6 +42,9 @@ FINANCIAL_DB_PATH = _resolve_project_path(
 TELEGRAM_DB_PATH = _resolve_project_path(
     os.getenv("TELEGRAM_DB_PATH"), ETL_DB_DIR / "telegram_public.sqlite3"
 )
+YOUTUBE_DB_PATH = _resolve_project_path(
+    os.getenv("YOUTUBE_DB_PATH"), ETL_DB_DIR / "youtube_public.sqlite3"
+)
 
 
 @contextmanager
@@ -75,6 +78,19 @@ def telegram_cursor() -> Iterator[sqlite3.Connection]:
     if not TELEGRAM_DB_PATH.exists():
         raise FileNotFoundError(f"SQLite file not found: {TELEGRAM_DB_PATH}")
     con = sqlite3.connect(str(TELEGRAM_DB_PATH))
+    con.execute("PRAGMA query_only=ON")
+    try:
+        yield con
+    finally:
+        con.close()
+
+
+@contextmanager
+def youtube_cursor() -> Iterator[sqlite3.Connection]:
+    """youtube_public.sqlite3 reader (영상 요약·종목 시그널). WAL 회피 위해 query_only."""
+    if not YOUTUBE_DB_PATH.exists():
+        raise FileNotFoundError(f"SQLite file not found: {YOUTUBE_DB_PATH}")
+    con = sqlite3.connect(str(YOUTUBE_DB_PATH))
     con.execute("PRAGMA query_only=ON")
     try:
         yield con

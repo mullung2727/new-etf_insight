@@ -13,7 +13,7 @@ export function findHolding(holdings: Holding[] | undefined, code: string): Hold
 }
 
 // 종목 개괄 허브 라우팅 헬퍼. 탭은 URL 쿼리 ?tab= 로 딥링크.
-export const STOCK_TABS = ["overview", "chart", "financial", "telegram", "notes"] as const;
+export const STOCK_TABS = ["overview", "chart", "financial", "telegram", "youtube", "notes"] as const;
 export type StockTab = (typeof STOCK_TABS)[number];
 
 export function resolveTab(raw: string | null | undefined): StockTab {

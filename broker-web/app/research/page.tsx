@@ -447,7 +447,7 @@ export default function ResearchPage() {
                           href={pdfHref(data.code, data.name, r)}
                           target="_blank"
                           rel="noopener"
-                          className="text-sm text-primary underline-offset-2 hover:underline"
+                          className="text-sm text-fin-gold underline-offset-2 hover:underline"
                         >
                           보기
                         </a>

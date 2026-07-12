@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["headline", "issues", "bullets", "risk_or_caveat"],
+  "properties": {
+    "headline": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "summary", "time_hint"],
+        "properties": {
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "time_hint": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "bullets": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "risk_or_caveat": { "type": ["string", "null"] }
+  }
+}

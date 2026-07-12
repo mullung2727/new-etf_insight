@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["chunk_index", "headline", "bullets"],
+  "properties": {
+    "chunk_index": { "type": "integer" },
+    "headline": { "type": "string" },
+    "bullets": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

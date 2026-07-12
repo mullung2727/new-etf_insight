@@ -1,0 +1,26 @@
+{
+  "UCeN2YeJcBCRJoXgzF_OU3qw": {
+    "source_url": "https://www.youtube.com/channel/UCeN2YeJcBCRJoXgzF_OU3qw",
+    "handle": "@unrealtech",
+    "label": "unrealtech",
+    "feed_role": "discovery_source",
+    "summary_mode": "manual"
+  },
+  "UCxvdCnvGODDyuvnELnLkQWw": {
+    "source_url": "https://www.youtube.com/channel/UCxvdCnvGODDyuvnELnLkQWw",
+    "feed_role": "discovery_source",
+    "label": "이효석아카데미",
+    "summary_mode": "manual"
+  },
+  "UCWskYkV4c4S9D__rsfOl2JA": {
+    "source_url": "https://www.youtube.com/channel/UCWskYkV4c4S9D__rsfOl2JA",
+    "feed_role": "discovery_source",
+    "label": "한경글로벌마켓",
+    "summary_mode": "manual"
+  },
+  "UCOB62fKRT7b73X7tRxMuN2g": {
+    "source_url": "https://www.youtube.com/channel/UCOB62fKRT7b73X7tRxMuN2g",
+    "label": "박종훈의지식한방",
+    "summary_mode": "manual"
+  }
+}

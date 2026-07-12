@@ -147,7 +147,7 @@ export function TelegramPanel() {
                     href={c.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="font-mono text-xs text-primary hover:underline"
+                    className="font-mono text-xs text-fin-gold hover:underline"
                   >
                     {c.url.replace("https://", "")}
                   </a>

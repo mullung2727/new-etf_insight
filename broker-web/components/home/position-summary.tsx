@@ -30,7 +30,7 @@ export function PositionSummary() {
       <Card className="bg-card border-border h-full">
         <CardContent className="flex flex-col items-start gap-2 py-2">
           <p className="text-sm text-muted-foreground">💼 트레이딩 미연결</p>
-          <Link href="/trading" className="text-sm text-primary hover:underline">
+          <Link href="/trading" className="text-sm text-fin-gold hover:underline">
             트레이딩 열기 →
           </Link>
         </CardContent>
@@ -59,7 +59,7 @@ export function PositionSummary() {
         <CardContent className="flex flex-col gap-1 py-2">
           <p className="text-sm font-medium text-muted-foreground">보유종목</p>
           <p className="text-xl font-bold tabular-nums">{holdings}종목</p>
-          <Link href="/trading" className="text-xs text-primary hover:underline">트레이딩 →</Link>
+          <Link href="/trading" className="text-xs text-fin-gold hover:underline">트레이딩 →</Link>
         </CardContent>
       </Card>
     </div>

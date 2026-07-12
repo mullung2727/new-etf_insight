@@ -15,6 +15,7 @@ from routers import research as research_router
 from routers import stats as stats_router
 from routers import telegram as telegram_router
 from routers import watchlist as watchlist_router
+from routers import youtube as youtube_router
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -48,6 +49,7 @@ app.include_router(watchlist_router.router)
 app.include_router(research_router.router)
 app.include_router(rankings_router.router)
 app.include_router(telegram_router.router)
+app.include_router(youtube_router.router)
 
 mcp = FastApiMCP(
     app,

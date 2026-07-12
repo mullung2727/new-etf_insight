@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { TelegramPanel } from "@/components/admin/telegram-panel";
 import { CloseBetPanel } from "@/components/admin/close-bet-panel";
+import { YoutubePanel } from "@/components/admin/youtube-panel";
 
-type Tab = "telegram" | "closebet";
+type Tab = "telegram" | "closebet" | "youtube";
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("telegram");
@@ -20,10 +21,14 @@ export default function SettingsPage() {
         <TabButton active={tab === "closebet"} onClick={() => setTab("closebet")}>
           종가베팅
         </TabButton>
+        <TabButton active={tab === "youtube"} onClick={() => setTab("youtube")}>
+          유튜브
+        </TabButton>
       </div>
 
       {tab === "telegram" && <TelegramPanel />}
       {tab === "closebet" && <CloseBetPanel />}
+      {tab === "youtube" && <YoutubePanel />}
     </div>
   );
 }

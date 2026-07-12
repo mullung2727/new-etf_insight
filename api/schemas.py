@@ -167,3 +167,130 @@ class ThemePeer(_Base):
     ticker: str
     name: str
     themes: list[str] = []              # 공유 테마만
+
+
+class YoutubeMention(_Base):
+    """한 종목의 유튜브 언급 1건(= 1 date_kst). session 없음."""
+
+    date_kst: str
+    name: str
+    channels: list[str] = []
+    video_ids: list[str] = []
+    discovery_reason: str = ""
+    analysis: str | None = None
+
+
+class YoutubeVideoSummary(_Base):
+    """영상 1건 통합 이슈 요약 (reduce 결과)."""
+
+    channel_id: str
+    channel_label: str | None = None  # youtube_channels.json label/handle
+    video_id: str
+    date_kst: str
+    title: str | None = None
+    url: str
+    headline: str | None = None
+    issues: list[Any] = []
+    bullets: list[str] = []
+    risk_or_caveat: str | None = None
+
+
+class YoutubePendingItem(_Base):
+    """미요약 영상 (대기 목록). 수집됐으나 요약 없음."""
+
+    channel_id: str
+    channel_label: str | None = None
+    video_id: str
+    date_kst: str
+    title: str | None = None
+    url: str
+    transcript_chars: int | None = None
+    has_transcript: bool = False
+    # ready = 대본 있어 요약 가능 / no_transcript = 자막 없음
+    status: str = "ready"
+
+
+class YoutubeCollectRequest(_Base):
+    from_date: str  # date_kst
+    to_date: str
+    channel_ids: list[str] | None = None
+
+
+class YoutubeCollectUrlRequest(_Base):
+    """영상 URL 1건 가져오기 (watch/shorts/youtu.be)."""
+
+    url: str
+
+
+class YoutubeCollectUrlResult(_Base):
+    video_id: str
+    channel_id: str
+    date_kst: str
+    title: str
+    status: str  # inserted | updated | already_summarized
+    has_transcript: bool = False
+    url: str = ""
+
+
+class YoutubeCatalogRequest(_Base):
+    """선택 채널 RSS 영상 목록(+duration). 수동 조회용."""
+
+    channel_ids: list[str]
+    with_duration: bool = True
+
+
+class YoutubeCatalogItem(_Base):
+    channel_id: str
+    channel_label: str | None = None
+    video_id: str
+    title: str = ""
+    published_at_utc: str = ""
+    date_kst: str = ""
+    url: str
+    duration_sec: int | None = None
+
+
+class YoutubeSelectedVideo(_Base):
+    channel_id: str
+    video_id: str
+    title: str | None = None
+    published_at_utc: str | None = None
+    date_kst: str | None = None
+    url: str | None = None
+
+
+class YoutubeCollectSelectedRequest(_Base):
+    """목록에서 고른 영상만 자막 수집 (수동)."""
+
+    videos: list[YoutubeSelectedVideo]
+
+
+class YoutubeSummarizeRequest(_Base):
+    from_date: str | None = None
+    to_date: str | None = None
+    channel_ids: list[str] | None = None
+    video_ids: list[str] | None = None
+    force: bool = False
+
+
+class YoutubeSummarizeJobRequest(_Base):
+    """단일 영상 요약 백그라운드 잡."""
+
+    channel_id: str
+    video_id: str
+    title: str | None = None
+    force: bool = False
+
+
+class YoutubeSummarizeJob(_Base):
+    job_id: str
+    status: str  # queued | running | done | error
+    channel_id: str
+    video_id: str
+    title: str | None = None
+    force: bool = False
+    created_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    message: str | None = None
+    result: dict | None = None

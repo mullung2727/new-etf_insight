@@ -6,6 +6,7 @@ import type { Holding } from "@/lib/broker-client";
 import ChartTab from "@/components/stock/chart-tab";
 import FinancialTab from "@/components/stock/financial-tab";
 import TelegramTab from "@/components/stock/telegram-tab";
+import YoutubeTab from "@/components/stock/youtube-tab";
 import NotesTab from "@/components/stock/notes-tab";
 import OverviewTab from "@/components/stock/overview-tab";
 
@@ -14,6 +15,7 @@ const TAB_LABEL: Record<StockTab, string> = {
   chart: "차트",
   financial: "재무",
   telegram: "텔레그램",
+  youtube: "유튜브",
   notes: "노트",
 };
 
@@ -114,6 +116,8 @@ export default async function StockHubPage({
           <FinancialTab code={code} />
         ) : tab === "telegram" ? (
           <TelegramTab code={code} session={tg_session ?? ""} />
+        ) : tab === "youtube" ? (
+          <YoutubeTab code={code} />
         ) : tab === "notes" ? (
           <NotesTab code={code} holding={holding} />
         ) : tab === "overview" ? (

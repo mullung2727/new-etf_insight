@@ -37,3 +37,18 @@ export async function apiGetOrNull<T>(path: string, params?: Record<string, Para
   }
   return res.json() as Promise<T>;
 }
+
+export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  const url = `${BASE_URL}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`FastAPI ${res.status} at ${url}: ${text}`);
+  }
+  return res.json() as Promise<T>;
+}
