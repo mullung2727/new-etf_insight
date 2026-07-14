@@ -86,7 +86,9 @@ def fetch(
 
     한 채널의 간헐 timeout이 run_telegram_channels 세션 전체를 FAILED로 만들던 문제.
     """
-    url = f"https://t.me/s/{channel}"
+    # 2026-07-14 .me 레지스트리가 t.me에 serverHold → 글로벌 DNS 제거(NXDOMAIN).
+    # telegram.me는 t.me의 무사한 공식 별칭이라 /s/ 미리보기 동일 제공. t.me 복구돼도 안전.
+    url = f"https://telegram.me/s/{channel}"
     if before:
         url += f"?before={before}"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
