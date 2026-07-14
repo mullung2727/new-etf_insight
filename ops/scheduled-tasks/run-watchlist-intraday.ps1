@@ -17,16 +17,39 @@ $env:PYTHONUTF8 = "1"
 function Invoke-Step {
   param([string]$Label, [string]$Exe, [string[]]$StepArgs)
   "[$(Get-Date -Format o)] $Label" | Tee-Object -FilePath $log -Append | Write-Output
-  & $Exe @StepArgs 2>&1 | Tee-Object -FilePath $log -Append | Write-Output
-  $code = $LASTEXITCODE
+  $previousErrorActionPreference = $ErrorActionPreference
+  $code = 1
+  try {
+    $ErrorActionPreference = "Continue"
+    & $Exe @StepArgs 2>&1 | Tee-Object -FilePath $log -Append | Write-Output
+    $code = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
   if ($code -ne 0) {
     throw "$Label failed with exit code $code"
   }
 }
 
+function Invoke-BestEffortStep {
+  param([string]$Label, [string]$Exe, [string[]]$StepArgs)
+  try {
+    Invoke-Step -Label $Label -Exe $Exe -StepArgs $StepArgs
+  } catch {
+    "[$(Get-Date -Format o)] WARNING: $Label skipped: $($_.Exception.Message)" |
+      Tee-Object -FilePath $log -Append | Write-Output
+  }
+}
+
 try {
   Invoke-Step "build intraday ranking" ".\.venv\Scripts\python.exe" @("scripts\build_intraday_ranking.py", "--date", $todayCompact)
-  Invoke-Step "watchlist research" ".\.venv\Scripts\python.exe" @("scripts\run_watchlist_research.py", "--date", $todayCompact, "--skip-build")
+  Invoke-BestEffortStep "capture 15:00 market snapshot" ".\.venv\Scripts\python.exe" @("scripts\collect_watchlist_market_snapshot.py", "--date", $todayCompact)
+  Invoke-Step "D+1 open probability scoring" ".\.venv\Scripts\python.exe" @(
+    "..\research\watchlist_expected_return\watchlist_probability_langgraph.py",
+    "--dates", $todayCompact,
+    "--write-db",
+    "--reports-dir", $reportsDir
+  )
 
   $researchJson = Join-Path $reportsDir ("watchlist_research_" + $todayDash + ".json")
   $discordJson = Join-Path $reportsDir ("watchlist_discord_" + $todayDash + ".json")

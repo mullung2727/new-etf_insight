@@ -64,9 +64,9 @@ def format_item(item: dict[str, Any], max_links: int) -> str:
         f"- 거래량: `{fmt_int(item.get('today_volume'))}`, 5일 평균 대비 `{fmt_ratio(item.get('ratio'))}`",
         f"- 거래대금: `{fmt_int(item.get('trading_value'))}`",
         f"- 종가: `{fmt_int(item.get('close'))}`",
-        f"- 급등 원인: {truncate(str(item.get('reason_summary') or 'N/A'), 420)}",
+        f"- 상승가능성 근거: {truncate(str(item.get('reason_summary') or 'N/A'), 420)}",
         f"- 뉴스: {truncate(str(item.get('evidence_news') or 'N/A'), 320)}",
-        f"- 웹: {truncate(str(item.get('evidence_web') or 'N/A'), 260)}",
+        f"- 텔레그램: {truncate(str(item.get('evidence_web') or 'N/A'), 260)}",
         f"- 판단: {truncate(str(item.get('final_opinion') or 'N/A'), 420)}",
     ]
     if links:
@@ -129,7 +129,7 @@ def build_messages(doc: dict[str, Any], limit: int, max_links: int, db_path: Pat
 
     header = "\n".join(
         [
-            f"키움 당일 watchlist 후보 + 즉시 LLM 스코어 ({date})",
+            f"키움 당일 watchlist 후보 + D+1 시가 상승가능성 점수 ({date})",
             f"- watchlist 종목 수: {len(items)}",
             f"- build_watchlist: {source.get('build_watchlist', 'N/A')}",
             f"- DB: `{source.get('watchlist_db', 'N/A')}`",

@@ -18,11 +18,11 @@
     {
       "id": "51ed51c4-41a1-4977-b65f-f5d603e76eed",
       "name": "daily-etf-watchlist-intraday-kiwoom",
-      "description": "Mon-Fri 15:10 Kiwoom intraday watchlist build + immediate LLM scoring",
+      "description": "Mon-Fri 14:59 watchlist prebuild + 15:00 snapshot + D+1 open-rise probability scoring",
       "enabled": false,
       "schedule": {
         "kind": "cron",
-        "expr": "10 15 * * 1-5",
+        "expr": "59 14 * * 1-5",
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/daily-etf-watchlist-intraday-kiwoom.md",

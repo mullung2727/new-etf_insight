@@ -35,7 +35,7 @@ reader before composing the Discord report.
 - `daily-etf-watchlist-krx-ohlcv.md`
   - Purpose: fetch previous-day KRX full-market OHLCV only.
 - `daily-etf-watchlist-intraday-kiwoom.md`
-  - Purpose: build same-day Kiwoom intraday watchlist candidates and score them (pre-close, feeds 15:19 close-bet order window).
+  - Purpose: build same-day Kiwoom candidates and write D+1 open-rise probability scores to `llm_scores` (feeds the 15:19 close-bet order window).
 - `daily-new-etf-insight-batch.md`
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
 - `daily-close-bet-order.md`
@@ -85,7 +85,7 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
   `ops/scheduled-tasks/run-new-etf-insight-batch.ps1`.
 - `\new_etf_insight\daily-etf-watchlist-krx-ohlcv` — Tue-Sat 08:00,
   `ops/scheduled-tasks/run-krx-ohlcv.ps1`.
-- `\new_etf_insight\daily-etf-watchlist-intraday-kiwoom` — Mon-Fri 15:10,
+- `\new-etf_insight\daily-etf-watchlist-intraday-kiwoom` — Mon-Fri 14:59 시작, 15:00 스냅샷,
   `ops/scheduled-tasks/run-watchlist-intraday.ps1`.
 - `\new_etf_insight\daily-close-bet-order-report` — Mon-Fri 15:21,
   `ops/scheduled-tasks/run-close-bet-order-report.ps1`.

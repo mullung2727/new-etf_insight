@@ -196,7 +196,7 @@ cd broker-web; npm run dev
 | --- | --- | --- |
 | daily-new-etf-insight-batch | 07:00 | ETF 일배치 + DB sync |
 | daily-etf-watchlist-krx-ohlcv | 화–토 08:00 | 전일 KRX OHLCV |
-| daily-etf-watchlist-intraday-kiwoom | 월–금 15:10 | 당일 워치 + 스코어 |
+| daily-etf-watchlist-intraday-kiwoom | 월–금 14:59 시작 | 당일 워치 사전 생성 + 15:00 ka10001 시세 스냅샷 + 스코어 |
 | close-bet-order | 월–금 15:19 | 종가배팅 주문 |
 | close-bet-order-report | 월–금 15:21 | 주문 결과 리포트(주문 재시도 금지) |
 | close-bet-verify 등 | 장후 | 체결 검증·청산 계열 |

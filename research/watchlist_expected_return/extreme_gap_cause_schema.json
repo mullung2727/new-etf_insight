@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cases"],
+  "properties": {
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id", "identifiable", "cause_type", "direction_bias",
+          "priced_in_risk", "downside_risk", "evidence_summary", "reasoning"
+        ],
+        "properties": {
+          "case_id": {"type": "string"},
+          "identifiable": {"type": "string", "enum": ["clear", "partial", "none"]},
+          "cause_type": {
+            "type": "string",
+            "enum": [
+              "confirmed_corporate_event", "theme_policy", "ipo_new_listing",
+              "mna_governance", "legal_regulatory", "earnings_brokerage",
+              "supply_demand_momentum", "rumor_speculation", "none", "other"
+            ]
+          },
+          "direction_bias": {"type": "string", "enum": ["positive", "negative", "mixed", "neutral"]},
+          "priced_in_risk": {"type": "string", "enum": ["low", "medium", "high"]},
+          "downside_risk": {"type": "string", "enum": ["low", "medium", "high"]},
+          "evidence_summary": {"type": "string"},
+          "reasoning": {"type": "string"}
+        }
+      }
+    }
+  }
+}

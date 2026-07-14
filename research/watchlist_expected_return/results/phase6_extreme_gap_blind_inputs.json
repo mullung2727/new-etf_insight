@@ -1,0 +1,731 @@
+[
+  {
+    "case_id": "20260625_228340",
+    "as_of": "2026-06-25T15:00:00+09:00",
+    "ticker": "228340",
+    "name": "동양파일",
+    "news": [
+      {
+        "title": "[MK 골든크로스 돌파종목 : 동양파일(228340) & 비비안(002070)] - 매일경제",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTFBoZ2NsTEEzbG9fY3gwcEUwMDFJT2ZvbmFPVmotVUI1U0E3dE45emZaSENnbDVKU1l2bEJoNS01a0NhZWpyeXhscUY1X0ZMbkVTUEE?oc=5",
+        "published_at": "2026-06-24T16:00:00+09:00"
+      },
+      {
+        "title": "상한가(6월24일), 호남 반도체 공장 관련주는 어디?? : 네이버 블로그 - Naver Blog",
+        "link": "https://news.google.com/rss/articles/CBMiV0FVX3lxTE9KSVJQZHZySFo1ZkphUktRNkNEQUZiSnd2aWZWcDlCYjMyOThENmlkblRPMG9Cc0drOHZPZ3p3a3hhaHVVeUp4R2RQcFVFTUJqcUVOeE10aw?oc=5",
+        "published_at": "2026-06-24T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260529_066570",
+    "as_of": "2026-05-29T15:00:00+09:00",
+    "ticker": "066570",
+    "name": "LG전자",
+    "news": [
+      {
+        "title": "레버리지 ETF 만큼 핫한 ‘삼전닉스’…순매수 상위권 안착 [주식 초고수는 지금] - 서울경제",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE9hblp2NHdSWU5KMVhuS0kwcUVXRzh5ckVJRHBLS3hKRXo1Y2NRY0lHUy1qd3BsbHlmekhkV0ozUDgydDcxQ25jSkp6aWltY1RfdXfSAVNBVV95cUxQWUxGVXRPakxJTlNTcC1JQmxmOVdWby1qeWJmczdTUVhaX3lrX1NEdTJFbzdLTFBTWUVzN1gtMl9VNThSemktamkteU1RR2FwZkNROA?oc=5",
+        "published_at": "2026-05-27T16:00:00+09:00"
+      },
+      {
+        "title": "LG전자, 태국 호텔에 제습기 대량 공급…덥고 습한 동남아 공략한다 - 서울경제",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTFBIUkJzb1NmZFpHWFF0UUNyY1E0TllSQmVWXzVxbXA0cTlVUFdjdjBoY0ZGMFlDM1dUZ25qcEdfZTN2OFkyT1dRWjFmLXB4Y0VES0HSAVNBVV95cUxPOXhWYXdSRVpvWFl2cW9HOF9xV1VXSW8tU0ZZMjZvUGV2eXZNZ1kzdTZ5MVJFV2UzeXQ2cmtWc291TjFKRGREUndQZjFoWkxkT3Y5RQ?oc=5",
+        "published_at": "2026-05-29T11:05:15+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260529_064400",
+    "as_of": "2026-05-29T15:00:00+09:00",
+    "ticker": "064400",
+    "name": "LG씨엔에스",
+    "news": [
+      {
+        "title": "LG씨엔에스(064400)밀릴때마다 물량 모아둘 기회로 보이며 이후 전망 및 대응전략. - 씽크풀 AI",
+        "link": "https://news.google.com/rss/articles/CBMiXEFVX3lxTE1qZ0JFOTNGYlUtQ2RqcVBkODJBNmpndjNVSlZEOVFvR09xN1ZFRkxTMy1WQm5ySk1GTGtwX1VZQURyd2dNNzNsNHVnTEJHdGVxZnlTVDBDWG9fV3Y0?oc=5",
+        "published_at": "2026-05-27T21:12:32+09:00"
+      },
+      {
+        "title": "AI 수혜주 판도 바뀐다…인터넷 가고 SI 기업 뜬다 - 경제타임스",
+        "link": "https://news.google.com/rss/articles/CBMiU0FVX3lxTFBSYmpZS282NHJyTDZUYlBwZFQ1YUFJQzg3ODhqd2pCQTV2ZjBUMU5HWElONHlhMElPWm9uTmRqT2dCY1BQenVpa182NTZrb2dmVUNn?oc=5",
+        "published_at": "2026-05-28T16:00:00+09:00"
+      },
+      {
+        "title": "“하반기 코스피 상승 추세 지속…AI 시차가 만든 실적 장세” - 마켓인",
+        "link": "https://news.google.com/rss/articles/CBMic0FVX3lxTFBqUFBBR0FJZ1dJZFo2Ykd1aUhvaXF5SW5HYmFRdDZieDZTeGlHcThuSm5yUjlIV2NlU2ZhTS1MMnhWcGpzc2VwazlzVlBZZmFMM1c2OU90UW5scE1wQ0FnWk92Z05lMUtuaHdGc0p1UWo0WDg?oc=5",
+        "published_at": "2026-05-26T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260617_198440",
+    "as_of": "2026-06-17T15:00:00+09:00",
+    "ticker": "198440",
+    "name": "강동씨앤엘",
+    "news": [],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260611_079650",
+    "as_of": "2026-06-11T15:00:00+09:00",
+    "ticker": "079650",
+    "name": "서산",
+    "news": [
+      {
+        "title": "특징주, 서산-시멘트/레미콘 테마 상승세에 29.93% ↑ - 매일경제 마켓",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTFBHa21aVDJtRl9OZXFhT3BrTV9OUUF1WlpaRTFLUFhISE9uc0VHaWw4c1VuNENhNTJMRnV4dHFKXy1UTG9UX3VFT3VMdU8xWU03WHc?oc=5",
+        "published_at": "2026-06-10T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260611_347700",
+    "as_of": "2026-06-11T15:00:00+09:00",
+    "ticker": "347700",
+    "name": "스피어",
+    "news": [
+      {
+        "title": "스피어 수주공시 - 특수합금 공급계약 229억원 (매출액대비 23.95 %) - 한국경제",
+        "link": "https://news.google.com/rss/articles/CBMiWkFVX3lxTFBMbG9YbEQtWFhjNzRnWUVDcVRPUURpZ0F1ekFOQzVwSm9ZOXpPWmMwbE00LXB2SE1BRWM0ZWQ4ZkVjOEVPdFo1M0dQaU5MQ1V4WkR1WDN1SERPd9IBVEFVX3lxTE41WDNXSmQzNXhxWm9ldkE0d0k4MlZwdE55REdQZHFRRUp2Z01aOXB4QVdQdXViTGRkRkxDWTJmYmZxZmc0UXY5MnBpUFlhSW8yWkJTdw?oc=5",
+        "published_at": "2026-06-08T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260710_005360",
+    "as_of": "2026-07-10T15:00:00+09:00",
+    "ticker": "005360",
+    "name": "모나미",
+    "news": [
+      {
+        "title": "모나미, 서울색 담은 '153 시그니처' 출시…공공기관 협업 확대 - 네이트",
+        "link": "https://news.google.com/rss/articles/CBMiYEFVX3lxTFBxSW56MGNQNkFsMHdVQkpmVDFOUzV0YkFzQktCc0VDRWZkaFp6TGZHbjFRdjUtSkE3RlhOYkhLQ1BZTkhRZTJfQVBlWEZZQVRpRzQ5Y1c1b0dJOG9QcWQtNg?oc=5",
+        "published_at": "2026-07-10T14:03:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260625_091590",
+    "as_of": "2026-06-25T15:00:00+09:00",
+    "ticker": "091590",
+    "name": "남화토건",
+    "news": [
+      {
+        "title": "특징주, 남화토건-건설 중소형 테마 상승세에 30.0% ↑ - 매일경제",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE9nVzZmSktuVkhCY28zdXN1aGZYTkMzRGdUTURJSnlTRzhna0ZvOEZJN3JaTnBjRXdISHZ3T3k2Tl9naHMxSjF5bG05dDN4M0Q5RXc?oc=5",
+        "published_at": "2026-06-24T16:00:00+09:00"
+      },
+      {
+        "title": "상한가(6월24일), 호남 반도체 공장 관련주는 어디?? : 네이버 블로그 - Naver Blog",
+        "link": "https://news.google.com/rss/articles/CBMiV0FVX3lxTE9KSVJQZHZySFo1ZkphUktRNkNEQUZiSnd2aWZWcDlCYjMyOThENmlkblRPMG9Cc0drOHZPZ3p3a3hhaHVVeUp4R2RQcFVFTUJqcUVOeE10aw?oc=5",
+        "published_at": "2026-06-24T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260630_090410",
+    "as_of": "2026-06-30T15:00:00+09:00",
+    "ticker": "090410",
+    "name": "덕신이피씨",
+    "news": [],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260625_002990",
+    "as_of": "2026-06-25T15:00:00+09:00",
+    "ticker": "002990",
+    "name": "금호건설",
+    "news": [
+      {
+        "title": "상한가(6월24일), 호남 반도체 공장 관련주는 어디?? : 네이버 블로그 - Naver Blog",
+        "link": "https://news.google.com/rss/articles/CBMiV0FVX3lxTE9KSVJQZHZySFo1ZkphUktRNkNEQUZiSnd2aWZWcDlCYjMyOThENmlkblRPMG9Cc0drOHZPZ3p3a3hhaHVVeUp4R2RQcFVFTUJqcUVOeE10aw?oc=5",
+        "published_at": "2026-06-24T16:00:00+09:00"
+      },
+      {
+        "title": "특징주, 금호건설-건설 중소형 테마 상승세에 29.89% ↑ - 매일경제 마켓",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE5WTzVVWVpkcDI3MURRZGY5dlBPNmpUYU93TUhPRnQ1VEplczRyME1OZ0h6XzFNc3FoRlNheDlhd0F0bkFsTl8wZlVrV0JoOW9ZblE?oc=5",
+        "published_at": "2026-06-24T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260605_006220",
+    "as_of": "2026-06-05T15:00:00+09:00",
+    "ticker": "006220",
+    "name": "제주은행",
+    "news": [
+      {
+        "title": "[업앤다운]은행주 상승…JB금융지주·제주은행↑ - NSP통신",
+        "link": "https://news.google.com/rss/articles/CBMiYEFVX3lxTE9YZUxMVDJaTGx2Y3VBX0w0SzdLekpRS2RPamtVZDFaY18wVFJ1QjRyMDNtSXpHc1ZlelFNcUlzdWhfSC15cnNmWnJaVlJOc2MwbTJEdFRHMnZSQXpJYWx3VQ?oc=5",
+        "published_at": "2026-06-04T16:31:23+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260706_101730",
+    "as_of": "2026-07-06T15:00:00+09:00",
+    "ticker": "101730",
+    "name": "위메이드맥스",
+    "news": [
+      {
+        "title": "위메이드맥스 최대주주 위메이드, 위메이드맥스 주식등의 수 7825주 감소…총 지분율 72.36% - 디지털투데이",
+        "link": "https://news.google.com/rss/articles/CBMic0FVX3lxTE9hTGJrZlNzMVdRd0gxb0VvLVFlaG54dElURjlUMFhGakZxbURlYWc5S1E5RHJxVWd4YnJDeEtMcDBqNkNPbVZ3bGxiSDIyS2V4Q1ZEYk91RWFhSWkzYTlJWGtPQkIzNmRneFA1STJCeC16UW8?oc=5",
+        "published_at": "2026-07-03T17:11:03+09:00"
+      },
+      {
+        "title": "위메이드맥스, 애프터마켓서 10%대 급등 - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTFA5N0ZlNlN4Y3hzV1g1NEEzWExSTS0waThBV24zSnVjMXlJT0NBamxyTWpZSk92RFlrUG0tN0ZSdHVXUGNsQmVIR3dFc3ozT0VYTlIzWnRjN3JVNWfSAWBBVV95cUxQeFJaSU9xSTBiLUliR2p0ZlhWeVd4V19LSklCRHk4U3ZmUUN0MUNUZ3lza0NXN2R5dldReWQ5WDl2MmZnWGVQSGtYQjltRmx3TG5fc0FuWGttLThnbmJySjI?oc=5",
+        "published_at": "2026-07-03T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260625_001210",
+    "as_of": "2026-06-25T15:00:00+09:00",
+    "ticker": "001210",
+    "name": "금호전기",
+    "news": [],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260709_263800",
+    "as_of": "2026-07-09T15:00:00+09:00",
+    "ticker": "263800",
+    "name": "데이타솔루션",
+    "news": [
+      {
+        "title": "'데이타솔루션' 52주 신고가 경신, AI컴퓨팅자원 활용기반 강화 사업(GPU 서버 외 AI인프라 구축용 HW,SW,Service) 4,381.4억원 (매출액대비 422.04 %) - 한국경제",
+        "link": "https://news.google.com/rss/articles/CBMiVEFVX3lxTE5YRjNiODVXanJRNEtZbkFmaXVqbVlEMkJRc1lUbWwxZGFnR1dMb2ZheFNXWWxJMTlLTVRrNUdIYjR1bjVqS296UHNFWEc0azVaekZrcdIBVEFVX3lxTE5YRjNiODVXanJRNEtZbkFmaXVqbVlEMkJRc1lUbWwxZGFnR1dMb2ZheFNXWWxJMTlLTVRrNUdIYjR1bjVqS296UHNFWEc0azVaekZrcQ?oc=5",
+        "published_at": "2026-07-09T09:17:25+09:00"
+      },
+      {
+        "title": "[특징주] 데이타솔루션·씨이랩, 대규모 공급 계약에 상한가(종합) - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5lV2tkdWNUVm5GSmpjcVVWX3g5X3dMVndkVTFDZDBUa2I5cGt6U3lVWHJvOWtpazRRYnpBang5WGRYTUNDeHp6T01acWtNTy1HalFmWHg2cGdLVFXSAWBBVV95cUxNUHRKVkFJMzFGUldsa0JOYndRdTdpd1ZwUlFFc2VMc25KeXFtWE5qUGp3R2p5YzNjb2FmZ1VlbFJaOWVjeUpPTTVTbUZYSWQ3aXZzNHRVMlN4VmQ1TDdEZG0?oc=5",
+        "published_at": "2026-07-08T15:45:54+09:00"
+      },
+      {
+        "title": "데이타솔루션, 상한가…삼성SDS와 4380억 규모 AI 데이터센터 구축 공급 계약[특징주] - 네이트",
+        "link": "https://news.google.com/rss/articles/CBMiU0FVX3lxTFBYalhhVGZSSkJhZURNQU4xRlZCVXVvRW4tYmV1bEdnUHRYaEgzRTZZZWZ5RFhYMTRSVU0tUGNxVWVMRklJWjBFX3FnTWRLY0xvb0ww?oc=5",
+        "published_at": "2026-07-08T09:12:00+09:00"
+      },
+      {
+        "title": "데이타솔루션, 4381억 4천만 원 공급계약 체결→AI사업 기반 강화 - TopStarNews",
+        "link": "https://news.google.com/rss/articles/CBMickFVX3lxTFBwbXlHMGlOZGFyclh4TEhSOWRkdS1nQmFHa2FmYk9PU0dYaVM4TnU2YTZ4NWx1eHRlZFRHczQzSUxXLThFNlJGS0trU2twVUx5dk9UTmdNZ3JsZXNIVU9mU2Z4UjNuQlVWb196WkRWdkNPQQ?oc=5",
+        "published_at": "2026-07-07T17:55:54+09:00"
+      },
+      {
+        "title": "[특징주] 데이타솔루션, 대규모 공급 계약 체결에 상한가 - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5tUzJacHMxcU1LQ3BrUHEtTU4yX3NQLWs4b21abkZBaHJCQ2VBU3BQTlc5b0VKeWdNMHM0MVYzaThKRHN0TFVGUzBOU21aOTJfcVFaSlNqcTUzT2_SAWBBVV95cUxOWjdFTENYN0I4OXBjRVQ1dmxZTHR3dXdJRDVCcjN4YUJxNGpPVVA1VUZfUnhHZ2lnczRIdUlfZklacXZzNWlMSThsM0lfWjJYYkItT2xwWkdzSFNUQVI4SHo?oc=5",
+        "published_at": "2026-07-08T10:27:59+09:00"
+      },
+      {
+        "title": "[정오 시황] 코스닥 798.72, 하락세(▼32.51, -3.91%) 지속 - 서울경제",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE9nejhPemw0WURELXU4bGlNZ3pNVmxLN0c4MXhJR3Rrd25YR1NveGJmRWtoQnBxODVUTGMyelFxY2cxUXRlaDkteE85ZmFBRXk1MGfSAVNBVV95cUxOT21QU0hrWWR4Um85eFN4RTFRd3EtQS1hZGdrLXN3Z3Y4YUl5NlM2dXF6ZUd6cE4wVnJIdnR5Vm5zNDJvSUdRLS1vRzVXcklOVURrZw?oc=5",
+        "published_at": "2026-07-08T12:01:55+09:00"
+      },
+      {
+        "title": "[서울데이터랩]코스닥 거래상위 종목 혼조세…데이타솔루션 상한가·랩지노믹스 급등 - 네이트",
+        "link": "https://news.google.com/rss/articles/CBMiU0FVX3lxTE5CbUFrbWdNNThHd3RnSU4xeHhKTWZuQVBQTkd5VTZRS1lkazRxV2dTd3VKMkJKdGVFMmpQVnROWjF1SnNhbjVaazNLNmtGd0JyZkQ4?oc=5",
+        "published_at": "2026-07-09T13:52:00+09:00"
+      }
+    ],
+    "telegram": [
+      {
+        "date": "2026-07-09",
+        "session": "morning",
+        "channels": [
+          "awake_realtimeCheck"
+        ],
+        "discovery_reason": "이름/코드 언급 2건 (awake_realtimeCheck)",
+        "analysis": null
+      }
+    ],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260706_365660",
+    "as_of": "2026-07-06T15:00:00+09:00",
+    "ticker": "365660",
+    "name": "레몬헬스케어",
+    "news": [
+      {
+        "title": "수익률 터졌다…상장 첫날 53% 치솟은 '이 주식' - 위키트리",
+        "link": "https://news.google.com/rss/articles/CBMiVkFVX3lxTE9qNWd0YVd0aUVXZlJqcnVSakVIMEZpMVZudmRjTlBzV01BMWlZUHdHX0hGN3lOTjRiS21YSGZIcHYxSDVIdmlVY3VROVdUcVRQTzdHUi1n?oc=5",
+        "published_at": "2026-07-06T09:49:00+09:00"
+      },
+      {
+        "title": "[특징주] 레몬헬스케어, 코스닥 상장 첫날 장 초반 52% 상승 - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE8wRDkzNjFVeUVJb25yUGpLb19PZ2M0eTZnVDlsQi0yMUhfelBGbkNtejBQUVBGbmNKNDB2TWZ1MFQ2VWRlX29NbXJySDhIRDd0TjFuQ3JPUThfTlnSAWBBVV95cUxOLXlNVUJseUFSUnh0Q1RQRW1PbXpLOElqRFZNR3lIMkhFd2xVbkJidHV6VUR0NkV5STNHMkV4Rk4zLV8zMTNfd0kycmo3ZEVpenlrSm84QmdGTHROSFF5TGI?oc=5",
+        "published_at": "2026-07-06T09:21:28+09:00"
+      },
+      {
+        "title": "레몬헬스케어, 코스닥 상장 첫날 50%대 강세[핫종목] - v.daum.net",
+        "link": "https://news.google.com/rss/articles/CBMiS0FVX3lxTE5jVm9mSDVDdFBKYnVBMWN5QlpTcnJZSU9OcGM2OWRBZ2lHMGRBNU1hYS1kTXpHbXZLZFpzd1RJLU5JOEFweTdXajRNcw?oc=5",
+        "published_at": "2026-07-06T10:34:32+09:00"
+      },
+      {
+        "title": "(특징주)레몬헬스케어, 코스닥 입성 첫날 60% 상승 - 뉴스토마토",
+        "link": "https://news.google.com/rss/articles/CBMiYEFVX3lxTE1MVXRwS2I2SmZDVjZSYWp2YlFfc3h5S2trclI2Zm83SnFSdmFOYUg4WjZ0TVRVcHd1SGNFNzhzWHJaNUJfTWVFaUxUeEhfQlJxWnVDUFBKbVFWU0JLRTRzRw?oc=5",
+        "published_at": "2026-07-06T09:35:50+09:00"
+      },
+      {
+        "title": "스마트병원 관련주 ‘레몬헬스케어’, 코스닥 상장 - 뉴스웰",
+        "link": "https://news.google.com/rss/articles/CBMibEFVX3lxTE95cmptY1FPR2tJeE9zakk5LVRnT05NX1l3NHFvbkZrYzRBdEtjU1pzRHFueHY0dGs0TEpsWGFPQ0ZHNDVBaTRXU0RKemMzdzNIdzRQaW5NWUZsZGc3eHlRc0RZbnRwNDB2XzhWRg?oc=5",
+        "published_at": "2026-07-06T00:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260706_042660",
+    "as_of": "2026-07-06T15:00:00+09:00",
+    "ticker": "042660",
+    "name": "한화오션",
+    "news": [
+      {
+        "title": "코스피·코스닥 전 거래일(2일) 주요공시는?...한화오션, 한국형 차기 구축함 우선협상대상업체 선정 - 핀포인트뉴스",
+        "link": "https://news.google.com/rss/articles/CBMic0FVX3lxTE9rRmRfVHpUTHdxaUJ6X0NYLTJnTzFOMFhObjZIQTYta3RQMXV2ai1RdklGQ2ZMaWFtQ044R014dEMtdTlhNU1rQXlnVDllRXAtN1ZKTHY1WFRZRXBGWEFrSHJmY09pU1R3UDFpVjA0VmRpUGfSAXdBVV95cUxPcXdWdlYwZUl6SWZhZm81bFcxOUx3Z2NLRXVHOThZQUFqXzJ6LTZzR2VGeVExVWpBS3BNUlJ6NVVORE1hTElXOU85NktVOTBqa3VTNmxtZE9GNlZTMkV0N3lFQ0xQdmhEQjViSU1TaUZ5RTdGNmgxTQ?oc=5",
+        "published_at": "2026-07-03T16:00:00+09:00"
+      },
+      {
+        "title": "[특징주] 한화오션, 캐나다 잠수함 수주전 결과 앞두고 장초반 강세 - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE1CVzN4dG9kcVFNWEQ4dEhyZm50ZjV3RU9QVlo4dDcwQUNZb3lPV01LQjEwMzJKUWxLbkF2REMzUm5Obms4cVpkMXY4a0JqSV9mSVhJcTgzRmFLdHPSAWBBVV95cUxPRWpHOEhad2tOamY5U01tcWRFYkY1V21EWUozSzV5TUZTSk9sS3V5cnpXNlNBcFh1eW5Mb0NrYXNpTDNTVnV0eUxHWnRaVEhaQmFFNE1rVXAzNEwzQVI3TFI?oc=5",
+        "published_at": "2026-07-06T09:28:11+09:00"
+      },
+      {
+        "title": "[속보] 한화오션 VI 발동, 주가 장초반부터 도약…캐나다 잠수함 발표 임박 '주목' - CBC뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiZkFVX3lxTE5Ja1hOUTdHMGRXTzJsRkxzSDVsbGhLOGtqdEVzTzVpVFlBRW1seWVJT0VRak13MWpWUEdPZHNhQnE0M1RWX3JSRWJNamFVTExXWkhLdXBNV3VhZ1RzT0VwaHFNejlrZw?oc=5",
+        "published_at": "2026-07-06T09:08:38+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260610_0017J0",
+    "as_of": "2026-06-10T15:00:00+09:00",
+    "ticker": "0017J0",
+    "name": "세미티에스",
+    "news": [],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260630_475040",
+    "as_of": "2026-06-30T15:00:00+09:00",
+    "ticker": "475040",
+    "name": "스트라드비젼",
+    "news": [
+      {
+        "title": "AI 관련주 ‘스트라드비젼’ 상장, 7호 따따블 터질까 - 뉴스웰",
+        "link": "https://news.google.com/rss/articles/CBMibEFVX3lxTE5SSzZCTnhhdGJfNUloSWNRNU1nT2hfdVBiN1M4YjZ3NWdkV1ZheDUtMDI4VHdqZDBhYU9xa0F6aUwySG1RMHFvSE5IM3I0YWRCNXlVbEVwZVZCSG9keENrMU9pRUI4T0lXSUpNRQ?oc=5",
+        "published_at": "2026-06-30T00:01:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260605_476080",
+    "as_of": "2026-06-05T15:00:00+09:00",
+    "ticker": "476080",
+    "name": "M83",
+    "news": [
+      {
+        "title": "M83 子 피앤티링크, AI 인프라용 표준 서버 공급 개시 - 서울경제",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTFBYeEExV3pBZlNNQi1xWE1wTXYySmsxME9zRlp3aFVzeTdBaC1HLVhDampNYzlKSi1yVG5VVWt1OHd1ejBjZ0hQOUExYVhaTjJCNnfSAVNBVV95cUxNZVY0ck9MeVNGNm5pTHVuQUNOcmlKbzBwSEdwWmV1UzFIQlA4bkhCLTNSb25YZW5DZTgxWVNuaFJsdnNyTVRpODI3a3FoZnJGaHNZbw?oc=5",
+        "published_at": "2026-06-02T16:00:00+09:00"
+      },
+      {
+        "title": "상한가(6월2일), 급등락이 심했던 시장 속 8종목 상한가 - Naver Blog",
+        "link": "https://news.google.com/rss/articles/CBMiWkFVX3lxTE1GRDVUOWRPaURQUmVVVTRFaVFnVkxPOWYwS3dFajRUWXd3YVlVOFgzY1I1RlF5NEFDNGZrT250Y0MxeTRuaF9SaVZwZ3M1cENwQnlrcWFuZzdhZw?oc=5",
+        "published_at": "2026-06-02T16:00:00+09:00"
+      },
+      {
+        "title": "[N2 증시 풍향계] M83·테스 ‘상한가’…삼성중공업·나이스정보통신도 호재에 ‘방긋’ - 뉴스투데이",
+        "link": "https://news.google.com/rss/articles/CBMiXkFVX3lxTFBrRFFuYkRlN2tYZHZLMk83TVhDVE5OUm5ZaTY1ZS1YSXZjZzFqazZ3RE5Kb0YzMF9RNWhBRHZLdlVKbDA3QjNRM3RXU1hxT2xscXpwMTlPakJfOVlSV2c?oc=5",
+        "published_at": "2026-06-04T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260702_101730",
+    "as_of": "2026-07-02T15:00:00+09:00",
+    "ticker": "101730",
+    "name": "위메이드맥스",
+    "news": [
+      {
+        "title": "위메이드맥스 손면석 \"게임 서비스·신작 개발 방향 변함 없다\" - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE11SERfWGdWWXhhaVVtWjVncGdsbS14OHFfajdSR0dPVmVSbkZzR2hJbjA2bUh3TWNPckRxcE5BaXJZM2tJZng2QjU4RUpSNlI4ZW1RWEdpaFF0R3PSAWBBVV95cUxQU3ZOaHZoZzN2b1BjMWZ2Nks1QTZnemdlU0lmZ2tTVFUzbGlpZ3hNQTlPQ3I0WHV0NDA0dmM0Rk0tSlFFdkh6RGtLRlp4X09hMl9LeHhZeWo2QUtQRjhzVGc?oc=5",
+        "published_at": "2026-07-01T16:00:00+09:00"
+      },
+      {
+        "title": "위메이드 그룹주 상한가…9200억 경영권 매각에 동반 강세 - 마켓인",
+        "link": "https://news.google.com/rss/articles/CBMic0FVX3lxTE92cDlDQ25iZ0c1SndpdElIZ1R3MFBHdEpGSUxXMW1falRMc3FwY3drUVBPS2pvSFRUYnBfQTk5X05rcGNjbW96MkVLX3dtSjY0eEZxT0c4bW5USHlURzVqak9fSUx4NkRzT1Q2UERhVFdzMTQ?oc=5",
+        "published_at": "2026-07-01T09:37:05+09:00"
+      },
+      {
+        "title": "위메이드맥스, 애프터마켓서 10%대 급등 - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTFBGVkc1cGNYY1UxYVkxQ2RWM0dsd1ZsMzlldi1KYVNMb0hnN3A1U2NMWTViZ00tRG5ZVTBkYWxyZ1NwTnlJeFN3ZVVwNlMwcHFmX3VlSTBIa3dHV03SAWBBVV95cUxNeEcwY2NHdlNZMzRYWjhTUXZKcThaaWwwbnFuYlhKWnVhb1lNTWJwRkF6VUxlV3F1d2NiZlpMTHVPVFduVUh1dW1SUHRTRGxMcjJ1X0ZISnpJZE5fSDVZa0w?oc=5",
+        "published_at": "2026-06-30T16:00:00+09:00"
+      },
+      {
+        "title": "[특징주] 위메이드, 중국계 자본에 매각 소식에 상한가 직행 - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTFAxd1dFdWNjTEdJeGctT0I0bnlGQlV3VFVnOHlvNlJLdTNRVnNmY05Hdkcwa1M3SFVWbkRPZ1F5RnF6NTJlYlhsTGJNekJ5a1VCT0lvZEIxdmpBbU3SAWBBVV95cUxPSjFLaV9wRFVUNkJPNGQwNURUY1hPUVVoeHBrc1VrQ3dHUVloRDNvd3FaMVlESm1WajBKaGNDNWZHS09MRnlhMzNtLWx2Nm1kT043ejVZYWZfYkY1YUg0UVE?oc=5",
+        "published_at": "2026-07-01T16:00:00+09:00"
+      },
+      {
+        "title": "[특징주] 위메이드, 중국계 자본에 매각 소식에 상한가(종합) - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5WRmJfT3J1ZHZKMWRKWDU0dXhxT0ZPSXN2UTBudGhONVVhTUhKb1lJR0JaaGM4WWdGOXpaVkVzc0gzWFFmaC1yb1QzNDlCTDA4bVk4S1JQT3l4emvSAWBBVV95cUxNY0J3LVJheVp2Zk5JVFVjODhxSW1jVzFTblJtZG9fLXZHV0RSTXRaLXpjX3kxVUdZNXRRejVQRU5ZU1lKbXlzejBIbUt6NlhQbTVxbkFXbDVpSmNfS0F1V1E?oc=5",
+        "published_at": "2026-07-01T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260604_036930",
+    "as_of": "2026-06-04T15:00:00+09:00",
+    "ticker": "036930",
+    "name": "주성엔지니어링",
+    "news": [
+      {
+        "title": "주성엔지니어링, 반도체 업종 강세 속 홀로 7%대 급락하며 18만원선 후퇴 : 금융 - 재경일보",
+        "link": "https://news.google.com/rss/articles/CBMiSkFVX3lxTE1pdmRHV3ByN01nVGk5QkJwcWVFUnVYZVZtamtEWGFscnN3czJHdnpuVk5kVi0wQWdESTFaMHJJMTBfZ3k0MzVpYzZ3?oc=5",
+        "published_at": "2026-06-01T16:00:00+09:00"
+      },
+      {
+        "title": "소외됐던 코스닥의 반격…6거래일 만에 반등[마켓시그널] - 서울경제",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTFA1V3dKS3RuLThnZ2lMWTlEV3RsZm5MQWpYeHhnLWNuc0I4SUhKM21ydDlDM2lKSGU2WkxvUTZSTXM5d3FubmFUM3hPMFBKOS05b3fSAVNBVV95cUxQUGJ0ZEFLZTJWLUh6Q2hqR3BnVEFGOWR2VENoaE04U3BWOURrMV9Bb2RpU0ZzUU90ak1kdV9OdXBGaTRwODhBQTU5eUlSLUZFMkdLSQ?oc=5",
+        "published_at": "2026-06-04T14:53:46+09:00"
+      },
+      {
+        "title": "주성엔지니어링 6%대 급등하며 19만원 선 돌파, 반도체 장비주 저력 과시 : 금융 - 재경일보",
+        "link": "https://news.google.com/rss/articles/CBMiSkFVX3lxTE5XMzBmRzBFbmJpUTVLQ3pyMjdRVm1pVFF6Tk1pVE5KUDY1ZUdEelVfYlRqN2lzU242aGxkcnh1TEI1dVI1OUpVV09R?oc=5",
+        "published_at": "2026-06-03T16:00:00+09:00"
+      },
+      {
+        "title": "주성엔지니어링, 시장 급락 압력 뚫고 6%대 반등하며 19만 원선 안착 : 금융 - 재경일보",
+        "link": "https://news.google.com/rss/articles/CBMiSkFVX3lxTE1vemUtSkxQUUZneXlxWW1LSXVoQWZVN2xqcU1mbTdkTllNQUFKYXpUa0pqWXpsRk8tZEJSYmpVZlRVR2ozdktQTHJn?oc=5",
+        "published_at": "2026-06-02T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260605_403870",
+    "as_of": "2026-06-05T15:00:00+09:00",
+    "ticker": "403870",
+    "name": "HPSP",
+    "news": [
+      {
+        "title": "HPSP, 특허 분쟁 패소 여파에 5.26% 급락하며 4만 4000원선 후퇴 : 금융 - 재경일보",
+        "link": "https://news.google.com/rss/articles/CBMiSkFVX3lxTE9ZT28xNWltSEMwb1g5SmYyNjZxbmhYM3dpRWxlVmliZk9RdmUwS3hIZ21nNE5jVDhEMndQQnBFZzNHd0ppZXJnZGlB?oc=5",
+        "published_at": "2026-06-03T16:00:00+09:00"
+      },
+      {
+        "title": "HPSP, 특허 무효 심판 패소 여파에 5.26% 급락하며 4만 4000원선 후퇴 : 금융 - 재경일보",
+        "link": "https://news.google.com/rss/articles/CBMiSkFVX3lxTE1BQ3ZsaWM0YVhuSWNZOEpfbklsc3cyV1Yza3pTcWtIRGMyWlB2V0JKT0RFWlNfS25WeEdkSEQ2UXNIRWt3dkdFVjVR?oc=5",
+        "published_at": "2026-06-02T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260630_099220",
+    "as_of": "2026-06-30T15:00:00+09:00",
+    "ticker": "099220",
+    "name": "SDN",
+    "news": [],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260701_240810",
+    "as_of": "2026-07-01T15:00:00+09:00",
+    "ticker": "240810",
+    "name": "원익IPS",
+    "news": [
+      {
+        "title": "[생생한 주식쇼 생쇼] 삼전닉스 레버리지 쏠림과 코스닥 반도체·바이오 차별화 전략 - 매일경제 마켓",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE5iRFlOa3lwNmc2MGU2cVFEWGtTTVhUU093eGpnMTZVN1ZSQjFxZWNtdVJ5YTQzNUtjX3UtQkJRdEhIWFpzVnFVMkhLcmpBd2ZVa2c?oc=5",
+        "published_at": "2026-06-30T16:00:00+09:00"
+      },
+      {
+        "title": "특징주, 원익IPS-반도체 장비 테마 상승세에 10.31% ↑ - 매일경제 마켓",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE9HblhqY0hZbUlzUkRMM2V1WXZSYUtvNHdzeXVHUENwSl93VzFDY29nTlhrRmJJOE1Tc1NTMzdoZklVb2pHc0hNMFFXRTBLLXZ6aFE?oc=5",
+        "published_at": "2026-06-30T16:00:00+09:00"
+      },
+      {
+        "title": "[생생한 주식쇼 생쇼] 롤러코스터 장세, 숏커버링 KOSDAQ과 역발상 투자 전략 - 매일경제 마켓",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTFBtZDl0VWRrZjNKZ1RxYk5Zc0dNNl84WVpqb0RBYTFndVc3aHdWVjRTNUFLS2lmYU9UOGJ5bXE1cl9CZktvTC0yR1FobkZhR3dERFE?oc=5",
+        "published_at": "2026-06-29T14:17:19+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260624_006920",
+    "as_of": "2026-06-24T15:00:00+09:00",
+    "ticker": "006920",
+    "name": "모헨즈",
+    "news": [
+      {
+        "title": "특징주, 모헨즈-시멘트/레미콘 테마 상승세에 22.12% ↑ - 매일경제 마켓",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE1MQ0x3WW8yOThkckYyWWpta3Jna2JLTFR4eHF0YUJWYUFMc21VRXhId1pheWduMk8xM0VuQ04ySHR3R0Nfc2tzWTdfZGFLNG0zRVE?oc=5",
+        "published_at": "2026-06-23T16:00:00+09:00"
+      },
+      {
+        "title": "[특징주] 모헨즈 세종시 행정수도 이전 및 새만금 개발 정책 기대감 => 장중 상한가 육박 폭발적 변동성 >> 지역 인프라 개발 및 건설 경기 회복 기대감 -> 대형 레미콘 수혜주 부각 - 데일리머니",
+        "link": "https://news.google.com/rss/articles/CBMickFVX3lxTE5wbXlwblhnUWdpQkdrbHBCSzBidmlWYzdUN3JaVVB3c1RMc3dsbW5oeFc2bnpKWjZSLVdWTUpzYWtRS3FjOHdBUDlVcmRQdzRHWFVuS1VZck9LR1NKcFlSN2lhcjJSaUFmbHBlTE1BbTRzQQ?oc=5",
+        "published_at": "2026-06-23T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260629_037710",
+    "as_of": "2026-06-29T15:00:00+09:00",
+    "ticker": "037710",
+    "name": "광주신세계",
+    "news": [
+      {
+        "title": "[속보] 광주신세계 주가 상한가 도달…VI 발동되기도 - CBC뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiaEFVX3lxTE1ORDhWa0lRamk2RkkyeEsxNC1lM1o1STZPanB3RlU5TEdja1BKWkRzQ1R4UW4xdkpKQS1pLS1LYmNmcEJ4NnRzOW9Vb1VBSTFzODFHaFFESXpTSTQxMUxSX0NpbEFMNngw?oc=5",
+        "published_at": "2026-06-26T16:00:00+09:00"
+      },
+      {
+        "title": "오전 이슈 [호남권 반도체] : 금호건설, 남화산업, 다스코, 광주신세계, 와토스코리아 - 파이낸셜뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiWkFVX3lxTE1FclRqakRQUUJzbUUtTTdVZmJHR2tyLTY2ckV0YU0xS0hoRkxCYmlFbHVfd1NRSXpmeGlpcHZvbnBkOU5vZzZkZkpHQy1tWUhyTl92NjdwdEpCZw?oc=5",
+        "published_at": "2026-06-26T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260708_439090",
+    "as_of": "2026-07-08T15:00:00+09:00",
+    "ticker": "439090",
+    "name": "마녀공장",
+    "news": [
+      {
+        "title": "반도체주 쉬어가는 사이…화장품주 ‘불기둥’[특징주] - 이데일리TV",
+        "link": "https://news.google.com/rss/articles/CBMie0FVX3lxTE5aeWR5V3NHRm02Z2dRZFUxYmxwNGJtNG9HczVoM1hkMWtkXzlLUXdjXzkwZjlLMjFWS2RtYndNVlB4NGJ3SXF4YXZYczFDdTBvejZiS3BRWU1qYWtuY0FWcTZaLWNBdHBJU2NsYlkwMFVTRXlxWmJsYlhKcw?oc=5",
+        "published_at": "2026-07-08T09:19:00+09:00"
+      },
+      {
+        "title": "[서울데이터랩]개장 직후 인기 검색 종목 20選 - twig24.com",
+        "link": "https://news.google.com/rss/articles/CBMiY0FVX3lxTE1HNlFaZjY5dzFoV2R6dGQ4QXVvWXpPRDFpeFFLcWpUeUYwN1NYMkdKSTlyZ3F3Q0tZN1pvUzJwNUZhUjBRS1poc0FkRk9zenh3dEFOMzFNVnhGVk5VT0s4U3l6WQ?oc=5",
+        "published_at": "2026-07-08T09:11:36+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260703_095500",
+    "as_of": "2026-07-03T15:00:00+09:00",
+    "ticker": "095500",
+    "name": "미래나노텍",
+    "news": [],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260602_017670",
+    "as_of": "2026-06-02T15:00:00+09:00",
+    "ticker": "017670",
+    "name": "SK텔레콤",
+    "news": [
+      {
+        "title": "SK텔레콤, 인베스팅프로 적정가치 분석 후 56% 수익률 기록 - Investing.com 한국어",
+        "link": "https://news.google.com/rss/articles/CBMidkFVX3lxTE9tSEpIYS1xNW96MGhvWmxjdXpZd0pxYnhOMDZBeVpFRzY5Ql95NkNuTllOdW50NERtUng2NVotN0xCZGpXYXRlWWwzRlJwb2g1ZGJRNnBUalZRZjNIYXB2WHpjNlVBOEhIUHVkQl9BVXlmNk4zUUE?oc=5",
+        "published_at": "2026-05-31T16:00:00+09:00"
+      },
+      {
+        "title": "SK텔레콤, '선정은 보너스, AI 모델은 이미 일하고 있다' 증권사 발표에 강세 - 매일경제 마켓",
+        "link": "https://news.google.com/rss/articles/CBMiUkFVX3lxTE5Fb01lS3RCTjRUMk9QOTA3azZESUR0SWpyS2tRLWhnaXVsTEdDS1hyNjl6WTN2NlFjLVhxMWdjNzNubUM5X2JmUXVnT2xwLWNpZmc?oc=5",
+        "published_at": "2026-06-01T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  },
+  {
+    "case_id": "20260622_293490",
+    "as_of": "2026-06-22T15:00:00+09:00",
+    "ticker": "293490",
+    "name": "카카오게임즈",
+    "news": [
+      {
+        "title": "카카오게임즈 최대 주주 변경…새 주인은 라인야후 특수목적법인 - 뉴스1",
+        "link": "https://news.google.com/rss/articles/CBMiYEFVX3lxTE5Zb0lCbS1OTWROcWZUXzBVX0Yzb3N1OTdaZTNjc0lLc0VWaEMyWC1LWkkxc0w1WERoRHZZSm93Q05pOXRlQTFQamY4X2h6X2NnZWZjMTdBd19ub1pMM2tqXw?oc=5",
+        "published_at": "2026-06-19T16:00:00+09:00"
+      },
+      {
+        "title": "카카오게임즈, '라인야후' 새 주인 맞았다…지분 거래 마무리 - edaily.co.kr",
+        "link": "https://news.google.com/rss/articles/CBMigAFBVV95cUxQcE1QRVh3dmEwUnROR0ZuLW5SQlRiYm9iYlV4bnFRYW1OX1ctRWNqbnoxbW9TWmxUQlhpS0tTOU44Tk05SGk2TWVjMlRvR3EtaGRneGVJZEFTY1h2UUJjN3QxODh4RGFQQVdqekQ5aGVhMFZhWGRFcnUwcHMxZGxpNw?oc=5",
+        "published_at": "2026-06-19T16:00:00+09:00"
+      },
+      {
+        "title": "카카오게임즈, 라인야후 출자 법인에 인수 절차 완료 - 연합뉴스",
+        "link": "https://news.google.com/rss/articles/CBMiW0FVX3lxTFBTUldQSURYN1lfNG9yUVAwTnhCaXRqSFJ3WkNYR0ltYlpUclZtXzBVblBjMTl3TDA3YWw5eUUwM21CTDgtR2xmX2R2azdaSTcwVGF0alNUMmdkRU3SAWBBVV95cUxNSFVTdVR2Q0VpRlFYUU92NnhkT09uRVRTQWtya0JCeTFpS0tmOW1ubmkwTzlJZ3Q2ZmxXQzNDdmhDdFVQQ3p1aWc2T2drd1FDYU43eXBiUFNfUXJDSEhmNzU?oc=5",
+        "published_at": "2026-06-19T16:00:00+09:00"
+      }
+    ],
+    "telegram": [],
+    "market_snapshot": null,
+    "limitations": [
+      "15:00 과거 시세 스냅샷 없음",
+      "시각이 없는 기존 llm_scores 근거 제외"
+    ]
+  }
+]

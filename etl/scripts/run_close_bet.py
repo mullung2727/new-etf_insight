@@ -7,7 +7,7 @@ broker REST API 시장가 매수(qty = 예산 // 현재가)하고 결과를 기�
 핵심 사상: Kiwoom API는 무조건 broker를 통해서만 호출한다.
 
 전제:
-  - 15:10 scoring 배치(build_intraday_ranking + run_watchlist_research)가 먼저 돌아야 함.
+  - 15:00 scoring 배치(build_intraday_ranking + market snapshot + D+1 확률 scoring)가 먼저 돌아야 함.
   - broker(http://localhost:8001)가 반드시 기동되어 있어야 함.
   - 기본: dry_run=True.
 
@@ -496,7 +496,7 @@ def main() -> None:
     cnt = check_precondition(watchlist_db, date)
     if cnt == 0:
         print(f"[close_bet] ABORT: {date} llm_scores 없음 — scoring 배치 미실행")
-        send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\nllm_scores 없음 (15:10 scoring 배치 미실행)")
+        send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\nllm_scores 없음 (15:00 scoring 배치 미실행)")
         sys.exit(1)
     print(f"[close_bet] precondition OK: llm_scores={cnt}건")
 

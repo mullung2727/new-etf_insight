@@ -1,0 +1,257 @@
+{
+  "analysis_version": 1,
+  "generated_at": "2026-07-14T10:20:40+09:00",
+  "primary_target": "D일 종가 대비 D+1 시가 수익률",
+  "sample_count": 106,
+  "overall": {
+    "gap_return_d1_open": {
+      "count": 106,
+      "mean": 0.010062,
+      "mean_ci95": [
+        -0.001853,
+        0.02277
+      ],
+      "median": 0.000424,
+      "positive_rate": 0.5,
+      "p10": -0.047378,
+      "p90": 0.088838,
+      "stddev": 0.063853
+    },
+    "return_d1_close": {
+      "count": 106,
+      "mean": -0.012309,
+      "mean_ci95": [
+        -0.03818,
+        0.014884
+      ],
+      "median": -0.043808,
+      "positive_rate": 0.3396,
+      "p10": -0.14178,
+      "p90": 0.298931,
+      "stddev": 0.143487
+    },
+    "return_d2_close": {
+      "count": 104,
+      "mean": -0.014136,
+      "mean_ci95": [
+        -0.055917,
+        0.032269
+      ],
+      "median": -0.065515,
+      "positive_rate": 0.2981,
+      "p10": -0.208665,
+      "p90": 0.227462,
+      "stddev": 0.226518
+    },
+    "return_d3_close": {
+      "count": 101,
+      "mean": -0.016732,
+      "mean_ci95": [
+        -0.066238,
+        0.04188
+      ],
+      "median": -0.080645,
+      "positive_rate": 0.2871,
+      "p10": -0.238048,
+      "p90": 0.181624,
+      "stddev": 0.279339
+    },
+    "return_d4_close": {
+      "count": 97,
+      "mean": 0.002886,
+      "mean_ci95": [
+        -0.071096,
+        0.090775
+      ],
+      "median": -0.082436,
+      "positive_rate": 0.2887,
+      "p10": -0.273717,
+      "p90": 0.199112,
+      "stddev": 0.407788
+    },
+    "return_d5_close": {
+      "count": 93,
+      "mean": -0.012571,
+      "mean_ci95": [
+        -0.088494,
+        0.07643
+      ],
+      "median": -0.091533,
+      "positive_rate": 0.3011,
+      "p10": -0.291406,
+      "p90": 0.210838,
+      "stddev": 0.417466
+    }
+  },
+  "correlations": {
+    "gap_return_d1_open": {
+      "count": 106,
+      "pearson": -0.088015,
+      "spearman": -0.078639
+    },
+    "return_d1_close": {
+      "count": 106,
+      "pearson": -0.009391,
+      "spearman": 0.008069
+    },
+    "return_d2_close": {
+      "count": 104,
+      "pearson": -0.008211,
+      "spearman": 0.028834
+    },
+    "return_d3_close": {
+      "count": 101,
+      "pearson": -0.041063,
+      "spearman": 0.052597
+    },
+    "return_d4_close": {
+      "count": 97,
+      "pearson": -0.060551,
+      "spearman": 0.054317
+    },
+    "return_d5_close": {
+      "count": 93,
+      "pearson": -0.04428,
+      "spearman": 0.044097
+    }
+  },
+  "score_bands_d1_open": {
+    "0-39": {
+      "count": 0,
+      "mean": null,
+      "mean_ci95": [
+        null,
+        null
+      ],
+      "median": null,
+      "positive_rate": null,
+      "p10": null,
+      "p90": null,
+      "stddev": null
+    },
+    "40-59": {
+      "count": 68,
+      "mean": 0.014355,
+      "mean_ci95": [
+        -0.001338,
+        0.031134
+      ],
+      "median": 0.001163,
+      "positive_rate": 0.5,
+      "p10": -0.057956,
+      "p90": 0.101494,
+      "stddev": 0.070502
+    },
+    "60-79": {
+      "count": 24,
+      "mean": -0.004818,
+      "mean_ci95": [
+        -0.027535,
+        0.013288
+      ],
+      "median": 0.000424,
+      "positive_rate": 0.5,
+      "p10": -0.036253,
+      "p90": 0.049977,
+      "stddev": 0.052316
+    },
+    "80-100": {
+      "count": 14,
+      "mean": 0.014719,
+      "mean_ci95": [
+        -0.005165,
+        0.03793
+      ],
+      "median": 0.004171,
+      "positive_rate": 0.5,
+      "p10": -0.027545,
+      "p90": 0.073547,
+      "stddev": 0.044083
+    }
+  },
+  "categories_d1_open": {
+    "개별재료": {
+      "count": 3,
+      "mean": 0.006598,
+      "mean_ci95": [
+        -0.021113,
+        0.04
+      ],
+      "median": 0.000908,
+      "positive_rate": 0.6667,
+      "p10": -0.016709,
+      "p90": 0.032182,
+      "stddev": 0.030951
+    },
+    "구조변경 이슈": {
+      "count": 3,
+      "mean": 0.016566,
+      "mean_ci95": [
+        -0.018557,
+        0.068254
+      ],
+      "median": 0.0,
+      "positive_rate": 0.3333,
+      "p10": -0.014845,
+      "p90": 0.054603,
+      "stddev": 0.045715
+    },
+    "기술적 요인": {
+      "count": 3,
+      "mean": -0.000973,
+      "mean_ci95": [
+        -0.007895,
+        0.004975
+      ],
+      "median": 0.0,
+      "positive_rate": 0.3333,
+      "p10": -0.006316,
+      "p90": 0.00398,
+      "stddev": 0.00649
+    },
+    "복합요인": {
+      "count": 91,
+      "mean": 0.011622,
+      "mean_ci95": [
+        -0.002723,
+        0.025397
+      ],
+      "median": 0.002326,
+      "positive_rate": 0.5165,
+      "p10": -0.048805,
+      "p90": 0.090769,
+      "stddev": 0.067876
+    },
+    "섹터·테마": {
+      "count": 5,
+      "mean": -0.014721,
+      "mean_ci95": [
+        -0.041292,
+        0.00109
+      ],
+      "median": 0.0,
+      "positive_rate": 0.2,
+      "p10": -0.043817,
+      "p90": 0.001635,
+      "stddev": 0.029302
+    },
+    "이벤트·일정": {
+      "count": 1,
+      "mean": 0.015973,
+      "mean_ci95": [
+        0.015973,
+        0.015973
+      ],
+      "median": 0.015973,
+      "positive_rate": 1.0,
+      "p10": 0.015973,
+      "p90": 0.015973,
+      "stddev": 0.0
+    }
+  },
+  "interpretation_guardrails": [
+    "표본 수가 작아 인과관계나 운영 임계값을 확정하지 않음",
+    "점수 생성시각과 근거시각이 없어 텍스트 근거의 미래정보 누출 여부는 검증하지 못함",
+    "상관계수와 구간 평균은 탐색 결과이며 다음 단계 특징 후보 선정에만 사용함"
+  ]
+}

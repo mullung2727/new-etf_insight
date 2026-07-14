@@ -1,0 +1,180 @@
+{
+  "audit_version": 1,
+  "generated_at": "2026-07-14T10:17:33+09:00",
+  "inputs": {
+    "watchlist_db": "C:\\Users\\mullu\\.openclaw\\workspace\\etl\\new-etf_insight\\etl\\db\\watchlist.sqlite3",
+    "krx_db": "C:\\Users\\mullu\\.openclaw\\workspace\\etl\\new-etf_insight\\etl\\db\\krx_ohlcv.duckdb"
+  },
+  "sqlite_tables": {
+    "watchlist": {
+      "exists": true,
+      "row_count": 139,
+      "min_date": "20260529",
+      "max_date": "20260713",
+      "columns": [
+        "date",
+        "stock_code"
+      ]
+    },
+    "llm_scores": {
+      "exists": true,
+      "row_count": 129,
+      "min_date": "20260401",
+      "max_date": "20260713",
+      "columns": [
+        "date",
+        "ticker",
+        "name",
+        "ratio",
+        "today_volume",
+        "avg5_volume",
+        "trading_value",
+        "close",
+        "score",
+        "category",
+        "reason_summary",
+        "final_opinion",
+        "evidence_board",
+        "evidence_news",
+        "evidence_web",
+        "sources"
+      ]
+    },
+    "intraday_ranking": {
+      "exists": true,
+      "row_count": 690,
+      "min_date": "20260611",
+      "max_date": "20260713",
+      "columns": [
+        "date",
+        "rank",
+        "ticker",
+        "name",
+        "volume",
+        "close"
+      ]
+    },
+    "close_bet_orders": {
+      "exists": true,
+      "row_count": 26,
+      "min_date": "20260608",
+      "max_date": "20260713",
+      "columns": [
+        "date",
+        "ticker",
+        "score",
+        "qty",
+        "order_type",
+        "status",
+        "order_no",
+        "message",
+        "raw",
+        "created_at",
+        "cntr_price",
+        "cntr_qty",
+        "verified_at",
+        "sell_order_no",
+        "sell_status",
+        "sell_price",
+        "sell_qty",
+        "sold_at",
+        "exit_reason",
+        "pnl_pct",
+        "sell_cmsn",
+        "sell_tax",
+        "sell_pl_won"
+      ]
+    }
+  },
+  "krx_ohlcv": {
+    "row_count": 255101,
+    "min_date": "20250102",
+    "max_date": "20260713",
+    "columns": [
+      "date",
+      "ticker",
+      "market",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume",
+      "trading_value",
+      "market_cap",
+      "list_shrs"
+    ],
+    "trading_date_count": 93
+  },
+  "join_coverage": {
+    "watchlist_rows": 139,
+    "score_rows_joined": 109,
+    "score_join_rate": 0.7842,
+    "intraday_rows_joined": 99,
+    "intraday_join_rate": 0.7122,
+    "order_rows_joined": 25,
+    "order_join_rate": 0.1799,
+    "entry_close_covered": 139,
+    "entry_close_rate": 1.0,
+    "phase2_primary_cohort": 106,
+    "forward_ohlcv": {
+      "d_plus_1": {
+        "eligible": 136,
+        "covered": 136,
+        "coverage_rate": 1.0
+      },
+      "d_plus_2": {
+        "eligible": 134,
+        "covered": 134,
+        "coverage_rate": 1.0
+      },
+      "d_plus_3": {
+        "eligible": 131,
+        "covered": 131,
+        "coverage_rate": 1.0
+      },
+      "d_plus_4": {
+        "eligible": 127,
+        "covered": 127,
+        "coverage_rate": 1.0
+      },
+      "d_plus_5": {
+        "eligible": 123,
+        "covered": 123,
+        "coverage_rate": 1.0
+      }
+    }
+  },
+  "actual_orders": {
+    "close_to_fill_slippage": {
+      "count": 20,
+      "min": -0.112923,
+      "median": -0.002535,
+      "mean": -0.014457,
+      "max": 0.021325
+    },
+    "stored_net_pnl_rate": {
+      "count": 21,
+      "min": -0.3189,
+      "median": -0.0387,
+      "mean": -0.039019,
+      "max": 0.108
+    },
+    "stored_sell_cost_rate": {
+      "count": 21,
+      "min": 0.001056,
+      "median": 0.008953,
+      "mean": 0.007898,
+      "max": 0.009871
+    },
+    "note": "매수 수수료 컬럼이 없어 저장된 매도비용만 별도 산출; pnl_pct는 존재 시 broker 순손익률 사용"
+  },
+  "temporal_integrity": {
+    "score_generated_at_available": false,
+    "evidence_timestamp_available": false
+  },
+  "warnings": [
+    "llm_scores에 점수 생성시각이 없어 D일 장 마감 전 생성 여부를 DB만으로 검증할 수 없음",
+    "llm_scores에 원문과 근거시각이 없어 텍스트 특징의 미래정보 누출 여부를 검증할 수 없음",
+    "최신 watchlist 일부는 아직 D+1 거래일 결과가 없어 성과 분석 대상에서 검열됨"
+  ]
+}

@@ -4,12 +4,12 @@
 -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>new_etf_insight same-day Kiwoom watchlist build, scoring, and Discord webhook report</Description>
+    <Description>new_etf_insight 14:59 watchlist prebuild, 15:00 snapshot, D+1 open-rise probability scoring, and Discord report</Description>
     <URI>\new-etf_insight\daily-etf-watchlist-intraday-kiwoom</URI>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
-      <StartBoundary>2026-07-02T15:10:00</StartBoundary>
+      <StartBoundary>2026-07-02T14:59:00</StartBoundary>
       <Enabled>true</Enabled>
       <ScheduleByWeek>
         <WeeksInterval>1</WeeksInterval>

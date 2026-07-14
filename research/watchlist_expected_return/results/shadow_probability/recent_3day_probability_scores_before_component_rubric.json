@@ -1,0 +1,403 @@
+{
+  "generated_at": "2026-07-14T11:55:18+09:00",
+  "db_write": false,
+  "results": [
+    {
+      "date": "20260709",
+      "target": "D+1_OPEN_ABOVE_D_CLOSE",
+      "candidate_count": 3,
+      "scored_count": 3,
+      "scores": [
+        {
+          "date": "20260709",
+          "as_of": "2026-07-09T15:10:00+09:00",
+          "old_score": 58,
+          "telegram_rows": 4,
+          "news_rows": 5,
+          "ticker": "189330",
+          "name": "씨이랩",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 47,
+          "confidence": "medium",
+          "up_factors": [
+            "삼성에스디에스와 3,151억원 규모의 확정 공급계약으로 가격 직접성이 강한 재료",
+            "당일 거래량이 5일 평균의 21.07배이고 거래대금도 약 944억원으로 높은 관심과 수급 지속 가능성"
+          ],
+          "down_factors": [
+            "핵심 계약은 7월 7일 공개됐고 7월 8일 상한가 및 7월 9일 대량거래로 상당 부분 반영됐을 가능성",
+            "7월 9일 뉴스는 기존 계약과 신고가를 반복한 내용으로 새로운 추가 재료가 아님",
+            "텔레그램 언급이 단일 채널에 한정되고 구체적 분석도 없어 독립적인 보강 근거가 부족",
+            "종토방에서 단기 과열과 하락 우려가 우세해 차익실현 위험 존재"
+          ],
+          "news_summary": "매출액 대비 3,067.74%에 해당하는 삼성에스디에스 AI 컴퓨팅 자원 사업 계약은 강한 호재지만, 최초 보도 이후 상한가와 21배 거래량을 거쳐 재차 보도된 상태다.",
+          "telegram_summary": "7월 8~9일 단일 채널에서 반복 언급됐으나 구체적인 내용이나 복수 독립 채널 확인이 없어 추가 신호로 보기 어렵다.",
+          "reasoning": "확정 대규모 계약은 본질적으로 다음 시가에 긍정적이지만, 7월 7일 공개 후 상한가와 초대형 거래량을 동반해 이미 가격에 크게 반영됐을 위험이 높다. 7월 9일에는 새로운 계약이나 후속 확정 재료가 확인되지 않았고 단기 과열·차익실현 부담도 있어, D+1 시가가 종가를 웃돌 확률을 중립보다 소폭 낮게 평가한다.",
+          "evidence_quality": "moderate"
+        },
+        {
+          "date": "20260709",
+          "as_of": "2026-07-09T15:10:00+09:00",
+          "old_score": 58,
+          "telegram_rows": 1,
+          "news_rows": 6,
+          "ticker": "214330",
+          "name": "금호에이치티",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 41,
+          "confidence": "medium",
+          "up_factors": [
+            "당일 거래량이 5일 평균의 약 64.5배로 급증해 단기 수급 지속 가능성이 있음",
+            "거래대금이 약 708억원으로 직전 시가총액 대비 매우 큰 수준이라 시장 관심이 집중됨"
+          ],
+          "down_factors": [
+            "확정 계약·수주·허가·실적 등 신규 가격 촉매가 확인되지 않음",
+            "폭발적인 거래량으로 당일 재료와 기대가 이미 가격에 반영됐을 위험이 큼",
+            "주식병합 감자와 대표이사 지분 감소 뉴스는 희석·지배구조 관련 경계 요인임",
+            "텔레그램 언급이 단일 채널에만 집중됐고 구체적 재료 분석이 없어 독립적 보강 근거가 약함"
+          ],
+          "news_summary": "수집 뉴스는 대부분 시장 시황 기사로 종목 고유의 신규 호재가 아니며, 기존 종목 뉴스는 주식병합 감자와 대표이사 보유 감소에 집중돼 있음.",
+          "telegram_summary": "2026-07-09 오전 단일 채널에서 4건 언급됐지만 구체적인 내용과 분석이 없고 복수 독립 채널 확인도 없음.",
+          "reasoning": "거래량과 거래대금 급증은 D+1까지 단기 수급이 이어질 수 있는 약한 양의 신호야. 하지만 직접적인 신규 호재가 없고 당일 거래가 지나치게 집중돼 기대가 이미 반영됐거나 차익 실현이 나올 위험이 더 커 보여. 감자 및 대표이사 지분 감소 뉴스도 시가 갭 상승 가능성에 부정적이야.",
+          "evidence_quality": "moderate"
+        },
+        {
+          "date": "20260709",
+          "as_of": "2026-07-09T15:10:00+09:00",
+          "old_score": 80,
+          "telegram_rows": 1,
+          "news_rows": 7,
+          "ticker": "263800",
+          "name": "데이타솔루션",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 54,
+          "confidence": "medium",
+          "up_factors": [
+            "매출액 대비 422.04% 규모의 4,381.4억원 공급계약이라는 가격 직접성이 강한 확정 재료",
+            "평균 5일 대비 약 36.3배의 거래량과 높은 거래대금으로 강한 매수 관심 확인",
+            "52주 신고가 경신과 상한가 흐름으로 단기 모멘텀 지속 가능성"
+          ],
+          "down_factors": [
+            "계약 소식이 7월 7일부터 공개됐고 7월 8~9일 상한가·신고가 기사로 반복돼 이미 가격에 상당 부분 반영됐을 가능성",
+            "당일 거래대금이 전일 시가총액의 약 48%에 달해 손바뀜과 단기 차익실현 위험이 큼",
+            "텔레그램 언급이 단일 채널뿐이라 독립적인 다채널 보강 근거가 없음",
+            "종토방의 추가 공급 기대는 구체적으로 확인된 신규 재료가 아님"
+          ],
+          "news_summary": "삼성SDS 관련 AI 인프라 구축용 하드웨어·소프트웨어·서비스 공급계약 4,381.4억원이 핵심 재료다. 다만 최초 보도 후 상한가와 신고가 기사로 반복 노출돼 D+1 시가에 추가로 반영될 여지는 제한적이다.",
+          "telegram_summary": "7월 9일 오전 단일 채널에서 2건 언급됐지만 분석 내용이 없고 독립 채널 교차 확인도 없어 보조 근거가 약하다.",
+          "reasoning": "매출액의 422.04%에 해당하는 확정 공급계약은 강한 재료이고, 비정상적으로 높은 거래량도 다음 거래일 관심 지속에 약한 양의 신호다. 그러나 계약은 이미 이틀 전부터 알려졌고 연속적인 상한가·신고가 흐름과 대규모 거래대금에 충분히 반영됐을 위험이 크다. 따라서 상승 시가 가능성을 소폭 우세로 보되 높은 점수는 부여하기 어렵다.",
+          "evidence_quality": "moderate"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "date": "20260710",
+      "target": "D+1_OPEN_ABOVE_D_CLOSE",
+      "candidate_count": 2,
+      "scored_count": 2,
+      "scores": [
+        {
+          "date": "20260710",
+          "as_of": "2026-07-10T15:10:00+09:00",
+          "old_score": 54,
+          "telegram_rows": 0,
+          "news_rows": 1,
+          "ticker": "005360",
+          "name": "모나미",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 44,
+          "confidence": "medium",
+          "up_factors": [
+            "당일 거래량이 5일 평균의 9.25배로 급증해 단기 수급의 연속 가능성이 있음",
+            "장중 거래대금이 약 171억원으로 전일 시가총액 대비 큰 규모임",
+            "당일 공개된 신제품 출시 및 공공기관 협업 확대 소식이 있음"
+          ],
+          "down_factors": [
+            "신제품 출시 기사는 확정 수주·실적처럼 주가에 직접 연결되는 강한 재료가 아님",
+            "거래량과 손바뀜이 지나치게 커 재료가 당일 가격에 상당 부분 반영됐을 가능성이 높음",
+            "기존 뉴스가 투기성 거래와 해프닝을 강조하고 종토방 반응도 혼조임",
+            "텔레그램의 독립적인 재료 확인이나 보강 언급이 없음"
+          ],
+          "news_summary": "서울색을 담은 '153 시그니처' 출시와 공공기관 협업 확대 소식이 있었지만, 직접적인 매출·수주 규모는 제시되지 않았다. 기존 뉴스는 대규모 손바뀜과 투기성 과열을 부각했다.",
+          "telegram_summary": "관련 텔레그램 이력이 없어 독립적인 재료 확인이나 수급 보강 근거가 없다.",
+          "reasoning": "당일 거래량이 평균의 9.25배로 늘어난 점은 다음 거래일 초반 수급 지속에 약한 긍정 신호다. 그러나 확인된 새 재료는 일반적인 제품 출시 수준이고, 막대한 손바뀜과 과열성 보도로 볼 때 이미 당일 가격에 반영됐거나 차익 실현으로 이어질 위험이 더 크다. 따라서 D+1 시가가 종가를 웃돌 확률을 중립보다 소폭 낮게 추정한다.",
+          "evidence_quality": "moderate"
+        },
+        {
+          "date": "20260710",
+          "as_of": "2026-07-10T15:10:00+09:00",
+          "old_score": 80,
+          "telegram_rows": 5,
+          "news_rows": 6,
+          "ticker": "087010",
+          "name": "펩트론",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 43,
+          "confidence": "medium",
+          "up_factors": [
+            "회사가 비만·당뇨 치료제 공동연구가 정상 진행 중이라고 해명함",
+            "평균 5일 대비 약 36배의 거래량과 6,448억원의 거래대금으로 시장 관심이 매우 높음",
+            "종토방에서는 추가 상승 기대가 우세함"
+          ],
+          "down_factors": [
+            "터제파타이드가 릴리 공동연구에서 제외됐다는 보도로 핵심 기대가 흔들림",
+            "회사 해명에도 공동연구 범위와 상업화 계약 여부가 명확히 확정되지 않음",
+            "당일 초대형 거래량으로 해명과 반론이 종가에 상당 부분 반영됐을 가능성이 큼",
+            "텔레그램 언급이 사실상 단일 채널의 반복 게시이며 추정·해석 비중이 높음"
+          ],
+          "news_summary": "릴리 공동연구 대상에 터제파타이드가 포함되는지를 둘러싼 부정적 보도와 회사의 정상 진행 해명이 충돌함. 확정 계약이나 신규 수주처럼 가격에 직접 연결되는 새 사실은 확인되지 않음.",
+          "telegram_summary": "단일 채널에서 릴리 공동연구, PT404 포함 여부, IR 소통 문제와 반론이 반복됐어. 독립적인 복수 채널의 확인이 없고 추정성 해석이 많아 보강 근거는 약해.",
+          "reasoning": "회사의 정상 진행 해명은 반등 요인이지만, 핵심 물질의 공동연구 포함 여부가 해소되지 않아 D+1 시가에는 부정적 불확실성이 조금 더 커 보여. 평균 대비 약 36배 거래량과 대규모 거래대금은 관심 지속 신호지만, 당일 논쟁과 해명이 이미 가격에 상당히 반영됐을 위험도 높아 50점 아래로 평가했어.",
+          "evidence_quality": "moderate"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "date": "20260713",
+      "target": "D+1_OPEN_ABOVE_D_CLOSE",
+      "candidate_count": 3,
+      "scored_count": 3,
+      "scores": [
+        {
+          "date": "20260713",
+          "as_of": "2026-07-13T15:10:00+09:00",
+          "old_score": 54,
+          "telegram_rows": 2,
+          "news_rows": 4,
+          "ticker": "003680",
+          "name": "한성기업",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 42,
+          "confidence": "medium",
+          "up_factors": [
+            "당일 거래량이 5일 평균의 7.57배로 단기 수급이 강함",
+            "거래대금이 전일 시가총액의 약 2배로 시장 관심이 매우 높음"
+          ],
+          "down_factors": [
+            "확정 계약·실적 등 가격에 직접 연결되는 신규 재료가 없음",
+            "'애국기업 돈쭐'과 SNS 미담 테마가 이미 이틀 연속 상한가와 당일 대량 거래에 상당 부분 반영됐을 가능성이 큼",
+            "투자경고종목 지정예고 및 투자주의는 익일 추격 매수를 제약할 수 있음",
+            "텔레그램 언급이 단일 채널 1건뿐이라 독립적인 재료 확인이나 확산 근거가 약함"
+          ],
+          "news_summary": "뉴스는 SNS 미담에 따른 매수 운동과 연속 상한가를 반복 보도하며, 새로운 실적·계약 재료보다 테마 과열과 투자경고 위험을 부각함.",
+          "telegram_summary": "7월 10일 단일 채널에서 1건 언급됐을 뿐이며 구체적인 신규 재료나 복수 채널의 독립적 확인은 없음.",
+          "reasoning": "거래량과 거래대금 급증은 익일에도 관심이 이어질 약한 양의 신호야. 하지만 SNS 미담 테마와 연속 상한가가 이미 가격에 크게 반영됐고, 확정적인 신규 재료 없이 투자경고 지정예고까지 있어 D+1 시가가 종가를 웃돌 가능성을 50점 아래로 봤어.",
+          "evidence_quality": "moderate"
+        },
+        {
+          "date": "20260713",
+          "as_of": "2026-07-13T15:10:00+09:00",
+          "old_score": 80,
+          "telegram_rows": 6,
+          "news_rows": 6,
+          "ticker": "028300",
+          "name": "HLB",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 43,
+          "confidence": "medium",
+          "up_factors": [
+            "당일 거래량이 5일 평균의 14.24배로 급증해 악재성 매도가 상당 부분 반영됐을 가능성",
+            "급락 이후 단기 기술적 반발과 저가 매수 유입 가능성",
+            "종토방 수급 반응은 한 방향으로 쏠리지 않고 혼조"
+          ],
+          "down_factors": [
+            "FDA 승인 재불발과 협력사 제조·품질관리 문제가 핵심 악재로 지속",
+            "데이터 무결성 및 기록 은폐 정황까지 거론돼 불확실성이 확대",
+            "확정 계약·허가·실적 등 다음 날 시가를 끌어올릴 새로운 긍정 재료가 없음",
+            "텔레그램 근거가 사실상 단일 채널의 반복 언급이어서 독립적 보강 효과가 약함"
+          ],
+          "news_summary": "수집 뉴스는 리보세라닙 FDA 승인 지연·재불발과 협력사 항서제약의 제조 및 품질관리 문제를 중심으로 부정적이야. 당일 급락 기사 외에 새로운 확정 호재는 확인되지 않아.",
+          "telegram_summary": "단일 채널에서 FDA 승인 불발 원인으로 캄렐리주맙 제조시설의 cGMP·데이터 무결성 문제가 반복 언급됐어. 새로운 독립 채널의 확인이나 긍정 재료는 없어.",
+          "reasoning": "FDA 승인 재불발과 협력사의 품질·데이터 무결성 문제는 다음 거래일 시가에도 부담을 줄 가능성이 커. 다만 당일 거래량이 평균의 14.24배로 급증하고 주가가 크게 하락해 악재가 이미 상당 부분 반영됐을 위험도 있어, 하락 쪽 우위를 제한적으로만 반영했어. 확정적인 새 호재와 독립적인 다채널 보강 근거가 없어 50점 아래로 평가했어.",
+          "evidence_quality": "moderate"
+        },
+        {
+          "date": "20260713",
+          "as_of": "2026-07-13T15:10:00+09:00",
+          "old_score": 54,
+          "telegram_rows": 0,
+          "news_rows": 2,
+          "ticker": "387690",
+          "name": "레메디",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 47,
+          "confidence": "low",
+          "up_factors": [
+            "코스닥 상장 첫날 강한 관심과 장중 상승 흐름",
+            "거래량 2,611만 주·거래대금 5,464억 원으로 높은 단기 수급 집중",
+            "장중 거래대금 순위 7위로 관심 지속 가능성"
+          ],
+          "down_factors": [
+            "확정 계약·수주·허가·실적 등 새로운 가격 직결 재료 부재",
+            "기사의 핵심이 상장 첫날 장 초반 상승으로 당일 가격에 이미 반영됐을 가능성",
+            "대규모 거래가 차익 실현과 단기 과열 해소로 이어질 위험",
+            "종토방 반응이 혼조이고 텔레그램 독립 확인 근거가 없음"
+          ],
+          "news_summary": "수집 뉴스는 레메디의 코스닥 상장 첫날 장 초반 37% 상승을 다뤘으며, 별도의 신규 사업 재료는 확인되지 않음.",
+          "telegram_summary": "텔레그램 이력이 없어 독립적인 재료 확인이나 수급 보강 근거가 없음.",
+          "reasoning": "상장 첫날의 높은 거래량과 거래대금은 D+1까지 관심이 이어질 수 있는 약한 양의 신호야. 다만 뉴스가 장 초반 상승을 설명하는 반복성 상장 기사에 그치고, 확정된 신규 재료가 없어 당일 종가에 이미 반영됐을 위험이 커. 상승과 비상승 가능성이 비슷하지만 차익 실현 위험을 반영해 50점보다 소폭 낮게 봤어.",
+          "evidence_quality": "moderate"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "comparison": {
+    "row_count": 8,
+    "mean_absolute_delta": 19.625,
+    "meaningfully_changed_count": 8,
+    "meaningfully_changed_rate": 1.0,
+    "old_score_stddev": 11.9138,
+    "new_score_stddev": 3.9191,
+    "by_date": {
+      "20260709": [
+        {
+          "ticker": "189330",
+          "name": "씨이랩",
+          "old_score": 58,
+          "new_score": 47,
+          "delta": -11,
+          "rank_change": 0,
+          "meaningfully_changed": true,
+          "telegram_rows": 4
+        },
+        {
+          "ticker": "214330",
+          "name": "금호에이치티",
+          "old_score": 58,
+          "new_score": 41,
+          "delta": -17,
+          "rank_change": 0,
+          "meaningfully_changed": true,
+          "telegram_rows": 1
+        },
+        {
+          "ticker": "263800",
+          "name": "데이타솔루션",
+          "old_score": 80,
+          "new_score": 54,
+          "delta": -26,
+          "rank_change": 0,
+          "meaningfully_changed": true,
+          "telegram_rows": 1
+        }
+      ],
+      "20260710": [
+        {
+          "ticker": "005360",
+          "name": "모나미",
+          "old_score": 54,
+          "new_score": 44,
+          "delta": -10,
+          "rank_change": 1,
+          "meaningfully_changed": true,
+          "telegram_rows": 0
+        },
+        {
+          "ticker": "087010",
+          "name": "펩트론",
+          "old_score": 80,
+          "new_score": 43,
+          "delta": -37,
+          "rank_change": -1,
+          "meaningfully_changed": true,
+          "telegram_rows": 5
+        }
+      ],
+      "20260713": [
+        {
+          "ticker": "003680",
+          "name": "한성기업",
+          "old_score": 54,
+          "new_score": 42,
+          "delta": -12,
+          "rank_change": -1,
+          "meaningfully_changed": true,
+          "telegram_rows": 2
+        },
+        {
+          "ticker": "028300",
+          "name": "HLB",
+          "old_score": 80,
+          "new_score": 43,
+          "delta": -37,
+          "rank_change": -1,
+          "meaningfully_changed": true,
+          "telegram_rows": 6
+        },
+        {
+          "ticker": "387690",
+          "name": "레메디",
+          "old_score": 54,
+          "new_score": 47,
+          "delta": -7,
+          "rank_change": 2,
+          "meaningfully_changed": true,
+          "telegram_rows": 0
+        }
+      ]
+    }
+  },
+  "outcome_evaluation": {
+    "scored_count": 8,
+    "evaluated_count": 5,
+    "pending_count": 3,
+    "new_score_ranking_auc": 1.0,
+    "old_score_ranking_auc": 0.3333,
+    "new_score_brier": 0.2318,
+    "new_score_accuracy_at_50": 0.6,
+    "rows": [
+      {
+        "date": "20260709",
+        "next_date": "20260710",
+        "ticker": "189330",
+        "name": "씨이랩",
+        "old_score": 58,
+        "new_score": 47,
+        "d1_open_return_pct": 0.457,
+        "actual_up": true
+      },
+      {
+        "date": "20260709",
+        "next_date": "20260710",
+        "ticker": "214330",
+        "name": "금호에이치티",
+        "old_score": 58,
+        "new_score": 41,
+        "d1_open_return_pct": -2.5756,
+        "actual_up": false
+      },
+      {
+        "date": "20260709",
+        "next_date": "20260710",
+        "ticker": "263800",
+        "name": "데이타솔루션",
+        "old_score": 80,
+        "new_score": 54,
+        "d1_open_return_pct": 8.9378,
+        "actual_up": true
+      },
+      {
+        "date": "20260710",
+        "next_date": "20260713",
+        "ticker": "005360",
+        "name": "모나미",
+        "old_score": 54,
+        "new_score": 44,
+        "d1_open_return_pct": 13.2867,
+        "actual_up": true
+      },
+      {
+        "date": "20260710",
+        "next_date": "20260713",
+        "ticker": "087010",
+        "name": "펩트론",
+        "old_score": 80,
+        "new_score": 43,
+        "d1_open_return_pct": -2.3297,
+        "actual_up": false
+      }
+    ]
+  }
+}

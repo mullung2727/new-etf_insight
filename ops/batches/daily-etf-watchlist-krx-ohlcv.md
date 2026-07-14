@@ -18,7 +18,7 @@ This job must only refresh and verify `etl/db/krx_ohlcv.duckdb` for the previous
 date.
 
 Do not select stock picks, do not build or update `etl/db/watchlist.sqlite3`, do
-not run `run_watchlist_research.py`, do not collect board/news/web evidence, do
+not run D+1 probability scoring, do not collect news/Telegram evidence, do
 not create LLM scores, and do not write watchlist research reports. Stock
 picking and LLM scoring belong to the separate same-day 15:35 Kiwoom intraday
 batch.
