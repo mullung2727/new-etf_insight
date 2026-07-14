@@ -42,6 +42,7 @@ try:
         ensure_schema as ensure_insights_schema,
         upsert_stock_from_video,
     )
+    from scripts.youtube_stt import fetch_transcript_stt, update_transcript
 except ImportError:
     sys.path.insert(0, str(_SCRIPTS))
     from build_krx_ohlcv import DEFAULT_DB_PATH as STOCK_DB
@@ -52,6 +53,7 @@ except ImportError:
         ensure_schema as ensure_insights_schema,
         upsert_stock_from_video,
     )
+    from youtube_stt import fetch_transcript_stt, update_transcript
 
 
 def _load_prompt(name: str) -> str:
@@ -282,7 +284,49 @@ def load_video_row(
     }
 
 
-def node_load(state: State) -> State:
+def _stt_fallback(
+    db_path: str,
+    channel_id: str,
+    video_id: str,
+    *,
+    stt_fn: Callable[..., tuple[str | None, str | None, str | None]] | None,
+    stt_enabled: bool,
+    warnings: list,
+) -> str | None:
+    """대본 없는 영상에 STT 시도. 성공 시 DB 캐시 후 텍스트 반환, 실패 시 None."""
+    if not stt_enabled:
+        return None
+    fn = stt_fn or fetch_transcript_stt
+    try:
+        text, lang, source = fn(video_id)
+    except Exception as exc:  # noqa: BLE001 — STT 실패는 skip으로 흡수
+        warnings.append(f"stt_error:{exc}")
+        return None
+    if not text or not str(text).strip():
+        return None
+    con = sqlite3.connect(db_path)
+    try:
+        update_transcript(
+            con,
+            channel_id=channel_id,
+            video_id=video_id,
+            text=text,
+            lang=lang or "ko",
+            source=source or "stt",
+        )
+        con.commit()
+    finally:
+        con.close()
+    warnings.append("stt_filled")
+    return text
+
+
+def node_load(
+    state: State,
+    *,
+    stt_fn: Callable[..., tuple[str | None, str | None, str | None]] | None = None,
+    stt_enabled: bool = True,
+) -> State:
     warnings = list(state.get("warnings") or [])
     channel_id = state["channel_id"]
     video_id = state["video_id"]
@@ -310,6 +354,16 @@ def node_load(state: State) -> State:
         return {**state, "skip": True, "llm_calls": 0, "warnings": warnings}
 
     tr = row.get("transcript")
+    if tr is None or not str(tr).strip():
+        # 대본 없음 → STT 폴백(§5.1a). 자막 우회는 수집 단계에서 이미 시도됨.
+        tr = _stt_fallback(
+            state["db_path"],
+            channel_id,
+            video_id,
+            stt_fn=stt_fn,
+            stt_enabled=stt_enabled,
+            warnings=warnings,
+        )
     if tr is None or not str(tr).strip():
         warnings.append("no_transcript")
         return {
@@ -447,15 +501,27 @@ def node_extract_stocks(
         if not name:
             continue
         code = name_to_code.get(name)
+        reason = note or f"유튜브 이슈 요약 언급 ({state['video_id']})"
         if not code:
+            # 마스터 없음(미국·별칭 등): 표시용으로만 남김. insights 티커 시그널은 안 탐.
             warnings.append(f"llm_name_not_in_master:{name}")
+            mentions.append(
+                {
+                    "ticker": None,
+                    "name": name,
+                    "note": note,
+                    "discovery_reason": reason,
+                    "resolved": False,
+                }
+            )
             continue
         mentions.append(
             {
                 "ticker": code,
                 "name": name,
                 "note": note,
-                "discovery_reason": note or f"유튜브 이슈 요약 언급 ({state['video_id']})",
+                "discovery_reason": reason,
+                "resolved": True,
             }
         )
     return {
@@ -466,12 +532,33 @@ def node_extract_stocks(
     }
 
 
+def _summary_with_stocks(summary: dict, stock_mentions: list[dict]) -> dict:
+    """summary_json에 표시용 stocks 배열 포함 (미매칭 이름 포함)."""
+    stocks_out: list[dict] = []
+    for m in stock_mentions or []:
+        name = (m.get("name") or "").strip()
+        if not name:
+            continue
+        ticker = m.get("ticker")
+        stocks_out.append(
+            {
+                "ticker": ticker if ticker else None,
+                "name": name,
+                "note": m.get("note") or m.get("discovery_reason") or None,
+            }
+        )
+    return {**summary, "stocks": stocks_out}
+
+
 def node_persist(state: State) -> State:
     if state.get("skip"):
         return {**state, "persisted": False}
     summary = state.get("summary_obj")
     if not summary:
         return {**state, "persisted": False, "warnings": list(state.get("warnings") or []) + ["no_summary"]}
+
+    mentions = list(state.get("stock_mentions") or [])
+    summary_to_save = _summary_with_stocks(summary, mentions)
 
     con = sqlite3.connect(state["db_path"])
     try:
@@ -483,13 +570,16 @@ def node_persist(state: State) -> State:
             video_id=state["video_id"],
             date_kst=state.get("date_kst") or "",
             model=state.get("model") or _model_label(),
-            summary_obj=summary,
+            summary_obj=summary_to_save,
         )
-        for m in state.get("stock_mentions") or []:
+        for m in mentions:
+            ticker = m.get("ticker")
+            if not ticker:
+                continue  # 미확정 이름은 insights 테이블에 안 넣음
             upsert_stock_from_video(
                 con,
                 date_kst=state.get("date_kst") or "",
-                ticker=m["ticker"],
+                ticker=ticker,
                 name=m["name"],
                 channel_id=state["channel_id"],
                 video_id=state["video_id"],
@@ -499,11 +589,19 @@ def node_persist(state: State) -> State:
         con.commit()
     finally:
         con.close()
-    return {**state, "persisted": True}
+    return {**state, "persisted": True, "summary_obj": summary_to_save}
 
 
-def build_graph(*, generate_fn: GenerateFn | None = None):
+def build_graph(
+    *,
+    generate_fn: GenerateFn | None = None,
+    stt_fn: Callable[..., tuple[str | None, str | None, str | None]] | None = None,
+    stt_enabled: bool = True,
+):
     """generate_fn 주입 시 테스트 mock."""
+
+    def load_n(s: State) -> State:
+        return node_load(s, stt_fn=stt_fn, stt_enabled=stt_enabled)
 
     def map_n(s: State) -> State:
         return node_map_summarize(s, generate_fn=generate_fn)
@@ -515,7 +613,7 @@ def build_graph(*, generate_fn: GenerateFn | None = None):
         return node_extract_stocks(s, generate_fn=generate_fn)
 
     g = StateGraph(State)
-    g.add_node("load", node_load)
+    g.add_node("load", load_n)
     g.add_node("chunk", node_chunk)
     g.add_node("map_summarize", map_n)
     g.add_node("reduce", red_n)
@@ -541,13 +639,17 @@ def run_video(
     stock_db_path: str | None = None,
     generate_fn: GenerateFn | None = None,
     name_to_code: dict[str, str] | None = None,
+    stt_fn: Callable[..., tuple[str | None, str | None, str | None]] | None = None,
+    stt_enabled: bool = True,
 ) -> State:
-    """영상 1건 분석. 테스트에서 generate_fn / name_to_code / segments 주입."""
-    graph = build_graph(generate_fn=generate_fn)
+    """영상 1건 분석. 테스트에서 generate_fn / name_to_code / segments / stt_fn 주입."""
+    graph = build_graph(
+        generate_fn=generate_fn, stt_fn=stt_fn, stt_enabled=stt_enabled
+    )
 
     # stock extract needs injectable name_to_code without rebuilding whole graph:
     # wrap extract by running pipeline functions when name_to_code provided
-    if name_to_code is not None or generate_fn is not None:
+    if name_to_code is not None or generate_fn is not None or stt_fn is not None:
         # manual pipeline for injectability (same order as graph)
         state: State = {
             "channel_id": channel_id,
@@ -559,7 +661,7 @@ def run_video(
             "warnings": [],
             "llm_calls": 0,
         }
-        state = node_load(state)
+        state = node_load(state, stt_fn=stt_fn, stt_enabled=stt_enabled)
         state = node_chunk(state)
         state = node_map_summarize(state, generate_fn=generate_fn)
         state = node_reduce(state, generate_fn=generate_fn)
@@ -589,7 +691,16 @@ def main() -> int:
     ap.add_argument("--db", default=str(DEFAULT_DB))
     ap.add_argument("--stock-db", default=str(STOCK_DB))
     ap.add_argument("--force", action="store_true")
+    ap.add_argument(
+        "--no-stt",
+        action="store_true",
+        help="대본 없을 때 Gemini STT 폴백 끔(기본 켜짐)",
+    )
     args = ap.parse_args()
+
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[3] / ".env")  # GEMINI_API_KEY (STT)
 
     result = run_video(
         channel_id=args.channel_id,
@@ -597,6 +708,7 @@ def main() -> int:
         db_path=args.db,
         force=args.force,
         stock_db_path=args.stock_db,
+        stt_enabled=not args.no_stt,
     )
     print(
         f"[youtube_analysis] channel={args.channel_id} video={args.video_id} "

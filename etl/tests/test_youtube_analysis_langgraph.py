@@ -150,7 +150,8 @@ class GraphTest(unittest.TestCase):
 
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_g1_null_transcript_no_llm(self):
+    def test_g1_null_transcript_no_stt_skips(self):
+        """STT 꺼짐 + 무자막 → skip, LLM 0."""
         _seed(self.con, transcript=None)
         gen = _mock_gen_factory()
         with patch(
@@ -163,11 +164,63 @@ class GraphTest(unittest.TestCase):
                 db_path=self.db,
                 generate_fn=gen,
                 name_to_code=NAME_TO_CODE,
+                stt_enabled=False,
             )
         self.assertTrue(r.get("skip"))
         self.assertEqual(r.get("llm_calls"), 0)
         n = self.con.execute("SELECT COUNT(*) FROM youtube_video_summaries").fetchone()[0]
         self.assertEqual(n, 0)
+
+    def test_g9_stt_fallback_fills_and_summarizes(self):
+        """무자막 → STT 폴백 성공 → 대본 캐시 + 요약 진행."""
+        _seed(self.con, transcript=None)
+        gen = _mock_gen_factory()
+
+        def stt_fn(video_id):
+            return ("STT로 뽑은 삼성전자 대본 본문", "ko", "stt:test")
+
+        with patch(
+            "scripts.youtube_langgraph.youtube_analysis_langgraph.load_discovery_channels",
+            return_value={CH_DISC: {}},
+        ):
+            r = run_video(
+                channel_id=CH_DISC,
+                video_id=VID,
+                db_path=self.db,
+                generate_fn=gen,
+                name_to_code=NAME_TO_CODE,
+                stt_fn=stt_fn,
+            )
+        self.assertFalse(r.get("skip"))
+        self.assertTrue(r.get("persisted"))
+        self.assertEqual(r.get("llm_calls"), 3)
+        self.assertIn("stt_filled", r.get("warnings") or [])
+        # DB 대본 캐시됨
+        row = self.con.execute(
+            "SELECT transcript, transcript_source FROM youtube_videos WHERE video_id=?",
+            (VID,),
+        ).fetchone()
+        self.assertEqual(row[0], "STT로 뽑은 삼성전자 대본 본문")
+        self.assertEqual(row[1], "stt:test")
+
+    def test_g10_stt_fallback_fails_skips(self):
+        """무자막 → STT도 실패(빈 결과) → skip, LLM 0."""
+        _seed(self.con, transcript=None)
+        gen = _mock_gen_factory()
+        with patch(
+            "scripts.youtube_langgraph.youtube_analysis_langgraph.load_discovery_channels",
+            return_value={CH_DISC: {}},
+        ):
+            r = run_video(
+                channel_id=CH_DISC,
+                video_id=VID,
+                db_path=self.db,
+                generate_fn=gen,
+                name_to_code=NAME_TO_CODE,
+                stt_fn=lambda vid: (None, None, None),
+            )
+        self.assertTrue(r.get("skip"))
+        self.assertEqual(r.get("llm_calls"), 0)
 
     def test_g4_map_reduce_saves_summary(self):
         _seed(self.con, transcript="본문 " * 20)
@@ -196,7 +249,8 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(obj["headline"], "통합 한 줄")
         self.assertIn("issues", obj)
 
-    def test_g5_unknown_name_dropped(self):
+    def test_g5_unknown_name_kept_for_display_not_insights(self):
+        """마스터 없는 이름은 표시용 stock_mentions·summary_json에 남고 insights에는 안 탐."""
         _seed(self.con)
         gen = _mock_gen_factory()
         with patch(
@@ -210,8 +264,11 @@ class GraphTest(unittest.TestCase):
                 generate_fn=gen,
                 name_to_code=NAME_TO_CODE,
             )
-        self.assertEqual(len(r.get("stock_mentions") or []), 1)
-        self.assertEqual(r["stock_mentions"][0]["ticker"], "005930")
+        mentions = r.get("stock_mentions") or []
+        self.assertEqual(len(mentions), 2)
+        by_name = {m["name"]: m for m in mentions}
+        self.assertEqual(by_name["삼성전자"]["ticker"], "005930")
+        self.assertIsNone(by_name["없는종목XYZ"]["ticker"])
         self.assertTrue(
             any("없는종목XYZ" in w for w in (r.get("warnings") or []))
         )
@@ -222,6 +279,14 @@ class GraphTest(unittest.TestCase):
             ).fetchall()
         ]
         self.assertEqual(tickers, ["005930"])
+        row = self.con.execute(
+            "SELECT summary_json FROM youtube_video_summaries WHERE video_id=?",
+            (VID,),
+        ).fetchone()
+        embedded = json.loads(row[0]).get("stocks") or []
+        self.assertEqual(len(embedded), 2)
+        names = {x["name"] for x in embedded}
+        self.assertEqual(names, {"삼성전자", "없는종목XYZ"})
 
     def test_g6_existing_summary_skip(self):
         _seed(self.con)

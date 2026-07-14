@@ -53,7 +53,7 @@
 | **3** | 영상 LangGraph 요약 | 청크→통합 이슈 요약 저장 | Phase 2 transcript | **재설계 freeze · 구 1샷 폐기** |
 | **4** | 종목 정리 (그래프 후단) | 통합 요약 기준 종목 추출·저장 | Phase 3 통합 요약 | **재설계 freeze · 구 대본직스캔 폐기** |
 | **5** | 소비 | api 읽기 · 결과/대기 UI · 수동 수집·요약 | Phase 3~4 | 진행 |
-| **6** | 스케줄 | 일 1회 수집 + auto 채널 요약 | Phase 5 | 미착수 |
+| **6** | 스케줄 | 일 1회 01:00 수집(전 채널) + auto 채널 요약 | Phase 5 | 완료 (Windows Task) |
 
 수집 3단(HTML resolve → RSS → transcript-api)은 §4.0 실측 **확정**.  
 P3/P4 제품 결정은 §5·§6 **2026-07-09 freeze**.  
@@ -304,6 +304,22 @@ nav 변경 없음 (`설정` 유지).
 
 ## 4. Phase 2 — 수집 (계약 스펙 · 실측 채택)
 
+### 4.-1 대본 확보 우선순위 (2026-07-14 개정 — STT 폴백 도입)
+
+> **배경**: 실측 결과 수집 영상의 ~79%가 `youtube-transcript-api`로 대본을
+> 못 얻음(자막 트랙 없음 또는 YouTube 차단). 요약 불가 영상이 다수 →
+> **키 없는 우회를 최우선**으로 하되, 막히면 **Gemini STT 폴백**으로 대본을 확보한다.
+
+**우선순위 (요약 전 선행, 위→아래 순):**
+
+1. **키 없이 우회 (최우선)**: `youtube-transcript-api` (자막, 무료·키 불필요). §4.1.1 `fetch_transcript`.
+2. **막힌 경우만 — Gemini STT**: yt-dlp 오디오(mp3) → Gemini 전사. 키(`GEMINI_API_KEY`) 필요. `youtube_stt.py`.
+3. **둘 다 실패**: 대본 없음 → 요약 skip.
+
+- STT는 **요약 대상 영상에만** 발동(수집 전건 아님) → 비용/시간 안전. LangGraph load 단계에서 폴백(§5.1a).
+- STT로 얻은 대본은 `youtube_videos.transcript`에 캐시(`transcript_source='stt:<model>'`) → 재-STT 금지.
+- 모델: `gemini-flash-latest`(현행 GA 별칭; `gemini-2.5-flash`는 신규 사용자 404). AI Studio 무료티어(15 RPM · 1,500/일).
+
 ### 4.0 실측 스모크 (2026-07-09, 확정)
 
 | 항목 | 결과 |
@@ -334,13 +350,14 @@ raw channel ref
 |---|---|---|
 | `@handle` → `UC…` | 채널 페이지 HTML + regex (`channelId`) | Data API |
 | 업로드 목록·메타 | **RSS** `https://www.youtube.com/feeds/videos.xml?channel_id={id}` | yt-dlp (RSS 15건 초과 backfill 시 재검토) |
-| 대본 | **`youtube-transcript-api`** (`YouTubeTranscriptApi().fetch` / `list`) | yt-dlp subs, STT |
+| 대본 (1순위) | **`youtube-transcript-api`** (`YouTubeTranscriptApi().fetch` / `list`) | — |
+| 대본 폴백 (2순위) | **yt-dlp 오디오 → Gemini 전사** (`youtube_stt.py`) | STT 로컬 whisper(비채택: 품질↓·CPU) |
 | HTTP | `urllib.request` + `User-Agent: Mozilla/5.0 …` | — |
 | XML | `xml.etree.ElementTree` | — |
 
-- **Google API key / OAuth 사용 금지** (plan).
-- 의존성: `etl/pyproject.toml`에 `youtube-transcript-api` 추가·버전 핀 (실측 환경 참고: 1.2.x API — `YouTubeTranscriptApi().fetch(video_id, languages=[…])`, snippet `.text`).
-- yt-dlp **설치·호출 금지**(Phase 2 범위).
+- **YouTube Data API key / OAuth 사용 금지** (plan). Gemini STT는 별개(`GEMINI_API_KEY`)로 대본 폴백 전용.
+- 의존성: `etl/pyproject.toml` — `youtube-transcript-api`(1.2.x), `yt-dlp`, `google-genai`. ffmpeg 시스템 설치 필요(mp3 변환).
+- yt-dlp: **대본 폴백(오디오 추출) 용도로만** 허용. 목록/backfill 수집엔 여전히 미사용(RSS 유지).
 
 ### 4.1.1 함수 계약 (수집 코어 — `collect_youtube.py` 권장)
 
@@ -488,6 +505,7 @@ uv run python scripts/run_youtube_channels.py --date <KST오늘> --channel UCeN2
 
 ```text
 load video (title, transcript [+ snippet timestamps if available])
+  → [transcript 없으면 STT 폴백으로 확보·캐시 → 그래도 없으면 skip]  # §5.1a
   → chunk          # ① 타임코드 10분 우선, 없으면 글자 수
   → map summarize  # ② 청크마다 페이지 요약 (중간 결과; DB 필수 저장 아님)
   → reduce issues  # ③ 페이지들 통합: 중복 제거 + 이슈 판별 → youtube_video_summaries 저장
@@ -502,6 +520,16 @@ load video (title, transcript [+ snippet timestamps if available])
 | map summarize | LLM × N | 예 | 아니오 (기본). 디버그용 남기면 선택 |
 | reduce issues | LLM × 1 | 예 | **예** `youtube_video_summaries` |
 | extract stocks | LLM 이름 + 파이썬 마스터 | 예(이름) | **예** `youtube_stock_insights` |
+
+### 5.1a load 단계 STT 폴백 (2026-07-14)
+
+- `node_load`가 DB `transcript`를 읽는다.
+- 비었으면(NULL/공백): **STT 폴백**(`youtube_stt.fetch_transcript_stt`) 1회 시도 → 성공 시
+  `youtube_videos.transcript` upsert(캐시) 후 요약 계속.
+- STT 실패(키 없음/다운로드 실패/빈 결과): `skip=True`, `warnings += ['no_transcript']`.
+- STT는 요약 대상(= 이 그래프에 진입한 영상)에만 발동 → 비용은 요약 트리거에 종속.
+- `run_youtube_analysis.list_videos`의 `transcript IS NOT NULL` 필터는 **STT 폴백 활성 시 완화**
+  (없는 영상도 그래프에 넣어야 폴백이 돈다). §7 참고.
 
 ### 5.2 청킹 규칙
 
@@ -698,6 +726,7 @@ etl/scripts/youtube_langgraph/              # P3+4 (신)
   prompts/
   *_schema.json
 etl/scripts/run_youtube_analysis.py         # P3+4 날짜 루프
+etl/scripts/youtube_stt.py                  # 대본 STT 폴백 (yt-dlp+Gemini) — 2026-07-14
 etl/scripts/youtube_stock_insights.py       # 테이블 헬퍼 (유지·스키마 §5.4에 맞춤)
 etl/db/youtube_public.sqlite3               # runtime
 etl/tests/test_youtube_channels.py          # P1
@@ -742,6 +771,7 @@ etl/tests/test_discover_youtube_stock_candidates.py
 | 2026-07-09 | P1 채널관리, P2 RSS+transcript-api |
 | 2026-07-09 | 구 P3=1샷 generate_json, 구 P4=대본 규칙 discover (이후 폐기) |
 | 2026-07-09 | **P3+4 LangGraph**: 10분 타임코드 청크(폴백 글자수) → map 요약 → reduce 이슈 저장 → 종목은 **후단** 텔레그램식. 영상 1건=1 run. 구 P3/P4 삭제. DB 분리, 조회 join만 |
+| 2026-07-14 | **STT 폴백 도입**: 대본 확보 우선순위 = ① youtube-transcript-api(키 없음, 최우선) → ② Gemini STT(yt-dlp 오디오, 막힌 경우만). 요약은 대본 확보 후 진행. LangGraph load에 STT 폴백 노드 삽입. `youtube_stt.py` 신규. 실측: 79% 무자막, Gemini 전사 품질 양호(11.6k자/편, ~40s). daily-youtube 배치는 검토 위해 잠정 Disabled |
 
 ### 착수 시 확인 (과거)
 
@@ -759,10 +789,10 @@ etl/tests/test_discover_youtube_stock_candidates.py
 
 ## 12. 범위 밖 (구현 금지 목록)
 
-- STT
+- ~~STT~~ → **범위 내** (2026-07-14, §4.-1 대본 폴백. Gemini STT 전용)
 - YouTube Data API key / OAuth
 - **장기 backfill** (1년 전 등 RSS 밖 소급 수집) — 당분간 금지
-- Phase 2에서 yt-dlp 도입 (backfill 재검토 전까지)
+- ~~Phase 2에서 yt-dlp 도입~~ → yt-dlp는 **대본 폴백 오디오 추출 용도로만** 허용(2026-07-14). 목록/backfill 수집엔 여전히 금지
 - `/admin/youtube` 단독 페이지 (settings 탭으로 충분; 목록은 `/youtube`)
 - **텔레그램 DB에 유튜브 테이블 혼재** (join은 조회 계층만)
 - 원문 대본 전량 종목 직스캔 (구 P4 방식 부활 금지)
@@ -820,7 +850,9 @@ etl/tests/test_discover_youtube_stock_candidates.py
 | POST | `/youtube/summarize` | `{ from, to, channel_ids?, force?, video_ids? }` | 미요약(또는 지정) LangGraph. **모든 채널 수동 가능**. 배치 계약 유지, UI는 단건만 노출 |
 
 - `collect-url`: 기존 `collect`(채널·기간)·`collect-selected`(catalog dict 필요)로 임의 URL 1건 불가 → 신규. 프록시 `broker-web/app/api/youtube-collect-url/route.ts`는 `youtube-collect/route.ts` 복제.
-- 자동 스케줄(나중): 수집 전 채널 → 요약은 `summary_mode=auto` 미요약만.
+- 자동 스케줄: `ops/scheduled-tasks/run-youtube-daily.ps1` 매일 **01:00 KST**.
+  - 대상일 = **어제**(D-1). 수집 = 등록 채널 전부. 요약 = `summary_mode=auto` 미요약만 (`--lookback-days 2`).
+  - 문서: `ops/batches/daily-youtube.md` · Task: `\new-etf_insight\daily-youtube`
 
 ### 13.4 UI /youtube
 
