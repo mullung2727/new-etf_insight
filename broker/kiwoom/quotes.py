@@ -24,6 +24,7 @@ _PRICE_KEYS = ("cur_prc", "stk_prpr", "prpr", "last_prc")
 
 # ka10095 1콜당 종목수 상한이 문서에 없어 보수적으로 분할(50). 실측 후 조정.
 _WATCHLIST_CHUNK = 50
+_MINUTE_SCOPES = {"1", "3", "5", "10", "15", "30", "45", "60"}
 
 
 def _to_float(val: Any) -> float | None:
@@ -108,3 +109,41 @@ def get_daily_chart(symbol: str, base_dt: str) -> list[dict[str, Any]]:
         {"stk_cd": symbol, "base_dt": base_dt, "upd_stkpc_tp": "1"},
     )
     return res.data.get("stk_dt_pole_chart_qry", [])
+
+
+def get_minute_chart(
+    symbol: str,
+    tic_scope: str = "1",
+    base_dt: str | None = None,
+    *,
+    cont_yn: str = "N",
+    next_key: str = "",
+) -> dict[str, Any]:
+    """분봉 차트(ka10080) 한 페이지와 연속조회 키를 반환한다.
+
+    tic_scope: 1, 3, 5, 10, 15, 30, 45, 60분.
+    base_dt는 선택값(YYYYMMDD)이다. 다음 페이지는 직전 결과의
+    cont_yn/next_key를 그대로 전달한다. 가격 부호는 원본 의미 보존을 위해 변환하지 않는다.
+    """
+    scope = str(tic_scope)
+    if scope not in _MINUTE_SCOPES:
+        raise ValueError(f"지원하지 않는 분봉 범위: {tic_scope}")
+    if base_dt is not None and (len(base_dt) != 8 or not base_dt.isdigit()):
+        raise ValueError("base_dt는 YYYYMMDD 형식이어야 함")
+
+    body = {"stk_cd": symbol, "tic_scope": scope, "upd_stkpc_tp": "1"}
+    if base_dt is not None:
+        body["base_dt"] = base_dt
+    res = request(
+        tr.TR_MINUTE_CHART,
+        tr.EP_CHART,
+        body,
+        cont_yn=cont_yn,
+        next_key=next_key,
+    )
+    return {
+        "stk_cd": res.data.get("stk_cd", symbol),
+        "bars": res.data.get("stk_min_pole_chart_qry", []) or [],
+        "cont_yn": res.cont_yn,
+        "next_key": res.next_key,
+    }

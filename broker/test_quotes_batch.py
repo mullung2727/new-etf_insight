@@ -102,6 +102,54 @@ class TestGetQuote(unittest.TestCase):
         self.assertEqual(q.price, 156600)
 
 
+class TestGetMinuteChart(unittest.TestCase):
+    """kiwoom.quotes.get_minute_chart — ka10080 본문과 연속조회 전달 검증."""
+
+    def test_returns_bars_and_continuation(self):
+        result = TrResult(
+            data={
+                "stk_cd": "005930",
+                "stk_min_pole_chart_qry": [
+                    {"cntr_tm": "20260715153000", "cur_prc": "-78800"}
+                ],
+            },
+            cont_yn="Y",
+            next_key="next-page",
+        )
+        with patch("kiwoom.quotes.request", return_value=result) as request_mock:
+            page = quotes.get_minute_chart("005930", "5", "20260715")
+
+        request_mock.assert_called_once_with(
+            "ka10080",
+            "/api/dostk/chart",
+            {"stk_cd": "005930", "tic_scope": "5", "upd_stkpc_tp": "1", "base_dt": "20260715"},
+            cont_yn="N",
+            next_key="",
+        )
+        self.assertEqual(page["bars"][0]["cntr_tm"], "20260715153000")
+        self.assertEqual(page["cont_yn"], "Y")
+        self.assertEqual(page["next_key"], "next-page")
+
+    def test_passes_continuation_and_omits_optional_date(self):
+        with patch(
+            "kiwoom.quotes.request",
+            return_value=TrResult(data={}, cont_yn="N", next_key=""),
+        ) as request_mock:
+            quotes.get_minute_chart("005930", cont_yn="Y", next_key="page-2")
+
+        request_mock.assert_called_once_with(
+            "ka10080",
+            "/api/dostk/chart",
+            {"stk_cd": "005930", "tic_scope": "1", "upd_stkpc_tp": "1"},
+            cont_yn="Y",
+            next_key="page-2",
+        )
+
+    def test_rejects_unsupported_scope(self):
+        with self.assertRaises(ValueError):
+            quotes.get_minute_chart("005930", "2")
+
+
 class TestQuotesRouteCache(unittest.TestCase):
     """GET /quotes?codes= — TTL 캐시 히트/만료."""
 
@@ -132,6 +180,27 @@ class TestQuotesRouteCache(unittest.TestCase):
             t[0] += 3.0  # TTL(2s) 초과
             self.client.get("/quotes", params={"codes": "005930"})
         self.assertEqual(m.call_count, 2)
+
+
+class TestMinuteChartRoute(unittest.TestCase):
+    def test_exposes_reusable_minute_chart_endpoint(self):
+        from routers import quotes as quotes_router
+
+        app = FastAPI()
+        app.include_router(quotes_router.router)
+        client = TestClient(app)
+        expected = {"stk_cd": "005930", "bars": [], "cont_yn": "N", "next_key": ""}
+        with patch("routers.quotes.quotes.get_minute_chart", return_value=expected) as method:
+            response = client.get(
+                "/quotes/005930/minute",
+                params={"tic_scope": "5", "base_dt": "20260715"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), expected)
+        method.assert_called_once_with(
+            "005930", "5", "20260715", cont_yn="N", next_key=""
+        )
 
 
 if __name__ == "__main__":

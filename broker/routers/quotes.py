@@ -70,3 +70,25 @@ def get_daily_chart(symbol: str, base_dt: str | None = None) -> Any:
     """6자리 종목코드의 일봉 배열을 반환한다. base_dt(YYYYMMDD) 기본값=오늘."""
     base = base_dt or datetime.now().strftime("%Y%m%d")
     return quotes.get_daily_chart(symbol, base)
+
+
+@router.get(
+    "/{symbol}/minute",
+    operation_id="get_minute_chart",
+    summary="주식 분봉차트 조회",
+)
+def get_minute_chart(
+    symbol: str,
+    tic_scope: str = "1",
+    base_dt: str | None = None,
+    cont_yn: str = "N",
+    next_key: str = "",
+) -> Any:
+    """분봉 한 페이지와 연속조회 키를 반환한다. tic_scope 기본값은 1분이다."""
+    return quotes.get_minute_chart(
+        symbol,
+        tic_scope,
+        base_dt,
+        cont_yn=cont_yn,
+        next_key=next_key,
+    )

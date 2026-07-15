@@ -20,6 +20,7 @@ EP_ORDR = "/api/dostk/ordr"        # 주문 (매수/매도/정정/취소)
 TR_STOCK_INFO = "ka10001"   # 주식기본정보요청 (현재가 포함) → EP_STKINFO
 TR_ORDERBOOK = "ka10004"    # 주식호가요청 → EP_MRKCOND
 TR_DAILY_CHART = "ka10081"  # 주식일봉차트조회요청 → EP_CHART
+TR_MINUTE_CHART = "ka10080"  # 주식분봉차트조회요청 → EP_CHART
 TR_WATCHLIST_QUOTE = "ka10095"  # 관심종목정보요청 (복수종목 일괄시세, 등록 불요·stateless) → EP_STKINFO
 
 # --- Account (계좌) ---
