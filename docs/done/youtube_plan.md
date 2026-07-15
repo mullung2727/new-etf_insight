@@ -1,6 +1,6 @@
 # 유튜브 채널 수집·요약 — 기획
 
-> **상태**: 수집·요약 UI·API 완료 · digest/Task 선택 남음 (2026-07-12)
+> **상태**: 수집·요약 UI·API + 일 01:00 auto 배치 완료 · digest 선택 남음 (2026-07-12)
 > **짝 문서**: 개발 상세·스펙·TDD는 [youtube_tech.md](./youtube_tech.md) · UI 흐름 DONE: [done/youtube_ui_plan.md](./done/youtube_ui_plan.md)
 > 이 문서는 **목적·화면·기능·흐름·결정**만. 코드/경로/스키마는 기술문서로.
 
