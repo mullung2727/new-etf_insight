@@ -9,11 +9,10 @@ const links = [
   { href: "/etfs", label: "ETF 분석" },
   { href: "/trading", label: "트레이딩" },
   { href: "/notes", label: "투자노트" },
-  { href: "/financial", label: "재무제표" },
+  { href: "/stock", label: "종목 분석" },
   { href: "/rankings", label: "지표랭킹" },
   { href: "/watchlist", label: "watchlist" },
   { href: "/close-bet", label: "종가배팅" },
-  { href: "/research", label: "리포트" },
   { href: "/youtube", label: "유튜브" },
   { href: "/admin/settings", label: "설정" },
 ];

@@ -4,11 +4,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { CorpCode } from "@/types/dart";
 
 interface Props {
-  onSearch: (corpCode: string, corpName: string) => void;
+  onSearch: (corpCode: string, corpName: string, stockCode: string) => void;
   loading: boolean;
+  // "financial"(기본): DART 재무 비교 문구. "stock": 종목 분석 허브 진입용 중립 문구.
+  variant?: "financial" | "stock";
 }
 
-export default function CompareSearchBar({ onSearch, loading }: Props) {
+export default function CompareSearchBar({ onSearch, loading, variant = "financial" }: Props) {
   const [query, setQuery] = useState("");
   const [corpCode, setCorpCode] = useState("");
   const [suggestions, setSuggestions] = useState<CorpCode[]>([]);
@@ -49,7 +51,7 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
     setCorpCode(corp.corp_code);
     setSuggestions([]);
     setShowDropdown(false);
-    onSearch(corp.corp_code, corp.corp_name);
+    onSearch(corp.corp_code, corp.corp_name, corp.stock_code);
   }, [onSearch]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -83,7 +85,7 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
         <div className="flex items-center gap-3">
           <div className="w-[6px] h-[6px] rounded-full bg-fin-gold" style={{ boxShadow: "0 0 8px var(--color-fin-gold)" }} />
           <span className="text-fin-gold text-fin-sm tracking-[0.2em] font-semibold uppercase">
-            DART Financial Compare · 연간 5년
+            {variant === "stock" ? "종목 검색" : "DART Financial Compare · 연간 5년"}
           </span>
         </div>
         <span
@@ -168,7 +170,11 @@ export default function CompareSearchBar({ onSearch, loading }: Props) {
 
       <div className="px-6 py-2 flex items-center gap-2 border-t border-fin-gold/[0.08] bg-black/20">
         <span className={`text-fin-xs tracking-[0.15em] font-[inherit] ${corpCode ? "text-fin-gold/50" : "text-fin-ghost"}`}>
-          {corpCode ? `CORP_CODE: ${corpCode} · fs_div 자동 · 연간 5년` : "기업명을 입력하고 자동완성에서 선택하면 즉시 조회됩니다"}
+          {variant === "stock"
+            ? "기업명을 입력하고 선택하면 종목 분석 허브로 이동합니다"
+            : corpCode
+            ? `CORP_CODE: ${corpCode} · fs_div 자동 · 연간 5년`
+            : "기업명을 입력하고 자동완성에서 선택하면 즉시 조회됩니다"}
         </span>
       </div>
     </div>

@@ -13,11 +13,16 @@ export function findHolding(holdings: Holding[] | undefined, code: string): Hold
 }
 
 // 종목 개괄 허브 라우팅 헬퍼. 탭은 URL 쿼리 ?tab= 로 딥링크.
-export const STOCK_TABS = ["overview", "chart", "financial", "telegram", "youtube", "notes"] as const;
+export const STOCK_TABS = ["overview", "chart", "financial", "research", "mentions", "notes"] as const;
 export type StockTab = (typeof STOCK_TABS)[number];
 
+// 레거시 탭 → 통합 탭 호환(북마크·외부 링크 방어). telegram/youtube는 mentions로 흡수됨.
+const LEGACY_TAB: Record<string, StockTab> = { telegram: "mentions", youtube: "mentions" };
+
 export function resolveTab(raw: string | null | undefined): StockTab {
-  return STOCK_TABS.includes(raw as StockTab) ? (raw as StockTab) : "overview";
+  if (STOCK_TABS.includes(raw as StockTab)) return raw as StockTab;
+  if (raw && raw in LEGACY_TAB) return LEGACY_TAB[raw];
+  return "overview";
 }
 
 // 허브 링크. overview는 기본이라 tab 생략. date/name 쿼리 보존(차트 기준일·표시명).

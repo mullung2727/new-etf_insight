@@ -7,8 +7,15 @@ function Empty({ msg }: { msg: string }) {
   );
 }
 
-// stock_code → corp_code 해석 후 다기간(연 5년) 재무 비교. 매핑/조회 실패는 빈상태.
-export default async function FinancialTab({ code }: { code: string }) {
+// stock_code → corp_code 해석 후 다기간 재무 비교. 매핑/조회 실패는 빈상태.
+// mode: annual(연 5년) | quarterly(분기 8개). 토글은 URL ?fin_mode= 로 서버 재렌더.
+export default async function FinancialTab({
+  code,
+  mode = "annual",
+}: {
+  code: string;
+  mode?: "annual" | "quarterly";
+}) {
   let corpCode: string | null = null;
   try {
     corpCode = corpCodeForStock(await fetchCorpCodes(), code);
@@ -18,7 +25,7 @@ export default async function FinancialTab({ code }: { code: string }) {
   if (!corpCode) return <Empty msg="재무 데이터 없음 (DART 기업코드 매핑 실패)" />;
 
   try {
-    const data = await fetchCompare(corpCode, 5, "annual");
+    const data = await fetchCompare(corpCode, mode === "quarterly" ? 8 : 5, mode);
     return <CompareTable data={data} />;
   } catch {
     return <Empty msg="재무 데이터를 불러올 수 없습니다" />;

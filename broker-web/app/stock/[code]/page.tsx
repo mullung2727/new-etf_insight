@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { brokerClient } from "@/lib/broker-client";
 import { resolveTab, stockHubHref, findHolding, STOCK_TABS, type StockTab } from "@/lib/stock-hub";
@@ -5,8 +6,9 @@ import { resolveRange } from "@/lib/chart-range";
 import type { Holding } from "@/lib/broker-client";
 import ChartTab from "@/components/stock/chart-tab";
 import FinancialTab from "@/components/stock/financial-tab";
-import TelegramTab from "@/components/stock/telegram-tab";
-import YoutubeTab from "@/components/stock/youtube-tab";
+import FinancialModeToggle from "@/components/stock/financial-mode-toggle";
+import ResearchTab from "@/components/stock/research-tab";
+import MentionsTab from "@/components/stock/mentions-tab";
 import NotesTab from "@/components/stock/notes-tab";
 import OverviewTab from "@/components/stock/overview-tab";
 
@@ -14,8 +16,8 @@ const TAB_LABEL: Record<StockTab, string> = {
   overview: "개요",
   chart: "차트",
   financial: "재무",
-  telegram: "텔레그램",
-  youtube: "유튜브",
+  research: "리포트",
+  mentions: "언급",
   notes: "노트",
 };
 
@@ -46,12 +48,13 @@ export default async function StockHubPage({
 }: {
   params: Promise<{ code: string }>;
   searchParams: Promise<{
-    tab?: string; date?: string; name?: string; range?: string; tg_session?: string;
+    tab?: string; date?: string; name?: string; range?: string; tg_session?: string; fin_mode?: string;
   }>;
 }) {
   const { code } = await params;
-  const { tab: tabRaw, date, name, range: rangeRaw, tg_session } = await searchParams;
+  const { tab: tabRaw, date, name, range: rangeRaw, tg_session, fin_mode } = await searchParams;
   const tab = resolveTab(tabRaw);
+  const finMode = fin_mode === "quarterly" ? "quarterly" : "annual";
   const baseDate = date ?? yyyymmdd(new Date());
 
   const [price, holding] = await Promise.all([fetchPrice(code), fetchHolding(code)]);
@@ -113,11 +116,16 @@ export default async function StockHubPage({
         {tab === "chart" ? (
           <ChartTab code={code} baseDate={baseDate} name={name} range={resolveRange(rangeRaw)} />
         ) : tab === "financial" ? (
-          <FinancialTab code={code} />
-        ) : tab === "telegram" ? (
-          <TelegramTab code={code} session={tg_session ?? ""} />
-        ) : tab === "youtube" ? (
-          <YoutubeTab code={code} />
+          <>
+            <Suspense fallback={<div className="mb-6 h-9" />}>
+              <FinancialModeToggle mode={finMode} />
+            </Suspense>
+            <FinancialTab code={code} mode={finMode} />
+          </>
+        ) : tab === "research" ? (
+          <ResearchTab key={code} code={code} name={name ?? code} />
+        ) : tab === "mentions" ? (
+          <MentionsTab key={code} code={code} session={tg_session ?? ""} />
         ) : tab === "notes" ? (
           <NotesTab code={code} holding={holding} />
         ) : tab === "overview" ? (
