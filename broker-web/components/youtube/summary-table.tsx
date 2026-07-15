@@ -1,7 +1,72 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import type { YoutubeVideoSummary } from "@/lib/queries";
+import Link from "next/link";
+import type { YoutubeSummaryStock, YoutubeVideoSummary } from "@/lib/queries";
+import { stockHubHref } from "@/lib/stock-hub";
+
+function StockMentionBlock({ stocks }: { stocks: YoutubeSummaryStock[] }) {
+  if (stocks.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        이 영상에서 확정·표시된 종목 언급 없음
+        <span className="text-muted-foreground/80">
+          {" "}
+          (discovery 미해당·미추출·코드 미매칭일 수 있음)
+        </span>
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-md border border-fin-gold/30 bg-fin-gold/5 px-3 py-2.5 space-y-2">
+      <p className="text-xs font-semibold tracking-wide text-fin-gold">
+        종목별 언급 ({stocks.length})
+      </p>
+      <ul className="space-y-2">
+        {stocks.map((s) => (
+          <li
+            key={s.ticker || s.name}
+            className="border-b border-border/40 pb-2 last:border-0 last:pb-0"
+          >
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              {s.ticker ? (
+                <Link
+                  href={stockHubHref(s.ticker, {
+                    tab: "mentions",
+                    name: s.name,
+                  })}
+                  className="text-sm font-semibold text-fin-gold hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {s.name}
+                  <span className="ml-1.5 font-mono text-xs font-normal text-muted-foreground">
+                    {s.ticker}
+                  </span>
+                </Link>
+              ) : (
+                <span className="text-sm font-semibold text-foreground/90">
+                  {s.name}
+                  <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                    코드 미확정
+                  </span>
+                </span>
+              )}
+            </div>
+            {s.note ? (
+              <p className="mt-0.5 text-sm leading-relaxed text-foreground/80">
+                {s.note}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                이 영상 단위 언급 요약 없음 (당일 시그널만 연결됨 · 재요약 시 보강)
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -38,6 +103,7 @@ export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] })
               (v.url && v.url.trim()) ||
               `https://www.youtube.com/watch?v=${v.video_id}`;
             const channel = (v.channel_label && v.channel_label.trim()) || v.channel_id;
+            const stocks = v.stocks || [];
 
             return (
               <Fragment key={key}>
@@ -56,6 +122,28 @@ export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] })
                   </td>
                   <td className="px-3 py-2.5 font-medium text-foreground" title={title}>
                     <span className="line-clamp-2 break-words">{title}</span>
+                    {stocks.length > 0 && (
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {stocks.slice(0, 6).map((s) => (
+                          <span
+                            key={s.ticker || s.name}
+                            className={
+                              "inline-flex rounded border px-1.5 py-0.5 text-[10px] font-normal " +
+                              (s.ticker
+                                ? "border-fin-gold/40 bg-fin-gold/10 text-fin-gold"
+                                : "border-border bg-muted/40 text-muted-foreground")
+                            }
+                          >
+                            {s.name || s.ticker}
+                          </span>
+                        ))}
+                        {stocks.length > 6 && (
+                          <span className="text-[10px] text-muted-foreground">
+                            +{stocks.length - 6}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     <a
@@ -71,26 +159,39 @@ export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] })
                 </tr>
                 {open && (
                   <tr className="border-b border-border/60 bg-muted/20">
-                    <td colSpan={5} className="space-y-2 px-4 py-3 pl-10">
+                    <td colSpan={5} className="space-y-3 px-4 py-3 pl-10">
                       {v.headline && (
                         <p className="text-sm text-foreground/90">{v.headline}</p>
                       )}
+
+                      <StockMentionBlock stocks={stocks} />
+
                       {v.issues?.length > 0 && (
-                        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                          {v.issues.map((iss, i) => (
-                            <li key={i}>
-                              <span className="text-foreground/80">{iss.title}</span>
-                              {iss.summary ? ` — ${iss.summary}` : ""}
-                            </li>
-                          ))}
-                        </ul>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            이슈
+                          </p>
+                          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                            {v.issues.map((iss, i) => (
+                              <li key={i}>
+                                <span className="text-foreground/80">{iss.title}</span>
+                                {iss.summary ? ` — ${iss.summary}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                       {v.bullets?.length > 0 && (
-                        <ul className="list-disc pl-5 text-xs text-muted-foreground">
-                          {v.bullets.map((b, i) => (
-                            <li key={i}>{b}</li>
-                          ))}
-                        </ul>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            포인트
+                          </p>
+                          <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                            {v.bullets.map((b, i) => (
+                              <li key={i}>{b}</li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                       {v.risk_or_caveat && (
                         <p className="text-xs text-amber-500/90">주의: {v.risk_or_caveat}</p>

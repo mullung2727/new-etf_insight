@@ -70,6 +70,19 @@ def load_discovery_channels(config_path: Path | str = DEFAULT_CONFIG) -> dict[st
     }
 
 
+def load_auto_summary_channels(
+    config_path: Path | str = DEFAULT_CONFIG,
+) -> dict[str, dict]:
+    """summary_mode == 'auto' 만. 기본(미기입)은 manual."""
+    channels = load_all_channels(config_path)
+    out: dict[str, dict] = {}
+    for ch, cfg in channels.items():
+        mode = str((cfg or {}).get("summary_mode") or "manual").strip().lower()
+        if mode == "auto":
+            out[ch] = cfg
+    return out
+
+
 def parse_channel_id(raw: str) -> str:
     """UC /channel/UC 만(네트워크 없음). 실패 시 ValueError."""
     s = (raw or "").strip()

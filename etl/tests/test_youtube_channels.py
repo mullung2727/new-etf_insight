@@ -14,6 +14,7 @@ from urllib.error import URLError
 from scripts.youtube_channels import (
     DEFAULT_CONFIG,
     load_all_channels,
+    load_auto_summary_channels,
     load_channel_config,
     load_discovery_channels,
     parse_channel_id,
@@ -126,10 +127,12 @@ class LoaderTest(unittest.TestCase):
                         "handle": "@unrealtech",
                         "label": "unreal",
                         "feed_role": "discovery_source",
+                        "summary_mode": "auto",
                     },
                     "UCcollectOnlyChannel_zz1": {
                         "source_url": "https://www.youtube.com/channel/UCcollectOnlyChannel_zz1",
                         "label": "collect-only",
+                        "summary_mode": "manual",
                     },
                 }
             ),
@@ -161,14 +164,32 @@ class LoaderTest(unittest.TestCase):
         data = load_discovery_channels(self.cfg)
         self.assertEqual(set(data), {REAL_UC})
 
+    def test_load_auto_summary_only(self):
+        data = load_auto_summary_channels(self.cfg)
+        self.assertEqual(set(data), {REAL_UC})
+        # 미기입 = manual
+        self.cfg.write_text(
+            json.dumps(
+                {
+                    REAL_UC: {
+                        "source_url": f"https://www.youtube.com/channel/{REAL_UC}",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.assertEqual(load_auto_summary_channels(self.cfg), {})
+
 
 class DefaultConfigTest(unittest.TestCase):
-    """A8: DEFAULT_CONFIG 존재 (빈 {})."""
+    """A8: DEFAULT_CONFIG 파일명·존재."""
 
     def test_a8_default_config_name_and_exists(self):
         self.assertEqual(DEFAULT_CONFIG.name, "youtube_channels.json")
         self.assertTrue(DEFAULT_CONFIG.exists())
-        self.assertEqual(json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8")), {})
+        # 실채널이 들어 있어도 dict 이면 OK (빈 객체 강제 아님)
+        data = json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8"))
+        self.assertIsInstance(data, dict)
 
 
 if __name__ == "__main__":

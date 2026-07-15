@@ -166,6 +166,10 @@ def test_summaries_by_date(temp_db):
     assert "watch?v=" in s["url"]
     assert "duration_sec" not in s
     assert "transcript_chars" not in s
+    # fixture: o-u9WgPBm4g → SK텔레콤 + SK하이닉스
+    tickers = {x["ticker"] for x in s.get("stocks") or []}
+    assert "017670" in tickers
+    assert "000660" in tickers
 
 
 def test_summaries_all_no_date(temp_db):
@@ -173,6 +177,7 @@ def test_summaries_all_no_date(temp_db):
     assert len(body) == 1
     assert body[0]["video_id"] == "o-u9WgPBm4g"
     assert body[0]["channel_label"]  # resolved or channel_id fallback
+    assert isinstance(body[0].get("stocks"), list)
 
 
 def test_summaries_from_to_range(temp_db):

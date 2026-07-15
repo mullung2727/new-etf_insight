@@ -180,6 +180,17 @@ class YoutubeMention(_Base):
     analysis: str | None = None
 
 
+class YoutubeSummaryStock(_Base):
+    """요약에 붙은 종목.
+
+    ticker 있으면 KRX 확정(허브 링크 가능). 없으면 표시 전용(미매칭·해외 등).
+    """
+
+    ticker: str | None = None
+    name: str
+    note: str | None = None
+
+
 class YoutubeVideoSummary(_Base):
     """영상 1건 통합 이슈 요약 (reduce 결과)."""
 
@@ -193,6 +204,8 @@ class YoutubeVideoSummary(_Base):
     issues: list[Any] = []
     bullets: list[str] = []
     risk_or_caveat: str | None = None
+    # discovery 추출 결과 조인. 없거나 비discovery면 []
+    stocks: list[YoutubeSummaryStock] = []
 
 
 class YoutubePendingItem(_Base):

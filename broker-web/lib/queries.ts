@@ -150,6 +150,13 @@ export const getYoutubeMentions = (
   params?: { from?: string; to?: string },
 ) => apiGet<YoutubeMention[]>(`/youtube/mentions/${ticker}`, params);
 
+export interface YoutubeSummaryStock {
+  /** KRX 확정 코드. 없으면 표시 전용(미매칭·해외 등) */
+  ticker?: string | null;
+  name: string;
+  note?: string | null;
+}
+
 export interface YoutubeVideoSummary {
   channel_id: string;
   channel_label: string | null;
@@ -161,6 +168,8 @@ export interface YoutubeVideoSummary {
   issues: { title?: string; summary?: string; time_hint?: string | null }[];
   bullets: string[];
   risk_or_caveat: string | null;
+  /** discovery 추출 조인. 없으면 [] */
+  stocks?: YoutubeSummaryStock[];
 }
 export const getYoutubeSummaries = (params?: { from?: string; to?: string; date?: string }) =>
   apiGet<YoutubeVideoSummary[]>("/youtube/summaries", params);

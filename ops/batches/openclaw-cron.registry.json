@@ -247,6 +247,35 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "daily-youtube",
+      "description": "Daily 01:00 KST: collect all YouTube channels (D-1) then LangGraph summarize summary_mode=auto pending only",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 1 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-youtube.md",
+      "timeoutSeconds": 10800,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-youtube",
+        "xmlFile": "ops/scheduled-tasks/youtube-daily.xml",
+        "runnerScript": "ops/scheduled-tasks/run-youtube-daily.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "TELEGRAM_REPORT_TO_DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }

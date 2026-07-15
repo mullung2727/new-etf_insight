@@ -1,9 +1,11 @@
 {
   "companyreport": {
-    "source_url": "https://t.me/s/companyreport"
+    "source_url": "https://t.me/s/companyreport",
+    "feed_role": "discovery_source"
   },
   "butler_works": {
-    "source_url": "https://t.me/s/butler_works"
+    "source_url": "https://t.me/s/butler_works",
+    "feed_role": "discovery_source"
   },
   "getfeed": {
     "source_url": "https://t.me/s/getfeed",
@@ -24,5 +26,10 @@
   "kimcharger": {
     "source_url": "https://t.me/s/kimcharger",
     "feed_role": "discovery_source"
+  },
+  "HS_academy": {
+    "source_url": "https://t.me/s/HS_academy",
+    "feed_role": "discovery_source",
+    "label": "이효석아카데미"
   }
 }

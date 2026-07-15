@@ -5,7 +5,6 @@ import {
   type YoutubePendingItem,
   type YoutubeVideoSummary,
 } from "@/lib/queries";
-import { stockHubHref } from "@/lib/stock-hub";
 import { listChannels, type Channel } from "@/lib/youtube-channels";
 import { YoutubeSummaryTable } from "@/components/youtube/summary-table";
 import { YoutubePendingTable } from "@/components/youtube/pending-table";
@@ -330,23 +329,6 @@ export default async function YoutubePage({
       ) : (
         <YoutubeSummaryTable items={summaries || []} />
       )}
-
-      <p className="text-xs text-muted-foreground">
-        종목:{" "}
-        <Link
-          className="text-fin-gold hover:underline"
-          href={stockHubHref("017670", { tab: "youtube", name: "SK텔레콤" })}
-        >
-          SK텔레콤
-        </Link>
-        {" · "}
-        <Link
-          className="text-fin-gold hover:underline"
-          href={stockHubHref("000660", { tab: "youtube", name: "SK하이닉스" })}
-        >
-          SK하이닉스
-        </Link>
-      </p>
     </div>
   );
 }

@@ -19,6 +19,7 @@ from schemas import (
     YoutubeSummarizeJob,
     YoutubeSummarizeJobRequest,
     YoutubeSummarizeRequest,
+    YoutubeSummaryStock,
     YoutubeVideoSummary,
 )
 from youtube_jobs import get_job, list_recent_jobs, start_summarize_job
@@ -121,6 +122,96 @@ def get_youtube_mentions(
     return out
 
 
+def _stocks_by_video_id(
+    con,
+    *,
+    date: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> dict[str, list[YoutubeSummaryStock]]:
+    """youtube_stock_insights → video_id 별 종목 목록.
+
+    source_video_ids JSON 배열을 풀어 조인. 날짜 필터는 insights.date_kst 기준
+    (요약 조회 기간과 대략 맞춤; 없으면 전체).
+    """
+    tables = {
+        r[0]
+        for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if "youtube_stock_insights" not in tables:
+        return {}
+    clauses: list[str] = []
+    args: list[Any] = []
+    if date:
+        clauses.append("date_kst=?")
+        args.append(date)
+    else:
+        if from_date:
+            clauses.append("date_kst>=?")
+            args.append(from_date)
+        if to_date:
+            clauses.append("date_kst<=?")
+            args.append(to_date)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    rows = con.execute(
+        f"""
+        SELECT ticker, name, discovery_reason, source_video_ids
+        FROM youtube_stock_insights
+        {where}
+        """,
+        args,
+    ).fetchall()
+    out: dict[str, list[YoutubeSummaryStock]] = {}
+    for ticker, name, reason, vids_json in rows:
+        vids = _loads(vids_json, [])
+        if not isinstance(vids, list):
+            continue
+        t = str(ticker or "").strip()
+        n = str(name or "").strip()
+        if not t or not n:
+            continue
+        # discovery_reason 은 (date,ticker) 단위 최신값이라 여러 영상이 묶이면
+        # 다른 영상 사유가 붙을 수 있음 → 영상 1개일 때만 note 사용
+        note = str(reason) if reason and len(vids) == 1 else None
+        item_base = {"ticker": t, "name": n, "note": note}
+        for vid in vids:
+            if not vid:
+                continue
+            key = str(vid)
+            bucket = out.setdefault(key, [])
+            if any(s.ticker == t for s in bucket):
+                continue
+            bucket.append(YoutubeSummaryStock(**item_base))
+    return out
+
+
+def _stocks_from_summary_json(s: dict) -> list[YoutubeSummaryStock] | None:
+    """summary_json.stocks 가 있으면 그 목록, 키 자체 없으면 None(조인 폴백)."""
+    if "stocks" not in s:
+        return None
+    raw = s.get("stocks")
+    if not isinstance(raw, list):
+        return []
+    out: list[YoutubeSummaryStock] = []
+    for x in raw:
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()
+        if not name:
+            continue
+        ticker_raw = x.get("ticker")
+        ticker = str(ticker_raw).strip() if ticker_raw not in (None, "") else None
+        note = x.get("note")
+        out.append(
+            YoutubeSummaryStock(
+                ticker=ticker,
+                name=name,
+                note=str(note) if note else None,
+            )
+        )
+    return out
+
+
 @router.get(
     "/youtube/summaries",
     response_model=list[YoutubeVideoSummary],
@@ -128,7 +219,8 @@ def get_youtube_mentions(
     summary="Video summaries (date range)",
     description=(
         "통합 요약 목록. from/to(date_kst) 범위 필터(포함). "
-        "둘 다 없으면 전체. date(단일)는 하위호환. 최신 date_kst 먼저."
+        "둘 다 없으면 전체. date(단일)는 하위호환. 최신 date_kst 먼저. "
+        "stocks는 youtube_stock_insights를 video_id로 조인(discovery 추출분)."
     ),
 )
 def list_youtube_summaries(
@@ -181,11 +273,20 @@ def list_youtube_summaries(
             """
             rows = con.execute(sql, args).fetchall()
 
+        by_video = _stocks_by_video_id(
+            con, date=date, from_date=from_, to_date=to
+        )
+
     out: list[YoutubeVideoSummary] = []
     for channel_id, video_id, date_kst, summary_json, title, url in rows:
         s = _loads(summary_json, {})
         if not isinstance(s, dict):
             s = {}
+        embedded = _stocks_from_summary_json(s)
+        # 신규 요약은 summary_json.stocks 우선(미매칭 이름 포함). 구 데이터는 insights 조인.
+        stocks = (
+            embedded if embedded is not None else (by_video.get(video_id) or [])
+        )
         out.append(
             YoutubeVideoSummary(
                 channel_id=channel_id,
@@ -198,6 +299,7 @@ def list_youtube_summaries(
                 issues=s.get("issues") or [],
                 bullets=s.get("bullets") or [],
                 risk_or_caveat=s.get("risk_or_caveat"),
+                stocks=stocks,
             )
         )
     return out
