@@ -1,0 +1,160 @@
+{
+  "analysis_version": 1,
+  "generated_at": "2026-07-15T17:25:56+09:00",
+  "sample_count": 99,
+  "data_stats": {
+    "daily_entries": 118,
+    "complete_horizon": 99,
+    "cache_complete": 99
+  },
+  "split_date": "20260618",
+  "cost_rate": 0.01,
+  "exit_rule": {
+    "kind": "tp_sl",
+    "tp": 0.03,
+    "sl": 0.03,
+    "days": 3
+  },
+  "strategies": [
+    {
+      "strategy": "prior_low_reclaim",
+      "entry_count": 75,
+      "no_buy_rate": 0.2424,
+      "early": {
+        "count": 34,
+        "mean": -0.013536,
+        "median": -0.04,
+        "positive_rate": 0.4412,
+        "p10": -0.04,
+        "worst": -0.048902,
+        "max_drawdown": -0.1738,
+        "avg_holding_days": 3.0
+      },
+      "late": {
+        "count": 41,
+        "mean": -0.015495,
+        "median": -0.04,
+        "positive_rate": 0.3659,
+        "p10": -0.04,
+        "worst": -0.059415,
+        "max_drawdown": -0.184039,
+        "avg_holding_days": 3.0
+      },
+      "total": {
+        "count": 75,
+        "mean": -0.014607,
+        "median": -0.04,
+        "positive_rate": 0.4,
+        "p10": -0.04,
+        "worst": -0.059415,
+        "max_drawdown": -0.325853,
+        "avg_holding_days": 3.0
+      }
+    },
+    {
+      "strategy": "five_minute_high_breakout",
+      "entry_count": 98,
+      "no_buy_rate": 0.0101,
+      "early": {
+        "count": 41,
+        "mean": -0.021417,
+        "median": -0.04,
+        "positive_rate": 0.3171,
+        "p10": -0.04,
+        "worst": -0.053614,
+        "max_drawdown": -0.226407,
+        "avg_holding_days": 3.0
+      },
+      "late": {
+        "count": 57,
+        "mean": -0.015653,
+        "median": -0.04,
+        "positive_rate": 0.4035,
+        "p10": -0.04,
+        "worst": -0.162908,
+        "max_drawdown": -0.170898,
+        "avg_holding_days": 3.0
+      },
+      "total": {
+        "count": 98,
+        "mean": -0.018064,
+        "median": -0.04,
+        "positive_rate": 0.3673,
+        "p10": -0.04,
+        "worst": -0.162908,
+        "max_drawdown": -0.358612,
+        "avg_holding_days": 3.0
+      }
+    },
+    {
+      "strategy": "vwap_reclaim",
+      "entry_count": 79,
+      "no_buy_rate": 0.202,
+      "early": {
+        "count": 37,
+        "mean": -0.022399,
+        "median": -0.04,
+        "positive_rate": 0.2973,
+        "p10": -0.04,
+        "worst": -0.055101,
+        "max_drawdown": -0.226709,
+        "avg_holding_days": 3.0
+      },
+      "late": {
+        "count": 42,
+        "mean": -0.020681,
+        "median": -0.04,
+        "positive_rate": 0.3333,
+        "p10": -0.04,
+        "worst": -0.077059,
+        "max_drawdown": -0.187617,
+        "avg_holding_days": 3.0
+      },
+      "total": {
+        "count": 79,
+        "mean": -0.021486,
+        "median": -0.04,
+        "positive_rate": 0.3165,
+        "p10": -0.04,
+        "worst": -0.077059,
+        "max_drawdown": -0.371792,
+        "avg_holding_days": 3.0
+      }
+    },
+    {
+      "strategy": "close_confirm",
+      "entry_count": 26,
+      "no_buy_rate": 0.7374,
+      "early": {
+        "count": 15,
+        "mean": 0.015632,
+        "median": 0.02,
+        "positive_rate": 0.8,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 3.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 3.0
+      },
+      "total": {
+        "count": 26,
+        "mean": 0.023699,
+        "median": 0.02,
+        "positive_rate": 0.7308,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 3.0
+      }
+    }
+  ]
+}

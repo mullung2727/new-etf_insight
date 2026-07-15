@@ -99,6 +99,7 @@ def load_candidates(state: State) -> State:
 
     previous_caps = {}
     previous_avg5_volumes = {}
+    previous_5d_closes = {}
     if rows:
         tickers = [row["ticker"] for row in rows]
         marks = ",".join("?" for _ in tickers)
@@ -113,9 +114,9 @@ def load_candidates(state: State) -> State:
             """, [state["date"], *tickers]).fetchall()
             previous_caps = {ticker: cap for ticker, cap in caps}
             averages = con.execute(f"""
-                SELECT ticker, AVG(volume)
+                SELECT ticker, AVG(volume), MAX(CASE WHEN rn=5 THEN close END)
                 FROM (
-                    SELECT ticker, volume,
+                    SELECT ticker, volume, close,
                            ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) AS rn
                     FROM ohlcv
                     WHERE date < ? AND ticker IN ({marks})
@@ -123,12 +124,14 @@ def load_candidates(state: State) -> State:
                 WHERE rn <= 5
                 GROUP BY ticker
             """, [state["date"], *tickers]).fetchall()
-            previous_avg5_volumes = {ticker: value for ticker, value in averages}
+            previous_avg5_volumes = {ticker: avg_volume for ticker, avg_volume, _ in averages}
+            previous_5d_closes = {ticker: close for ticker, _, close in averages}
 
     candidates = []
     for row in rows:
         item = dict(row)
         item["market_cap_previous_day"] = previous_caps.get(item["ticker"])
+        item["previous_5d_close"] = previous_5d_closes.get(item["ticker"])
         item["avg5_volume"] = previous_avg5_volumes.get(item["ticker"]) or item.get("avg5_volume")
         item["today_volume"] = item.get("snapshot_volume") or item.get("today_volume")
         item["close"] = item.get("snapshot_current_price") or item.get("close")
@@ -242,6 +245,7 @@ def build_market_snapshot(candidate: dict, date: str) -> dict:
             "market_cap_previous_day": candidate.get("market_cap_previous_day"),
         }
     avg5 = candidate.get("avg5_volume")
+    previous_5d_close = candidate.get("previous_5d_close")
     return {
         "available": True,
         "snapshot_at": observed_at.isoformat(timespec="seconds"),
@@ -255,6 +259,8 @@ def build_market_snapshot(candidate: dict, date: str) -> dict:
         "pullback_from_high_pct": round((current / high - 1) * 100, 4),
         "avg5_volume": avg5,
         "volume_ratio_vs_avg5": round(volume / avg5, 4) if avg5 else None,
+        "return_5d_pct": round((current / previous_5d_close - 1) * 100, 4)
+        if previous_5d_close else None,
         "market_cap_previous_day": candidate.get("market_cap_previous_day"),
     }
 
@@ -292,10 +298,23 @@ def calculate_probability_score(components: dict) -> int:
     )
     negative = (
         components["negative_event_risk"]
+        + components["negative_trend_penalty"]
         + components["priced_in_penalty"]
         + components["exhaustion_penalty"]
     )
     return max(5, min(95, 50 + positive - negative))
+
+
+def calculate_negative_trend_penalty(return_5d_pct: float | None) -> int:
+    if return_5d_pct is None or return_5d_pct >= -3:
+        return 0
+    if return_5d_pct >= -7:
+        return 3
+    if return_5d_pct >= -12:
+        return 6
+    if return_5d_pct >= -20:
+        return 10
+    return 15
 
 
 def score_candidates(state: State, score_fn: ScoreFn | None = None) -> State:
@@ -310,6 +329,10 @@ def score_candidates(state: State, score_fn: ScoreFn | None = None) -> State:
             if result["ticker"] != candidate["ticker"]:
                 raise ValueError("ticker mismatch")
             reported_score = result["probability_score"]
+            snapshot = build_market_snapshot(candidate, state["date"])
+            result["score_components"]["negative_trend_penalty"] = (
+                calculate_negative_trend_penalty(snapshot.get("return_5d_pct"))
+            )
             result["probability_score"] = calculate_probability_score(result["score_components"])
             result["llm_reported_probability_score"] = reported_score
             news_rows = state["news_by_ticker"].get(candidate["ticker"], [])

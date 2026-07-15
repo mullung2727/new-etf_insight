@@ -5,7 +5,7 @@
 
 ## 강제 합산식
 
-`probability_score = clamp(5, 95, 50 + catalyst_strength + freshness + confirmation - negative_event_risk - priced_in_penalty - exhaustion_penalty)`
+`probability_score = clamp(5, 95, 50 + catalyst_strength + freshness + confirmation - negative_event_risk - negative_trend_penalty - priced_in_penalty - exhaustion_penalty)`
 
 - 각 구성점수를 먼저 판정한 뒤 반드시 위 식으로 최종점수를 계산하라.
 - 재료강도와 선반영·소진 위험을 서로 상쇄해 하나의 애매한 판단으로 합치지 마라.
@@ -31,6 +31,11 @@
 |  | 불확실성·경미한 부정 요인 | 5 |
 |  | 투자경고·오버행·지배구조 위험 | 10 |
 |  | 확정된 법적·규제·희석·계약 실패 악재 | 20 |
+| 최근 하락 | 5거래일 수익률 -3% 이상 또는 상승 | 0 |
+|  | -7% 이상~-3% 미만 | 3 |
+|  | -12% 이상~-7% 미만 | 6 |
+|  | -20% 이상~-12% 미만 | 10 |
+|  | -20% 미만 | 15 |
 | 선반영 | 새 재료이며 반영 증거 없음 | 0 |
 |  | 일부 반복 보도 또는 사전 기대 | 5 |
 |  | 전일 급등·테마 확산 등 상당 부분 반영 | 12 |
@@ -47,6 +52,10 @@
 - `pullback_from_high_pct`가 0~-1%면 소진 증거가 약하고, -1~-3%면 경미, -3~-7%면 중간, -7% 이하면 강한 소진 후보로 본다.
 - `rise_from_open_pct`가 약하거나 음수이면서 고점 대비 밀림이 크면 소진 위험을 한 단계 높여라.
 - 거래량 배율만으로 소진을 확정하지 말고 가격 위치와 함께 판단하라.
+- `return_5d_pct`는 15:00 현재가와 5거래일 전 종가로 계산한 값이다.
+- 최근 5거래일 상승은 그 자체로 감점하지 마라. 오래되거나 반복된 재료와 당일 고점 이탈이 함께 확인될 때만 선반영·소진 근거로 사용하라.
+- 최근 5거래일 하락은 비대칭 위험 신호다. `negative_trend_penalty`는 위 표대로 적용하며 코드가 최종 검증한다.
+- 최근 상승률과 하락률의 절대값을 같은 방식으로 평가하지 마라.
 - 시세가 없으면 선반영·소진이 낮다는 뜻이 아니므로 level은 `unknown`, penalty는 0으로 두고 confidence를 낮춰라.
 
 ## 중요한 점수 기준

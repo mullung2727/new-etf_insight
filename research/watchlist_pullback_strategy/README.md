@@ -70,6 +70,17 @@
 - 비용 1% 차감 후 전반부 15건 평균 +1.5632%, 후반부 11건 평균 +3.4699%로 후반부 검증을 통과했다.
 - 후반부 표본이 11건으로 작으므로 확정 전략이 아니라 추가 표본을 쌓아 재검증할 후보로 취급한다.
 - TP·SL이 같은 1분봉 안에서 모두 체결 가능한 경우에는 보수적으로 SL 우선 처리했다.
+- phase10은 `prior_low_reclaim`, `five_minute_high_breakout`, `vwap_reclaim`과 기존
+  `close_confirm`을 TP +3%, SL -3%, 최대 3거래일 조건으로 직접 비교한다.
+- 장중 진입 3개는 비용 1% 차감 후 후반부 평균이 각각 -1.55%, -1.57%, -2.07%였다.
+- 기존 `close_confirm`은 같은 조건에서 후반부 평균 +3.47%였지만 표본은 11건이다.
+
+## phase10 파일 구성
+
+- `phase10_intraday_entry_comparison.md`: 네 전략의 핵심 비교표와 해석 주의사항
+- `phase10_intraday_entry_comparison.json`: 비교 지표 전체 원본
+- 전략 구현은 `research/watchlist_expected_return/prior_low_reclaim.py`,
+  `five_minute_high_breakout.py`, `vwap_reclaim.py`로 분리했다.
 
 ## 재실행
 
@@ -77,6 +88,7 @@
 
 ```powershell
 etl\.venv\Scripts\python.exe -m research.watchlist_expected_return.phase7_pullback_strategy
+etl\.venv\Scripts\python.exe -m research.watchlist_expected_return.phase10_intraday_entry_comparison
 ```
 
-- 실행하면 이 폴더의 `phase7_pullback_strategy.md`와 `phase7_pullback_strategy.json`이 갱신된다.
+- 실행하면 이 폴더의 해당 단계 `.md`와 `.json`이 갱신된다.

@@ -1,481 +1,397 @@
 {
-  "generated_at": "2026-07-14T12:26:35+09:00",
-  "db_write": false,
+  "generated_at": "2026-07-15T15:02:35+09:00",
+  "db_write": true,
+  "db_rows_written": 6,
+  "operational_reports": [
+    "C:\\Users\\mullu\\.openclaw\\workspace\\reports\\watchlist_research_2026-07-15.json"
+  ],
   "results": [
     {
-      "date": "20260709",
+      "date": "20260715",
       "target": "D+1_OPEN_ABOVE_D_CLOSE",
-      "candidate_count": 3,
-      "scored_count": 3,
+      "candidate_count": 6,
+      "scored_count": 6,
       "scores": [
         {
-          "date": "20260709",
-          "as_of": "2026-07-09T15:00:00+09:00",
-          "old_score": 58,
-          "telegram_rows": 4,
-          "news_rows": 5,
-          "ticker": "189330",
-          "name": "씨이랩",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 47,
-          "score_components": {
-            "catalyst_strength": 30,
-            "freshness": 0,
-            "confirmation": 2,
-            "negative_event_risk": 0,
-            "priced_in_level": "high",
-            "priced_in_penalty": 20,
-            "exhaustion_level": "high",
-            "exhaustion_penalty": 15
-          },
-          "confidence": "low",
-          "up_factors": [
-            "매출액 대비 3,067.74%로 보도된 삼성에스디에스와의 대규모 AI 컴퓨팅 자원 사업 계약",
-            "복수 언론이 계약 체결 사실과 규모를 보도",
-            "확인된 직접 악재 없음"
-          ],
-          "down_factors": [
-            "계약 소식이 7월 7일 저녁부터 공개돼 당일 신규 재료가 아님",
-            "7월 8일 상한가 기록으로 재료가 상당 부분 선반영됐을 가능성",
-            "7월 9일 52주 신고가 경신으로 단기 차익실현과 모멘텀 소진 위험",
-            "15:00 시세·거래량·장중 고점 대비 밀림 여부를 확인할 스냅샷 부재"
-          ],
-          "news_summary": "삼성에스디에스와 3,151.3억원 규모의 AI 컴퓨팅 자원 활용기반 강화 사업 계약을 체결했다는 보도가 핵심이다. 다만 최초 보도는 7월 7일 저녁이며, 7월 8일 상한가와 7월 9일 52주 신고가 보도로 가격 반영이 상당히 진행된 정황이 있다.",
-          "telegram_summary": "단일 텔레그램 채널에서 7월 8~9일 반복 언급됐으나 게시물 분석 내용이 없어 독립적인 신규 재료 확인 근거로는 사용하지 않았다.",
-          "reasoning": "계약 규모가 매출액 대비 3,067.74%로 보도된 확정 계약이므로 재료강도는 30점으로 판정했다. 그러나 7월 7일 공개된 뒤 7월 8일 상한가를 기록해 선반영 수준은 높고 20점을 감점했다. 7월 9일에도 52주 신고가를 경신해 급등 후 차익실현 위험이 크다고 보고 소진위험 15점을 적용했지만, 15:00 시세 스냅샷이 없어 판단 신뢰도는 낮다. 최종점수는 50+30+0+2-0-20-15=47점이다.",
-          "evidence_quality": "moderate",
-          "llm_reported_probability_score": 47
-        },
-        {
-          "date": "20260709",
-          "as_of": "2026-07-09T15:00:00+09:00",
-          "old_score": 58,
-          "telegram_rows": 1,
+          "date": "20260715",
+          "as_of": "2026-07-15T15:00:00+09:00",
+          "old_score": null,
+          "ratio": 12.829743328736637,
+          "today_volume": 4910438,
+          "avg5_volume": 382738.6,
+          "trading_value": 57844959640,
+          "close": 11780,
+          "telegram_rows": 6,
           "news_rows": 6,
-          "ticker": "214330",
-          "name": "금호에이치티",
+          "sources": [
+            "https://news.google.com/rss/articles/CBMiUkFVX3lxTFB5a1RwbzlzRURsbWFJbUVDNHV4QmdONjA1OTFWcE5uR0VDWDVjc1ZWU1ZNbU1nS1pQay1IVVhfNldJbTNBd0lxdi1qcWVOWnRTZHc?oc=5",
+            "https://news.google.com/rss/articles/CBMiVEFVX3lxTE9vNFZNZzl5NnBWYU9uczM2clg4QThfSHNwUTJiRE1ISkgwLWY4anV0UzRHQU1jLW9UQ3JhR2t2aW5FYnpLNkNHTVY3RVZvbVNYbmswaw?oc=5",
+            "https://news.google.com/rss/articles/CBMiW0FVX3lxTE83WTRIOXlTNHdPN1ZRX1NrOTZLSFdWOHpnU1hmUEJwOFZnZ3lyZ3JNRU8tM3BlMV9XNlhOS01NcVltRlh0SHZaSWtXQk1qSHhoUXhkSmp1NXZCV0nSAWBBVV95cUxNUUV3T2hqWjU5a3B5ZS1RMlFsWF84MHNuWXBiTG1Mc0lJaEQ5MkhlQXV4R05ndGpsR0M5UUhDZHIzcGFkR2tvWW5hdm8tNW55Uk9ZaDZkQm5XU285VndYbkU?oc=5",
+            "https://news.google.com/rss/articles/CBMiaEFVX3lxTE5tVXlqTmNsUGJLb0huN1lNbUhiY3FSZXN0WkstYWxCQ2s2dzRkREF0SWVxTnFHOUlSdXZNWGhLRWdRVHN1X2lPOWtaUTR5U3BDYkFLQ09JN3M0LTJwOFZ6VlY3eGNFUENT?oc=5",
+            "https://news.google.com/rss/articles/CBMiakFVX3lxTFAtREFCRWZaRzRReHk4RGxvdy1LQVBydlZwdXlUdnVHaEVmVHBrUDBfMEVaYkpzZXFsTzlTcDlLTXFmNWZ4R1BxTGtGNWhDVDBxelNxZ3FjSEhROFZlbjFpMFloMTl6VklpUFE?oc=5",
+            "https://news.google.com/rss/articles/CBMic0FVX3lxTFBQN3NrX0YyamlWcW4tZTJIQ3N2S2VhNC10eWFJUXdOMXFrSE9tQnd2NkljejBScl9tMUZaa3B5UGJ5OHdRSXl6LUxWUTdtdHd3a0lYYTZWTEtScmk3cmNuTF93a3JxejFIOUV3OUlkU3RYRVU?oc=5"
+          ],
+          "ticker": "032350",
+          "name": "롯데관광개발",
           "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 50,
+          "probability_score": 10,
           "score_components": {
             "catalyst_strength": 0,
             "freshness": 0,
             "confirmation": 0,
-            "negative_event_risk": 0,
-            "priced_in_level": "unknown",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "unknown",
-            "exhaustion_penalty": 0
-          },
-          "confidence": "low",
-          "up_factors": [],
-          "down_factors": [
-            "종목과 직접 관련된 확정 재료가 확인되지 않음",
-            "당일 15:00 시세·거래량 정보가 없어 선반영 및 소진 여부를 판단할 수 없음"
-          ],
-          "news_summary": "수집 뉴스는 전일 시장·업종 시황으로, 금호에이치티의 D+1 시가를 뒷받침할 종목 고유 재료가 아님.",
-          "telegram_summary": "당일 오전 단일 채널에서 종목명·코드가 4회 언급됐지만 게시물 내용과 원출처가 없어 재료나 독립 확인 근거로 평가하지 않음.",
-          "reasoning": "확인된 종목 고유 재료가 없어 재료강도는 0점이고, 신선도와 독립확인도 각각 0점이야. 시세 스냅샷이 없어 선반영과 소진 위험은 모두 unknown으로 두고 감점하지 않았어. 강제 합산식에 따라 50 + 0 + 0 + 0 - 0 - 0 - 0 = 50점이야.",
-          "evidence_quality": "weak",
-          "llm_reported_probability_score": 50
-        },
-        {
-          "date": "20260709",
-          "as_of": "2026-07-09T15:00:00+09:00",
-          "old_score": 80,
-          "telegram_rows": 1,
-          "news_rows": 7,
-          "ticker": "263800",
-          "name": "데이타솔루션",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 50,
-          "score_components": {
-            "catalyst_strength": 30,
-            "freshness": 0,
-            "confirmation": 5,
-            "negative_event_risk": 0,
-            "priced_in_level": "high",
-            "priced_in_penalty": 20,
+            "negative_event_risk": 5,
+            "negative_trend_penalty": 15,
+            "priced_in_level": "medium",
+            "priced_in_penalty": 5,
             "exhaustion_level": "high",
             "exhaustion_penalty": 15
           },
           "confidence": "medium",
           "up_factors": [
-            "매출액 대비 422.04%인 4,381.4억원 규모 AI 인프라 공급계약",
-            "복수 언론에서 계약 체결과 주가 반응을 일치되게 보도",
-            "확인된 별도 악재 없음"
+            "평균 대비 거래량이 12.83배로 높아 단기 관심과 변동성이 크게 확대됨",
+            "최근 증권사에서 3분기 성장과 수익성 상승 기대를 제시함"
           ],
           "down_factors": [
-            "계약이 7월 7일 공개돼 당일 신규 재료가 아님",
-            "7월 8일 상한가에 이어 7월 9일에도 상한가·52주 신고가로 보도돼 선반영 수준이 높음",
-            "연속 급등에 따른 차익실현과 모멘텀 소진 위험",
-            "15:00 시세 스냅샷 부재로 정확한 종가 위치와 장중 밀림 여부를 확인할 수 없음"
+            "당일 종가를 지지할 신규 확정 계약·허가·실적 재료가 없음",
+            "15:00 현재 시가는 물론 장중 고점에서도 약 16% 밀려 매도 압력과 모멘텀 소진이 강함",
+            "5거래일 수익률이 -23.90%로 최근 하락 추세 최고 감점 구간에 해당함",
+            "급락 원인이 입력 정보만으로 명확히 확인되지 않아 불확실성이 존재함",
+            "성장 기대와 종목 언급은 당일 이전부터 알려져 일부 선반영된 재료임"
           ],
-          "news_summary": "데이타솔루션은 삼성SDS와 4,381.4억원 규모의 AI 컴퓨팅 인프라 공급계약을 체결했으며, 이는 매출액의 422.04%에 해당한다. 다만 재료는 7월 7일부터 알려졌고 7월 8일과 9일 상한가 관련 보도가 이어졌다.",
-          "telegram_summary": "7월 9일 오전 단일 채널에서 종목명·코드가 2건 언급됐으나 분석 내용이 없어 독립적인 추가 확인 근거로 보기는 어렵다.",
-          "reasoning": "매출액의 422.04%에 달하는 확정 공급계약이므로 재료강도는 30점으로 판정했다. 그러나 재료가 이틀 전 공개됐고 전일 상한가에 이어 당일에도 상한가와 52주 신고가가 보도돼 선반영 페널티를 20점으로 적용했다. 연속 급등에 따른 차익실현 위험이 커 소진 페널티는 15점으로 판정했으며, 합산식은 50+30+0+5-0-20-15=50이다.",
+          "news_summary": "당일 핵심 뉴스는 두 차례 VI가 발동될 정도의 20%대 장중 급락과 기관의 레저·관광 매도 동향이다. 국민연금 지분 보고와 증권사의 성장 전망은 이전 거래일에 공개됐으며, 당일 새로 확인된 직접적인 상승 재료는 없다.",
+          "telegram_summary": "7월 9일부터 14일까지 종목 언급이 반복됐고 14일에는 두 채널에서 확인됐지만, 구체적인 신규 재료나 독립 분석 내용은 제공되지 않았다.",
+          "reasoning": "확정 계약·허가·실적 같은 직접 상승 재료가 없어 재료강도와 신선도는 0점으로 판정했다. 기존 성장 기대와 텔레그램 언급은 당일 이전부터 반복돼 선반영을 중간 수준으로 평가했다. 현재가가 시가와 고점에서 약 16% 밀렸고 5일 수익률도 -23.90%여서 소진 위험과 하락 추세 감점을 최고 수준으로 적용했다. 합산 결과는 50+0+0+0-5-15-5-15=10점이다.",
           "evidence_quality": "moderate",
-          "llm_reported_probability_score": 50
-        }
-      ],
-      "warnings": []
-    },
-    {
-      "date": "20260710",
-      "target": "D+1_OPEN_ABOVE_D_CLOSE",
-      "candidate_count": 2,
-      "scored_count": 2,
-      "scores": [
+          "llm_reported_probability_score": 10
+        },
         {
-          "date": "20260710",
-          "as_of": "2026-07-10T15:00:00+09:00",
-          "old_score": 54,
-          "telegram_rows": 0,
+          "date": "20260715",
+          "as_of": "2026-07-15T15:00:00+09:00",
+          "old_score": null,
+          "ratio": 8.107950037480949,
+          "today_volume": 4296153,
+          "avg5_volume": 529869.2,
+          "trading_value": 44594068140,
+          "close": 10380,
+          "telegram_rows": 6,
           "news_rows": 1,
-          "ticker": "005360",
-          "name": "모나미",
+          "sources": [
+            "https://news.google.com/rss/articles/CBMiW0FVX3lxTE83WTRIOXlTNHdPN1ZRX1NrOTZLSFdWOHpnU1hmUEJwOFZnZ3lyZ3JNRU8tM3BlMV9XNlhOS01NcVltRlh0SHZaSWtXQk1qSHhoUXhkSmp1NXZCV0nSAWBBVV95cUxNUUV3T2hqWjU5a3B5ZS1RMlFsWF84MHNuWXBiTG1Mc0lJaEQ5MkhlQXV4R05ndGpsR0M5UUhDZHIzcGFkR2tvWW5hdm8tNW55Uk9ZaDZkQm5XU285VndYbkU?oc=5"
+          ],
+          "ticker": "034230",
+          "name": "파라다이스",
           "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 69,
+          "probability_score": 10,
           "score_components": {
-            "catalyst_strength": 10,
+            "catalyst_strength": 0,
+            "freshness": 0,
+            "confirmation": 2,
+            "negative_event_risk": 5,
+            "negative_trend_penalty": 10,
+            "priced_in_level": "high",
+            "priced_in_penalty": 12,
+            "exhaustion_level": "high",
+            "exhaustion_penalty": 15
+          },
+          "confidence": "high",
+          "up_factors": [
+            "거래량이 최근 5일 평균의 8.1배로 증가해 단기 수급 변화 가능성은 있음"
+          ],
+          "down_factors": [
+            "2분기 실적 기대치 하회 전망과 목표주가 하향 보도",
+            "15:00 현재 전일 대비 14.07% 하락",
+            "시가 대비 14.92% 하락하고 고가 대비 15.47% 밀려 강한 매도 압력 확인",
+            "최근 5거래일 수익률이 -19.66%로 하락 추세가 큼"
+          ],
+          "news_summary": "7월 13일 키움증권이 파라다이스의 2분기 실적이 기대치를 밑돌 것으로 전망하며 목표주가를 하향했다. 당일 새로 확인된 긍정적 계약·허가·실적 재료는 없다.",
+          "telegram_summary": "7월 9~14일 단일 채널에서 반복 언급됐지만 분석 내용이 없어 새로운 재료나 독립 확인 근거로 사용할 수 없다.",
+          "reasoning": "직접적인 긍정 재료가 없어 재료강도와 신선도는 0점이며, 실적 기대 하회 전망은 신뢰 가능한 단일 보도로 확인돼 독립확인 2점과 악재위험 5점을 적용했다. 기존 악재가 알려진 상태에서 당일 14.07% 급락해 상당 부분 가격에 반영된 것으로 보고 선반영 감점 12점을 적용했다. 고가 대비 15.47% 밀렸고 시가 대비 상승률도 -14.92%여서 강한 모멘텀 소진·매도 지속 위험으로 소진 감점 15점을 적용했다. 합산은 50+0+0+2-5-10-12-15=10점이다.",
+          "evidence_quality": "strong",
+          "llm_reported_probability_score": 10
+        },
+        {
+          "date": "20260715",
+          "as_of": "2026-07-15T15:00:00+09:00",
+          "old_score": null,
+          "ratio": 7.971762038518051,
+          "today_volume": 4777587,
+          "avg5_volume": 599313.8,
+          "trading_value": 6831949410,
+          "close": 1430,
+          "telegram_rows": 0,
+          "news_rows": 3,
+          "sources": [
+            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE00dEl4bjNfTFN0RE50OHZpTWd4YzlJcnBiYklwbHQtZzFKZjRVSkpSUm5uNW5qdmF6QjEyTnZRUTI2YWRFUkFodmJBQ2M0SXp2cmd3?oc=5",
+            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE0wWEVPX2c0Q1Z5SlYzcTk3ODMybkV5c1dsZ3pmZ1JNNEw4azB1U3NQTmxETEs3OHNMT2RIU3VERkxYUGM3d0IzUERzaXNtSEQ3T3JJ?oc=5",
+            "https://news.google.com/rss/articles/CBMiaEFVX3lxTE94OHV4NERleDdkdGoxbmJib0NhTVc0Q195aWZnOUhVbmE1OTBEV05yY2JuaU9BQW1tX2N6aWJIVTF5dUViT05nMFJFcVR3bFlaek1VSUZrZXN5VWZjT2F5VTVNdzNJWGRV?oc=5"
+          ],
+          "ticker": "046210",
+          "name": "HLB파나진",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 30,
+          "score_components": {
+            "catalyst_strength": 5,
+            "freshness": 3,
+            "confirmation": 2,
+            "negative_event_risk": 5,
+            "negative_trend_penalty": 0,
+            "priced_in_level": "high",
+            "priced_in_penalty": 20,
+            "exhaustion_level": "low",
+            "exhaustion_penalty": 5
+          },
+          "confidence": "medium",
+          "up_factors": [
+            "15:00 현재가가 장중 고가와 같아 고점 이탈이 없음",
+            "거래량이 최근 5일 평균의 약 8배로 수급 관심이 강함",
+            "5거래일 수익률이 0.07%로 최근 하락 추세 감점이 없음"
+          ],
+          "down_factors": [
+            "확정 계약·허가·실적 등 직접적인 신규 재료가 확인되지 않음",
+            "주가가 이미 상한가 수준인 30% 상승해 선반영 정도가 높음",
+            "그룹주 동반 상승이라는 테마성 재료에 그침",
+            "HLB 그룹 관련 최근 약세 보도로 불확실성이 존재함",
+            "급등과 거래량 급증에 따른 단기 과열 가능성이 있음"
+          ],
+          "news_summary": "당일 보도는 HLB파나진의 VI 발동, 29~30% 급등 및 HLB 그룹주 동반 강세를 전했지만, 상승을 뒷받침하는 구체적인 신규 계약·허가·실적 재료는 제시하지 않았다. 이틀 전에는 HLB의 급락과 약세가 보도돼 그룹 전반의 변동성 위험이 남아 있다.",
+          "telegram_summary": "텔레그램 이력이 없어 독립적인 신규 재료 확인이나 채널 간 교차 검증은 불가능하다.",
+          "reasoning": "재료강도는 구체적인 직접 재료 없이 그룹주 동반 상승이라는 테마성 기대만 확인돼 5점으로 판정했다. 당일 처음 부각된 가격 보도는 신선도 3점과 단일 신뢰 출처 수준의 확인 2점을 부여했지만, 이미 30% 상승해 상한가 수준에 도달했으므로 선반영 감점은 20점이다. 고점 대비 밀림이 0%라 강한 소진 증거는 없지만, 거래량이 평균의 약 8배인 급등 상태여서 단기 과열 가능성으로 5점을 감점했다. 합산식은 50+5+3+2-5-0-20-5=30이다.",
+          "evidence_quality": "moderate",
+          "llm_reported_probability_score": 30
+        },
+        {
+          "date": "20260715",
+          "as_of": "2026-07-15T15:00:00+09:00",
+          "old_score": null,
+          "ratio": 9.655874002208519,
+          "today_volume": 6990117,
+          "avg5_volume": 723923.8,
+          "trading_value": 7940772912,
+          "close": 1136,
+          "telegram_rows": 0,
+          "news_rows": 4,
+          "sources": [
+            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE0wWEVPX2c0Q1Z5SlYzcTk3ODMybkV5c1dsZ3pmZ1JNNEw4azB1U3NQTmxETEs3OHNMT2RIU3VERkxYUGM3d0IzUERzaXNtSEQ3T3JJ?oc=5",
+            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE9Sb05CRnVlMFRZZ1FQM2dmM3Y1cjZORFliUzhaODRqMHFLTWZGTU1QWjNFTnZlMHFjSHluaUpqc0xXRUtISG00dXJNY0Z0LXRST2FR?oc=5",
+            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE9zVS1oaDRfeUJRT1Q2ZVI2NnFZYmYtUjR6QzRfeUdUYnlYX19GdEZrTHJScFFaeHFMdHFnc3k5bmRRN1VfYVlVdGFBMUpUQVY3dWFV?oc=5",
+            "https://news.google.com/rss/articles/CBMiWkFVX3lxTE5zWmduMlBveldjR3N6ZVU5YTlzQktfUzdEcmhRYWhMQnQzTEVJYkVCejNXbkFKdC1vXzdNeG12TzFUOGxXazVXcnRHREFZaHZHZlpWMUFhQjltQQ?oc=5"
+          ],
+          "ticker": "050110",
+          "name": "캠시스",
+          "target": "D+1_OPEN_ABOVE_D_CLOSE",
+          "probability_score": 52,
+          "score_components": {
+            "catalyst_strength": 20,
             "freshness": 7,
             "confirmation": 2,
             "negative_event_risk": 0,
-            "priced_in_level": "unknown",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "unknown",
-            "exhaustion_penalty": 0
+            "negative_trend_penalty": 0,
+            "priced_in_level": "high",
+            "priced_in_penalty": 12,
+            "exhaustion_level": "high",
+            "exhaustion_penalty": 15
           },
-          "confidence": "low",
+          "confidence": "high",
           "up_factors": [
-            "당일 14:03에 서울색을 적용한 신제품 출시와 공공기관 협업 확대 소식이 확인됨",
-            "제품 출시라는 구체적 사업 활동이어서 단순 테마보다 직접성이 있음"
+            "상반기 영업이익 87억원 및 흑자전환이라는 직접적인 실적 재료",
+            "당일 오전 처음 보도된 신선한 정보",
+            "최근 5거래일 수익률이 양수여서 하락 추세 감점 없음"
           ],
           "down_factors": [
-            "확정 계약이나 유의미한 매출 규모가 제시되지 않아 재료 강도가 제한적임",
-            "단일 기사만 존재하고 텔레그램 또는 공시 기반의 독립 확인이 없음",
-            "15:00 시세와 거래량 스냅샷이 없어 선반영 및 소진 여부를 판단할 수 없음"
+            "장중 고가 1,400원에서 15:00 현재가 1,136원까지 18.86% 밀림",
+            "시가 대비 17.14% 하락해 초기 상승 모멘텀이 크게 소진됨",
+            "5일 평균의 9.66배 거래량에도 현재 상승률은 0.26%에 그쳐 차익실현 압력이 강함",
+            "텔레그램 독립 확인이 없고 공시와 복수 독립 출처의 일치 여부가 확인되지 않음"
           ],
-          "news_summary": "모나미가 서울색을 담은 '153 시그니처'를 출시하고 공공기관 협업을 확대한다는 소식이 2026년 7월 10일 14:03에 보도됐다.",
-          "telegram_summary": "관련 텔레그램 이력 없음.",
-          "reasoning": "신제품 출시와 공공기관 협업 확대는 구체적 사업 활동이지만, 확정 계약이나 매출 기여 규모가 없어 재료강도는 10점으로 판정했다. 당일 처음 확인된 기사로 신선도는 7점이며, 신뢰 가능한 단일 보도로 보아 독립확인은 2점이다. 시세 스냅샷이 없어 선반영과 소진 수준은 모두 unknown으로 두고 각 감점은 0점으로 계산했으며, 이 때문에 신뢰도는 낮다. 합산식은 50+10+7+2-0-0-0=69점이다.",
+          "news_summary": "캠시스가 상반기 영업이익 87억원을 기록하며 흑자전환했다는 보도가 당일 오전 나왔고, 개장 초 주가가 강세를 보였다는 후속 기사가 확인됐다.",
+          "telegram_summary": "관련 텔레그램 이력이 없어 추가적인 독립 확인 근거는 없다.",
+          "reasoning": "상반기 영업이익 87억원과 흑자전환은 가격에 직접 연결되는 당일 실적 재료지만, 매출 대비 규모나 시장 예상치 대비 서프라이즈는 확인되지 않아 재료강도는 20점으로 판정했다. 장중 고가가 전일 종가 대비 크게 상승한 뒤 현재가는 0.26% 상승에 그쳐 상당 부분 선반영된 것으로 판단했다. 고점 대비 18.86% 하락하고 시가 대비로도 17.14% 밀린 데다 거래량이 평균의 9.66배여서 소진 위험은 높다.",
           "evidence_quality": "moderate",
-          "llm_reported_probability_score": 69
+          "llm_reported_probability_score": 52
         },
         {
-          "date": "20260710",
-          "as_of": "2026-07-10T15:00:00+09:00",
-          "old_score": 80,
-          "telegram_rows": 5,
-          "news_rows": 6,
-          "ticker": "087010",
-          "name": "펩트론",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 59,
-          "score_components": {
-            "catalyst_strength": 10,
-            "freshness": 7,
-            "confirmation": 2,
-            "negative_event_risk": 10,
-            "priced_in_level": "unknown",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "unknown",
-            "exhaustion_penalty": 0
-          },
-          "confidence": "low",
-          "up_factors": [
-            "회사가 릴리와 비만·당뇨 치료제 공동연구가 정상 진행 중이라고 당일 해명함",
-            "당일 처음 확인된 회사 측 해명이 기존 우려를 일부 완화할 가능성이 있음"
+          "date": "20260715",
+          "as_of": "2026-07-15T15:00:00+09:00",
+          "old_score": null,
+          "ratio": 16.866689857084964,
+          "today_volume": 4819660,
+          "avg5_volume": 285750.2,
+          "trading_value": 10434563900,
+          "close": 2165,
+          "telegram_rows": 0,
+          "news_rows": 3,
+          "sources": [
+            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE0wWEVPX2c0Q1Z5SlYzcTk3ODMybkV5c1dsZ3pmZ1JNNEw4azB1U3NQTmxETEs3OHNMT2RIU3VERkxYUGM3d0IzUERzaXNtSEQ3T3JJ?oc=5",
+            "https://news.google.com/rss/articles/CBMiWkFVX3lxTE9PbmhWaUNmY19pZ0cwSGhxTFJTWG8yN2VhTWtXOE82d2hqbUpHdV95dnNZSWx5eC1SSU5vd1BiUXVsMkRuaHd5Y3l2cGtOWi1XZUVha2l6RFlidw?oc=5",
+            "https://news.google.com/rss/articles/CBMihAFBVV95cUxQZXZOeElwM1FrbmZya2RfUkZNMDJ1WkhrWVVqRzNxY1pPVFB5OVZqQ2tlSS0wWjZrVVJVLTN1WkFRdjBhc2ZQaDBxUzl5Z3lQc1dSM1k0S3czV3g3Y1pYQ2hmejlGVTBKSWZhVTh6d2FxWWNYUms3YmtaX0hEc09NRGZZai0?oc=5"
           ],
-          "down_factors": [
-            "터제파타이드가 공동연구에서 제외됐다는 보도로 핵심 기대가 약해짐",
-            "경영진 소통 문제와 공동연구 범위를 둘러싼 불확실성이 지속됨",
-            "전일 애프터마켓 급락과 당일 하한가 충격을 언급한 보도가 존재함",
-            "15:00 시세 스냅샷이 없어 실제 반영 정도와 장중 소진 여부를 판단할 수 없음"
-          ],
-          "news_summary": "터제파타이드가 릴리 공동연구 대상이 아니라는 보도로 주가 충격과 기대 훼손이 부각됐고, 회사는 비만·당뇨 치료제 공동연구가 정상 진행 중이라고 해명했어. 다만 공동연구 범위에 관한 불확실성은 완전히 해소되지 않았어.",
-          "telegram_summary": "텔레그램에서는 전일부터 2공장·CAPA 확대와 릴리 본계약 기대가 반복됐고, 당일에는 PT404 포함 여부와 경영진 소통 문제가 집중적으로 언급됐어. 단일 채널의 해석·추정이 중심이라 독립 확인 근거는 약해.",
-          "reasoning": "재료강도는 공동연구 정상 진행이라는 구체적인 회사 측 해명이지만 신규 계약이나 성과 확정은 아니어서 10점으로 봤어. 반면 터제파타이드 제외 논란과 소통 불확실성이 남아 악재위험 10점을 적용했어. 시세 스냅샷이 없으므로 선반영과 소진 수준은 모두 unknown, 감점은 각각 0점으로 뒀어. 합산식은 50+10+7+2-10-0-0=59점이야.",
-          "evidence_quality": "moderate",
-          "llm_reported_probability_score": 59
-        }
-      ],
-      "warnings": []
-    },
-    {
-      "date": "20260713",
-      "target": "D+1_OPEN_ABOVE_D_CLOSE",
-      "candidate_count": 3,
-      "scored_count": 3,
-      "scores": [
-        {
-          "date": "20260713",
-          "as_of": "2026-07-13T15:00:00+09:00",
-          "old_score": 54,
-          "telegram_rows": 2,
-          "news_rows": 4,
-          "ticker": "003680",
-          "name": "한성기업",
+          "ticker": "218150",
+          "name": "미래생명자원",
           "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 47,
+          "probability_score": 22,
           "score_components": {
             "catalyst_strength": 5,
             "freshness": 0,
             "confirmation": 2,
-            "negative_event_risk": 10,
-            "priced_in_level": "unknown",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "unknown",
-            "exhaustion_penalty": 0
+            "negative_event_risk": 0,
+            "negative_trend_penalty": 0,
+            "priced_in_level": "high",
+            "priced_in_penalty": 20,
+            "exhaustion_level": "high",
+            "exhaustion_penalty": 15
           },
-          "confidence": "low",
+          "confidence": "high",
           "up_factors": [
-            "SNS 미담과 애국기업 인식에 따른 단기 테마성 매수 관심",
-            "복수 언론에서 주가 급등과 테마 부각을 보도"
+            "사료 업종 테마가 전일부터 시장에서 부각됨",
+            "최근 5거래일 수익률이 26.61%로 상승 추세여서 최근 하락 감점은 없음",
+            "평균 대비 거래량이 16.87배로 시장 관심이 높음"
           ],
           "down_factors": [
-            "확정 계약·허가·실적 등 가격에 직접 연결되는 신규 재료가 없음",
-            "투자경고종목 지정예고와 투자주의 위험",
-            "상한가 관련 재료가 이미 반복 보도돼 신선도가 낮음",
-            "15:00 시세 스냅샷이 없어 선반영과 소진 정도를 확인할 수 없음"
+            "구체적인 계약·허가·실적이 아닌 사료 업종 테마성 재료임",
+            "전일 상한가·상승종목 기사와 반복된 테마 보도로 재료가 널리 선반영됨",
+            "15:00 현재 전일 대비 9.03% 하락함",
+            "시가 대비 15.26%, 장중 고가 대비 16.41% 밀려 강한 모멘텀 소진과 차익실현 흐름이 확인됨"
           ],
-          "news_summary": "SNS 미담과 애국기업 서사가 한성기업의 급등 및 상한가 배경으로 반복 보도됐지만, 새로운 계약·실적 같은 직접 재료는 확인되지 않았다. 투자경고종목 지정예고와 투자주의가 부정 요인으로 제시됐다.",
-          "telegram_summary": "7월 10일 companyreport 한 채널에서 1건 언급됐으나 분석 내용이 없고, 복수 독립 채널의 신규 재료 확인도 없다.",
-          "reasoning": "재료는 SNS 미담과 애국기업 인식에 기반한 단순 테마로 판단해 재료강도 5점을 부여했고, 이전부터 반복된 내용이라 신선도는 0점이다. 투자경고 지정예고와 투자주의를 과열·규제 위험으로 봐 악재위험 10점을 적용했다. 상한가와 급등 보도가 있어 선반영·소진 가능성은 의심되지만, 15:00 시세 스냅샷이 없으므로 두 수준을 unknown, 감점을 0으로 뒀다. 합산식은 50+5+0+2-10-0-0=47이다.",
+          "news_summary": "전일부터 사료 업종 이슈와 상승종목으로 언급됐지만, 당일 새로 확인된 구체적 기업 재료는 없음.",
+          "telegram_summary": "텔레그램 근거 없음.",
+          "reasoning": "재료는 사료 업종 기대에 따른 단순 테마로 판단해 강도 5점이며, 전일부터 반복된 내용이라 신선도는 0점이야. 전일 상한가·상승종목으로 이미 알려진 재료이고 최근 5거래일 수익률도 26.61%여서 선반영 수준은 높아. 당일에는 시가 대비 15.26%, 고가 대비 16.41% 밀리고 거래량이 평균의 16.87배에 달해 강한 소진 위험으로 판단했어.",
           "evidence_quality": "moderate",
-          "llm_reported_probability_score": 47
+          "llm_reported_probability_score": 22
         },
         {
-          "date": "20260713",
-          "as_of": "2026-07-13T15:00:00+09:00",
-          "old_score": 80,
-          "telegram_rows": 6,
-          "news_rows": 6,
-          "ticker": "028300",
-          "name": "HLB",
+          "date": "20260715",
+          "as_of": "2026-07-15T15:00:00+09:00",
+          "old_score": null,
+          "ratio": 61.8397483185659,
+          "today_volume": 9154039,
+          "avg5_volume": 148028.4,
+          "trading_value": 37485789705,
+          "close": 4095,
+          "telegram_rows": 0,
+          "news_rows": 5,
+          "sources": [
+            "https://news.google.com/rss/articles/CBMiU0FVX3lxTFBBcm1CU1o2TUZ0dXdJalF4dS1CSjhnLURpYk9pcTh2X2swaEFsYjRSWEoxNFNtampxTDJXTGIyZ01jdVUxSTJBS1J5bi1pSDFqaV9B?oc=5",
+            "https://news.google.com/rss/articles/CBMiUkFVX3lxTE1udC01YW80QW04OERWMTY3Q08ySm1may1zRmNfSWI0aWFYODVILVhTa0xkS1VRd2pPYmZrYXJYTHQxZHQzQmJVNTFFeGswTEhKV0HSAVNBVV95cUxPQ3dmcTdjTmtjWm9CRHBXTDRaWkdEbHFqQmx0T0g4ajZaeDhhZURSN3R3a0FBMnhsa2NIZXJraGNVWWJMQnVLTzduQmFfWWlLNXZudw?oc=5",
+            "https://news.google.com/rss/articles/CBMiW0FVX3lxTFBMbjZPbWtZc2lKOE1ibzJvMzZ0RTZQZVl3NF9LY2JuMFByODhhWEtwRVpxdEk4eDRwd0dhRG80Z1czd2ppT2hySHRyZWxvVXIzblpvNG0xcERSRzDSAWBBVV95cUxPYVlud0ZvLXdkV2hQeDAzcHlpWm9CYklpeHlXY0wxTW40WHdMSWZQQ3c0aGtFUlBhZ1FsbU5Zem1ybEhqR19wOWhZUG9ja19hT3hSVllqT0FJaFU2aDREN2o?oc=5",
+            "https://news.google.com/rss/articles/CBMihAFBVV95cUxQZXZOeElwM1FrbmZya2RfUkZNMDJ1WkhrWVVqRzNxY1pPVFB5OVZqQ2tlSS0wWjZrVVJVLTN1WkFRdjBhc2ZQaDBxUzl5Z3lQc1dSM1k0S3czV3g3Y1pYQ2hmejlGVTBKSWZhVTh6d2FxWWNYUms3YmtaX0hEc09NRGZZai0?oc=5",
+            "https://news.google.com/rss/articles/CBMinAFBVV95cUxPbkRhallFZHYyM3ZuYmltTHp3Q2xVLWVOSm9wVkZkMVlzT1NVeWI1a0IzNGpzeFZNcHh1aE85WUxUVUhpOWZfMmZYeGh1Y2ZQb040bW9SZ0R6dW44NUZJU3NpSjliZzZ3dllzeTcxYTlEdVBjOGIxNTYtWWRYeHhabFc5b0N3NEpXT0JlaDVtRUpCTUNzV3lqdldsYTDSAZwBQVVfeXFMT25EYWpZRWR2MjN2bmJpbUx6d0NsVS1lTkpvcFZGZDFZc09TVXliNWtCMzRqc3hWTXB4dWhPOVlMVFVIaTlmXzJmWHhodWNmUG9ONG1vUmdEenVuODVGSVNzaUo5Ymc2d3ZZc3k3MWE5RHVQYzhiMTU2LVlkWHh4WmxXOW9DdzRKV09CZWg1bUVKQk1Dc1d5anZXbGEw?oc=5"
+          ],
+          "ticker": "465770",
+          "name": "STX그린로지스",
           "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 32,
+          "probability_score": 27,
           "score_components": {
-            "catalyst_strength": 0,
+            "catalyst_strength": 5,
             "freshness": 0,
             "confirmation": 2,
-            "negative_event_risk": 20,
-            "priced_in_level": "unknown",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "unknown",
-            "exhaustion_penalty": 0
-          },
-          "confidence": "low",
-          "up_factors": [
-            "리보세라닙 자체의 안전성·유효성보다 협력사의 제조·품질관리 문제가 승인 지연의 핵심이라는 해석",
-            "당일 이틀째 약세가 보도돼 단기 기술적 반등 가능성은 존재"
-          ],
-          "down_factors": [
-            "FDA 승인 재불발이라는 직접적인 규제 악재",
-            "협력사 제조시설의 cGMP·데이터 무결성 문제가 반복적으로 부각",
-            "당일에도 약 20% 하락과 이틀째 약세가 보도돼 투자심리가 훼손된 정황"
-          ],
-          "news_summary": "리보세라닙의 FDA 승인이 다시 불발됐고, 병용약 제조사인 항서제약의 제조·품질관리 및 데이터 무결성 문제가 원인으로 반복 보도됐다. 7월 13일 오전 기사에서는 HLB가 약 20% 하락하며 이틀째 약세라고 전했다.",
-          "telegram_summary": "단일 채널 getfeed에서 7월 11~12일 FDA 승인 불발과 항서제약의 CMC·cGMP·데이터 무결성 문제가 반복 언급됐다. 복수 독립 채널의 확인은 없다.",
-          "reasoning": "상승 재료로 평가할 만한 확정 계약·허가·실적은 없어 재료강도는 0점이다. FDA 승인 재불발은 확정된 규제 실패 성격의 악재여서 악재위험을 20점으로 평가했다. 시세 스냅샷이 없어 하락에 악재가 얼마나 선반영됐는지와 급락 후 소진 여부를 판단할 수 없으므로 두 수준을 unknown, 감점을 0점으로 뒀다. 합산식은 50+0+0+2-20-0-0=32점이다.",
-          "evidence_quality": "moderate",
-          "llm_reported_probability_score": 32
-        },
-        {
-          "date": "20260713",
-          "as_of": "2026-07-13T15:00:00+09:00",
-          "old_score": 54,
-          "telegram_rows": 0,
-          "news_rows": 2,
-          "ticker": "387690",
-          "name": "레메디",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 42,
-          "score_components": {
-            "catalyst_strength": 0,
-            "freshness": 7,
-            "confirmation": 2,
             "negative_event_risk": 0,
+            "negative_trend_penalty": 0,
             "priced_in_level": "high",
-            "priced_in_penalty": 12,
+            "priced_in_penalty": 20,
             "exhaustion_level": "medium",
-            "exhaustion_penalty": 5
+            "exhaustion_penalty": 10
           },
-          "confidence": "low",
+          "confidence": "high",
           "up_factors": [
-            "당일 코스닥 신규 상장 사실이 처음 확인됨",
-            "신뢰 가능한 연합뉴스가 장 초반 37% 상승을 보도함"
+            "중동 긴장과 호르무즈 해협 재봉쇄에 따른 해운주 테마 수혜 기대",
+            "15:00 현재 전일 대비 24.09% 상승 유지"
           ],
           "down_factors": [
-            "확정 계약·허가·실적 등 직접적인 신규 사업 재료가 없음",
-            "상장 첫날 장 초반 이미 37% 상승해 상당한 선반영 가능성이 있음",
-            "신규 상장주 특유의 단기 과열과 차익실현 위험이 있음",
-            "15:00 시세 스냅샷이 없어 종가 직전 흐름과 상승분 유지 여부를 확인할 수 없음"
+            "재료가 전일부터 알려졌고 전일 상한가로 상당 부분 선반영",
+            "당일 시가·고가 대비 4.55% 밀리며 상승 탄력 둔화",
+            "최근 5거래일 94.08% 상승 및 평균 대비 61.84배 거래량으로 차익실현 위험 확대",
+            "확정 계약·실적 등 기업 고유의 직접 재료가 아님"
           ],
-          "news_summary": "레메디는 2026년 7월 13일 코스닥 상장 첫날 장 초반 37% 상승했다. 수주·허가·실적 등 별도의 직접 재료는 입력에서 확인되지 않는다.",
-          "telegram_summary": "텔레그램 이력이 없어 독립적인 재료 확산 또는 추가 확인 근거가 없다.",
-          "reasoning": "재료강도는 신규 상장 및 장 초반 주가 상승 보도 외에 가격에 직접 연결되는 확정 사업 재료가 없어 0점으로 판정했다. 연합뉴스 보도에서 장 초반 37% 상승이 확인되므로 선반영 수준은 높음, 신규 상장주의 단기 과열 가능성을 고려해 소진 위험은 중간으로 판정했다. 다만 15:00 시세 스냅샷이 없어 종가 직전 상승폭과 모멘텀을 확인할 수 없으므로 신뢰도는 낮다.",
-          "evidence_quality": "moderate",
-          "llm_reported_probability_score": 42
+          "news_summary": "전일부터 호르무즈 해협 재봉쇄와 중동 긴장 고조를 배경으로 해운주가 강세를 보였고 STX그린로지스는 상한가 종목으로 보도됐다. 당일 새로 확인된 기업 고유 재료는 없다.",
+          "telegram_summary": "텔레그램 이력이 없어 추가 확인 근거가 없다.",
+          "reasoning": "재료는 중동 긴장에 따른 해운 테마 기대이므로 재료강도는 5점이며, 전일부터 반복된 내용이라 신선도는 0점이다. 전일 상한가와 최근 5거래일 94.08% 상승으로 선반영 수준을 높게 평가해 20점을 감점했다. 당일에도 24.09% 상승했지만 시가가 고가였고 이후 4.55% 밀렸으며 거래량이 평균의 61.84배여서 모멘텀 둔화와 차익실현 위험으로 소진 감점 10점을 적용했다. 합산식은 50+5+0+2-0-0-20-10=27점이다.",
+          "evidence_quality": "strong",
+          "llm_reported_probability_score": 27
         }
       ],
       "warnings": []
     }
   ],
   "comparison": {
-    "row_count": 8,
-    "mean_absolute_delta": 19.0,
-    "meaningfully_changed_count": 8,
-    "meaningfully_changed_rate": 1.0,
-    "old_score_stddev": 11.9138,
-    "new_score_stddev": 10.2835,
+    "row_count": 6,
+    "mean_absolute_delta": null,
+    "meaningfully_changed_count": 0,
+    "meaningfully_changed_rate": 0.0,
+    "old_score_stddev": null,
+    "new_score_stddev": 14.241,
     "by_date": {
-      "20260709": [
+      "20260715": [
         {
-          "ticker": "189330",
-          "name": "씨이랩",
-          "old_score": 58,
-          "new_score": 47,
-          "delta": -11,
-          "rank_change": -1,
-          "meaningfully_changed": true,
-          "telegram_rows": 4
-        },
-        {
-          "ticker": "214330",
-          "name": "금호에이치티",
-          "old_score": 58,
-          "new_score": 50,
-          "delta": -8,
-          "rank_change": 2,
-          "meaningfully_changed": true,
-          "telegram_rows": 1
-        },
-        {
-          "ticker": "263800",
-          "name": "데이타솔루션",
-          "old_score": 80,
-          "new_score": 50,
-          "delta": -30,
-          "rank_change": -1,
-          "meaningfully_changed": true,
-          "telegram_rows": 1
-        }
-      ],
-      "20260710": [
-        {
-          "ticker": "005360",
-          "name": "모나미",
-          "old_score": 54,
-          "new_score": 69,
-          "delta": 15,
-          "rank_change": 1,
-          "meaningfully_changed": true,
-          "telegram_rows": 0
-        },
-        {
-          "ticker": "087010",
-          "name": "펩트론",
-          "old_score": 80,
-          "new_score": 59,
-          "delta": -21,
-          "rank_change": -1,
-          "meaningfully_changed": true,
-          "telegram_rows": 5
-        }
-      ],
-      "20260713": [
-        {
-          "ticker": "003680",
-          "name": "한성기업",
-          "old_score": 54,
-          "new_score": 47,
-          "delta": -7,
-          "rank_change": 1,
-          "meaningfully_changed": true,
-          "telegram_rows": 2
-        },
-        {
-          "ticker": "028300",
-          "name": "HLB",
-          "old_score": 80,
-          "new_score": 32,
-          "delta": -48,
-          "rank_change": -2,
-          "meaningfully_changed": true,
+          "ticker": "032350",
+          "name": "롯데관광개발",
+          "old_score": null,
+          "new_score": 10,
+          "delta": null,
+          "rank_change": -4,
+          "meaningfully_changed": false,
           "telegram_rows": 6
         },
         {
-          "ticker": "387690",
-          "name": "레메디",
-          "old_score": 54,
-          "new_score": 42,
-          "delta": -12,
+          "ticker": "034230",
+          "name": "파라다이스",
+          "old_score": null,
+          "new_score": 10,
+          "delta": null,
+          "rank_change": -4,
+          "meaningfully_changed": false,
+          "telegram_rows": 6
+        },
+        {
+          "ticker": "046210",
+          "name": "HLB파나진",
+          "old_score": null,
+          "new_score": 30,
+          "delta": null,
           "rank_change": 1,
-          "meaningfully_changed": true,
+          "meaningfully_changed": false,
+          "telegram_rows": 0
+        },
+        {
+          "ticker": "050110",
+          "name": "캠시스",
+          "old_score": null,
+          "new_score": 52,
+          "delta": null,
+          "rank_change": 3,
+          "meaningfully_changed": false,
+          "telegram_rows": 0
+        },
+        {
+          "ticker": "218150",
+          "name": "미래생명자원",
+          "old_score": null,
+          "new_score": 22,
+          "delta": null,
+          "rank_change": 1,
+          "meaningfully_changed": false,
+          "telegram_rows": 0
+        },
+        {
+          "ticker": "465770",
+          "name": "STX그린로지스",
+          "old_score": null,
+          "new_score": 27,
+          "delta": null,
+          "rank_change": 3,
+          "meaningfully_changed": false,
           "telegram_rows": 0
         }
       ]
     }
   },
   "outcome_evaluation": {
-    "scored_count": 8,
-    "evaluated_count": 5,
-    "pending_count": 3,
-    "new_score_ranking_auc": 0.4167,
-    "old_score_ranking_auc": 0.3333,
-    "new_score_brier": 0.245,
-    "new_score_accuracy_at_50": 0.4,
-    "rows": [
-      {
-        "date": "20260709",
-        "next_date": "20260710",
-        "ticker": "189330",
-        "name": "씨이랩",
-        "old_score": 58,
-        "new_score": 47,
-        "d1_open_return_pct": 0.457,
-        "actual_up": true
-      },
-      {
-        "date": "20260709",
-        "next_date": "20260710",
-        "ticker": "214330",
-        "name": "금호에이치티",
-        "old_score": 58,
-        "new_score": 50,
-        "d1_open_return_pct": -2.5756,
-        "actual_up": false
-      },
-      {
-        "date": "20260709",
-        "next_date": "20260710",
-        "ticker": "263800",
-        "name": "데이타솔루션",
-        "old_score": 80,
-        "new_score": 50,
-        "d1_open_return_pct": 8.9378,
-        "actual_up": true
-      },
-      {
-        "date": "20260710",
-        "next_date": "20260713",
-        "ticker": "005360",
-        "name": "모나미",
-        "old_score": 54,
-        "new_score": 69,
-        "d1_open_return_pct": 13.2867,
-        "actual_up": true
-      },
-      {
-        "date": "20260710",
-        "next_date": "20260713",
-        "ticker": "087010",
-        "name": "펩트론",
-        "old_score": 80,
-        "new_score": 59,
-        "d1_open_return_pct": -2.3297,
-        "actual_up": false
-      }
-    ]
+    "scored_count": 6,
+    "evaluated_count": 0,
+    "pending_count": 6,
+    "new_score_ranking_auc": null,
+    "old_score_ranking_auc": null,
+    "new_score_brier": null,
+    "new_score_accuracy_at_50": null,
+    "rows": []
   }
 }

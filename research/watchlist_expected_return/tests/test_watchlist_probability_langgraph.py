@@ -15,6 +15,7 @@ from research.watchlist_expected_return.watchlist_probability_langgraph import (
     build_market_snapshot,
     build_score_input,
     calculate_probability_score,
+    calculate_negative_trend_penalty,
     compare_scores,
     evaluate_available_outcomes,
     ensure_complete_scores,
@@ -91,7 +92,8 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
                 "probability_score": 99, "confidence": "medium", "up_factors": ["신규 재료"],
                 "score_components": {
                     "catalyst_strength": 15, "freshness": 5, "confirmation": 2,
-                    "negative_event_risk": 0, "priced_in_level": "low", "priced_in_penalty": 0,
+                    "negative_event_risk": 0, "negative_trend_penalty": 0,
+                    "priced_in_level": "low", "priced_in_penalty": 0,
                     "exhaustion_level": "low", "exhaustion_penalty": 0,
                 },
                 "down_factors": [], "news_summary": "뉴스", "telegram_summary": "텔레그램",
@@ -110,11 +112,13 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
     def test_probability_score_is_forced_from_components(self) -> None:
         self.assertEqual(calculate_probability_score({
             "catalyst_strength": 30, "freshness": 10, "confirmation": 5,
-            "negative_event_risk": 0, "priced_in_penalty": 0, "exhaustion_penalty": 0,
+            "negative_event_risk": 0, "negative_trend_penalty": 0,
+            "priced_in_penalty": 0, "exhaustion_penalty": 0,
         }), 95)
         self.assertEqual(calculate_probability_score({
             "catalyst_strength": 5, "freshness": 0, "confirmation": 0,
-            "negative_event_risk": 20, "priced_in_penalty": 20, "exhaustion_penalty": 15,
+            "negative_event_risk": 20, "negative_trend_penalty": 0,
+            "priced_in_penalty": 20, "exhaustion_penalty": 15,
         }), 5)
 
     def test_operational_date_does_not_require_existing_llm_score(self) -> None:
@@ -131,7 +135,8 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
                 "probability_score": 72, "confidence": "medium", "up_factors": ["신규 재료"],
                 "score_components": {
                     "catalyst_strength": 15, "freshness": 5, "confirmation": 2,
-                    "negative_event_risk": 0, "priced_in_level": "low", "priced_in_penalty": 0,
+                    "negative_event_risk": 0, "negative_trend_penalty": 0,
+                    "priced_in_level": "low", "priced_in_penalty": 0,
                     "exhaustion_level": "low", "exhaustion_penalty": 0,
                 },
                 "down_factors": [], "news_summary": "뉴스", "telegram_summary": "텔레그램",
@@ -177,11 +182,21 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
             "snapshot_source": "ka10001",
             "avg5_volume": 1000,
             "market_cap_previous_day": 1000000,
+            "previous_5d_close": 80,
         }, "20260713")
         self.assertTrue(result["available"])
         self.assertEqual(result["rise_from_open_pct"], 2.0)
         self.assertEqual(result["pullback_from_high_pct"], -7.2727)
         self.assertEqual(result["volume_ratio_vs_avg5"], 2.0)
+        self.assertEqual(result["return_5d_pct"], 27.5)
+
+    def test_negative_trend_penalty_is_asymmetric_and_nonlinear(self) -> None:
+        self.assertEqual(calculate_negative_trend_penalty(30), 0)
+        self.assertEqual(calculate_negative_trend_penalty(-2.9), 0)
+        self.assertEqual(calculate_negative_trend_penalty(-5), 3)
+        self.assertEqual(calculate_negative_trend_penalty(-10), 6)
+        self.assertEqual(calculate_negative_trend_penalty(-15), 10)
+        self.assertEqual(calculate_negative_trend_penalty(-25), 15)
 
     def test_comparison_detects_score_and_rank_change(self) -> None:
         result = compare_scores([{"date": "20260713", "scores": [
@@ -216,7 +231,8 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
             "avg5_volume": 10, "trading_value": 1000, "close": 110,
             "score_components": {
                 "catalyst_strength": 15, "freshness": 5, "confirmation": 2,
-                "negative_event_risk": 0, "priced_in_level": "low",
+                "negative_event_risk": 0, "negative_trend_penalty": 0,
+                "priced_in_level": "low",
                 "priced_in_penalty": 0, "exhaustion_level": "low",
                 "exhaustion_penalty": 0,
             },
