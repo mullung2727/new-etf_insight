@@ -10,6 +10,7 @@ watchlist 기대수익률 연구와 `D+1 시가 > D 종가` 상승가능성 운�
 - `phase4_holding_strategy.py`: D+1~D+5 고정 보유와 TP/SL 전략을 시간 분할로 비교한다.
 - `phase5_expected_return_model.py`: 구조화 수치 특징 기반 기대수익 shadow 모델을 walk-forward 검증한다.
 - `phase6_extreme_gap_causes.py`: D일 15:00 이전 blind 정보로 D+1 극단 갭 원인 구분 가능성을 평가한다.
+- `phase7_pullback_strategy.py`: D+1~D+5의 여러 눌림목 정의와 매수 후 5거래일 이내 청산을 비교한다.
 - `watchlist_probability_langgraph.py`: 뉴스·텔레그램·15시 시세를 참고해 D+1 시가 상승가능성 점수를 생성하고 선택적으로 `llm_scores`를 갱신한다.
 - `tests/`: 임시 SQLite·DuckDB fixture를 사용하는 회귀 테스트다.
 - `results/`: 단계별 JSON·Markdown 결과가 생성된다.
@@ -79,4 +80,10 @@ etl\.venv\Scripts\python.exe -m research.watchlist_expected_return.watchlist_pro
 ```powershell
 $env:PYTHONPATH='etl/src'
 etl\.venv\Scripts\python.exe -m research.watchlist_expected_return.phase6_extreme_gap_causes
+```
+
+## 7단계 실행
+
+```powershell
+etl\.venv\Scripts\python.exe -m research.watchlist_expected_return.phase7_pullback_strategy
 ```

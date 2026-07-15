@@ -1,0 +1,1830 @@
+{
+  "analysis_version": 1,
+  "generated_at": "2026-07-15T13:37:26+09:00",
+  "sample_count": 133,
+  "split_date": "20260623",
+  "cost_rate": 0.01,
+  "entry_wait_days": 5,
+  "max_holding_days_after_entry": 5,
+  "definitions": {
+    "limit_down_3pct": "watchlist일 종가보다 3% 낮은 지정가 최초 체결",
+    "limit_down_5pct": "watchlist일 종가보다 5% 낮은 지정가 최초 체결",
+    "gap_down_2pct": "watchlist일 종가 대비 2% 이상 갭하락한 날 시가 매수",
+    "ma5_reclaim": "당일 저가가 직전 5일 종가 평균 이하이고 종가는 평균 이상일 때 종가 매수",
+    "lower_low_bullish_reversal": "전일 저가 이탈 후 양봉이면 종가 매수"
+  },
+  "rules": [
+    {
+      "rule": "limit_down_3pct",
+      "eligible_count": 133,
+      "entry_count": 113,
+      "no_buy_rate": 0.1504,
+      "avg_wait_days": 1.3009,
+      "selected_on_early": {
+        "id": "tp5%_sl2%_d3",
+        "strategy": {
+          "kind": "tp_sl",
+          "tp": 0.05,
+          "sl": 0.02,
+          "max_hold_days": 3,
+          "touch_policy": "sl_first"
+        },
+        "early": {
+          "count": 56,
+          "mean": -0.020519,
+          "median": -0.03,
+          "positive_rate": 0.3393,
+          "p10": -0.126772,
+          "worst": -0.221379,
+          "max_drawdown": -0.32511,
+          "avg_holding_days": 1.0179
+        },
+        "late": {
+          "count": 49,
+          "mean": -0.024617,
+          "median": -0.053151,
+          "positive_rate": 0.1837,
+          "p10": -0.144405,
+          "worst": -0.204731,
+          "max_drawdown": -0.3807,
+          "avg_holding_days": 1.0
+        }
+      },
+      "late_validated": false,
+      "strategies": [
+        {
+          "id": "fixed_d1",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 1
+          },
+          "early": {
+            "count": 57,
+            "mean": -0.026578,
+            "median": -0.055853,
+            "positive_rate": 0.2982,
+            "p10": -0.161471,
+            "worst": -0.212545,
+            "max_drawdown": -0.451196,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 54,
+            "mean": -0.042083,
+            "median": -0.07769,
+            "positive_rate": 0.2778,
+            "p10": -0.205413,
+            "worst": -0.259645,
+            "max_drawdown": -0.567571,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "fixed_d3",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 3
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.042388,
+            "median": -0.081472,
+            "positive_rate": 0.3036,
+            "p10": -0.25225,
+            "worst": -0.321409,
+            "max_drawdown": -0.613358,
+            "avg_holding_days": 3.0
+          },
+          "late": {
+            "count": 49,
+            "mean": -0.100833,
+            "median": -0.127476,
+            "positive_rate": 0.2245,
+            "p10": -0.247979,
+            "worst": -0.389662,
+            "max_drawdown": -0.650009,
+            "avg_holding_days": 3.0
+          }
+        },
+        {
+          "id": "fixed_d5",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 5
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.058308,
+            "median": -0.102513,
+            "positive_rate": 0.3036,
+            "p10": -0.299194,
+            "worst": -0.428053,
+            "max_drawdown": -0.734036,
+            "avg_holding_days": 5.0
+          },
+          "late": {
+            "count": 41,
+            "mean": -0.124256,
+            "median": -0.145699,
+            "positive_rate": 0.2683,
+            "p10": -0.319295,
+            "worst": -0.431535,
+            "max_drawdown": -0.678831,
+            "avg_holding_days": 5.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.021303,
+            "median": -0.03,
+            "positive_rate": 0.3571,
+            "p10": -0.126772,
+            "worst": -0.221379,
+            "max_drawdown": -0.328012,
+            "avg_holding_days": 1.0179
+          },
+          "late": {
+            "count": 49,
+            "mean": -0.023951,
+            "median": -0.053151,
+            "positive_rate": 0.2041,
+            "p10": -0.144405,
+            "worst": -0.204731,
+            "max_drawdown": -0.386278,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.021303,
+            "median": -0.03,
+            "positive_rate": 0.3571,
+            "p10": -0.126772,
+            "worst": -0.221379,
+            "max_drawdown": -0.328012,
+            "avg_holding_days": 1.0179
+          },
+          "late": {
+            "count": 41,
+            "mean": -0.017888,
+            "median": -0.051541,
+            "positive_rate": 0.2439,
+            "p10": -0.155725,
+            "worst": -0.204731,
+            "max_drawdown": -0.35667,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.02322,
+            "median": -0.04,
+            "positive_rate": 0.3571,
+            "p10": -0.126772,
+            "worst": -0.221379,
+            "max_drawdown": -0.348057,
+            "avg_holding_days": 1.0357
+          },
+          "late": {
+            "count": 49,
+            "mean": -0.024167,
+            "median": -0.053151,
+            "positive_rate": 0.2245,
+            "p10": -0.144405,
+            "worst": -0.204731,
+            "max_drawdown": -0.394695,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.02322,
+            "median": -0.04,
+            "positive_rate": 0.3571,
+            "p10": -0.126772,
+            "worst": -0.221379,
+            "max_drawdown": -0.348057,
+            "avg_holding_days": 1.0357
+          },
+          "late": {
+            "count": 41,
+            "mean": -0.017747,
+            "median": -0.051541,
+            "positive_rate": 0.2683,
+            "p10": -0.155725,
+            "worst": -0.204731,
+            "max_drawdown": -0.360736,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.020519,
+            "median": -0.03,
+            "positive_rate": 0.3393,
+            "p10": -0.126772,
+            "worst": -0.221379,
+            "max_drawdown": -0.32511,
+            "avg_holding_days": 1.0179
+          },
+          "late": {
+            "count": 49,
+            "mean": -0.024617,
+            "median": -0.053151,
+            "positive_rate": 0.1837,
+            "p10": -0.144405,
+            "worst": -0.204731,
+            "max_drawdown": -0.3807,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.020519,
+            "median": -0.03,
+            "positive_rate": 0.3393,
+            "p10": -0.126772,
+            "worst": -0.221379,
+            "max_drawdown": -0.32511,
+            "avg_holding_days": 1.0179
+          },
+          "late": {
+            "count": 41,
+            "mean": -0.018684,
+            "median": -0.051541,
+            "positive_rate": 0.2195,
+            "p10": -0.155725,
+            "worst": -0.204731,
+            "max_drawdown": -0.350823,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.022614,
+            "median": -0.04,
+            "positive_rate": 0.3393,
+            "p10": -0.126772,
+            "worst": -0.221379,
+            "max_drawdown": -0.347526,
+            "avg_holding_days": 1.0357
+          },
+          "late": {
+            "count": 49,
+            "mean": -0.02463,
+            "median": -0.053151,
+            "positive_rate": 0.2041,
+            "p10": -0.144405,
+            "worst": -0.204731,
+            "max_drawdown": -0.390609,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 56,
+            "mean": -0.022614,
+            "median": -0.04,
+            "positive_rate": 0.3393,
+            "p10": -0.126772,
+            "worst": -0.221379,
+            "max_drawdown": -0.347526,
+            "avg_holding_days": 1.0357
+          },
+          "late": {
+            "count": 41,
+            "mean": -0.0183,
+            "median": -0.051541,
+            "positive_rate": 0.2439,
+            "p10": -0.155725,
+            "worst": -0.204731,
+            "max_drawdown": -0.356421,
+            "avg_holding_days": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "rule": "limit_down_5pct",
+      "eligible_count": 133,
+      "entry_count": 107,
+      "no_buy_rate": 0.1955,
+      "avg_wait_days": 1.5327,
+      "selected_on_early": {
+        "id": "tp3%_sl2%_d3",
+        "strategy": {
+          "kind": "tp_sl",
+          "tp": 0.03,
+          "sl": 0.02,
+          "max_hold_days": 3,
+          "touch_policy": "sl_first"
+        },
+        "early": {
+          "count": 52,
+          "mean": -0.020708,
+          "median": -0.032635,
+          "positive_rate": 0.3269,
+          "p10": -0.12477,
+          "worst": -0.221379,
+          "max_drawdown": -0.238656,
+          "avg_holding_days": 1.0
+        },
+        "late": {
+          "count": 48,
+          "mean": -0.0348,
+          "median": -0.042437,
+          "positive_rate": 0.2083,
+          "p10": -0.128227,
+          "worst": -0.187778,
+          "max_drawdown": -0.375437,
+          "avg_holding_days": 1.0
+        }
+      },
+      "late_validated": false,
+      "strategies": [
+        {
+          "id": "fixed_d1",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 1
+          },
+          "early": {
+            "count": 53,
+            "mean": -0.028453,
+            "median": -0.047594,
+            "positive_rate": 0.283,
+            "p10": -0.161254,
+            "worst": -0.21,
+            "max_drawdown": -0.36317,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 52,
+            "mean": -0.05734,
+            "median": -0.068386,
+            "positive_rate": 0.2692,
+            "p10": -0.190786,
+            "worst": -0.243848,
+            "max_drawdown": -0.568118,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "fixed_d3",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 3
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.049434,
+            "median": -0.084669,
+            "positive_rate": 0.2692,
+            "p10": -0.240309,
+            "worst": -0.312326,
+            "max_drawdown": -0.573794,
+            "avg_holding_days": 3.0
+          },
+          "late": {
+            "count": 48,
+            "mean": -0.104547,
+            "median": -0.129724,
+            "positive_rate": 0.2083,
+            "p10": -0.236973,
+            "worst": -0.376602,
+            "max_drawdown": -0.686834,
+            "avg_holding_days": 3.0
+          }
+        },
+        {
+          "id": "fixed_d5",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 5
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.063503,
+            "median": -0.089866,
+            "positive_rate": 0.2885,
+            "p10": -0.318363,
+            "worst": -0.415801,
+            "max_drawdown": -0.704801,
+            "avg_holding_days": 5.0
+          },
+          "late": {
+            "count": 39,
+            "mean": -0.126687,
+            "median": -0.155655,
+            "positive_rate": 0.2051,
+            "p10": -0.306278,
+            "worst": -0.419357,
+            "max_drawdown": -0.693685,
+            "avg_holding_days": 5.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.020708,
+            "median": -0.032635,
+            "positive_rate": 0.3269,
+            "p10": -0.12477,
+            "worst": -0.221379,
+            "max_drawdown": -0.238656,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 48,
+            "mean": -0.0348,
+            "median": -0.042437,
+            "positive_rate": 0.2083,
+            "p10": -0.128227,
+            "worst": -0.187778,
+            "max_drawdown": -0.375437,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.020708,
+            "median": -0.032635,
+            "positive_rate": 0.3269,
+            "p10": -0.12477,
+            "worst": -0.221379,
+            "max_drawdown": -0.238656,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 39,
+            "mean": -0.030948,
+            "median": -0.044246,
+            "positive_rate": 0.2564,
+            "p10": -0.142939,
+            "worst": -0.187778,
+            "max_drawdown": -0.313346,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.02258,
+            "median": -0.04,
+            "positive_rate": 0.3269,
+            "p10": -0.12477,
+            "worst": -0.221379,
+            "max_drawdown": -0.265372,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 48,
+            "mean": -0.035584,
+            "median": -0.042437,
+            "positive_rate": 0.2292,
+            "p10": -0.128227,
+            "worst": -0.187778,
+            "max_drawdown": -0.384349,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.02258,
+            "median": -0.04,
+            "positive_rate": 0.3269,
+            "p10": -0.12477,
+            "worst": -0.221379,
+            "max_drawdown": -0.265372,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 39,
+            "mean": -0.032451,
+            "median": -0.044246,
+            "positive_rate": 0.2564,
+            "p10": -0.142939,
+            "worst": -0.187778,
+            "max_drawdown": -0.319828,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.022217,
+            "median": -0.032635,
+            "positive_rate": 0.2885,
+            "p10": -0.12477,
+            "worst": -0.221379,
+            "max_drawdown": -0.257178,
+            "avg_holding_days": 1.0577
+          },
+          "late": {
+            "count": 48,
+            "mean": -0.037691,
+            "median": -0.042437,
+            "positive_rate": 0.1458,
+            "p10": -0.128227,
+            "worst": -0.187778,
+            "max_drawdown": -0.377821,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.022217,
+            "median": -0.032635,
+            "positive_rate": 0.2885,
+            "p10": -0.12477,
+            "worst": -0.221379,
+            "max_drawdown": -0.257178,
+            "avg_holding_days": 1.0577
+          },
+          "late": {
+            "count": 39,
+            "mean": -0.034506,
+            "median": -0.044246,
+            "positive_rate": 0.1795,
+            "p10": -0.142939,
+            "worst": -0.187778,
+            "max_drawdown": -0.315967,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.024474,
+            "median": -0.04,
+            "positive_rate": 0.2885,
+            "p10": -0.12477,
+            "worst": -0.221379,
+            "max_drawdown": -0.286834,
+            "avg_holding_days": 1.0577
+          },
+          "late": {
+            "count": 48,
+            "mean": -0.037943,
+            "median": -0.042437,
+            "positive_rate": 0.1667,
+            "p10": -0.128227,
+            "worst": -0.187778,
+            "max_drawdown": -0.391161,
+            "avg_holding_days": 1.0417
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 52,
+            "mean": -0.024474,
+            "median": -0.04,
+            "positive_rate": 0.2885,
+            "p10": -0.12477,
+            "worst": -0.221379,
+            "max_drawdown": -0.286834,
+            "avg_holding_days": 1.0577
+          },
+          "late": {
+            "count": 39,
+            "mean": -0.034728,
+            "median": -0.044246,
+            "positive_rate": 0.2051,
+            "p10": -0.142939,
+            "worst": -0.187778,
+            "max_drawdown": -0.323865,
+            "avg_holding_days": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "rule": "gap_down_2pct",
+      "eligible_count": 133,
+      "entry_count": 101,
+      "no_buy_rate": 0.2406,
+      "avg_wait_days": 2.0792,
+      "selected_on_early": {
+        "id": "tp5%_sl2%_d3",
+        "strategy": {
+          "kind": "tp_sl",
+          "tp": 0.05,
+          "sl": 0.02,
+          "max_hold_days": 3,
+          "touch_policy": "sl_first"
+        },
+        "early": {
+          "count": 48,
+          "mean": 1.6e-05,
+          "median": -0.03,
+          "positive_rate": 0.3958,
+          "p10": -0.108265,
+          "worst": -0.221379,
+          "max_drawdown": -0.234751,
+          "avg_holding_days": 1.0208
+        },
+        "late": {
+          "count": 44,
+          "mean": -0.062244,
+          "median": -0.052534,
+          "positive_rate": 0.1364,
+          "p10": -0.152169,
+          "worst": -0.257005,
+          "max_drawdown": -0.501686,
+          "avg_holding_days": 1.0
+        }
+      },
+      "late_validated": false,
+      "strategies": [
+        {
+          "id": "fixed_d1",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 1
+          },
+          "early": {
+            "count": 49,
+            "mean": -0.015689,
+            "median": -0.037451,
+            "positive_rate": 0.4082,
+            "p10": -0.160235,
+            "worst": -0.21,
+            "max_drawdown": -0.277602,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 50,
+            "mean": -0.078692,
+            "median": -0.082709,
+            "positive_rate": 0.18,
+            "p10": -0.21296,
+            "worst": -0.368065,
+            "max_drawdown": -0.693846,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "fixed_d3",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 3
+          },
+          "early": {
+            "count": 48,
+            "mean": -0.043083,
+            "median": -0.08105,
+            "positive_rate": 0.3125,
+            "p10": -0.258224,
+            "worst": -0.321409,
+            "max_drawdown": -0.532416,
+            "avg_holding_days": 3.0
+          },
+          "late": {
+            "count": 44,
+            "mean": -0.10367,
+            "median": -0.130699,
+            "positive_rate": 0.25,
+            "p10": -0.242618,
+            "worst": -0.38788,
+            "max_drawdown": -0.748192,
+            "avg_holding_days": 3.0
+          }
+        },
+        {
+          "id": "fixed_d5",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 5
+          },
+          "early": {
+            "count": 48,
+            "mean": -0.053104,
+            "median": -0.067413,
+            "positive_rate": 0.2917,
+            "p10": -0.340203,
+            "worst": -0.408098,
+            "max_drawdown": -0.679117,
+            "avg_holding_days": 5.0
+          },
+          "late": {
+            "count": 32,
+            "mean": -0.125018,
+            "median": -0.166771,
+            "positive_rate": 0.2188,
+            "p10": -0.318795,
+            "worst": -0.44318,
+            "max_drawdown": -0.729171,
+            "avg_holding_days": 5.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 48,
+            "mean": -0.002898,
+            "median": -0.03,
+            "positive_rate": 0.3958,
+            "p10": -0.108265,
+            "worst": -0.221379,
+            "max_drawdown": -0.237208,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 44,
+            "mean": -0.061977,
+            "median": -0.052534,
+            "positive_rate": 0.1591,
+            "p10": -0.152169,
+            "worst": -0.257005,
+            "max_drawdown": -0.498028,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 48,
+            "mean": -0.002898,
+            "median": -0.03,
+            "positive_rate": 0.3958,
+            "p10": -0.108265,
+            "worst": -0.221379,
+            "max_drawdown": -0.237208,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 32,
+            "mean": -0.063971,
+            "median": -0.052534,
+            "positive_rate": 0.1562,
+            "p10": -0.15454,
+            "worst": -0.257005,
+            "max_drawdown": -0.441143,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 48,
+            "mean": -0.00397,
+            "median": -0.04,
+            "positive_rate": 0.4167,
+            "p10": -0.108265,
+            "worst": -0.221379,
+            "max_drawdown": -0.237576,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 44,
+            "mean": -0.060934,
+            "median": -0.052534,
+            "positive_rate": 0.2045,
+            "p10": -0.152169,
+            "worst": -0.257005,
+            "max_drawdown": -0.495753,
+            "avg_holding_days": 1.0227
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 48,
+            "mean": -0.00397,
+            "median": -0.04,
+            "positive_rate": 0.4167,
+            "p10": -0.108265,
+            "worst": -0.221379,
+            "max_drawdown": -0.237576,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 32,
+            "mean": -0.062103,
+            "median": -0.052534,
+            "positive_rate": 0.2188,
+            "p10": -0.15454,
+            "worst": -0.257005,
+            "max_drawdown": -0.437396,
+            "avg_holding_days": 1.0312
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 48,
+            "mean": 1.6e-05,
+            "median": -0.03,
+            "positive_rate": 0.3958,
+            "p10": -0.108265,
+            "worst": -0.221379,
+            "max_drawdown": -0.234751,
+            "avg_holding_days": 1.0208
+          },
+          "late": {
+            "count": 44,
+            "mean": -0.062244,
+            "median": -0.052534,
+            "positive_rate": 0.1364,
+            "p10": -0.152169,
+            "worst": -0.257005,
+            "max_drawdown": -0.501686,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 48,
+            "mean": 1.6e-05,
+            "median": -0.03,
+            "positive_rate": 0.3958,
+            "p10": -0.108265,
+            "worst": -0.221379,
+            "max_drawdown": -0.234751,
+            "avg_holding_days": 1.0208
+          },
+          "late": {
+            "count": 32,
+            "mean": -0.065285,
+            "median": -0.052534,
+            "positive_rate": 0.125,
+            "p10": -0.15454,
+            "worst": -0.257005,
+            "max_drawdown": -0.448633,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 48,
+            "mean": -0.000638,
+            "median": -0.04,
+            "positive_rate": 0.4167,
+            "p10": -0.108265,
+            "worst": -0.221379,
+            "max_drawdown": -0.210269,
+            "avg_holding_days": 1.0208
+          },
+          "late": {
+            "count": 44,
+            "mean": -0.061305,
+            "median": -0.052534,
+            "positive_rate": 0.1818,
+            "p10": -0.152169,
+            "worst": -0.257005,
+            "max_drawdown": -0.501461,
+            "avg_holding_days": 1.0455
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 48,
+            "mean": -0.000638,
+            "median": -0.04,
+            "positive_rate": 0.4167,
+            "p10": -0.108265,
+            "worst": -0.221379,
+            "max_drawdown": -0.210269,
+            "avg_holding_days": 1.0208
+          },
+          "late": {
+            "count": 32,
+            "mean": -0.064905,
+            "median": -0.052534,
+            "positive_rate": 0.1562,
+            "p10": -0.15454,
+            "worst": -0.257005,
+            "max_drawdown": -0.453376,
+            "avg_holding_days": 1.125
+          }
+        }
+      ]
+    },
+    {
+      "rule": "ma5_reclaim",
+      "eligible_count": 133,
+      "entry_count": 57,
+      "no_buy_rate": 0.5714,
+      "avg_wait_days": 2.4912,
+      "selected_on_early": {
+        "id": "fixed_d1",
+        "strategy": {
+          "kind": "fixed_close",
+          "max_hold_days": 1
+        },
+        "early": {
+          "count": 24,
+          "mean": 0.01703,
+          "median": -0.003417,
+          "positive_rate": 0.4583,
+          "p10": -0.062399,
+          "worst": -0.151649,
+          "max_drawdown": -0.088125,
+          "avg_holding_days": 1.0
+        },
+        "late": {
+          "count": 31,
+          "mean": -0.015539,
+          "median": -0.037933,
+          "positive_rate": 0.3548,
+          "p10": -0.107403,
+          "worst": -0.169751,
+          "max_drawdown": -0.303185,
+          "avg_holding_days": 1.0
+        }
+      },
+      "late_validated": false,
+      "strategies": [
+        {
+          "id": "fixed_d1",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 1
+          },
+          "early": {
+            "count": 24,
+            "mean": 0.01703,
+            "median": -0.003417,
+            "positive_rate": 0.4583,
+            "p10": -0.062399,
+            "worst": -0.151649,
+            "max_drawdown": -0.088125,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 31,
+            "mean": -0.015539,
+            "median": -0.037933,
+            "positive_rate": 0.3548,
+            "p10": -0.107403,
+            "worst": -0.169751,
+            "max_drawdown": -0.303185,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "fixed_d3",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 3
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.012357,
+            "median": -0.026691,
+            "positive_rate": 0.375,
+            "p10": -0.121033,
+            "worst": -0.213906,
+            "max_drawdown": -0.340942,
+            "avg_holding_days": 3.0
+          },
+          "late": {
+            "count": 26,
+            "mean": -0.032262,
+            "median": -0.044497,
+            "positive_rate": 0.3846,
+            "p10": -0.181228,
+            "worst": -0.256988,
+            "max_drawdown": -0.392882,
+            "avg_holding_days": 3.0
+          }
+        },
+        {
+          "id": "fixed_d5",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 5
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.035495,
+            "median": -0.033623,
+            "positive_rate": 0.375,
+            "p10": -0.227174,
+            "worst": -0.252188,
+            "max_drawdown": -0.548836,
+            "avg_holding_days": 5.0
+          },
+          "late": {
+            "count": 22,
+            "mean": -0.029477,
+            "median": -0.060803,
+            "positive_rate": 0.2273,
+            "p10": -0.172626,
+            "worst": -0.29165,
+            "max_drawdown": -0.409831,
+            "avg_holding_days": 5.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.019864,
+            "median": -0.03,
+            "positive_rate": 0.25,
+            "p10": -0.058897,
+            "worst": -0.07644,
+            "max_drawdown": -0.277063,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 26,
+            "mean": 0.005899,
+            "median": -0.03,
+            "positive_rate": 0.3077,
+            "p10": -0.037714,
+            "worst": -0.060649,
+            "max_drawdown": -0.147225,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.019864,
+            "median": -0.03,
+            "positive_rate": 0.25,
+            "p10": -0.058897,
+            "worst": -0.07644,
+            "max_drawdown": -0.277063,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 22,
+            "mean": 0.012426,
+            "median": -0.03,
+            "positive_rate": 0.3636,
+            "p10": -0.037714,
+            "worst": -0.060649,
+            "max_drawdown": -0.09366,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.019899,
+            "median": -0.04,
+            "positive_rate": 0.3333,
+            "p10": -0.058897,
+            "worst": -0.07644,
+            "max_drawdown": -0.274954,
+            "avg_holding_days": 1.0833
+          },
+          "late": {
+            "count": 26,
+            "mean": 0.002903,
+            "median": -0.04,
+            "positive_rate": 0.3462,
+            "p10": -0.04,
+            "worst": -0.060649,
+            "max_drawdown": -0.168923,
+            "avg_holding_days": 1.0769
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.019899,
+            "median": -0.04,
+            "positive_rate": 0.3333,
+            "p10": -0.058897,
+            "worst": -0.07644,
+            "max_drawdown": -0.274954,
+            "avg_holding_days": 1.0833
+          },
+          "late": {
+            "count": 22,
+            "mean": 0.010704,
+            "median": -0.04,
+            "positive_rate": 0.4091,
+            "p10": -0.04,
+            "worst": -0.060649,
+            "max_drawdown": -0.098223,
+            "avg_holding_days": 1.0455
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.020302,
+            "median": -0.03,
+            "positive_rate": 0.2083,
+            "p10": -0.058897,
+            "worst": -0.07644,
+            "max_drawdown": -0.307978,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 26,
+            "mean": 0.006668,
+            "median": -0.03,
+            "positive_rate": 0.3077,
+            "p10": -0.037714,
+            "worst": -0.060649,
+            "max_drawdown": -0.147225,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.020302,
+            "median": -0.03,
+            "positive_rate": 0.2083,
+            "p10": -0.058897,
+            "worst": -0.07644,
+            "max_drawdown": -0.307978,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 22,
+            "mean": 0.013335,
+            "median": -0.03,
+            "positive_rate": 0.3636,
+            "p10": -0.037714,
+            "worst": -0.060649,
+            "max_drawdown": -0.09366,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.015754,
+            "median": -0.04,
+            "positive_rate": 0.3333,
+            "p10": -0.058897,
+            "worst": -0.07644,
+            "max_drawdown": -0.238276,
+            "avg_holding_days": 1.0833
+          },
+          "late": {
+            "count": 26,
+            "mean": 0.004442,
+            "median": -0.04,
+            "positive_rate": 0.3462,
+            "p10": -0.04,
+            "worst": -0.060649,
+            "max_drawdown": -0.168923,
+            "avg_holding_days": 1.0769
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 24,
+            "mean": -0.015754,
+            "median": -0.04,
+            "positive_rate": 0.3333,
+            "p10": -0.058897,
+            "worst": -0.07644,
+            "max_drawdown": -0.238276,
+            "avg_holding_days": 1.0833
+          },
+          "late": {
+            "count": 22,
+            "mean": 0.012522,
+            "median": -0.04,
+            "positive_rate": 0.4091,
+            "p10": -0.04,
+            "worst": -0.060649,
+            "max_drawdown": -0.098223,
+            "avg_holding_days": 1.0455
+          }
+        }
+      ]
+    },
+    {
+      "rule": "lower_low_bullish_reversal",
+      "eligible_count": 133,
+      "entry_count": 69,
+      "no_buy_rate": 0.4812,
+      "avg_wait_days": 2.8986,
+      "selected_on_early": {
+        "id": "tp3%_sl3%_d3",
+        "strategy": {
+          "kind": "tp_sl",
+          "tp": 0.03,
+          "sl": 0.03,
+          "max_hold_days": 3,
+          "touch_policy": "sl_first"
+        },
+        "early": {
+          "count": 32,
+          "mean": -0.000768,
+          "median": 0.02,
+          "positive_rate": 0.5938,
+          "p10": -0.04,
+          "worst": -0.072622,
+          "max_drawdown": -0.195513,
+          "avg_holding_days": 1.0625
+        },
+        "late": {
+          "count": 31,
+          "mean": 0.016779,
+          "median": 0.02,
+          "positive_rate": 0.5484,
+          "p10": -0.04,
+          "worst": -0.060481,
+          "max_drawdown": -0.06688,
+          "avg_holding_days": 1.0645
+        }
+      },
+      "late_validated": true,
+      "strategies": [
+        {
+          "id": "fixed_d1",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 1
+          },
+          "early": {
+            "count": 33,
+            "mean": -0.002646,
+            "median": 0.001173,
+            "positive_rate": 0.5455,
+            "p10": -0.087425,
+            "worst": -0.234848,
+            "max_drawdown": -0.133621,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 33,
+            "mean": -0.015147,
+            "median": -0.030619,
+            "positive_rate": 0.3939,
+            "p10": -0.111397,
+            "worst": -0.188261,
+            "max_drawdown": -0.289864,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "fixed_d3",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 3
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.015421,
+            "median": -0.051599,
+            "positive_rate": 0.375,
+            "p10": -0.215586,
+            "worst": -0.286753,
+            "max_drawdown": -0.5529,
+            "avg_holding_days": 3.0
+          },
+          "late": {
+            "count": 31,
+            "mean": -0.063892,
+            "median": -0.079697,
+            "positive_rate": 0.3871,
+            "p10": -0.2384,
+            "worst": -0.333958,
+            "max_drawdown": -0.558187,
+            "avg_holding_days": 3.0
+          }
+        },
+        {
+          "id": "fixed_d5",
+          "strategy": {
+            "kind": "fixed_close",
+            "max_hold_days": 5
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.027571,
+            "median": -0.021002,
+            "positive_rate": 0.4062,
+            "p10": -0.272035,
+            "worst": -0.368672,
+            "max_drawdown": -0.622503,
+            "avg_holding_days": 5.0
+          },
+          "late": {
+            "count": 25,
+            "mean": -0.058974,
+            "median": -0.036923,
+            "positive_rate": 0.24,
+            "p10": -0.227464,
+            "worst": -0.37,
+            "max_drawdown": -0.557395,
+            "avg_holding_days": 5.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.00579,
+            "median": -0.03,
+            "positive_rate": 0.4375,
+            "p10": -0.035456,
+            "worst": -0.072622,
+            "max_drawdown": -0.194905,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 31,
+            "mean": 0.015441,
+            "median": -0.03,
+            "positive_rate": 0.4516,
+            "p10": -0.034664,
+            "worst": -0.060481,
+            "max_drawdown": -0.06374,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.00579,
+            "median": -0.03,
+            "positive_rate": 0.4375,
+            "p10": -0.035456,
+            "worst": -0.072622,
+            "max_drawdown": -0.194905,
+            "avg_holding_days": 1.0
+          },
+          "late": {
+            "count": 25,
+            "mean": 0.020734,
+            "median": -0.03,
+            "positive_rate": 0.44,
+            "p10": -0.031077,
+            "worst": -0.060481,
+            "max_drawdown": -0.06374,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.000768,
+            "median": 0.02,
+            "positive_rate": 0.5938,
+            "p10": -0.04,
+            "worst": -0.072622,
+            "max_drawdown": -0.195513,
+            "avg_holding_days": 1.0625
+          },
+          "late": {
+            "count": 31,
+            "mean": 0.016779,
+            "median": 0.02,
+            "positive_rate": 0.5484,
+            "p10": -0.04,
+            "worst": -0.060481,
+            "max_drawdown": -0.06688,
+            "avg_holding_days": 1.0645
+          }
+        },
+        {
+          "id": "tp3%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.03,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.000768,
+            "median": 0.02,
+            "positive_rate": 0.5938,
+            "p10": -0.04,
+            "worst": -0.072622,
+            "max_drawdown": -0.195513,
+            "avg_holding_days": 1.0625
+          },
+          "late": {
+            "count": 25,
+            "mean": 0.020806,
+            "median": 0.02,
+            "positive_rate": 0.52,
+            "p10": -0.040009,
+            "worst": -0.060481,
+            "max_drawdown": -0.050952,
+            "avg_holding_days": 1.04
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.011535,
+            "median": -0.03,
+            "positive_rate": 0.2812,
+            "p10": -0.035456,
+            "worst": -0.072622,
+            "max_drawdown": -0.234671,
+            "avg_holding_days": 1.0938
+          },
+          "late": {
+            "count": 31,
+            "mean": 0.021437,
+            "median": -0.03,
+            "positive_rate": 0.4516,
+            "p10": -0.034664,
+            "worst": -0.060481,
+            "max_drawdown": -0.0591,
+            "avg_holding_days": 1.0323
+          }
+        },
+        {
+          "id": "tp5%_sl2%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.02,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.011535,
+            "median": -0.03,
+            "positive_rate": 0.2812,
+            "p10": -0.035456,
+            "worst": -0.072622,
+            "max_drawdown": -0.234671,
+            "avg_holding_days": 1.0938
+          },
+          "late": {
+            "count": 25,
+            "mean": 0.023934,
+            "median": -0.03,
+            "positive_rate": 0.44,
+            "p10": -0.031077,
+            "worst": -0.060481,
+            "max_drawdown": -0.0591,
+            "avg_holding_days": 1.0
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d3",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 3,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.006303,
+            "median": -0.04,
+            "positive_rate": 0.4062,
+            "p10": -0.04,
+            "worst": -0.072622,
+            "max_drawdown": -0.228214,
+            "avg_holding_days": 1.2188
+          },
+          "late": {
+            "count": 31,
+            "mean": 0.021559,
+            "median": 0.04,
+            "positive_rate": 0.5161,
+            "p10": -0.040016,
+            "worst": -0.060481,
+            "max_drawdown": -0.086888,
+            "avg_holding_days": 1.129
+          }
+        },
+        {
+          "id": "tp5%_sl3%_d5",
+          "strategy": {
+            "kind": "tp_sl",
+            "tp": 0.05,
+            "sl": 0.03,
+            "max_hold_days": 5,
+            "touch_policy": "sl_first"
+          },
+          "early": {
+            "count": 32,
+            "mean": -0.00495,
+            "median": -0.04,
+            "positive_rate": 0.4375,
+            "p10": -0.04,
+            "worst": -0.072622,
+            "max_drawdown": -0.225684,
+            "avg_holding_days": 1.25
+          },
+          "late": {
+            "count": 25,
+            "mean": 0.021699,
+            "median": -0.04,
+            "positive_rate": 0.48,
+            "p10": -0.048093,
+            "worst": -0.060481,
+            "max_drawdown": -0.086888,
+            "avg_holding_days": 1.08
+          }
+        }
+      ]
+    }
+  ],
+  "best_validated": "lower_low_bullish_reversal",
+  "decision": "validated_candidate_found",
+  "guardrails": [
+    "전반부에서 청산 규칙을 선택하고 후반부 성과를 별도 표시",
+    "동일 일봉 TP·SL 동시 도달은 SL 우선",
+    "지정가 아래로 갭하락하면 시가 체결로 계산",
+    "MA·반전 규칙은 종가를 확인한 뒤 해당 종가 체결 가능하다는 근사",
+    "거래정지 등 OHLC가 0인 보유 경로는 강제청산 가격을 알 수 없어 성과 표본에서 제외",
+    "왕복 거래비용은 실제 주문 표본을 참고한 민감도 가정이며 확정 비용이 아님"
+  ]
+}

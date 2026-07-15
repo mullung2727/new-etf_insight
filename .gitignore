@@ -43,6 +43,7 @@ etl/runs/
 etl/db/
 etl/exports/
 etl/current_graph.png
+research/watchlist_pullback_strategy/minute_cache/
 bash.exe.stackdump
 etl/bash.exe.stackdump
 

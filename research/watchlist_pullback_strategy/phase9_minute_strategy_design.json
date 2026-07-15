@@ -1,0 +1,423 @@
+{
+  "analysis_version": 1,
+  "generated_at": "2026-07-15T15:03:04+09:00",
+  "sample_count": 99,
+  "data_stats": {
+    "daily_entries": 118,
+    "complete_horizon": 99,
+    "cache_complete": 99
+  },
+  "split_date": "20260618",
+  "selection_rule": "early count>=10, mean>0, median>0, p10>=-5%; then max early mean",
+  "cost_rate": 0.01,
+  "candidate_count": 312,
+  "early_eligible_count": 28,
+  "selected": {
+    "id": "close_confirm__all__tp3%_sl3%_d3",
+    "entry_rule": "close_confirm",
+    "filter": "all",
+    "exit": {
+      "kind": "tp_sl",
+      "tp": 0.03,
+      "sl": 0.03,
+      "days": 3
+    },
+    "early": {
+      "count": 15,
+      "mean": 0.015632,
+      "median": 0.02,
+      "positive_rate": 0.8,
+      "p10": -0.04,
+      "worst": -0.052553,
+      "max_drawdown": -0.053153,
+      "avg_holding_days": 3.0
+    },
+    "late": {
+      "count": 11,
+      "mean": 0.034699,
+      "median": 0.02,
+      "positive_rate": 0.6364,
+      "p10": -0.04,
+      "worst": -0.053478,
+      "max_drawdown": -0.091339,
+      "avg_holding_days": 3.0
+    },
+    "eligible_on_early": true
+  },
+  "selected_no_buy_rate": 0.7374,
+  "selected_cost_sensitivity": {
+    "0.0": {
+      "count": 26,
+      "mean": 0.033699,
+      "median": 0.03,
+      "positive_rate": 0.7308,
+      "p10": -0.03,
+      "worst": -0.043478,
+      "max_drawdown": -0.072174,
+      "avg_holding_days": 3.0
+    },
+    "0.005": {
+      "count": 26,
+      "mean": 0.028699,
+      "median": 0.025,
+      "positive_rate": 0.7308,
+      "p10": -0.035,
+      "worst": -0.048478,
+      "max_drawdown": -0.081782,
+      "avg_holding_days": 3.0
+    },
+    "0.01": {
+      "count": 26,
+      "mean": 0.023699,
+      "median": 0.02,
+      "positive_rate": 0.7308,
+      "p10": -0.04,
+      "worst": -0.053478,
+      "max_drawdown": -0.091339,
+      "avg_holding_days": 3.0
+    }
+  },
+  "selected_exit_reasons": {
+    "gap_sl": 2,
+    "gap_tp": 11,
+    "sl": 5,
+    "tp": 8
+  },
+  "validated_on_late": true,
+  "decision": "candidate_validated",
+  "top_early_eligible": [
+    {
+      "id": "close_confirm__all__tp3%_sl3%_d3",
+      "entry_rule": "close_confirm",
+      "filter": "all",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 3
+      },
+      "early": {
+        "count": 15,
+        "mean": 0.015632,
+        "median": 0.02,
+        "positive_rate": 0.8,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 3.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 3.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__all__tp3%_sl3%_d5",
+      "entry_rule": "close_confirm",
+      "filter": "all",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 5
+      },
+      "early": {
+        "count": 15,
+        "mean": 0.015632,
+        "median": 0.02,
+        "positive_rate": 0.8,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 5.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 5.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__after_1000__tp3%_sl3%_d3",
+      "entry_rule": "close_confirm",
+      "filter": "after_1000",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 3
+      },
+      "early": {
+        "count": 15,
+        "mean": 0.015632,
+        "median": 0.02,
+        "positive_rate": 0.8,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 3.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 3.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__after_1000__tp3%_sl3%_d5",
+      "entry_rule": "close_confirm",
+      "filter": "after_1000",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 5
+      },
+      "early": {
+        "count": 15,
+        "mean": 0.015632,
+        "median": 0.02,
+        "positive_rate": 0.8,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 5.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 5.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__rebound_2pct__tp3%_sl3%_d3",
+      "entry_rule": "close_confirm",
+      "filter": "rebound_2pct",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 3
+      },
+      "early": {
+        "count": 14,
+        "mean": 0.012149,
+        "median": 0.02,
+        "positive_rate": 0.7857,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 3.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 3.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__rebound_2pct__tp3%_sl3%_d5",
+      "entry_rule": "close_confirm",
+      "filter": "rebound_2pct",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 5
+      },
+      "early": {
+        "count": 14,
+        "mean": 0.012149,
+        "median": 0.02,
+        "positive_rate": 0.7857,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 5.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 5.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__volume_surge_1_5x__tp3%_sl3%_d3",
+      "entry_rule": "close_confirm",
+      "filter": "volume_surge_1_5x",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 3
+      },
+      "early": {
+        "count": 13,
+        "mean": 0.011545,
+        "median": 0.02,
+        "positive_rate": 0.7692,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 3.0
+      },
+      "late": {
+        "count": 10,
+        "mean": 0.030583,
+        "median": 0.02,
+        "positive_rate": 0.6,
+        "p10": -0.041348,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 3.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__volume_surge_1_5x__tp3%_sl3%_d5",
+      "entry_rule": "close_confirm",
+      "filter": "volume_surge_1_5x",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 5
+      },
+      "early": {
+        "count": 13,
+        "mean": 0.011545,
+        "median": 0.02,
+        "positive_rate": 0.7692,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.053153,
+        "avg_holding_days": 5.0
+      },
+      "late": {
+        "count": 10,
+        "mean": 0.030583,
+        "median": 0.02,
+        "positive_rate": 0.6,
+        "p10": -0.041348,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 5.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__all__tp3%_sl3%_d1",
+      "entry_rule": "close_confirm",
+      "filter": "all",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 1
+      },
+      "early": {
+        "count": 16,
+        "mean": 0.011147,
+        "median": 0.02,
+        "positive_rate": 0.75,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.06052,
+        "avg_holding_days": 1.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 1.0
+      },
+      "eligible_on_early": true
+    },
+    {
+      "id": "close_confirm__after_1000__tp3%_sl3%_d1",
+      "entry_rule": "close_confirm",
+      "filter": "after_1000",
+      "exit": {
+        "kind": "tp_sl",
+        "tp": 0.03,
+        "sl": 0.03,
+        "days": 1
+      },
+      "early": {
+        "count": 16,
+        "mean": 0.011147,
+        "median": 0.02,
+        "positive_rate": 0.75,
+        "p10": -0.04,
+        "worst": -0.052553,
+        "max_drawdown": -0.06052,
+        "avg_holding_days": 1.0
+      },
+      "late": {
+        "count": 11,
+        "mean": 0.034699,
+        "median": 0.02,
+        "positive_rate": 0.6364,
+        "p10": -0.04,
+        "worst": -0.053478,
+        "max_drawdown": -0.091339,
+        "avg_holding_days": 1.0
+      },
+      "eligible_on_early": true
+    }
+  ],
+  "filter_definitions": {
+    "all": "추가 필터 없음",
+    "after_1000": "10시 이후 신호만 진입",
+    "rebound_2pct": "당일 누적 저점 대비 2% 이상 반등",
+    "volume_surge_1_5x": "신호 분봉 거래량이 직전 5개 중앙값의 1.5배 이상",
+    "shallow_break_3pct": "전일 저가 이탈 폭이 3% 이내",
+    "quality_combo": "10시 이후 + 저점 2% 반등 + 전일 저가 이탈 폭 3% 이내"
+  },
+  "guardrails": [
+    "후반부 수치는 전략 선택에 사용하지 않음",
+    "왕복 비용 1% 차감",
+    "같은 1분봉 TP·SL 동시 도달은 SL 우선"
+  ]
+}
