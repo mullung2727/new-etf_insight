@@ -35,6 +35,7 @@ from scripts.run_close_bet import (
     upsert_order_result,
 )
 from scripts.wl_sqlite import connect_ro, connect_rw
+from scripts.run_pullback_order import create_pullback_orders_table
 
 # ── 공통 픽스처 ───────────────────────────────────────────────────────────────
 
@@ -221,6 +222,19 @@ class TestLoadOrderCandidates(unittest.TestCase):
         tickers = [r["ticker"] for r in result]
         self.assertNotIn("005930", tickers)
         self.assertIn("000660", tickers)
+
+    def test_excludes_open_pullback_position(self):
+        self._seed([{"date": _DATE, "ticker": "005930", "score": 90}])
+        with connect_rw(self.db) as con:
+            create_pullback_orders_table(con)
+            con.execute(
+                "INSERT INTO pullback_orders (watchlist_date, signal_date, ticker, strategy, "
+                "prior_low, day_open, signal_price, qty, status, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                ("20260613", _DATE, "005930", "lower_low_bullish_reversal",
+                 100, 99, 101, 1, "confirmed", "2026-06-15"),
+            )
+        self.assertEqual(load_order_candidates(self.db, _DATE, 80), [])
 
 
 class TestCloseBetStatus(unittest.TestCase):

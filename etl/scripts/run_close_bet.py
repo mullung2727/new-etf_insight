@@ -24,6 +24,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -32,7 +33,6 @@ if hasattr(sys.stdout, "reconfigure"):
 import sqlite3
 
 import duckdb
-import requests
 from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
@@ -44,18 +44,18 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     )
     from scripts.wl_sqlite import connect_ro, connect_rw
     from scripts.close_bet_config import load as load_close_bet_config
+    from scripts.trading_batch_common import available_cash, current_price, in_order_window, market_order
 except ImportError:
     from notify import send_discord
     from run_verify import fetch_order_history, mark_confirmed, normalize_order_no
     from wl_sqlite import connect_ro, connect_rw
     from close_bet_config import load as load_close_bet_config
+    from trading_batch_common import available_cash, current_price, in_order_window, market_order
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
 DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
 DEFAULT_KRX_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
-
-REQUEST_TIMEOUT = 15
 
 # 총 500만원을 score 상위 N개에 분할 매수(예산은 budget_for).
 _TOP_N = 3
@@ -135,31 +135,32 @@ def load_order_candidates(
 ) -> list[dict]:
     """score >= threshold 종목 전체를 score DESC로 반환(상위 N cut은 rank_and_cut 책임).
 
-    이미 close_bet_orders에 (date, ticker) 행이 있는 종목은 제외한다.
+    이미 close_bet_orders에 (date, ticker) 행이 있거나 pullback 미청산 종목은 제외한다.
     """
     with connect_ro(watchlist_db) as con:
         # close_bet_orders가 없을 수도 있으므로 LEFT JOIN 전에 테이블 존재 확인
         tables = {r[0] for r in con.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='close_bet_orders'"
+            "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()}
+        guards = []
+        params: list[Any] = [date, score_threshold]
         if "close_bet_orders" in tables:
-            rows = con.execute("""
-                SELECT l.ticker, l.score, l.name, l.close
-                FROM llm_scores l
-                LEFT JOIN close_bet_orders c
-                    ON l.date = c.date AND l.ticker = c.ticker
-                WHERE l.date = ?
-                  AND l.score >= ?
-                  AND c.ticker IS NULL
-                ORDER BY l.score DESC
-            """, [date, score_threshold]).fetchall()
-        else:
-            rows = con.execute("""
-                SELECT ticker, score, name, close
-                FROM llm_scores
-                WHERE date = ? AND score >= ?
-                ORDER BY score DESC
-            """, [date, score_threshold]).fetchall()
+            guards.append(
+                "NOT EXISTS (SELECT 1 FROM close_bet_orders c "
+                "WHERE c.date=l.date AND c.ticker=l.ticker)"
+            )
+        if "pullback_orders" in tables:
+            guards.append(
+                "NOT EXISTS (SELECT 1 FROM pullback_orders p WHERE p.ticker=l.ticker "
+                "AND p.status IN ('submitted','unconfirmed','confirmed','sell_ordered') "
+                "AND COALESCE(p.sell_status, '') != 'filled')"
+            )
+        guard_sql = "".join(f" AND {guard}" for guard in guards)
+        rows = con.execute(
+            "SELECT l.ticker, l.score, l.name, l.close FROM llm_scores l "
+            "WHERE l.date=? AND l.score>=?" + guard_sql + " ORDER BY l.score DESC",
+            params,
+        ).fetchall()
     return [
         {"ticker": r[0], "score": r[1], "name": r[2], "close": r[3]}
         for r in rows
@@ -325,81 +326,29 @@ def _now_seoul() -> datetime:
     return datetime.now(ZoneInfo("Asia/Seoul"))
 
 
-def _parse_hms(hms: str) -> tuple[int, int, int]:
-    h, m, s = (int(x) for x in hms.split(":"))
-    return h, m, s
-
-
 def _is_in_order_window(order_time: str, order_deadline_time: str, allow_outside: bool) -> bool:
     if allow_outside:
         return True
-    now = _now_seoul()
-    h1, m1, s1 = _parse_hms(order_time)
-    h2, m2, s2 = _parse_hms(order_deadline_time)
-    start = now.replace(hour=h1, minute=m1, second=s1, microsecond=0)
-    end   = now.replace(hour=h2, minute=m2, second=s2, microsecond=0)
-    return start <= now < end
+    return in_order_window(_now_seoul(), order_time, order_deadline_time)
 
 
 # ── broker REST API 경유 함수 ─────────────────────────────────────────────────
 
 def fetch_price_via_broker(broker_url: str, ticker: str) -> int | None:
     """GET {broker_url}/quotes/{ticker} → price. 실패 시 None."""
-    try:
-        resp = requests.get(f"{broker_url}/quotes/{ticker}", timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        price = resp.json().get("price")
-        if price is None:
-            return None
-        return int(price)
-    except Exception:
-        return None
+    return current_price(broker_url, ticker)
 
 
 def fetch_available_cash_via_broker(broker_url: str) -> int | None:
     """GET {broker_url}/account/deposit → ord_alow_amt(주문가능금액, 원). 실패 시 None."""
-    try:
-        resp = requests.get(f"{broker_url}/account/deposit", timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        raw = resp.json().get("ord_alow_amt")
-        if raw is None:
-            return None
-        return int(raw)  # 0-padding·부호 포함 문자열 → int 안전
-    except Exception:
-        return None
+    return available_cash(broker_url)
 
 
 def place_order_via_broker(broker_url: str, ticker: str, qty: int, dry_run: bool) -> dict:
     """POST {broker_url}/orders 시장가 매수. dry_run=True면 HTTP 호출 없이 반환."""
-    if dry_run:
-        ts = _now_seoul().strftime("%Y%m%d%H%M%S")
-        return {
-            "order_no": f"DRY_{ticker}_{ts}",
-            "status": "dry_run",
-            "message": "dry_run — 실제 주문 없음",
-        }
-    try:
-        resp = requests.post(
-            f"{broker_url}/orders",
-            json={"symbol": ticker, "side": "buy", "qty": qty,
-                  "order_type": "market", "source": "close_bet"},
-            timeout=REQUEST_TIMEOUT,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if not data.get("accepted"):
-            return {
-                "order_no": "",
-                "status": "failed",
-                "message": data.get("message", "accepted=False"),
-            }
-        return {
-            "order_no": str(data.get("order_no") or ""),
-            "status": "submitted",
-            "message": data.get("message", ""),
-        }
-    except Exception as exc:
-        return {"order_no": "", "status": "failed", "message": str(exc)}
+    return market_order(
+        broker_url, ticker, qty, "buy", "close_bet", dry_run, now=_now_seoul()
+    )
 
 
 # ── 체결 확정 (매수 직후 kt00007 폴링) ───────────────────────────────────────────

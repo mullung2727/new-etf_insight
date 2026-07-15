@@ -95,3 +95,21 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
   (defined in `ops/scheduled-tasks/close-bet-verify.xml`).
 
 The 15:21 report task is report-only and must not place or retry orders.
+
+## 통합 매매 작업
+
+기존 종가배팅 실행 작업은 비활성화하고, `lower_low_bullish_reversal`만
+아래 3개 Windows 작업 스케줄러 진입점으로 실행한다.
+
+| 작업 | 시각 | 실행 파일 |
+| --- | --- | --- |
+| `\OpenClaw\trading-exit` | 평일 08:50 | `run-trading-exit.ps1` |
+| `\OpenClaw\trading-order` | 평일 15:19 | `run-trading-order.ps1` |
+| `\OpenClaw\trading-verify` | 평일 16:00 | `run-trading-verify.ps1` |
+
+- XML 원본은 `ops/scheduled-tasks/trading-*.xml`이다.
+- 눌림목 청산 워커는 08:50에 시작해 15:25까지 동작한다.
+- 로그는 `etl/logs`에 저장한다.
+- 기존 15:21 종가배팅 보고 작업은 주문 없는 보고 전용이므로 그대로 유지한다.
+- 기존 `close-bet-order`, `close-bet-verify`, `close-bet-exit`, `close-bet-force-exit`은
+  비활성 상태로 유지한다.
