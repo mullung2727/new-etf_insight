@@ -145,7 +145,7 @@
   --card-foreground: #ffffff;
   --popover: #150f23;
   --popover-foreground: #ffffff;
-  --primary: #150f23;                /* midnight violet — near-black 버튼(권위) */
+  --primary: #6a5fc1;                /* periwinkle violet — 캔버스(#1f1633/#150f23)와 대비 확보 */
   --primary-foreground: #ffffff;
   --secondary: #1f1633;
   --secondary-foreground: #ffffff;
