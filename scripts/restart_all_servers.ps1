@@ -144,41 +144,42 @@ echo ===== %DATE% %TIME% exit $Title code=%ERRORLEVEL% =====>> "$outLog"
         [ref]$si,
         [ref]$pi
     )
-    if (-not $ok) {
+    $processId = 0
+    $mode = "breakaway"
+
+    if ($ok) {
+        $processId = $pi.dwProcessId
+        [void][NativeProc]::CloseHandle($pi.hThread)
+        [void][NativeProc]::CloseHandle($pi.hProcess)
+    } else {
         $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        # BREAKAWAY 불가 환경이면 플래그 빼고 재시도 (창 없이만)
-        if ($err -eq 5 -or $err -eq 24 -or $err -eq 3) {
-            $flags2 = [NativeProc]::CREATE_NEW_PROCESS_GROUP -bor [NativeProc]::CREATE_NO_WINDOW
-            $cmdLine2 = New-Object System.Text.StringBuilder 1024
-            [void]$cmdLine2.Append('"' + $cmdExe + '" /c "' + $cmdFile + '"')
-            $ok = [NativeProc]::CreateProcess(
-                $cmdExe,
-                $cmdLine2,
-                [IntPtr]::Zero,
-                [IntPtr]::Zero,
-                $false,
-                $flags2,
-                [IntPtr]::Zero,
-                $WorkDir,
-                [ref]$si,
-                [ref]$pi
-            )
-            if (-not $ok) {
-                $err2 = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-                throw "Failed to start detached server: ${Name} (Win32=$err then $err2)"
+        # BREAKAWAY 불가(에이전트 Job 등): CreateProcess no-breakaway 는 Job에 묶여
+        # 세션 종료 시 같이 죽는다 → WMI Win32_Process.Create 로 Job 밖 기동.
+        if ($err -eq 5 -or $err -eq 24 -or $err -eq 3 -or $err -eq 208) {
+            $mode = "wmi"
+            $wmiCmd = '"' + $cmdExe + '" /c "' + $cmdFile + '"'
+            $wmi = $null
+            try {
+                $wmi = ([wmiclass]"Win32_Process").Create($wmiCmd, $WorkDir, $null)
+            } catch {
+                throw "Failed to start detached server via WMI: ${Name}: $($_.Exception.Message) (CreateProcess Win32=$err)"
             }
-            Write-Host "  ${Name}: breakaway unavailable, started no-window only" -ForegroundColor Yellow
+            if (-not $wmi -or [int]$wmi.ReturnValue -ne 0) {
+                $rv = if ($wmi) { $wmi.ReturnValue } else { "null" }
+                throw "Failed to start detached server via WMI: ${Name} ReturnValue=$rv (CreateProcess Win32=$err)"
+            }
+            $processId = [int]$wmi.ProcessId
+            Write-Host "  ${Name}: breakaway unavailable (Win32=$err), started via WMI (job-escape)" -ForegroundColor Yellow
         } else {
             throw "Failed to start detached server: ${Name} (Win32=$err)"
         }
     }
 
-    $processId = $pi.dwProcessId
+    if ($processId -le 0) {
+        throw "Failed to start detached server: ${Name} (no process id)"
+    }
     Set-Content -LiteralPath $pidFile -Value $processId -Encoding ascii
-    [void][NativeProc]::CloseHandle($pi.hThread)
-    [void][NativeProc]::CloseHandle($pi.hProcess)
-
-    Write-Host "  started ${Name} (pid=$processId, no-window, breakaway, title='$Title')" -ForegroundColor Green
+    Write-Host "  started ${Name} (pid=$processId, mode=$mode, title='$Title')" -ForegroundColor Green
 }
 
 if (Test-Path $pidDir) {
