@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { AccountPanel } from "./account-panel";
 import { PendingOrders } from "./pending-orders";
 
-export function AccountTabs() {
+export function AccountTabs({ onHoldingSelect }: { onHoldingSelect?: (symbol: string) => void }) {
   // 미체결 건수는 탭 닫혀도 보여야 하므로 헤더에서 상시 집계 (목록 본체는 탭 열 때만 로드)
   const [count, setCount] = useState(0);
 
@@ -35,7 +35,7 @@ export function AccountTabs() {
       </TabsList>
 
       <TabsContent value="balance">
-        <AccountPanel />
+        <AccountPanel onHoldingSelect={onHoldingSelect} />
       </TabsContent>
       <TabsContent value="pending">
         <PendingOrders />

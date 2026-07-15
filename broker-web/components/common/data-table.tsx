@@ -20,6 +20,7 @@ interface DataTableProps<T> {
   rows: T[];
   emptyMessage?: string;
   onRowClick?: (row: T) => void;
+  rowClassName?: string;
   className?: string;
 }
 
@@ -28,6 +29,7 @@ export function DataTable<T extends Record<string, unknown>>({
   rows,
   emptyMessage = "데이터 없음",
   onRowClick,
+  rowClassName,
   className,
 }: DataTableProps<T>) {
   return (
@@ -53,7 +55,7 @@ export function DataTable<T extends Record<string, unknown>>({
             rows.map((row, i) => (
               <TableRow
                 key={i}
-                className={cn("border-border", onRowClick && "cursor-pointer hover:bg-secondary/50")}
+                className={cn("border-border", onRowClick && "cursor-pointer hover:bg-secondary/50", rowClassName)}
                 onClick={() => onRowClick?.(row)}
               >
                 {columns.map((col) => (

@@ -9,6 +9,7 @@ import { ConditionPanel } from "@/components/trading/condition-panel";
 export default function TradingPage() {
   const [symbol, setSymbol] = useState("");
   const [price, setPrice] = useState(0);
+  const [side, setSide] = useState<"buy" | "sell">("buy");
   const handleSymbolSelect = (s: string, p?: number) => {
     setSymbol(s);
     if (p) setPrice(p);
@@ -20,7 +21,7 @@ export default function TradingPage() {
         <div className="flex flex-col gap-6 overflow-y-auto min-h-0">
           <QuoteCard onSymbolSelect={handleSymbolSelect} />
           <div className="border-t border-border pt-4">
-            <OrderForm symbol={symbol} price={price} />
+            <OrderForm symbol={symbol} price={price} side={side} onSideChange={setSide} />
           </div>
           <div className="border-t border-border pt-4">
             <ConditionPanel onSymbolSelect={handleSymbolSelect} />
@@ -29,7 +30,7 @@ export default function TradingPage() {
 
         {/* RIGHT: 잔고/미체결 탭 (wider for holdings) */}
         <div className="overflow-y-auto min-h-0">
-          <AccountTabs />
+          <AccountTabs onHoldingSelect={(s) => { setSymbol(s); setSide("sell"); }} />
         </div>
     </div>
   );

@@ -13,10 +13,11 @@ import { cn } from "@/lib/utils";
 interface OrderFormProps {
   symbol?: string;
   price?: number;
+  side: "buy" | "sell";
+  onSideChange: (side: "buy" | "sell") => void;
 }
 
-export function OrderForm({ symbol: initSymbol = "", price: initPrice = 0 }: OrderFormProps) {
-  const [side, setSide] = useState<"buy" | "sell">("buy");
+export function OrderForm({ symbol: initSymbol = "", price: initPrice = 0, side, onSideChange }: OrderFormProps) {
   const [orderType, setOrderType] = useState<"limit" | "market">("limit");
   const [symbol, setSymbol] = useState(initSymbol);
   const [price, setPrice] = useState(initPrice > 0 ? String(initPrice) : "");
@@ -62,7 +63,7 @@ export function OrderForm({ symbol: initSymbol = "", price: initPrice = 0 }: Ord
     <div className="flex flex-col gap-4">
       <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">주문</h2>
 
-      <Tabs value={side} onValueChange={(v) => setSide(v as "buy" | "sell")}>
+      <Tabs value={side} onValueChange={(v) => onSideChange(v as "buy" | "sell")}>
         <TabsList className="w-full">
           <TabsTrigger value="buy" className="flex-1 data-[state=active]:bg-buy data-[state=active]:text-white">
             매수

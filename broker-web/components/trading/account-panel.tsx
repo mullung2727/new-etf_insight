@@ -67,7 +67,7 @@ const holdingColumns: Column<Holding>[] = [
   },
 ];
 
-export function AccountPanel() {
+export function AccountPanel({ onHoldingSelect }: { onHoldingSelect?: (symbol: string) => void }) {
   const [data, setData] = useState<BalanceData | null>(null);
   const [depositData, setDepositData] = useState<DepositData | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -177,6 +177,11 @@ export function AccountPanel() {
           columns={holdingColumns}
           rows={holdings}
           emptyMessage="보유종목 없음"
+          onRowClick={(row) => {
+            const code = (row.stk_cd ?? "").trim().replace(/^A(?=\d+$)/, "");
+            if (code) onHoldingSelect?.(code);
+          }}
+          rowClassName="hover:outline hover:outline-1 hover:-outline-offset-1 hover:outline-primary/60"
         />
       </div>
     </div>
