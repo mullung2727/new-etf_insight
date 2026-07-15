@@ -82,15 +82,18 @@ test.describe("재무제표 다기간 비교 페이지", () => {
     expect(text?.trim()).not.toBe("");
   });
 
-  test("삼성전자 — 오래된 연도 ROE null (— 표시)", async ({ page }) => {
+  test("삼성전자 — 2023 이전 연도 비율 계산 폴백 (값 표시)", async ({ page }) => {
     await page.locator("[data-testid='corp-search-input']").fill("삼성전자");
     await page.waitForSelector("[data-testid='autocomplete-item']");
     await page.locator("[data-testid='autocomplete-item']").first().click();
     await page.waitForSelector("[data-testid='compare-table']", { timeout: 90_000 });
 
-    // nth(0)=label, nth(1)=첫 번째 연도 값 (2021) = — (비율 2023+ 이전)
-    const firstValueCell = page.locator("[data-row-key='roe'] td").nth(1);
-    await expect(firstValueCell).toHaveText("—");
+    // DART 재무지표 API는 2023+만 제공하나, 이전 연도는 금액에서 직접 계산해 채운다.
+    // nth(1)=첫 연도 값 (2021). ROE·부채비율은 계산 폴백으로 값 표시(— 아님).
+    await expect(page.locator("[data-row-key='roe'] td").nth(1)).toContainText(/\d/);
+    await expect(page.locator("[data-row-key='debtRatio'] td").nth(1)).toContainText(/\d/);
+    // 매출증가율은 최古 연도(전년 매출 없음)만 — 유지
+    await expect(page.locator("[data-row-key='revenueGrowth'] td").nth(1)).toHaveText("—");
   });
 
   // ── M83 — 백필 커버 범위 밖 연도(2021) — 표시 ──────────────────────────────

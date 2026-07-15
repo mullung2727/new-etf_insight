@@ -164,7 +164,7 @@ export default function CompareTable({ data }: Props) {
                               <>
                                 {fmtAmount(val)}
                                 {pct !== null && (
-                                  <span className="ml-1 text-fin-ratio text-fin-xs">
+                                  <span className="ml-1 text-fin-ratio text-fin-sm font-medium">
                                     ({pct.toFixed(1)}%)
                                   </span>
                                 )}

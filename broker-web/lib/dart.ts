@@ -363,7 +363,34 @@ export async function fetchCompare(
     return Math.round((op / rev) * 10000) / 100;
   });
 
-  // 비율 행
+  // 비율 계산 폴백 (연간 전용) — DART 재무지표 API는 2023 사업연도부터만 제공하므로
+  // 이전 연도는 이미 확보한 금액에서 동일 정의로 직접 계산해 메꾼다.
+  // 검증(2026-07, 삼성전자 2023~2025): 부채비율·매출증가율 0.00pp, ROE(평균자본) 0.00pp 일치.
+  const liabV = amountValues.get("totalLiab")!;
+  const eqV = amountValues.get("totalEquity")!;
+  const netV = amountValues.get("netIncome")!;
+  const revV = amountValues.get("revenue")!;
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+  const computeRatio = (key: string, i: number): number | null => {
+    if (key === "debtRatio") {
+      const l = liabV[i], e = eqV[i];
+      return l != null && e ? round2((l / e) * 100) : null;
+    }
+    if (key === "roe") {
+      const net = netV[i], e = eqV[i];
+      if (net == null || !e) return null;
+      const ePrev = eqV[i - 1];               // 평균자본 = (기초+기말)/2, 전기자본 없으면 기말
+      const avg = ePrev != null ? (e + ePrev) / 2 : e;
+      return round2((net / avg) * 100);
+    }
+    if (key === "revenueGrowth") {
+      const r = revV[i], rPrev = revV[i - 1];  // 배열 인접값 = 전년 매출, 최古 연도는 전기 없어 null
+      return r != null && rPrev ? round2((r / rPrev - 1) * 100) : null;
+    }
+    return null;
+  };
+
+  // 비율 행 — DART 공식지표(2023+) 우선, 없으면 금액에서 계산(연간만; 분기는 정의가 달라 미적용)
   const ratioRows: CompareRow[] = [
     { key: "opMargin", label: "영업이익률", type: "ratio", section: "ratio", values: opMarginValues },
     ...RATIO_INDICES.map(ri => ({
@@ -372,10 +399,9 @@ export async function fetchCompare(
       type: "ratio" as const,
       section: "ratio" as const,
       values: Array.from({ length: n }, (_, i) => {
-        const m = ratioByIndex.get(i);
-        if (!m) return null;
-        const res = m.get(ri.idx_cl_code);
-        return extractRatio(res?.list, ri.idx_code);
+        const official = extractRatio(ratioByIndex.get(i)?.get(ri.idx_cl_code)?.list, ri.idx_code);
+        if (official != null) return official;
+        return mode === "annual" ? computeRatio(ri.key, i) : null;
       }),
     })),
   ];
