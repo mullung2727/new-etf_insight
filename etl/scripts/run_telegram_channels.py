@@ -126,7 +126,9 @@ def main() -> None:
     for ch, err in errors:
         print(f"[run_telegram_channels] ERROR channel={ch} date={period}: {err}", file=sys.stderr)
 
-    if errors:
+    # 채널 하나가 죽어도(비공개·슬러그오류) 나머지 수집이 성공하면 배치는 성공.
+    # 전 채널 실패(수집 0)일 때만 비정상 종료로 판정한다.
+    if errors and not results:
         sys.exit(1)
 
 

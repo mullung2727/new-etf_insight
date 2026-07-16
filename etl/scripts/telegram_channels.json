@@ -23,10 +23,6 @@
     "source_url": "https://t.me/s/awake_realtimeCheck",
     "feed_role": "discovery_source"
   },
-  "kimcharger": {
-    "source_url": "https://t.me/s/kimcharger",
-    "feed_role": "discovery_source"
-  },
   "HS_academy": {
     "source_url": "https://t.me/s/HS_academy",
     "feed_role": "discovery_source",

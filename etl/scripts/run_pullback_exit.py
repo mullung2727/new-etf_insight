@@ -124,6 +124,7 @@ def settle_sell_orders(db_path: Path, broker_url: str, today: str) -> int:
     fills = aggregate_fills(history)
     settled = 0
     with connect_rw(db_path) as con:
+        create_pullback_orders_table(con)
         rows = con.execute(
             "SELECT watchlist_date,ticker,buy_price,sell_order_no FROM pullback_orders "
             "WHERE sell_status='ordered'"
@@ -139,6 +140,10 @@ def settle_sell_orders(db_path: Path, broker_url: str, today: str) -> int:
                 (fill["price"], fill["qty"], now_seoul().isoformat(), pnl, watchlist_date, ticker),
             )
             settled += 1
+            print(
+                f"[pullback-exit] CLOSED {ticker} buy={buy_price} sell={fill['price']} "
+                f"pnl={f'{pnl:+.2%}' if pnl is not None else 'NA'} qty={fill['qty']} order_no={order_no}"
+            )
     return settled
 
 
@@ -159,10 +164,18 @@ def run_cycle(db_path: Path, broker_url: str, config: dict[str, Any], today: str
         qty = sell_quantity(position["buy_qty"] or 0, tradable.get(position["ticker"], 0))
         if qty <= 0:
             continue
+        bid = bids.get(position["ticker"])
+        change = (bid / position["buy_price"] - 1) if bid and position["buy_price"] else None
         result = market_order(broker_url, position["ticker"], qty, "sell", "pullback_exit", dry_run)
         if result["status"] == "submitted" and result.get("order_no"):
             mark_sell_ordered(db_path, position, result["order_no"], reason)
             ordered += 1
+            print(
+                f"[pullback-exit] SELL {position['ticker']} reason={reason} "
+                f"buy={position['buy_price']} bid={bid} "
+                f"change={f'{change:+.2%}' if change is not None else 'NA'} qty={qty} "
+                f"order_no={result['order_no']}"
+            )
     return ordered
 
 
@@ -170,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(ROOT / ".env")
     parser = argparse.ArgumentParser(description="pullback TP/SL·만기 청산 워커")
     parser.add_argument("--broker-url", default=None)
-    parser.add_argument("--poll-sec", type=float, default=3.0)
+    parser.add_argument("--poll-sec", type=float, default=5.0)
     parser.add_argument("--force-exit-time", default="15:19:00")
     parser.add_argument("--stop-time", default="15:25:00")
     parser.add_argument("--dry-run", default="true")

@@ -64,11 +64,13 @@ class RealConfigTest(unittest.TestCase):
         self.assertTrue(DEFAULT_CONFIG.exists())
 
     def test_real_discovery_channels(self):
-        expected = {
-            "getfeed", "corevalue", "infomarketopen",
-            "awake_realtimeCheck", "kimcharger",
-        }
-        self.assertEqual(set(load_discovery_channels()), expected)
+        # 채널명 하드코딩 금지(웹UI 추가마다 깨짐). 불변식만 검사:
+        # discovery 채널은 비어있지 않고, 전부 config에 feed_role=discovery_source 로 존재.
+        discovery = load_discovery_channels()
+        all_channels = load_all_channels()
+        self.assertTrue(discovery, "discovery 채널이 하나도 없음 — config 확인")
+        for ch in discovery:
+            self.assertEqual(all_channels[ch].get("feed_role"), "discovery_source")
 
 
 if __name__ == "__main__":

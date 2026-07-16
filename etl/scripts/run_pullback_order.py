@@ -289,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
         config["max_new_positions"],
     )
     if not candidates:
+        print(f"[pullback] {today} 신호 충족 종목 없음 (관측창 내 lower-low+양봉반전 미발생)")
         send_discord(f"[눌림목 매매] {today} 주문 대상 없음")
         return 0
     cash = available_cash(broker_url)
@@ -309,6 +310,13 @@ def main(argv: list[str] | None = None) -> int:
                 broker_url, candidate["ticker"], qty, "buy", "pullback_order", dry_run, now=now
             )
         persist_order_result(DEFAULT_WATCHLIST_DB, candidate, qty, result)
+        print(
+            f"[pullback] BUY {candidate['ticker']} watchlist={candidate['watchlist_date']} "
+            f"signal_date={candidate['signal_date']} prior_low={candidate['prior_low']} "
+            f"day_open={candidate['day_open']} day_low={candidate['day_low']} "
+            f"signal_price={candidate['signal_price']} (lower-low+양봉반전) qty={qty} "
+            f"status={result['status']} order_no={result.get('order_no', '')}"
+        )
     send_discord(f"[눌림목 매매] {today} 주문 처리 {len(candidates)}건")
     return 0
 
