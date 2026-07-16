@@ -133,7 +133,7 @@
   --fin-text:  oklch(0.96 0 0 / 0.80);
   --fin-label: oklch(0.96 0 0 / 0.55);
   --fin-muted: oklch(0.96 0 0 / 0.30);
-  --fin-ghost: oklch(0.96 0 0 / 0.15);
+  --fin-ghost: oklch(0.96 0 0 / 0.40);
   --fin-ratio: rgba(194,239,78,0.85);
 }
 

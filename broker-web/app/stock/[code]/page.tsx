@@ -4,6 +4,7 @@ import { brokerClient } from "@/lib/broker-client";
 import { resolveTab, stockHubHref, findHolding, STOCK_TABS, type StockTab } from "@/lib/stock-hub";
 import { resolveRange } from "@/lib/chart-range";
 import type { Holding } from "@/lib/broker-client";
+import StockSearch from "@/components/stock/stock-search";
 import ChartTab from "@/components/stock/chart-tab";
 import FinancialTab from "@/components/stock/financial-tab";
 import FinancialModeToggle from "@/components/stock/financial-mode-toggle";
@@ -65,9 +66,10 @@ export default async function StockHubPage({
       <div className="fixed inset-0 pointer-events-none bg-grid" />
 
       <div className="relative max-w-[1200px] mx-auto px-6 py-10">
-        <Link href="/watchlist" className="text-white/50 text-[13px] tracking-[0.15em] no-underline">
-          ← WATCHLIST
-        </Link>
+        {/* 검색바 유지 — 허브에서도 다른 종목 바로 검색 */}
+        <div className="mb-6">
+          <StockSearch />
+        </div>
 
         {/* 공통 헤더 */}
         <div className="mt-6 mb-6">
