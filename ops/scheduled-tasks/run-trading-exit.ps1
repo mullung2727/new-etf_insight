@@ -7,7 +7,7 @@ New-Item -Force -ItemType Directory $logDir | Out-Null
 $commonArgs = @(
   "--dry-run", "false",
   "--broker-url", "http://localhost:8001",
-  "--poll-sec", "3",
+  "--poll-sec", "5",
   "--force-exit-time", "15:19:00",
   "--stop-time", "15:25:00"
 )
