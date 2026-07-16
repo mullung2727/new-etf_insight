@@ -125,8 +125,23 @@ def find_lower_low_day(row: dict[str, Any]) -> tuple[int, float] | None:
     return None
 
 
+def load_minute_payloads(
+    requests: list[tuple[str, str, str]], cache_dir: Path
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """같은 종목·기준일 요청은 가장 이른 시작일로 한 번만 조회한다."""
+    earliest_by_key: dict[tuple[str, str], str] = {}
+    for ticker, base_dt, earliest_dt in requests:
+        key = (ticker, base_dt)
+        earliest_by_key[key] = min(earliest_by_key.get(key, earliest_dt), earliest_dt)
+    return {
+        key: load_or_fetch_minutes(key[0], key[1], earliest_dt, cache_dir=cache_dir)
+        for key, earliest_dt in earliest_by_key.items()
+    }
+
+
 def load_minute_samples(rows: list[dict[str, Any]], cache_dir: Path) -> tuple[list[dict[str, Any]], dict[str, int]]:
     samples, stats = [], {"daily_entries": 0, "complete_horizon": 0, "cache_complete": 0}
+    candidates = []
     for row in rows:
         lower_low = find_lower_low_day(row)
         if not lower_low:
@@ -137,9 +152,14 @@ def load_minute_samples(rows: list[dict[str, Any]], cache_dir: Path) -> tuple[li
         if len(dates) < 6:
             continue
         stats["complete_horizon"] += 1
-        payload = load_or_fetch_minutes(
-            row["ticker"], dates[-1], dates[0], cache_dir=cache_dir
-        )
+        candidates.append((row, prior_low, dates))
+
+    payloads = load_minute_payloads(
+        [(row["ticker"], dates[-1], dates[0]) for row, _, dates in candidates],
+        cache_dir,
+    )
+    for row, prior_low, dates in candidates:
+        payload = payloads[(row["ticker"], dates[-1])]
         if not payload["complete"]:
             continue
         stats["cache_complete"] += 1

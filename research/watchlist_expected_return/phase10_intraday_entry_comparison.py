@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 from datetime import datetime
 from pathlib import Path
@@ -11,18 +12,43 @@ from research.watchlist_expected_return.five_minute_high_breakout import find_en
 from research.watchlist_expected_return.minute_bar_cache import DEFAULT_CACHE_DIR
 from research.watchlist_expected_return.phase4_holding_strategy import summarize_outcomes
 from research.watchlist_expected_return.phase7_pullback_strategy import DEFAULT_KRX_DB, DEFAULT_WATCHLIST_DB, load_research_rows
-from research.watchlist_expected_return.phase8_minute_pullback_strategy import DEFAULT_OUTPUT_DIR, find_minute_entry, load_minute_samples, simulate_minute_exit
+from research.watchlist_expected_return.phase8_minute_pullback_strategy import (
+    DEFAULT_OUTPUT_DIR,
+    load_minute_payloads,
+    regular_bars,
+    simulate_minute_exit,
+)
 from research.watchlist_expected_return.prior_low_reclaim import find_entry as prior_low_reclaim
 from research.watchlist_expected_return.vwap_reclaim import find_entry as vwap_reclaim
 
 
 EntryFinder = Callable[[list[dict[str, Any]], float], dict[str, Any] | None]
-EXIT_RULE = {"kind": "tp_sl", "tp": 0.03, "sl": 0.03, "days": 3}
+
+
+def exit_candidates() -> list[dict[str, Any]]:
+    return [
+        {"kind": "tp_sl", "tp": tp, "sl": sl, "days": days}
+        for tp, sl, days in itertools.product(
+            (0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10),
+            (0.03, 0.04, 0.05),
+            (1, 2, 3, 5),
+        )
+        if tp > sl
+    ]
+
+
+def exit_id(strategy: dict[str, Any]) -> str:
+    return f"tp{strategy['tp']:.0%}_sl{strategy['sl']:.0%}_d{strategy['days']}"
 
 
 def close_confirm(day_bars: list[dict[str, Any]], prior_low: float) -> dict[str, Any] | None:
-    entry_date = day_bars[0]["date"] if day_bars else ""
-    return find_minute_entry(day_bars, entry_date, prior_low, "close_confirm")
+    bars_to_signal = [bar for bar in day_bars if bar["time"] <= "151900"]
+    signal_bar = next((bar for bar in bars_to_signal if bar["time"] == "151900"), None)
+    if not signal_bar or min(bar["low"] for bar in bars_to_signal) >= prior_low:
+        return None
+    if signal_bar["close"] <= bars_to_signal[0]["open"]:
+        return None
+    return {"entry_price": signal_bar["close"], "entry_timestamp": signal_bar["timestamp"]}
 
 
 ENTRY_FINDERS: dict[str, EntryFinder] = {
@@ -33,6 +59,61 @@ ENTRY_FINDERS: dict[str, EntryFinder] = {
 }
 
 
+def find_production_signal(
+    bars: list[dict[str, Any]], dates: list[str], initial_prior_low: float
+) -> tuple[int, str, float, dict[str, Any]] | None:
+    prior_low = initial_prior_low
+    for index, date in enumerate(dates[:5]):
+        day = [bar for bar in bars if bar["date"] == date]
+        entry = close_confirm(day, prior_low) if day and prior_low else None
+        if entry:
+            return index, date, prior_low, entry
+        if day:
+            prior_low = min(bar["low"] for bar in day)
+    return None
+
+
+def load_production_samples(
+    rows: list[dict[str, Any]], cache_dir: Path
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """운영과 같이 D+1~D+5의 15:19 lower-low 양봉 신호를 순서대로 찾는다."""
+    candidates = []
+    for row in rows:
+        dates = [day["date"] for day in row["future"][:10]]
+        if len(dates) == 10:
+            candidates.append((row, dates))
+    payloads = load_minute_payloads(
+        [(row["ticker"], dates[-1], dates[0]) for row, dates in candidates],
+        cache_dir,
+    )
+    samples = []
+    for row, dates in candidates:
+        payload = payloads[(row["ticker"], dates[-1])]
+        if not payload["complete"]:
+            continue
+        bars = regular_bars(payload, dates)
+        signal = find_production_signal(bars, dates, row["history"][-1]["low"])
+        if signal:
+            index, date, prior_low, entry = signal
+            trading_dates = dates[index:index + 6]
+            if len(trading_dates) == 6:
+                samples.append({
+                    "watchlist_date": row["date"], "ticker": row["ticker"],
+                    "entry_date": date, "trading_dates": trading_dates,
+                    "prior_low": prior_low, "bars": regular_bars(payload, trading_dates),
+                    "production_entry": entry,
+                })
+    stats = {
+        "eligible_rows": len(candidates),
+        "cache_complete": sum(
+            bool(payloads[(row["ticker"], dates[-1])]["complete"])
+            for row, dates in candidates
+        ),
+        "production_signals": len(samples),
+    }
+    return samples, stats
+
+
 def analyze(samples: list[dict[str, Any]], stats: dict[str, int], cost_rate: float = 0.01) -> dict[str, Any]:
     dates = sorted({sample["entry_date"] for sample in samples})
     if len(dates) < 2:
@@ -40,33 +121,48 @@ def analyze(samples: list[dict[str, Any]], stats: dict[str, int], cost_rate: flo
     split_date = dates[len(dates) // 2]
     strategies = []
     for name, finder in ENTRY_FINDERS.items():
-        outcomes = []
+        entries = []
         for sample in samples:
             day = [bar for bar in sample["bars"] if bar["date"] == sample["entry_date"]]
             entry = finder(day, sample["prior_low"])
-            if not entry:
-                continue
-            outcome = simulate_minute_exit(sample["bars"], entry, sample["trading_dates"], EXIT_RULE)
-            if outcome:
-                outcomes.append({
-                    **outcome,
-                    "entry_date": sample["entry_date"],
-                    "ticker": sample["ticker"],
-                    "holding_days": EXIT_RULE["days"],
-                })
+            if entry:
+                entries.append((sample, entry))
+        comparisons = []
+        for exit_rule in exit_candidates():
+            outcomes = []
+            for sample, entry in entries:
+                outcome = simulate_minute_exit(sample["bars"], entry, sample["trading_dates"], exit_rule)
+                if outcome:
+                    outcomes.append({
+                        **outcome,
+                        "entry_date": sample["entry_date"],
+                        "ticker": sample["ticker"],
+                        "holding_days": exit_rule["days"],
+                    })
+            comparisons.append({
+                "id": exit_id(exit_rule),
+                "exit_rule": exit_rule,
+                "early": summarize_outcomes([o for o in outcomes if o["entry_date"] < split_date], cost_rate),
+                "late": summarize_outcomes([o for o in outcomes if o["entry_date"] >= split_date], cost_rate),
+                "total": summarize_outcomes(outcomes, cost_rate),
+            })
+        selectable = [item for item in comparisons if item["total"]["count"] >= 10]
+        selected = max(selectable, key=lambda item: item["total"]["mean"]) if selectable else None
         strategies.append({
             "strategy": name,
-            "entry_count": len(outcomes),
-            "no_buy_rate": round(1 - len(outcomes) / len(samples), 4),
-            "early": summarize_outcomes([o for o in outcomes if o["entry_date"] < split_date], cost_rate),
-            "late": summarize_outcomes([o for o in outcomes if o["entry_date"] >= split_date], cost_rate),
-            "total": summarize_outcomes(outcomes, cost_rate),
+            "entry_count": len(entries),
+            "no_buy_rate": round(1 - len(entries) / len(samples), 4),
+            "selected_on_total": selected,
+            "comparisons": comparisons,
         })
+    selected = [item for item in strategies if item["selected_on_total"]]
+    best = max(selected, key=lambda item: item["selected_on_total"]["total"]["mean"]) if selected else None
     return {
         "analysis_version": 1,
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "sample_count": len(samples), "data_stats": stats, "split_date": split_date,
-        "cost_rate": cost_rate, "exit_rule": EXIT_RULE, "strategies": strategies,
+        "cost_rate": cost_rate, "exit_candidate_count": len(exit_candidates()),
+        "best_on_total": best["strategy"] if best else None, "strategies": strategies,
     }
 
 
@@ -74,19 +170,22 @@ def render_markdown(result: dict[str, Any]) -> str:
     lines = [
         "# 1분봉 눌림목 진입 전략 4종 비교", "",
         f"- 전체 표본: {result['sample_count']}건", f"- 시간 분할일: {result['split_date']}",
-        f"- 왕복 비용: {result['cost_rate']:.1%}", "- 공통 청산: TP +3%, SL -3%, 최대 3거래일", "",
-        "| 전략 | 매수 | 미매수율 | 전반 평균 | 후반 표본 | 후반 평균 | 후반 중앙값 | 후반 승률 | 전체 평균 | 전체 MDD |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        f"- 왕복 비용: {result['cost_rate']:.1%}",
+        f"- 청산 조합: {result['exit_candidate_count']}개 (TP>SL)",
+        f"- 전체 표본 최우수 진입: {result['best_on_total']}", "",
+        "| 전략 | 매수 | 미매수율 | 전체 선택 청산 | 전체 표본 | 전체 평균 | 전체 중앙값 | 전체 승률 | 전체 MDD |",
+        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |",
     ]
     for item in result["strategies"]:
+        chosen = item["selected_on_total"]
+        total = chosen["total"] if chosen else {}
         lines.append(
             f"| {item['strategy']} | {item['entry_count']} | {item['no_buy_rate']:.2%} | "
-            f"{item['early']['mean']:.4f} | {item['late']['count']} | {item['late']['mean']:.4f} | "
-            f"{item['late']['median']:.4f} | {item['late']['positive_rate']:.2%} | "
-            f"{item['total']['mean']:.4f} | {item['total']['max_drawdown']:.4f} |"
+            f"{chosen['id'] if chosen else None} | {total.get('count')} | {total.get('mean')} | "
+            f"{total.get('median')} | {total.get('positive_rate')} | {total.get('max_drawdown')} |"
         )
-    lines.extend(["", "## 해석 주의", "", "- 진입 규칙만 다르고 청산과 비용 조건은 모두 동일하다.",
-                  "- 전반부는 참고 구간, 후반부는 시간 외 검증 구간이다.",
+    lines.extend(["", "## 해석 주의", "", "- 전체 표본 평균으로 청산 조합을 선택한 탐색 결과다.",
+                  "- 전후반 분리 검증이 아니므로 최종 전략 확정에는 별도 시간 외 검증이 필요하다.",
                   "- 같은 1분봉에서 TP와 SL이 모두 닿으면 SL을 우선한다."])
     return "\n".join(lines) + "\n"
 
@@ -98,7 +197,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     args = parser.parse_args(argv)
-    samples, stats = load_minute_samples(load_research_rows(args.watchlist_db, args.krx_db), args.cache_dir)
+    samples, stats = load_production_samples(
+        load_research_rows(args.watchlist_db, args.krx_db), args.cache_dir
+    )
     result = analyze(samples, stats)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "phase10_intraday_entry_comparison.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

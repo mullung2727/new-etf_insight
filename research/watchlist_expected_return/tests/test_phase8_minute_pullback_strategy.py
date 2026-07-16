@@ -3,11 +3,13 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from research.watchlist_expected_return.minute_bar_cache import load_or_fetch_minutes
 from research.watchlist_expected_return.phase8_minute_pullback_strategy import (
     find_lower_low_day,
     find_minute_entry,
+    load_minute_payloads,
     simulate_minute_exit,
 )
 
@@ -18,6 +20,19 @@ def bar(timestamp: str, open_: int, high: int, low: int, close: int, volume: int
 
 
 class MinuteBarCacheTest(unittest.TestCase):
+    @patch("research.watchlist_expected_return.phase8_minute_pullback_strategy.load_or_fetch_minutes")
+    def test_duplicate_symbol_and_base_date_is_loaded_once(self, load):
+        load.return_value = {"complete": True, "bars": []}
+        requests = [
+            ("005930", "20260710", "20260703"),
+            ("005930", "20260710", "20260701"),
+            ("000660", "20260710", "20260702"),
+        ]
+        payloads = load_minute_payloads(requests, Path("cache"))
+        self.assertEqual(2, load.call_count)
+        load.assert_any_call("005930", "20260710", "20260701", cache_dir=Path("cache"))
+        self.assertEqual({("005930", "20260710"), ("000660", "20260710")}, set(payloads))
+
     def test_continuation_is_deduplicated_and_cached(self):
         calls = []
         pages = [
