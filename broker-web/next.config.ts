@@ -8,6 +8,9 @@ import path from "node:path";
 const devOrigins = process.env.DEV_ORIGIN?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
 
 const nextConfig: NextConfig = {
+  // dev와 prod를 다른 빌드 출력 dir로 분리해 동시 실행 시 `.next` 충돌 방지.
+  // 미설정(dev)=기본 `.next`, prod 배치는 NEXT_DIST_DIR=.next-prod 로 build/start.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   allowedDevOrigins: devOrigins,
   // 상위 디렉토리에 두 번째 package-lock.json이 있어 Next이 워크스페이스 root를
   // repo 루트로 오추론 → dev 청크 경로 틀어짐(illegal path)·HMR 끊김. root를 이 앱으로 고정.
