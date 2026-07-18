@@ -345,7 +345,16 @@ LLM env var           = ETF_LLM_PROVIDER  (default "codex")
 
 ---
 
-## 7. SQLite Schema (`db/etf_insight.sqlite3`)
+## 7. DB Schema
+
+**전체 DB 스키마 카탈로그: `etl/docs/DB_SCHEMA.md`** — `etl/db/`의 모든 sqlite3/duckdb
+테이블을 한눈에 본다. 자동 생성이므로 **직접 수정 금지**. 스키마(테이블/컬럼) 변경 후:
+```
+uv run python scripts/dump_db_schema.py     # docs/DB_SCHEMA.md 갱신
+```
+DB 파일은 git 제외지만 카탈로그 문서는 커밋된다. 아래는 핵심 예시만.
+
+### `db/etf_insight.sqlite3`
 
 `etf_records` (PK `etf_key`, 1 row per ETF):
 ```
@@ -387,6 +396,7 @@ etf_key, seq, name, ticker, exchange, weight
 
 ## 9. Edit-Time Cautions
 
+- 새 테이블/컬럼 추가·변경 시 → `scripts/dump_db_schema.py` 재실행해 `docs/DB_SCHEMA.md` 갱신.
 - `filing_filter.py` keyword change → existing `runs/` may need reprocessing.
 - LLM schema `*.json` change → update matching prompt `*.md` together.
 - `daily_pipeline.py` change → run `tests/test_pipeline_modules.py`.
