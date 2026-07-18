@@ -48,6 +48,12 @@ try {
   # 2) 파이프라인: discover -> analyze -> digest (오케스트레이션은 run_telegram_pipeline.py).
   Invoke-Step "telegram session pipeline ($Session, discover->analyze->digest)" `
     ".\.venv\Scripts\python.exe" @("scripts\run_telegram_pipeline.py", "--date", $target, "--session", $Session, "--channel", "telegram_report")
+
+  # 3) 하루 롤업: evening(마지막 세션) 뒤 3세션 합산 'TOP N 주목 종목' 전송. 그 외 세션은 스킵.
+  if ($Session -eq "evening") {
+    Invoke-Step "telegram daily rollup ($target)" `
+      ".\.venv\Scripts\python.exe" @("scripts\send_telegram_daily_rollup.py", "--date", $target, "--channel", "telegram_report")
+  }
   exit 0
 } catch {
   $message = "[Telegram 세션요약] $target/$Session FAILED`n$($_.Exception.Message)`nlog: $log"

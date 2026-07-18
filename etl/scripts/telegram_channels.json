@@ -1,31 +1,38 @@
 {
   "companyreport": {
     "source_url": "https://t.me/s/companyreport",
-    "feed_role": "discovery_source"
+    "feed_role": "discovery_source",
+    "signal_type": "report_feed"
   },
   "butler_works": {
     "source_url": "https://t.me/s/butler_works",
-    "feed_role": "discovery_source"
+    "feed_role": "discovery_source",
+    "signal_type": "report_feed"
   },
   "getfeed": {
     "source_url": "https://t.me/s/getfeed",
-    "feed_role": "discovery_source"
+    "feed_role": "discovery_source",
+    "signal_type": "macro_essay"
   },
   "corevalue": {
     "source_url": "https://t.me/s/corevalue",
-    "feed_role": "discovery_source"
+    "feed_role": "discovery_source",
+    "signal_type": "research_note"
   },
   "infomarketopen": {
     "source_url": "https://t.me/s/infomarketopen",
-    "feed_role": "discovery_source"
+    "feed_role": "discovery_source",
+    "signal_type": "global_news"
   },
   "awake_realtimeCheck": {
     "source_url": "https://t.me/s/awake_realtimeCheck",
-    "feed_role": "discovery_source"
+    "feed_role": "discovery_source",
+    "signal_type": "flow_data"
   },
   "HS_academy": {
     "source_url": "https://t.me/s/HS_academy",
     "feed_role": "discovery_source",
+    "signal_type": "macro_essay",
     "label": "이효석아카데미"
   }
 }

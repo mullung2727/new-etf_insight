@@ -22,11 +22,14 @@ import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path 보장)
 
 from dotenv import load_dotenv  # noqa: E402
 from notify import notify  # noqa: E402
+from telegram_channels import load_all_channels  # noqa: E402
 from wl_sqlite import connect_ro  # noqa: E402
 
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
 
-_CHANGE_LABEL = {"new": "🆕 신규", "continued": "🔁 지속"}
+_CHANGE_LABEL = {"new": "🆕", "continued": "🔁"}
+# flow_data/research_note가 하나라도 붙으면 '주목', 아니면 '리포트/뉴스'
+_WATCH_TYPES = {"flow_data", "research_note"}
 
 
 def fetch_insights(con: sqlite3.Connection, date_kst: str, session: str) -> list[dict]:
@@ -55,26 +58,40 @@ def fetch_insights(con: sqlite3.Connection, date_kst: str, session: str) -> list
     return out
 
 
-def format_digest(date_kst: str, session: str, rows: list[dict]) -> str | None:
-    """요약 메시지. 분석 종목 0이면 None(전송 스킵)."""
-    if not rows:
-        return None
-    lines = [f"📊 텔레그램 종목 요약 {date_kst} ({session}) · {len(rows)}종목", ""]
-    # 신규 먼저, 그다음 지속, 그 외
+def _section_lines(rows: list[dict]) -> list[str]:
+    """섹션 내 종목 줄. 신규 먼저, 채널 수 많은 순."""
     order = {"new": 0, "continued": 1}
     rows = sorted(rows, key=lambda r: (order.get(r["change_type"], 2), -len(r["channels"])))
-    cur_type = object()
+    lines: list[str] = []
     for r in rows:
-        if r["change_type"] != cur_type:
-            cur_type = r["change_type"]
-            lines.append(_CHANGE_LABEL.get(cur_type, "· 기타"))
+        mark = _CHANGE_LABEL.get(r["change_type"], "·")
         themes = " ".join(f"#{t}" for t in r["themes"][:3])
-        head = f"• {r['name']}({r['ticker']}) [{len(r['channels'])}채널]"
+        head = f"• {mark} {r['name']}({r['ticker']}) [{len(r['channels'])}채널]"
         if themes:
             head += f" {themes}"
         lines.append(head)
         if r["change_summary"]:
             lines.append(f"  {r['change_summary']}")
+    return lines
+
+
+def format_digest(date_kst: str, session: str, rows: list[dict]) -> str | None:
+    """요약 메시지. signal_type로 주목/리포트 2섹션. 분석 종목 0이면 None(전송 스킵)."""
+    if not rows:
+        return None
+    sig = {ch: cfg.get("signal_type", "") for ch, cfg in load_all_channels().items()}
+    watch = [r for r in rows if any(sig.get(ch) in _WATCH_TYPES for ch in r["channels"])]
+    report = [r for r in rows if r not in watch]
+
+    lines = [f"📊 텔레그램 종목 요약 {date_kst} ({session}) · {len(rows)}종목", ""]
+    if watch:
+        lines.append(f"🔥 주목 ({len(watch)})")
+        lines += _section_lines(watch)
+    if report:
+        if watch:
+            lines.append("")
+        lines.append(f"📄 리포트/뉴스 ({len(report)})")
+        lines += _section_lines(report)
     return "\n".join(lines)
 
 
@@ -99,14 +116,17 @@ def _self_check() -> None:
     con = sqlite3.connect(":memory:")
     import telegram_stock_insights as tsi  # scripts/ on path (via _bootstrap)
     tsi.ensure_schema(con)
+    # 삼성전자: flow_data(awake) 포함 → 주목 섹션
     tsi.upsert_candidate(con, "2026-07-06", "close", "005930", "삼성전자",
-                         mention_channels=["a", "b", "c"], source_post_refs=["a/1"],
-                         discovery_reason="다채널 동시언급")
+                         mention_channels=["awake_realtimeCheck", "butler_works"],
+                         source_post_refs=["a/1"], discovery_reason="수급+리포트")
     tsi.update_analysis(con, "2026-07-06", "close", "005930", json.dumps(
         {"change_type": "new", "change_summary": "HBM 수요 언급 급증",
          "themes": ["반도체", "HBM"], "evidence_summary": "e"}, ensure_ascii=False))
+    # SK하이닉스: report_feed만 → 리포트 섹션
     tsi.upsert_candidate(con, "2026-07-06", "close", "000660", "SK하이닉스",
-                         mention_channels=["a"], source_post_refs=["a/2"], discovery_reason="언급")
+                         mention_channels=["butler_works"], source_post_refs=["a/2"],
+                         discovery_reason="리포트 발간")
     tsi.update_analysis(con, "2026-07-06", "close", "000660", json.dumps(
         {"change_type": "continued", "change_summary": "지속 관심", "themes": ["반도체"]},
         ensure_ascii=False))
@@ -115,10 +135,12 @@ def _self_check() -> None:
     assert len(rows) == 2, rows
     msg = format_digest("2026-07-06", "close", rows)
     assert msg is not None
-    assert "삼성전자(005930)" in msg and "[3채널]" in msg
-    assert "🆕 신규" in msg and "🔁 지속" in msg
-    assert msg.index("🆕 신규") < msg.index("🔁 지속"), "신규가 먼저 와야"
-    assert "#반도체" in msg
+    assert "삼성전자(005930)" in msg and "[2채널]" in msg
+    assert "🔥 주목" in msg and "📄 리포트/뉴스" in msg
+    assert msg.index("🔥 주목") < msg.index("📄 리포트/뉴스"), "주목이 먼저"
+    # 삼성전자(주목) 가 SK(리포트)보다 앞
+    assert msg.index("삼성전자") < msg.index("SK하이닉스"), "주목 종목이 리포트보다 앞"
+    assert "🆕" in msg and "#반도체" in msg
     # 분석 0 → None
     assert format_digest("2026-07-06", "close", []) is None
     print(msg)

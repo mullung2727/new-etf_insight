@@ -37,7 +37,7 @@ try:
         ensure_schema as ensure_watermark_schema,
         read_watermarks,
     )
-    from scripts.telegram_channels import load_discovery_channels
+    from scripts.telegram_channels import load_all_channels, load_discovery_channels
     from scripts.telegram_stock_insights import (
         ensure_schema as ensure_insights_schema,
         update_analysis,
@@ -54,7 +54,7 @@ except ImportError:  # 스크립트 디렉터리에서 직접 실행 fallback
         ensure_schema as ensure_watermark_schema,
         read_watermarks,
     )
-    from telegram_channels import load_discovery_channels
+    from telegram_channels import load_all_channels, load_discovery_channels
     from telegram_stock_insights import (
         ensure_schema as ensure_insights_schema,
         update_analysis,
@@ -155,8 +155,9 @@ def make_extract_prompt(state: State) -> State:
     if not rows:
         return {**state, "extract_prompt": ""}
 
+    sig = {ch: cfg.get("signal_type", "") for ch, cfg in load_all_channels().items()}
     lines = [
-        f"[{r['channel']}] {' '.join(r['text'].split())[:_MAX_POST_CHARS]}"
+        f"[{r['channel']} · {sig.get(r['channel'], '')}] {' '.join(r['text'].split())[:_MAX_POST_CHARS]}"
         for r in rows
     ]
     prompt = _load_prompt("stock_extract.md").format(
