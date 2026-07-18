@@ -20,10 +20,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path 보장)
 
+import datetime as dt  # noqa: E402
+
 from dotenv import load_dotenv  # noqa: E402
 from notify import notify  # noqa: E402
 from telegram_channels import load_all_channels  # noqa: E402
-from wl_sqlite import connect_ro  # noqa: E402
+from wl_sqlite import connect_ro, connect_rw  # noqa: E402
 
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
 
@@ -31,6 +33,53 @@ DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlit
 _SESSION_RANK = {"morning": 0, "close": 1, "evening": 2}
 _WATCH_TYPES = {"flow_data", "research_note"}
 _DEFAULT_TOP_N = 8
+
+# 그날 최종 추천 TOP N 스냅샷. 점수식이 바뀌어도 "그날 왜 추천했나"를 복기·백테스트
+# 할 수 있게 당시 점수·근거를 얼려둔다. 원본 세부는 telegram_stock_insights 참조.
+_CREATE_DAILY_ROLLUP = """
+CREATE TABLE IF NOT EXISTS telegram_daily_rollup (
+    date_kst TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    name TEXT NOT NULL,
+    rank INTEGER NOT NULL,
+    score INTEGER NOT NULL,
+    session_count INTEGER NOT NULL,
+    channel_count INTEGER NOT NULL,
+    is_new INTEGER NOT NULL,
+    has_flow INTEGER NOT NULL,
+    themes TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(date_kst, ticker)
+)
+"""
+
+
+def ensure_rollup_schema(con: sqlite3.Connection) -> None:
+    con.execute(_CREATE_DAILY_ROLLUP)
+
+
+def persist_rollup(con: sqlite3.Connection, date_kst: str, top: list[dict]) -> None:
+    """그날 TOP N 스냅샷 저장. 멱등 — 같은 날 재실행 시 전체 교체(rank 변동·축소 대응)."""
+    ensure_rollup_schema(con)
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    con.execute("DELETE FROM telegram_daily_rollup WHERE date_kst=?", (date_kst,))
+    con.executemany(
+        "INSERT INTO telegram_daily_rollup("
+        "date_kst, ticker, name, rank, score, session_count, channel_count, "
+        "is_new, has_flow, themes, reason, created_at"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                date_kst, g["ticker"], g["name"], i, g["score"],
+                len(g["sessions"]), len(g["channels"]),
+                1 if g["any_new"] else 0, 1 if g["has_flow"] else 0,
+                json.dumps(g["themes"], ensure_ascii=False),
+                (g["latest"] or {}).get("change_summary"), now,
+            )
+            for i, g in enumerate(top, 1)
+        ],
+    )
 
 
 def fetch_day(con: sqlite3.Connection, date_kst: str) -> list[dict]:
@@ -133,6 +182,8 @@ def run(date_kst: str, db_path: Path, dry_run: bool, channel: str | None, top_n:
     if dry_run:
         print(msg)
         return 0
+    with connect_rw(db_path) as con:  # 전송 전 그날 추천 스냅샷 저장(전송 실패와 무관하게 기록)
+        persist_rollup(con, date_kst, ranked[:top_n])
     load_dotenv()  # notify는 os.getenv로 웹훅 조회 — 진입점에서 .env 로드 필수
     ok = notify(msg, channel=channel)
     print(f"[rollup] {date_kst}: TOP {min(top_n, len(ranked))} 전송 {'OK' if ok else 'FAIL'}")
@@ -178,6 +229,19 @@ def _self_check() -> None:
     assert "1. 🆕 GST(083450) [3세션·3채널] 🔥수급" in msg
     assert msg.index("GST") < msg.index("SK하이닉스"), "GST가 먼저"
     assert format_rollup("2026-07-06", []) is None
+
+    # persist: 저장 후 읽기, 멱등(재실행 시 전체 교체) 검증
+    persist_rollup(con, "2026-07-06", ranked)
+    got = con.execute(
+        "SELECT rank, ticker, score, session_count, has_flow, reason "
+        "FROM telegram_daily_rollup WHERE date_kst=? ORDER BY rank", ("2026-07-06",)
+    ).fetchall()
+    assert len(got) == 2, got
+    assert got[0][:2] == (1, "083450") and got[0][4] == 1, got[0]  # GST rank1, has_flow
+    assert got[0][5] == "저녁 속보", got[0]  # reason = 최신 세션 요약
+    persist_rollup(con, "2026-07-06", ranked)  # 재실행
+    n = con.execute("SELECT COUNT(*) FROM telegram_daily_rollup WHERE date_kst=?", ("2026-07-06",)).fetchone()[0]
+    assert n == 2, f"멱등 실패, 중복 적재: {n}"
     print(msg)
     print("\nself-check PASS")
 
