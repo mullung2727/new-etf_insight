@@ -317,55 +317,6 @@ CREATE TABLE youtube_videos (
 )
 ```
 
-## `etf_insight.duckdb`
-
-테이블 2개: `etf_holdings`, `etf_records`
-
-```sql
-etf_holdings (
-    etf_key VARCHAR
-    seq INTEGER
-    name VARCHAR
-    ticker VARCHAR
-    exchange VARCHAR
-    weight VARCHAR
-)
-```
-
-```sql
-etf_records (
-    etf_key VARCHAR
-    route VARCHAR
-    is_pre_listing_etf BOOLEAN
-    fund_name VARCHAR
-    asset_manager VARCHAR
-    index_name VARCHAR
-    index_provider VARCHAR
-    index_description VARCHAR
-    primary_country VARCHAR
-    holdings_available_in_pdf BOOLEAN
-    holdings_summary VARCHAR
-    keywords JSON
-    trend_summary VARCHAR
-    missing_info JSON
-    rcept_no VARCHAR
-    rcept_dt VARCHAR
-    corp_code VARCHAR
-    corp_name VARCHAR
-    report_nm VARCHAR
-    fund_code VARCHAR
-    pdf_path VARCHAR
-    first_rcept_dt VARCHAR
-    revision_count INTEGER
-    db_updated_at TIMESTAMP
-    theme_status VARCHAR
-    theme_bucket VARCHAR
-    structure_tags JSON
-    classification_confidence DOUBLE
-    classification_evidence VARCHAR
-)
-```
-
 ## `krx_ohlcv.duckdb`
 
 테이블 3개: `holidays`, `ohlcv`, `stock_names`
@@ -400,63 +351,50 @@ stock_names (
 )
 ```
 
-## `watchlist.duckdb`
+## `broker/notes.db`
 
-테이블 4개: `close_bet_orders`, `intraday_ranking`, `llm_scores`, `watchlist`
+테이블 3개: `kiwoom_trade_history`, `note_events`, `notes`
 
 ```sql
-close_bet_orders (
-    date VARCHAR
-    ticker VARCHAR
-    score INTEGER
-    qty INTEGER
-    order_type VARCHAR
-    status VARCHAR
-    order_no VARCHAR
-    message VARCHAR
-    raw VARCHAR
-    created_at TIMESTAMP
-    cntr_price INTEGER
-    cntr_qty INTEGER
-    verified_at TIMESTAMP
+CREATE TABLE kiwoom_trade_history (
+    order_no    TEXT PRIMARY KEY,
+    date        TEXT,
+    ticker      TEXT,
+    side        TEXT,
+    order_type  TEXT,
+    qty         INTEGER,
+    price       INTEGER,
+    status      TEXT,
+    source      TEXT,
+    raw         TEXT,
+    created_at  TEXT
 )
 ```
 
 ```sql
-intraday_ranking (
-    date VARCHAR
-    rank INTEGER
-    ticker VARCHAR
-    name VARCHAR
-    volume BIGINT
-    close INTEGER
-)
+CREATE TABLE note_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    note_uid    TEXT NOT NULL REFERENCES notes(uid) ON DELETE CASCADE,
+    event_type  TEXT NOT NULL,
+    price       INTEGER NOT NULL,
+    qty         INTEGER NOT NULL,
+    executed_at TEXT NOT NULL,
+    memo        TEXT,
+    created_at  TEXT NOT NULL
+, order_no TEXT)
 ```
 
 ```sql
-llm_scores (
-    date VARCHAR
-    ticker VARCHAR
-    name VARCHAR
-    ratio DOUBLE
-    today_volume BIGINT
-    avg5_volume BIGINT
-    trading_value BIGINT
-    close INTEGER
-    score INTEGER
-    category VARCHAR
-    reason_summary VARCHAR
-    final_opinion VARCHAR
-    evidence_board VARCHAR
-    evidence_news VARCHAR
-    evidence_web VARCHAR
-    sources VARCHAR
-)
-```
-
-```sql
-watchlist (
-    date VARCHAR
-    stock_code VARCHAR
-)
+CREATE TABLE notes (
+    uid            TEXT PRIMARY KEY,
+    symbol         TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'open',
+    target_price   INTEGER,
+    holding_period TEXT,
+    buy_reason     TEXT,
+    memo           TEXT,
+    user_id        TEXT NOT NULL DEFAULT 'local',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+, name TEXT)
 ```

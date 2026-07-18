@@ -19,6 +19,10 @@ from pathlib import Path
 
 DB_DIR = Path(__file__).resolve().parents[1] / "db"
 OUT_PATH = Path(__file__).resolve().parents[1] / "docs" / "DB_SCHEMA.md"
+# etl 밖 SQLite DB도 카탈로그에 포함 (표시명, 경로)
+EXTRA_SQLITE = [
+    ("broker/notes.db", Path(__file__).resolve().parents[2] / "broker" / "notes.db"),
+]
 
 
 def dump_sqlite(con: sqlite3.Connection) -> list[tuple[str, str]]:
@@ -92,6 +96,14 @@ def build_catalog(db_dir: Path = DB_DIR) -> list[tuple[str, list[tuple[str, str]
             con.close()
     for path in sorted(db_dir.glob("*.duckdb")):
         catalog.append((path.name, dump_duckdb(path)))
+    for label, path in EXTRA_SQLITE:
+        if not path.exists():
+            continue
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            catalog.append((label, dump_sqlite(con)))
+        finally:
+            con.close()
     return catalog
 
 
