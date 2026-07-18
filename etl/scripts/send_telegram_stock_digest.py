@@ -23,6 +23,7 @@ import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path 보장)
 from dotenv import load_dotenv  # noqa: E402
 from notify import notify  # noqa: E402
 from telegram_channels import load_all_channels  # noqa: E402
+from telegram_session_highlights import fetch_session_highlights  # noqa: E402
 from wl_sqlite import connect_ro  # noqa: E402
 
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
@@ -75,32 +76,51 @@ def _section_lines(rows: list[dict]) -> list[str]:
     return lines
 
 
-def format_digest(date_kst: str, session: str, rows: list[dict]) -> str | None:
-    """요약 메시지. signal_type로 주목/리포트 2섹션. 분석 종목 0이면 None(전송 스킵)."""
-    if not rows:
+def format_digest(
+    date_kst: str,
+    session: str,
+    rows: list[dict],
+    highlights: list[dict] | None = None,
+) -> str | None:
+    """개괄 하이라이트와 기존 종목 분석을 한 메시지로 합친다."""
+    highlights = highlights or []
+    if not rows and not highlights:
         return None
-    sig = {ch: cfg.get("signal_type", "") for ch, cfg in load_all_channels().items()}
-    watch = [r for r in rows if any(sig.get(ch) in _WATCH_TYPES for ch in r["channels"])]
-    report = [r for r in rows if r not in watch]
 
-    lines = [f"📊 텔레그램 종목 요약 {date_kst} ({session}) · {len(rows)}종목", ""]
-    if watch:
-        lines.append(f"🔥 주목 ({len(watch)})")
-        lines += _section_lines(watch)
-    if report:
-        if watch:
+    lines: list[str] = []
+    if highlights:
+        lines += [f"🧭 텔레그램 세션 개괄 {date_kst} ({session})", "", f"🔥 중요 내용 ({len(highlights)})"]
+        for item in highlights:
+            lines.append(f"• [{item['score_total']}점] {item['title']}")
+            lines.append(f"  {item['summary']}")
+            lines.append(f"  가치: {item['importance_reason']}")
+        lines += ["", "※ 정보가치 점수이며 사실 확정도·수익률 전망이 아님"]
+
+    if rows:
+        if lines:
             lines.append("")
-        lines.append(f"📄 리포트/뉴스 ({len(report)})")
-        lines += _section_lines(report)
+        lines += [f"📊 종목 요약 · {len(rows)}종목", ""]
+        sig = {ch: cfg.get("signal_type", "") for ch, cfg in load_all_channels().items()}
+        watch = [r for r in rows if any(sig.get(ch) in _WATCH_TYPES for ch in r["channels"])]
+        report = [r for r in rows if r not in watch]
+        if watch:
+            lines.append(f"🔥 주목 ({len(watch)})")
+            lines += _section_lines(watch)
+        if report:
+            if watch:
+                lines.append("")
+            lines.append(f"📄 리포트/뉴스 ({len(report)})")
+            lines += _section_lines(report)
     return "\n".join(lines)
 
 
 def run(date_kst: str, session: str, db_path: Path, dry_run: bool, channel: str | None) -> int:
     with connect_ro(db_path) as con:  # wl_sqlite: query_only + 명시 close (sqlite `with`는 close 안 함)
         rows = fetch_insights(con, date_kst, session)
-    msg = format_digest(date_kst, session, rows)
+        highlights = fetch_session_highlights(con, date_kst, session)
+    msg = format_digest(date_kst, session, rows, highlights)
     if msg is None:
-        print(f"[digest] {date_kst} {session}: 분석 종목 0 → 전송 스킵")
+        print(f"[digest] {date_kst} {session}: 중요 내용·분석 종목 0 → 전송 스킵")
         return 0
     if dry_run:
         print(msg)

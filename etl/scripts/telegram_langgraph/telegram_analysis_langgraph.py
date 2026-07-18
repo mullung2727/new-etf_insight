@@ -38,6 +38,10 @@ try:
         read_watermarks,
     )
     from scripts.telegram_channels import load_all_channels, load_discovery_channels
+    from scripts.telegram_session_highlights import (
+        ensure_schema as ensure_highlights_schema,
+        replace_session_highlights,
+    )
     from scripts.telegram_stock_insights import (
         ensure_schema as ensure_insights_schema,
         update_analysis,
@@ -55,6 +59,10 @@ except ImportError:  # 스크립트 디렉터리에서 직접 실행 fallback
         read_watermarks,
     )
     from telegram_channels import load_all_channels, load_discovery_channels
+    from telegram_session_highlights import (
+        ensure_schema as ensure_highlights_schema,
+        replace_session_highlights,
+    )
     from telegram_stock_insights import (
         ensure_schema as ensure_insights_schema,
         update_analysis,
@@ -64,6 +72,7 @@ except ImportError:  # 스크립트 디렉터리에서 직접 실행 fallback
 
 _HERE = Path(__file__).resolve().parent
 PROMPTS_DIR = _HERE / "prompts"
+SESSION_OVERVIEW_SCHEMA = _HERE / "session_overview_schema.json"
 STOCK_EXTRACT_SCHEMA = _HERE / "stock_extract_schema.json"
 STOCK_INSIGHT_SCHEMA = _HERE / "stock_insight_schema.json"
 
@@ -86,6 +95,11 @@ class State(TypedDict):
     watermark_in: dict               # {channel: last_post_id} run 시작 시점 워터마크
     rows: list[dict]                 # 이번 run 증분 글(post_id > 워터마크, discovery 채널)
     channel_post_counts: dict        # {channel: 증분 글 수} 디버그 집계
+
+    overview_prompt: str
+    overview_llm_output: str
+    session_highlights: list[dict]
+    overview_warnings: list[str]
 
     extract_prompt: str
     extract_llm_output: str
@@ -116,6 +130,7 @@ def ensure_schema(db_path: str) -> None:
     try:
         ensure_watermark_schema(con)
         ensure_insights_schema(con)
+        ensure_highlights_schema(con)
         con.commit()
     finally:
         con.close()
@@ -146,6 +161,89 @@ def load_posts(state: State) -> State:
         "watermark_in": watermark_in,
         "rows": rows,
         "channel_post_counts": channel_post_counts,
+    }
+
+
+_SCORE_LIMITS = {
+    "market_impact": 25,
+    "evidence_quality": 25,
+    "novelty": 20,
+    "investment_relevance": 20,
+    "cross_channel": 10,
+}
+
+
+def make_session_overview_prompt(state: State) -> State:
+    """증분 원문 전체에서 투자 가치가 있는 흐름을 뽑기 위한 프롬프트를 만든다."""
+    rows = state["rows"]
+    if not rows:
+        return {**state, "overview_prompt": ""}
+    sig = {ch: cfg.get("signal_type", "") for ch, cfg in load_all_channels().items()}
+    lines = [
+        f"[{r['post_ref']} · {r['channel']} · {sig.get(r['channel'], '')}] "
+        f"{' '.join(r['text'].split())[:_MAX_POST_CHARS]}"
+        for r in rows
+    ]
+    prompt = _load_prompt("session_overview.md").format(
+        date_kst=state["date_kst"],
+        session=state["session"],
+        posts_block="\n".join(lines),
+    )
+    return {**state, "overview_prompt": prompt}
+
+
+def call_session_overview_llm(state: State) -> State:
+    if not state["overview_prompt"]:
+        return {**state, "overview_llm_output": ""}
+    output = generate_json(
+        state["overview_prompt"], output_schema_path=SESSION_OVERVIEW_SCHEMA, search=False
+    )
+    return {**state, "overview_llm_output": output}
+
+
+def parse_and_validate_overview(state: State) -> State:
+    """점수를 코드에서 재계산하고 실제 입력에 없는 출처를 제거한다."""
+    output = state["overview_llm_output"]
+    if not output:
+        return {**state, "session_highlights": [], "overview_warnings": []}
+
+    warnings = list(state.get("overview_warnings", []))
+    ref_to_channel = {r["post_ref"]: r["channel"] for r in state["rows"]}
+    valid_refs = set(ref_to_channel)
+    highlights: list[dict] = []
+    for item in json.loads(output).get("highlights", []):
+        breakdown = item.get("score_breakdown") or {}
+        if set(breakdown) != set(_SCORE_LIMITS) or any(
+            not isinstance(breakdown.get(key), int)
+            or breakdown[key] < 0
+            or breakdown[key] > limit
+            for key, limit in _SCORE_LIMITS.items()
+        ):
+            warnings.append(f"score_out_of_range:{item.get('title', '')}")
+            continue
+
+        requested_refs = item.get("source_post_refs") or []
+        refs = list(dict.fromkeys(ref for ref in requested_refs if ref in valid_refs))
+        for bad_ref in requested_refs:
+            if bad_ref not in valid_refs:
+                warnings.append(f"unknown_source_ref:{bad_ref}")
+        if not refs:
+            warnings.append(f"highlight_without_valid_source:{item.get('title', '')}")
+            continue
+
+        source_channels = list(dict.fromkeys(ref_to_channel[ref] for ref in refs))
+        cleaned = dict(item)
+        cleaned["score_breakdown"] = {key: breakdown[key] for key in _SCORE_LIMITS}
+        cleaned["score_total"] = sum(cleaned["score_breakdown"].values())
+        cleaned["source_post_refs"] = refs
+        cleaned["source_channels"] = source_channels
+        highlights.append(cleaned)
+
+    highlights.sort(key=lambda item: item["score_total"], reverse=True)
+    return {
+        **state,
+        "session_highlights": highlights[:5],
+        "overview_warnings": warnings,
     }
 
 
@@ -341,7 +439,7 @@ def build_final_report(state: State) -> State:
 
     LLM이 후보에 없는 종목을 지어내면(code 불일치) 버리고 warning."""
     mentions_by_code = {m["ticker"]: m for m in state["stock_mentions"]}
-    warnings = list(state["warnings"])
+    warnings = list(state["warnings"]) + list(state.get("overview_warnings", []))
 
     notable = []
     for ins in state["stock_insights"]:
@@ -366,6 +464,7 @@ def build_final_report(state: State) -> State:
         "session": state["session"],
         "post_count": len(state["rows"]),
         "channel_post_counts": state["channel_post_counts"],
+        "session_highlights": state.get("session_highlights", []),
         "notable_stocks": notable,
         "warnings": warnings,
     }
@@ -389,6 +488,9 @@ def persist_and_advance(state: State) -> State:
 
     con = sqlite3.connect(state["db_path"])
     try:
+        replace_session_highlights(
+            con, date_kst, session, state.get("session_highlights", [])
+        )
         for m in mentions:
             upsert_candidate(
                 con, date_kst, session, m["ticker"], m["name"],
@@ -419,6 +521,9 @@ def build_graph():
     graph = StateGraph(State)
 
     graph.add_node("load_posts", load_posts)
+    graph.add_node("make_session_overview_prompt", make_session_overview_prompt)
+    graph.add_node("call_session_overview_llm", call_session_overview_llm)
+    graph.add_node("parse_and_validate_overview", parse_and_validate_overview)
     graph.add_node("make_extract_prompt", make_extract_prompt)
     graph.add_node("call_extract_llm", call_extract_llm)
     graph.add_node("parse_extract", parse_extract)
@@ -430,7 +535,10 @@ def build_graph():
     graph.add_node("persist_and_advance", persist_and_advance)
 
     graph.set_entry_point("load_posts")
-    graph.add_edge("load_posts", "make_extract_prompt")
+    graph.add_edge("load_posts", "make_session_overview_prompt")
+    graph.add_edge("make_session_overview_prompt", "call_session_overview_llm")
+    graph.add_edge("call_session_overview_llm", "parse_and_validate_overview")
+    graph.add_edge("parse_and_validate_overview", "make_extract_prompt")
     graph.add_edge("make_extract_prompt", "call_extract_llm")
     graph.add_edge("call_extract_llm", "parse_extract")
     graph.add_edge("parse_extract", "load_stock_history")
@@ -465,6 +573,10 @@ def analyze_telegram_session(
         "watermark_in": {},
         "rows": [],
         "channel_post_counts": {},
+        "overview_prompt": "",
+        "overview_llm_output": "",
+        "session_highlights": [],
+        "overview_warnings": [],
         "extract_prompt": "",
         "extract_llm_output": "",
         "stock_mentions": [],
