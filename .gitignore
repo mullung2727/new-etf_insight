@@ -48,6 +48,7 @@ bash.exe.stackdump
 etl/bash.exe.stackdump
 
 # Tooling
+.hermes/
 .superpowers/
 .claude/settings.local.json
 .playwright-mcp/

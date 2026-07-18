@@ -341,6 +341,18 @@ wheels = [
 ]
 
 [[package]]
+name = "holidays"
+version = "0.100"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/19/65/4bec113c00c42fb8d6d71a816774a97d009c8f1341a70ecb6a9ba96176bb/holidays-0.100.tar.gz", hash = "sha256:76e963cd17758ba0e0519daff725f676eaebeda71e500cd235f647307be31e31", size = 949733, upload-time = "2026-07-06T21:15:34.947Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/86/4eab0e2339cf09cfd00233073f5fa37810ceacbff5db5133e26aaa610255/holidays-0.100-py3-none-any.whl", hash = "sha256:cf67e8983c3af182b62081be27c965c6fdf41377026aa62ac82d1bbc8c7ebd8f", size = 1529449, upload-time = "2026-07-06T21:15:32.949Z" },
+]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -513,6 +525,7 @@ source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
     { name = "google-genai" },
+    { name = "holidays" },
     { name = "langgraph" },
     { name = "pandas" },
     { name = "pypdf" },
@@ -526,6 +539,7 @@ dependencies = [
 requires-dist = [
     { name = "duckdb", specifier = ">=1.1.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
+    { name = "holidays", specifier = ">=0.100" },
     { name = "langgraph", specifier = ">=1.2.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "pypdf", specifier = ">=6.11.0" },

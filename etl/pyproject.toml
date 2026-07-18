@@ -12,6 +12,7 @@ dependencies = [
     "requests>=2.34.1",
     "yt-dlp>=2024.1.0",
     "youtube-transcript-api>=1.2.0,<2",
+    "holidays>=0.100",
 ]
 
 [build-system]

@@ -44,8 +44,10 @@ import requests
 from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
+    from scripts.check_krx_trading_day import trading_day_status
     from scripts.wl_sqlite import connect_rw
 except ImportError:
+    from check_krx_trading_day import trading_day_status
     from wl_sqlite import connect_rw
 
 ROOT = Path(__file__).resolve().parents[2]                        # new-etf_insight/
@@ -249,11 +251,18 @@ def _is_holiday_stale(con: sqlite3.Connection, date: str, rows: list[tuple]) -> 
 def run(db_path: Path | str, date: str | None = None, rows: list[tuple] | None = None) -> int:
     """ka10030 수집 → 휴장일 가드 → intraday_ranking upsert. 적재 행 수 반환.
 
-    휴장일 판정 시 저장하지 않고 0 반환. rows 주입 시 API 호출 생략(테스트용).
+    휴장일 판정 시 API를 호출하거나 DB를 만들지 않고 0 반환한다. rows 주입은
+    API 없는 테스트 경로이므로 달력 선확인을 생략하고 기존 스냅샷 가드만 적용한다.
     """
+    date = date or datetime.now().strftime("%Y%m%d")
+    if rows is None:
+        is_trading, reason = trading_day_status(date)
+        if not is_trading:
+            print(f"[intraday_ranking] {date}: 휴장일({reason}) — API/저장 skip")
+            return 0
+
     load_dotenv(ENV_PATH)
     env = _kiwoom_env()
-    date = date or datetime.now().strftime("%Y%m%d")
 
     if rows is None:
         host = _HOSTS[env]

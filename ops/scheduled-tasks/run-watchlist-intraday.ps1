@@ -42,6 +42,19 @@ function Invoke-BestEffortStep {
 }
 
 try {
+  "[$(Get-Date -Format o)] precheck KRX trading day" | Tee-Object -FilePath $log -Append | Write-Output
+  & ".\.venv\Scripts\python.exe" "scripts\check_krx_trading_day.py" "--date" $todayCompact 2>&1 |
+    Tee-Object -FilePath $log -Append | Write-Output
+  $calendarCode = $LASTEXITCODE
+  if ($LASTEXITCODE -eq 3) {
+    "[watchlist intraday] $todayCompact NON_TRADING_DAY - full batch skipped" |
+      Tee-Object -FilePath $log -Append | Write-Output
+    exit 0
+  }
+  if ($calendarCode -ne 0) {
+    throw "trading-day precheck failed with exit code $calendarCode"
+  }
+
   Invoke-Step "build intraday ranking" ".\.venv\Scripts\python.exe" @("scripts\build_intraday_ranking.py", "--date", $todayCompact)
   Invoke-BestEffortStep "capture 15:00 market snapshot" ".\.venv\Scripts\python.exe" @("scripts\collect_watchlist_market_snapshot.py", "--date", $todayCompact)
   Invoke-Step "D+1 open probability scoring" ".\.venv\Scripts\python.exe" @(
