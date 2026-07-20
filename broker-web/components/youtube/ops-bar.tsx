@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -23,6 +23,13 @@ type CollectUrlResult = {
   url?: string;
   error?: string;
   detail?: string;
+};
+
+type JobStatus = {
+  job_id: string;
+  status: string;
+  title?: string | null;
+  message?: string | null;
 };
 
 function kstYmd(d: Date = new Date()): string {
@@ -102,6 +109,9 @@ export function YoutubeOpsBar({
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState("");
+  const [job, setJob] = useState<JobStatus | null>(null);
+  /** 요약 대상 date_kst — 완료 후 요약완료 필터에 포함 */
+  const [jobDateKst, setJobDateKst] = useState<string | null>(null);
   /** 고급: 조회 필터 기간으로 수집 */
   const [useFilterRange, setUseFilterRange] = useState(false);
 
@@ -109,6 +119,37 @@ export function YoutubeOpsBar({
     () => ({ from: kstDaysAgo(1), to: kstYmd() }),
     [],
   );
+
+  const jobRunning = job?.status === "queued" || job?.status === "running";
+
+  useEffect(() => {
+    if (!job || job.status === "done" || job.status === "error") return;
+    const id = job.job_id;
+    const t = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/youtube-summarize-job/${encodeURIComponent(id)}`,
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setErr(apiErr(data, res.status));
+          return;
+        }
+        const st = data as JobStatus;
+        setJob(st);
+        if (st.status === "done") {
+          const range = expandRange(filterFrom, filterTo, jobDateKst ?? "");
+          router.push(youtubeHref("result", range.from, range.to, channelIds));
+          router.refresh();
+        } else if (st.status === "error") {
+          setErr(st.message || "요약 실패");
+        }
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    }, 2500);
+    return () => clearInterval(t);
+  }, [job, router, filterFrom, filterTo, channelIds, jobDateKst]);
 
   const collectFrom = useFilterRange ? filterFrom : defaultCollect.from;
   const collectTo = useFilterRange ? filterTo : defaultCollect.to;
@@ -169,13 +210,23 @@ export function YoutubeOpsBar({
             : "result";
         router.push(youtubeHref(cur, range.from, range.to, channelIds));
         router.refresh();
-      } else {
-        const tr = r.has_transcript === false ? " · 자막없음" : "";
+      } else if (r.has_transcript === false) {
+        // 자막없음 → 자동 요약 안 함(STT 비용). 대기 탭 「요약」으로 원할 때만 STT.
         setMsg(
-          `가져오기 ${r.status}: ${r.title || r.video_id} (${r.date_kst})${tr}`,
+          `가져오기 ${r.status}: ${r.title || r.video_id} (${r.date_kst}) · 자막없음 — 대기 탭에서 「요약」 누르면 STT로 진행`,
         );
         router.push(youtubeHref("pending", range.from, range.to, channelIds));
         router.refresh();
+      } else {
+        setJobDateKst(r.date_kst);
+        const j = await postJson<JobStatus>("/api/youtube-summarize-job", {
+          channel_id: r.channel_id,
+          video_id: r.video_id,
+          title: r.title || r.video_id,
+          force: false,
+        });
+        setJob(j);
+        setMsg(`요약 시작: ${r.title || r.video_id} (${r.date_kst})`);
       }
       setVideoUrl("");
     } catch (e) {
@@ -219,10 +270,14 @@ export function YoutubeOpsBar({
           type="button"
           size="sm"
           variant="outline"
-          disabled={!!busy || !videoUrl.trim()}
+          disabled={!!busy || jobRunning || !videoUrl.trim()}
           onClick={onCollectUrl}
         >
-          {busy === "url" ? "가져오는 중…" : "주소로 가져오기"}
+          {busy === "url"
+            ? "가져오는 중…"
+            : jobRunning
+              ? "요약 진행 중…"
+              : "주소로 요약"}
         </Button>
       </div>
 
@@ -236,8 +291,9 @@ export function YoutubeOpsBar({
         {" · "}
         채널: {channels ? `${channels.length}개 선택` : "등록 전체"}
         <br />
-        <b className="text-foreground/80">주소로 가져오기</b>: 영상 1건 DB 적재 → 대기
-        (조회 기간 밖이면 필터 자동 확장)
+        <b className="text-foreground/80">주소로 요약</b>: 영상 1건 적재 → 자막 있으면
+        바로 요약(완료 시 요약완료 탭) · 이미 요약됨은 스킵 · 자막없으면 대기로만
+        (STT는 대기 탭에서 수동)
         <br />
         <b className="text-foreground/80">요약</b>:{" "}
         <b>대기</b> 탭에서 미요약 행 클릭 → 「요약」 (완료 후 요약완료 탭)
@@ -259,6 +315,15 @@ export function YoutubeOpsBar({
         </span>
       </label>
 
+      {job && (
+        <p className="text-xs text-muted-foreground">
+          잡 <span className="font-mono text-fin-gold">{job.job_id}</span> · 상태{" "}
+          <b className={job.status === "error" ? "text-destructive" : "text-foreground"}>
+            {job.status}
+          </b>
+          {job.message ? ` · ${job.message}` : ""}
+        </p>
+      )}
       {msg && <p className="text-xs text-fin-gold">{msg}</p>}
       {err && <p className="text-xs text-destructive break-all">{err}</p>}
     </div>
