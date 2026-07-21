@@ -168,6 +168,8 @@ export interface YoutubeVideoSummary {
   issues: { title?: string; summary?: string; time_hint?: string | null }[];
   bullets: string[];
   risk_or_caveat: string | null;
+  /** 원본 대본 길이 */
+  transcript_chars?: number | null;
   /** discovery 추출 조인. 없으면 [] */
   stocks?: YoutubeSummaryStock[];
 }

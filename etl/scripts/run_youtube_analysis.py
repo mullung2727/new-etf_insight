@@ -28,6 +28,14 @@ except ImportError:
     from youtube_langgraph.youtube_analysis_langgraph import run_video
 
 
+"""자동 요약 대상 대본 길이 범위. 하한은 2분 이내 쇼츠·티저 배제용.
+
+실측: 5분짜리 속보 코너가 2,925자 → 3,000은 과하게 잘림. 2,000이면 쇼츠만 걸림.
+"""
+MIN_TRANSCRIPT_CHARS = 2000
+MAX_TRANSCRIPT_CHARS = 60000
+
+
 def _date_from_iso(s: str) -> dt.date:
     return dt.date.fromisoformat(s)
 
@@ -54,8 +62,14 @@ def list_videos(
         "v.date_kst <= ?",
     ]
     if require_transcript:
-        clauses += ["v.transcript IS NOT NULL", "TRIM(v.transcript) != ''"]
+        clauses += [
+            "v.transcript IS NOT NULL",
+            "TRIM(v.transcript) != ''",
+            "length(v.transcript) BETWEEN ? AND ?",
+        ]
     args: list[object] = [date_from, date_to]
+    if require_transcript:
+        args += [MIN_TRANSCRIPT_CHARS, MAX_TRANSCRIPT_CHARS]
 
     tables = {
         r[0]

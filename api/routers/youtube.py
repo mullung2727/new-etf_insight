@@ -256,7 +256,7 @@ def list_youtube_summaries(
         if has_videos:
             sql = f"""
                 SELECT s.channel_id, s.video_id, s.date_kst, s.summary_json,
-                       v.title, v.url
+                       v.title, v.url, length(v.transcript)
                 FROM youtube_video_summaries s
                 LEFT JOIN youtube_videos v
                   ON v.channel_id=s.channel_id AND v.video_id=s.video_id
@@ -266,7 +266,7 @@ def list_youtube_summaries(
             rows = con.execute(sql, args).fetchall()
         else:
             sql = f"""
-                SELECT channel_id, video_id, date_kst, summary_json, NULL, NULL
+                SELECT channel_id, video_id, date_kst, summary_json, NULL, NULL, NULL
                 FROM youtube_video_summaries
                 {where}
                 ORDER BY date_kst DESC, video_id
@@ -278,7 +278,7 @@ def list_youtube_summaries(
         )
 
     out: list[YoutubeVideoSummary] = []
-    for channel_id, video_id, date_kst, summary_json, title, url in rows:
+    for channel_id, video_id, date_kst, summary_json, title, url, chars in rows:
         s = _loads(summary_json, {})
         if not isinstance(s, dict):
             s = {}
@@ -299,6 +299,7 @@ def list_youtube_summaries(
                 issues=s.get("issues") or [],
                 bullets=s.get("bullets") or [],
                 risk_or_caveat=s.get("risk_or_caveat"),
+                transcript_chars=chars,
                 stocks=stocks,
             )
         )

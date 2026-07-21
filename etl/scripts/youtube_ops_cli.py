@@ -175,6 +175,18 @@ def op_summarize(payload: dict[str, Any]) -> dict[str, Any]:
                 ph = ",".join("?" * len(channel_ids))
                 clauses.append(f"v.channel_id IN ({ph})")
                 args.extend(channel_ids)
+            try:
+                from scripts.run_youtube_analysis import (
+                    MAX_TRANSCRIPT_CHARS,
+                    MIN_TRANSCRIPT_CHARS,
+                )
+            except ImportError:
+                from run_youtube_analysis import (
+                    MAX_TRANSCRIPT_CHARS,
+                    MIN_TRANSCRIPT_CHARS,
+                )
+            clauses.append("length(v.transcript) BETWEEN ? AND ?")
+            args.extend([MIN_TRANSCRIPT_CHARS, MAX_TRANSCRIPT_CHARS])
 
             tables = {
                 r[0]

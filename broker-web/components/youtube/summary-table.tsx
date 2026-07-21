@@ -68,6 +68,11 @@ function StockMentionBlock({ stocks }: { stocks: YoutubeSummaryStock[] }) {
   );
 }
 
+function formatChars(n: number | null | undefined): string {
+  if (n == null || n <= 0) return "—";
+  return `${n.toLocaleString()}자`;
+}
+
 export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
 
@@ -83,6 +88,7 @@ export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] })
           <col className="w-28" />
           <col className="w-32" />
           <col />
+          <col className="w-20" />
           <col className="w-16" />
         </colgroup>
         <thead>
@@ -91,6 +97,7 @@ export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] })
             <th className="px-3 py-2 font-medium">날짜</th>
             <th className="px-3 py-2 font-medium">채널</th>
             <th className="px-3 py-2 font-medium">제목</th>
+            <th className="px-3 py-2 font-medium">대본</th>
             <th className="px-3 py-2 font-medium">링크</th>
           </tr>
         </thead>
@@ -145,6 +152,9 @@ export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] })
                       </span>
                     )}
                   </td>
+                  <td className="px-3 py-2.5 font-mono text-xs tabular-nums text-muted-foreground whitespace-nowrap">
+                    {formatChars(v.transcript_chars)}
+                  </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     <a
                       href={url}
@@ -159,7 +169,7 @@ export function YoutubeSummaryTable({ items }: { items: YoutubeVideoSummary[] })
                 </tr>
                 {open && (
                   <tr className="border-b border-border/60 bg-muted/20">
-                    <td colSpan={5} className="space-y-3 px-4 py-3 pl-10">
+                    <td colSpan={6} className="space-y-3 px-4 py-3 pl-10">
                       {v.headline && (
                         <p className="text-sm text-foreground/90">{v.headline}</p>
                       )}

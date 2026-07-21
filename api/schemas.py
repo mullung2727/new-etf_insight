@@ -204,6 +204,7 @@ class YoutubeVideoSummary(_Base):
     issues: list[Any] = []
     bullets: list[str] = []
     risk_or_caveat: str | None = None
+    transcript_chars: int | None = None  # 원본 대본 길이 (영상 행 삭제 시 None)
     # discovery 추출 결과 조인. 없거나 비discovery면 []
     stocks: list[YoutubeSummaryStock] = []
 
