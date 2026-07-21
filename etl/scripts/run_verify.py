@@ -104,12 +104,15 @@ def mark_unconfirmed(watchlist_db: Path, date: str, ticker: str) -> None:
 
 # ── broker ───────────────────────────────────────────────────────────────────
 
-def fetch_order_history(broker_url: str, date: str) -> list[dict] | None:
-    """GET {broker_url}/orders/history?date=. 실패 시 None."""
+def fetch_order_history(broker_url: str, date: str, side: str = "buy") -> list[dict] | None:
+    """GET {broker_url}/orders/history?date=&side=. 실패 시 None.
+
+    kt00007은 매수/매도를 sell_tp로 나눠 조회한다 — 매도 체결 대조는 side="sell" 필수.
+    """
     try:
         resp = requests.get(
             f"{broker_url}/orders/history",
-            params={"date": date},
+            params={"date": date, "side": side},
             timeout=REQUEST_TIMEOUT,
         )
         resp.raise_for_status()

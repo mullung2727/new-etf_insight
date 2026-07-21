@@ -67,8 +67,10 @@ class PullbackExitTest(unittest.TestCase):
         mark_sell_ordered(self.db, position, "000077", "tp")
         self.assertEqual(load_positions(self.db), [])
         history = [{"order_no": "77", "cntr_uv": 1030, "cntr_qty": 3}]
-        with patch("scripts.run_pullback_exit.fetch_order_history", return_value=history):
+        with patch("scripts.run_pullback_exit.fetch_order_history", return_value=history) as fetch:
             self.assertEqual(settle_sell_orders(self.db, "http://broker", "20260716"), 1)
+        # kt00007은 매수/매도 분리 조회 — side="sell" 빠지면 매도 체결을 영원히 못 찾는다
+        self.assertEqual(fetch.call_args.kwargs.get("side"), "sell")
         with connect_ro(self.db) as con:
             row = con.execute("SELECT status,sell_status,sell_price,sell_qty,exit_reason FROM pullback_orders").fetchone()
         self.assertEqual(row, ("closed", "filled", 1030, 3, "tp"))

@@ -12,12 +12,12 @@ $commonArgs = @(
   "--stop-time", "15:25:00"
 )
 
+# -Wait 필수: 없으면 PS 5.1이 종료코드를 못 읽어 $null이 되고, $null -ne 0 이라 항상 rc=1
 $pullback = Start-Process -FilePath (Join-Path $etlDir ".venv\Scripts\python.exe") `
   -ArgumentList (@("scripts\run_pullback_exit.py") + $commonArgs) `
-  -WorkingDirectory $etlDir -WindowStyle Hidden -PassThru `
+  -WorkingDirectory $etlDir -WindowStyle Hidden -PassThru -Wait `
   -RedirectStandardOutput (Join-Path $logDir "pullback-exit-$date.out.log") `
   -RedirectStandardError (Join-Path $logDir "pullback-exit-$date.err.log")
 
-$pullback.WaitForExit()
 if ($pullback.ExitCode -ne 0) { exit 1 }
 exit 0

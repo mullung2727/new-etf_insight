@@ -118,7 +118,7 @@ def mark_sell_ordered(db_path: Path, position: dict[str, Any], order_no: str, re
 
 
 def settle_sell_orders(db_path: Path, broker_url: str, today: str) -> int:
-    history = fetch_order_history(broker_url, today)
+    history = fetch_order_history(broker_url, today, side="sell")
     if history is None:
         return 0
     fills = aggregate_fills(history)
