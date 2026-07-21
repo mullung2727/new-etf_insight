@@ -37,7 +37,7 @@ try:
     from scripts.build_krx_ohlcv import DEFAULT_DB_PATH as STOCK_DB
     from scripts.collect_youtube import DEFAULT_DB, ensure_schema as ensure_videos_schema
     from scripts.stock_names import load_name_to_code
-    from scripts.youtube_channels import load_discovery_channels
+    from scripts.youtube_channels import load_discovery_channels, load_summary_hint
     from scripts.youtube_stock_insights import (
         ensure_schema as ensure_insights_schema,
         upsert_stock_from_video,
@@ -48,7 +48,7 @@ except ImportError:
     from build_krx_ohlcv import DEFAULT_DB_PATH as STOCK_DB
     from collect_youtube import DEFAULT_DB, ensure_schema as ensure_videos_schema
     from stock_names import load_name_to_code
-    from youtube_channels import load_discovery_channels
+    from youtube_channels import load_discovery_channels, load_summary_hint
     from youtube_stock_insights import (
         ensure_schema as ensure_insights_schema,
         upsert_stock_from_video,
@@ -448,9 +448,11 @@ def node_reduce(
             f"[chunk {p.get('chunk_index')}] {p.get('headline')}\n"
             + "\n".join(f"  - {b}" for b in (p.get("bullets") or []))
         )
+    hint = load_summary_hint(state["channel_id"])
     prompt = _load_prompt("reduce_issues.md").format(
         title=state.get("title") or "",
         pages_block="\n\n".join(blocks),
+        channel_hint=hint or "(지정 없음 — 위 통합 원칙만 따르라)",
     )
     raw = gen(prompt, output_schema_path=REDUCE_SCHEMA, search=False)
     calls = int(state.get("llm_calls") or 0) + 1

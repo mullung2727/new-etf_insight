@@ -4,7 +4,11 @@ from __future__ import annotations
 import sqlite3
 import unittest
 
-from scripts.run_youtube_analysis import list_videos
+from scripts.run_youtube_analysis import (
+    MAX_TRANSCRIPT_CHARS,
+    MIN_TRANSCRIPT_CHARS,
+    list_videos,
+)
 
 
 class ListVideosTest(unittest.TestCase):
@@ -27,12 +31,16 @@ class ListVideosTest(unittest.TestCase):
             );
             """
         )
+        body = "본문" * (MIN_TRANSCRIPT_CHARS // 2 + 10)  # 길이 하한 통과용
         rows = [
-            ("UCauto000000000000000001", "vid_auto_pend", "2026-07-11", "body"),
-            ("UCauto000000000000000001", "vid_auto_done", "2026-07-11", "body"),
-            ("UCmanual0000000000000001", "vid_man_pend", "2026-07-11", "body"),
-            ("UCauto000000000000000001", "vid_old", "2026-07-09", "body"),
+            ("UCauto000000000000000001", "vid_auto_pend", "2026-07-11", body),
+            ("UCauto000000000000000001", "vid_auto_done", "2026-07-11", body),
+            ("UCmanual0000000000000001", "vid_man_pend", "2026-07-11", body),
+            ("UCauto000000000000000001", "vid_old", "2026-07-09", body),
             ("UCauto000000000000000001", "vid_notr", "2026-07-11", None),
+            ("UCauto000000000000000001", "vid_short", "2026-07-11", "짧은 쇼츠"),
+            ("UCauto000000000000000001", "vid_long", "2026-07-11",
+             "가" * (MAX_TRANSCRIPT_CHARS + 1)),
         ]
         for ch, vid, d, tr in rows:
             self.con.execute(
@@ -78,6 +86,19 @@ class ListVideosTest(unittest.TestCase):
                 ("UCauto000000000000000001", "vid_old"),
             },
         )
+
+    def test_length_range_excludes_short_and_long(self):
+        """쇼츠(하한 미만)·과장(상한 초과)은 자동 요약 대상에서 제외."""
+        vids = list_videos(
+            self.con,
+            date_from="2026-07-11",
+            date_to="2026-07-11",
+            channel_ids=["UCauto000000000000000001"],
+            pending_only=True,
+        )
+        self.assertNotIn(("UCauto000000000000000001", "vid_short"), vids)
+        self.assertNotIn(("UCauto000000000000000001", "vid_long"), vids)
+        self.assertIn(("UCauto000000000000000001", "vid_auto_pend"), vids)
 
     def test_require_transcript_false_includes_no_transcript(self):
         """STT 폴백용: 대본 없는 vid_notr 도 포함."""

@@ -83,6 +83,14 @@ def load_auto_summary_channels(
     return out
 
 
+def load_summary_hint(
+    channel_id: str, config_path: Path | str = DEFAULT_CONFIG
+) -> str:
+    """채널별 요약 특성 문구. 미등록 채널·미기입이면 빈 문자열."""
+    cfg = load_all_channels(config_path).get(channel_id) or {}
+    return str(cfg.get("summary_hint") or "").strip()
+
+
 def parse_channel_id(raw: str) -> str:
     """UC /channel/UC 만(네트워크 없음). 실패 시 ValueError."""
     s = (raw or "").strip()
