@@ -20,8 +20,9 @@
   },
   "UCOB62fKRT7b73X7tRxMuN2g": {
     "source_url": "https://www.youtube.com/channel/UCOB62fKRT7b73X7tRxMuN2g",
+    "feed_role": "discovery_source",
     "label": "박종훈의지식한방",
-    "summary_mode": "manual"
+    "summary_mode": "auto"
   },
   "UCiYbaVEODktcsh09454Grow": {
     "source_url": "https://www.youtube.com/channel/UCiYbaVEODktcsh09454Grow",
