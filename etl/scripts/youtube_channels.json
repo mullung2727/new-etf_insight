@@ -4,30 +4,35 @@
     "handle": "@unrealtech",
     "label": "unrealtech",
     "feed_role": "discovery_source",
-    "summary_mode": "auto"
+    "summary_mode": "auto",
+    "summary_hint": "1인 진행 기술 해설. 한 편에 한 주제(반도체·메모리·AI 인프라·우주)를 원리부터 파고든다. 기업명·종목명을 직접 말하지 않고 제품 스펙·공급망으로 돌려 말하는 경우가 많으니, 언급된 기술 변화가 어느 산업·기업 수요에 닿는지 이슈 안에 명시하라. 시장 전망이 아니라 기술적 근거가 핵심이므로 스펙·수치를 뭉개지 마라."
   },
   "UCxvdCnvGODDyuvnELnLkQWw": {
     "source_url": "https://www.youtube.com/channel/UCxvdCnvGODDyuvnELnLkQWw",
     "feed_role": "discovery_source",
     "label": "이효석아카데미",
-    "summary_mode": "auto"
+    "summary_mode": "auto",
+    "summary_hint": "게스트 대담과 라이브 방송이 주력. 통념을 숫자·차트로 반박하며 검증하는 방식이라, 각 이슈에 근거 수치(밸류에이션·실적·비중 등)를 반드시 남겨라. 진행자와 게스트 견해가 갈리면 합치지 말고 각각 남겨라. 제목이 [속보효]면 단일 뉴스 짧은 브리핑이다."
   },
   "UCWskYkV4c4S9D__rsfOl2JA": {
     "source_url": "https://www.youtube.com/channel/UCWskYkV4c4S9D__rsfOl2JA",
     "feed_role": "discovery_source",
     "label": "한경글로벌마켓",
-    "summary_mode": "auto"
+    "summary_mode": "auto",
+    "summary_hint": "코너제 채널이라 제목의 [대괄호]가 형식을 결정한다. [개장전요것만]·[김종학의 뉴욕, 지금]은 서로 무관한 해외 뉴스를 여러 건 연달아 전하는 브리핑이므로 뉴스 건별로 이슈를 나눠라(묶지 마라). 워싱턴나우·월가백브리핑·빈틈없이월가·실리콘밸리나우는 기자 1인이 한 주제를 파는 형식이다. 미국 증시·개별 빅테크·연준 발언이 중심이니 고유명사와 지표 수치를 그대로 살려라."
   },
   "UCOB62fKRT7b73X7tRxMuN2g": {
     "source_url": "https://www.youtube.com/channel/UCOB62fKRT7b73X7tRxMuN2g",
     "feed_role": "discovery_source",
     "label": "박종훈의지식한방",
-    "summary_mode": "auto"
+    "summary_mode": "auto",
+    "summary_hint": "1인 진행 매크로 논증. 한 편이 하나의 결론을 향해 역사 사례·통계를 단계적으로 쌓는 구조이므로, 주제가 하나여도 논증 단계(전제·사례·반론·결론)별로 이슈를 나눠라. 제목은 자극적이지만 본문은 대체로 신중하니, 제목과 본문 결론의 온도차가 있으면 risk_or_caveat에 적어라. 개별 종목보다 코스피·환율·유가 등 거시 변수 중심이다."
   },
   "UCiYbaVEODktcsh09454Grow": {
     "source_url": "https://www.youtube.com/channel/UCiYbaVEODktcsh09454Grow",
     "feed_role": "discovery_source",
     "label": "손에잡히는경제",
-    "summary_mode": "auto"
+    "summary_mode": "auto",
+    "summary_hint": "코너제 채널이라 제목 형식이 구조를 알려준다. [손경제]·[글로벌리포트]는 제목에서 `|`로 나뉜 항목이 각각 완전히 독립된 주제이므로 반드시 주제별로 이슈를 분리하고 서로 섞지 마라. 제목이 '- 이름 소속' 형태면 전문가 1인 대담이라 한 주제를 깊게 파며, 진행자 질문에 답이 갈리는 지점마다 논점이 바뀐다. [커피타임]은 잡담 비중이 크고 협찬이 섞이므로 투자 가치 있는 논점만 남기고 협찬 여부는 risk_or_caveat에 적어라."
   }
 }
