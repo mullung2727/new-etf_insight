@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
         handle: body.handle,
         discovery: !!body.discovery,
         summaryMode: body.summaryMode === "auto" ? "auto" : "manual",
+        summaryHint: typeof body.summaryHint === "string" ? body.summaryHint : undefined,
       });
     }
     return NextResponse.json(await listChannels());
@@ -50,6 +51,7 @@ export async function PUT(req: NextRequest) {
       handle: body.handle,
       discovery: !!body.discovery,
       summaryMode: body.summaryMode === "auto" ? "auto" : "manual",
+      summaryHint: typeof body.summaryHint === "string" ? body.summaryHint : undefined,
     });
     return NextResponse.json(await listChannels());
   } catch (err) {

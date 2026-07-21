@@ -33,7 +33,7 @@ except ImportError:
 실측: 5분짜리 속보 코너가 2,925자 → 3,000은 과하게 잘림. 2,000이면 쇼츠만 걸림.
 """
 MIN_TRANSCRIPT_CHARS = 2000
-MAX_TRANSCRIPT_CHARS = 60000
+MAX_TRANSCRIPT_CHARS = 35000
 
 
 def _date_from_iso(s: str) -> dt.date:

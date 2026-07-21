@@ -15,6 +15,8 @@ export type Channel = {
   discovery: boolean;
   /** auto: 스케줄 요약 대상. manual: 자동 요약 안 함. 수동은 항상 가능. */
   summaryMode: SummaryMode;
+  /** 요약 프롬프트에 주입할 채널 특성. 빈 문자열이면 범용 원칙만 적용. */
+  summaryHint: string;
 };
 
 type Entry = {
@@ -23,6 +25,7 @@ type Entry = {
   feed_role?: string;
   label?: string;
   summary_mode?: string;
+  summary_hint?: string;
 };
 type FileMap = Record<string, Entry>;
 
@@ -152,6 +155,7 @@ export function entryToChannel(key: string, e: Entry): Channel {
     handle: e.handle,
     discovery: e.feed_role === "discovery_source",
     summaryMode: parseSummaryMode(e.summary_mode),
+    summaryHint: e.summary_hint || "",
   };
 }
 
@@ -161,6 +165,7 @@ export function channelToEntry(c: {
   handle?: string;
   discovery: boolean;
   summaryMode?: SummaryMode;
+  summaryHint?: string;
 }): Entry {
   const e: Entry = {
     source_url: `https://www.youtube.com/channel/${c.key}`,
@@ -170,6 +175,8 @@ export function channelToEntry(c: {
   if (c.label && c.label !== c.key) e.label = c.label;
   const mode = c.summaryMode === "auto" ? "auto" : "manual";
   e.summary_mode = mode;
+  const hint = (c.summaryHint || "").trim();
+  if (hint) e.summary_hint = hint;
   return e;
 }
 
@@ -201,6 +208,7 @@ export async function addChannel(input: {
   handle?: string;
   discovery: boolean;
   summaryMode?: SummaryMode;
+  summaryHint?: string;
 }) {
   const key = await resolveChannelId(input.url);
   const [active, deleted] = await Promise.all([
@@ -215,6 +223,7 @@ export async function addChannel(input: {
     handle: input.handle,
     discovery: input.discovery,
     summaryMode: input.summaryMode ?? "manual",
+    summaryHint: input.summaryHint,
   });
   await writeMap(ACTIVE_PATH(), active);
   return key;
@@ -226,6 +235,7 @@ export async function editChannel(input: {
   handle?: string;
   discovery: boolean;
   summaryMode?: SummaryMode;
+  summaryHint?: string;
 }) {
   const active = await readMap(ACTIVE_PATH());
   if (!active[input.key]) throw new Error(`없는 채널: ${input.key}`);
@@ -237,6 +247,7 @@ export async function editChannel(input: {
     handle: input.handle ?? prev.handle,
     discovery: input.discovery,
     summaryMode: input.summaryMode ?? prevMode,
+    summaryHint: input.summaryHint ?? prev.summary_hint,
   });
   await writeMap(ACTIVE_PATH(), active);
 }

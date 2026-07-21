@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,9 +14,15 @@ type Channel = {
   handle?: string;
   discovery: boolean;
   summaryMode: SummaryMode;
+  summaryHint: string;
 };
 type Data = { active: Channel[]; deleted: Channel[] };
-type RowEdit = { label: string; discovery: boolean; summaryMode: SummaryMode };
+type RowEdit = {
+  label: string;
+  discovery: boolean;
+  summaryMode: SummaryMode;
+  summaryHint: string;
+};
 
 export function YoutubePanel() {
   const [data, setData] = useState<Data>({ active: [], deleted: [] });
@@ -60,6 +66,7 @@ export function YoutubePanel() {
       label: c.label,
       discovery: c.discovery,
       summaryMode: c.summaryMode ?? "manual",
+      summaryHint: c.summaryHint ?? "",
     };
   const dirty = (c: Channel) => {
     const r = edit[c.key];
@@ -67,7 +74,8 @@ export function YoutubePanel() {
       !!r &&
       (r.label !== c.label ||
         r.discovery !== c.discovery ||
-        r.summaryMode !== (c.summaryMode ?? "manual"))
+        r.summaryMode !== (c.summaryMode ?? "manual") ||
+        r.summaryHint !== (c.summaryHint ?? ""))
     );
   };
   const patchRow = (c: Channel, p: Partial<RowEdit>) =>
@@ -141,6 +149,9 @@ export function YoutubePanel() {
           <li>
             수동 요약 버튼은 <b>모든 채널</b>에서 사용 가능.
           </li>
+          <li>
+            <b>요약 특성</b> → 요약 프롬프트에 그대로 주입. 비우면 범용 원칙만 적용.
+          </li>
         </ul>
       </div>
 
@@ -159,7 +170,8 @@ export function YoutubePanel() {
           {data.active.map((c) => {
             const r = rowOf(c);
             return (
-              <tr key={c.key} className="border-b border-border/50">
+              <Fragment key={c.key}>
+                <tr className="border-b border-border/50">
                 <td className="py-2 pr-3">
                   <Input
                     value={r.label}
@@ -206,7 +218,20 @@ export function YoutubePanel() {
                     삭제
                   </Button>
                 </td>
-              </tr>
+                </tr>
+                <tr key={`${c.key}-hint`} className="border-b border-border/50">
+                  <td colSpan={6} className="pb-3">
+                    <textarea
+                      value={r.summaryHint}
+                      onChange={(e) => patchRow(c, { summaryHint: e.target.value })}
+                      rows={2}
+                      placeholder="요약 특성(선택) — 예: 하루치 뉴스에서 독립 주제 3개를 다룸. 주제별로 분리해 요약할 것."
+                      className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-xs leading-relaxed"
+                      aria-label={`${c.label} 요약 특성`}
+                    />
+                  </td>
+                </tr>
+              </Fragment>
             );
           })}
         </tbody>
