@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
+from unittest.mock import Mock, patch
 
 from scripts.run_pullback_order import (
     candidate_trading_days,
@@ -15,6 +16,7 @@ from scripts.run_pullback_order import (
     order_budget,
     order_qty,
     rank_candidates,
+    record_signal_note,
 )
 
 
@@ -167,6 +169,33 @@ class PullbackCandidateGuardTest(unittest.TestCase):
         self.assertEqual(order_budget(600_000, 3, 250_000), 200_000)
         self.assertEqual(order_qty(200_000, 10_000), 20)
         self.assertEqual(order_qty(200_000, 300_000), 0)
+
+
+class RecordSignalNoteTest(unittest.TestCase):
+    CANDIDATE = {"watchlist_date": "20260714", "signal_date": "20260721", "ticker": "017180",
+                 "prior_low": 1211, "day_open": 1200, "signal_price": 1251}
+    CONFIG = {"max_hold_days": 3}
+
+    @patch("scripts.run_pullback_order.requests.post")
+    @patch("scripts.run_pullback_order.requests.get")
+    def test_creates_note_with_reason_and_no_target_price(self, get, post):
+        get.return_value = Mock(json=Mock(return_value=[]))
+        post.return_value = Mock(json=Mock(return_value={"uid": "note-1"}))
+        uid = record_signal_note("http://b", self.CANDIDATE, {"order_no": "0160291"}, self.CONFIG)
+        self.assertEqual(uid, "note-1")
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["symbol"], "017180")
+        self.assertIn("lower_low_bullish_reversal", payload["buy_reason"])
+        self.assertIn("order_no=0160291", payload["memo"])
+        self.assertNotIn("target_price", payload)
+
+    @patch("scripts.run_pullback_order.requests.patch")
+    @patch("scripts.run_pullback_order.requests.get")
+    def test_updates_existing_note_instead_of_creating(self, get, patch_req):
+        get.return_value = Mock(json=Mock(return_value=[{"uid": "old", "created_at": "2026-07-21"}]))
+        uid = record_signal_note("http://b", self.CANDIDATE, {"order_no": "1"}, self.CONFIG)
+        self.assertEqual(uid, "old")
+        patch_req.assert_called_once()
 
 
 if __name__ == "__main__":

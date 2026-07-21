@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import duckdb
+import requests
 from dotenv import load_dotenv
 
 try:
@@ -39,6 +40,7 @@ except ImportError:
 
 MAX_WAIT_DAYS = 5
 STRATEGY = "lower_low_bullish_reversal"
+REQUEST_TIMEOUT = 15
 OPEN_PULLBACK_STATUSES = ("submitted", "unconfirmed", "confirmed", "sell_ordered")
 OPEN_CLOSE_BET_STATUSES = ("submitted", "unconfirmed", "confirmed")
 ROOT = Path(__file__).resolve().parents[2]
@@ -262,6 +264,38 @@ def persist_order_result(db_path: Path, candidate: dict[str, Any], qty: int, res
         )
 
 
+def record_signal_note(
+    broker_url: str, candidate: dict[str, Any], result: dict[str, Any], config: dict[str, Any]
+) -> str:
+    """주문 직후 전략 근거만 투자노트에 기록한다(체결가 확정 전).
+
+    target_price는 평균단가가 필요해 여기서 쓰지 않는다 — 16:00 verify 배치가
+    체결 확정 후 채운다. 종목당 노트는 하나이므로 기존 노트가 있으면 갱신한다.
+    """
+    payload = {
+        "holding_period": f"매수 다음 {config['max_hold_days']}번째 거래일까지",
+        "buy_reason": f"[{STRATEGY}] 전일 저가 이탈 후 15:19 양봉 반전",
+        "memo": (f"watchlist={candidate['watchlist_date']}; signal={candidate['signal_date']}; "
+                 f"prior_low={candidate['prior_low']}; day_open={candidate['day_open']}; "
+                 f"signal_price={candidate['signal_price']}; order_no={result.get('order_no', '')}"),
+    }
+    notes = requests.get(
+        f"{broker_url}/notes", params={"symbol": candidate["ticker"]}, timeout=REQUEST_TIMEOUT
+    )
+    notes.raise_for_status()
+    existing = notes.json()
+    if existing:
+        uid = min(existing, key=lambda item: (item.get("created_at", ""), item["uid"]))["uid"]
+        response = requests.patch(f"{broker_url}/notes/{uid}", json=payload, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        return uid
+    response = requests.post(
+        f"{broker_url}/notes", json={"symbol": candidate["ticker"], **payload}, timeout=REQUEST_TIMEOUT
+    )
+    response.raise_for_status()
+    return response.json()["uid"]
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="lower-low 양봉반전 15:19 매수 배치")
     parser.add_argument("--dry-run", default="true")
@@ -310,6 +344,16 @@ def main(argv: list[str] | None = None) -> int:
                 broker_url, candidate["ticker"], qty, "buy", "pullback_order", dry_run, now=now
             )
         persist_order_result(DEFAULT_WATCHLIST_DB, candidate, qty, result)
+        if not dry_run and result["status"] == "submitted":
+            try:
+                note_uid = record_signal_note(broker_url, candidate, result, config)
+                with connect_rw(DEFAULT_WATCHLIST_DB) as con:
+                    con.execute(
+                        "UPDATE pullback_orders SET note_uid=? WHERE watchlist_date=? AND ticker=?",
+                        (note_uid, candidate["watchlist_date"], candidate["ticker"]),
+                    )
+            except Exception as exc:  # 노트 실패로 주문 배치를 멈추지 않음 — verify가 재시도
+                print(f"[pullback] NOTE FAIL {candidate['ticker']} {exc}")
         print(
             f"[pullback] BUY {candidate['ticker']} watchlist={candidate['watchlist_date']} "
             f"signal_date={candidate['signal_date']} prior_low={candidate['prior_low']} "
