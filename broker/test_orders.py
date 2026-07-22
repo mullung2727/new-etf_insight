@@ -131,6 +131,54 @@ class TestPlaceOrderRecords(_OrdersTestBase):
         self.assertEqual(_trade_rows(self.db), [])
 
 
+class TestFriendlyOrderError(unittest.TestCase):
+    """_friendly_order_error — 키움 원문에서 사람 메시지를 뽑고, '모의투자 장종료'류만
+    장중 안내로 바꾼다. '모의투자' 글자만으로 다른 에러(매도가능수량 부족 등)를
+    장중 안내로 덮어쓰던 버그 회귀 방지."""
+
+    def _friendly(self, raw: str, env: str = "paper") -> str:
+        from unittest.mock import patch
+
+        from kiwoom.client import KiwoomError
+        from routers import orders as orders_router
+
+        with patch("routers.orders.get_current_env", return_value=env):
+            return orders_router._friendly_order_error(KiwoomError(raw))
+
+    def test_paper_market_closed_maps_to_hours_message(self):
+        out = self._friendly("kt10001 return_code=20: [2000](RC4058:모의투자 장종료)")
+        self.assertIn("장 중", out)
+
+    def test_paper_insufficient_qty_surfaces_real_reason(self):
+        # 이게 버그였다 — 장중인데 '장 중에만 가능'으로 가려졌음.
+        out = self._friendly(
+            "kt10001 return_code=20: [2000](800033:모의투자 매도가능수량이 부족합니다.)"
+        )
+        self.assertIn("매도가능수량", out)
+        self.assertNotIn("장 중(09:00", out)
+
+    def test_real_env_ignores_paper_branch(self):
+        out = self._friendly(
+            "kt10001 return_code=20: [2000](800033:모의투자 매도가능수량이 부족합니다.)",
+            env="real",
+        )
+        self.assertIn("매도가능수량", out)
+
+    def test_known_subcode_appends_hint(self):
+        # 관측된 서브코드(800033)엔 원문 + 행동지침을 덧붙인다.
+        out = self._friendly(
+            "kt10001 return_code=20: [2000](800033:모의투자 매도가능수량이 부족합니다.)"
+        )
+        self.assertIn("매도가능수량", out)   # 원문 보존
+        self.assertIn("T+2", out)            # 힌트 부착
+
+    def test_unknown_subcode_no_hint(self):
+        # 매핑 없는 코드는 원문만(추정 금지).
+        out = self._friendly("kt10001 return_code=20: [2000](999999:알 수 없는 사유)")
+        self.assertIn("알 수 없는 사유", out)
+        self.assertNotIn("(", out.replace("알 수 없는 사유", ""))
+
+
 class TestOrderHistoryWrapper(unittest.TestCase):
     """kiwoom.orders.get_order_history — kt00007 body + 연속조회 병합."""
 

@@ -22,6 +22,14 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 _AFTER_HOURS_PATTERNS = re.compile(r"장 ?종료|시간외|업무시간|시장.*종료|개장.*전")
 _TICKER_PREFIX = re.compile(r"^\D+")  # stk_cd "A069500" → "069500"
+# 키움은 사람 메시지를 "[코드](서브코드:메시지)"로 감싼다 — 서브코드와 텍스트를 뽑는다.
+_KIWOOM_MSG = re.compile(r"\(([A-Z0-9]+):([^)]+)\)")
+
+# 관측된 주문거절 서브코드 → 사용자 행동지침. 원문 메시지는 그대로 두고 hint만 덧붙인다.
+# 키움 문서에 서브코드 테이블이 없어 미리 채우지 않고, 실제 만난 코드만 자기학습식으로 추가.
+_ORDER_HINT = {
+    "800033": "당일 매수분(T+2 미결제)이거나 기존 매도주문이 수량을 잡고 있는지 확인",
+}
 
 
 def _to_int(value: Any) -> int:
@@ -42,13 +50,20 @@ def _to_float(value: Any) -> float:
 
 def _friendly_order_error(exc: KiwoomError) -> str:
     msg = str(exc)
-    if get_current_env() == "paper" and "모의투자" in msg:
+    # 키움 원문에서 서브코드와 사람 메시지를 뽑는다("800033", "매도가능수량이 부족..." 등).
+    inner = _KIWOOM_MSG.search(msg)
+    code = inner.group(1) if inner else ""
+    text = inner.group(2).strip() if inner else msg
+    # '모의투자 장종료'류(장 시간 밖)만 장중 안내로 바꾼다. "모의투자" 글자만으로
+    # 매도가능수량 부족 등 다른 원인을 장중 안내로 덮어쓰지 않는다.
+    if get_current_env() == "paper" and "모의투자" in text and _AFTER_HOURS_PATTERNS.search(text):
         return "모의투자는 장 중(09:00~15:30)에만 가능합니다"
-    if _AFTER_HOURS_PATTERNS.search(msg):
-        return f"장 시간 외 주문 불가: {msg}"
-    # Strip the leading "TR_ID HTTP xxx: " or "TR_ID return_code=N: " prefix if present
-    clean = re.sub(r"^[A-Z0-9_]+ (?:HTTP \d+|return_code=\S+): ", "", msg)
-    return clean or msg
+    hint = _ORDER_HINT.get(code)
+    if hint:
+        return f"{text} ({hint})"
+    if _AFTER_HOURS_PATTERNS.search(text):
+        return f"장 시간 외 주문 불가: {text}"
+    return text or msg
 
 
 @router.post(
