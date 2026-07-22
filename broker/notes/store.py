@@ -101,6 +101,25 @@ def list_notes(
     return notes
 
 
+_ACTIVE_STATUSES = {"idea", "open", "partial"}
+
+
+def active_note_for_symbol(symbol: str) -> Note | None:
+    """해당 종목의 활성(idea/open/partial) 노트 1건. 없으면 None.
+
+    종목당 노트 1개 원칙의 '수동 생성' 가드용. closed만 있으면(재관심) None을
+    돌려 새 노트를 허용한다. 자동연결(autolink)은 store.create_note를 직접 써서
+    이 가드를 거치지 않는다.
+    """
+    symbol = normalize_symbol(symbol)
+    if not symbol:
+        return None
+    for n in list_notes(symbol=symbol):
+        if n.status.value in _ACTIVE_STATUSES:
+            return n
+    return None
+
+
 def merge_notes_by_symbol(symbol: str) -> str | None:
     """Merge duplicate notes for one symbol into the oldest note."""
     symbol = normalize_symbol(symbol)

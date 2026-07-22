@@ -236,5 +236,70 @@ class MuteGuard(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
 
 
+class DuplicateGuard(unittest.TestCase):
+    """수동 노트 생성은 종목당 활성 노트(idea/open/partial)가 있으면 거부(409).
+
+    체결 자동연결(autolink.create_note)은 store 직접 호출이라 이 가드에 안 걸린다.
+    """
+
+    def setUp(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        os.unlink(path)
+        self.db = Path(path)
+        db.NOTES_DB_PATH = self.db
+        db._conn = None
+        db.init()
+        self._orig_resolve = store.resolve_name
+        store.resolve_name = lambda symbol: None
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from routers import notes as notes_router
+
+        app = FastAPI()
+        app.include_router(notes_router.router)
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        store.resolve_name = self._orig_resolve
+        if db._conn is not None:
+            db._conn.close()
+            db._conn = None
+        self.db.unlink(missing_ok=True)
+
+    def test_active_note_for_symbol_finds_idea(self):
+        note = store.create_note(NoteCreate(symbol="005930"))
+        found = store.active_note_for_symbol("005930")
+        self.assertEqual(found.uid, note.uid)
+
+    def test_active_note_for_symbol_ignores_closed(self):
+        note = store.create_note(NoteCreate(symbol="005930"))
+        store.update_note(note.uid, NoteUpdate(status=NoteStatus.closed))
+        self.assertIsNone(store.active_note_for_symbol("005930"))
+
+    def test_active_note_normalizes_prefix(self):
+        note = store.create_note(NoteCreate(symbol="005930"))
+        self.assertEqual(store.active_note_for_symbol("A005930").uid, note.uid)
+
+    def test_create_rejected_when_active_exists(self):
+        store.create_note(NoteCreate(symbol="005930"))
+        r = self.client.post("/notes", json={"symbol": "005930"})
+        self.assertEqual(r.status_code, 409)
+        # 새 노트가 만들어지지 않는다.
+        self.assertEqual(len(store.list_notes(symbol="005930")), 1)
+
+    def test_create_allowed_when_only_closed(self):
+        note = store.create_note(NoteCreate(symbol="005930"))
+        store.update_note(note.uid, NoteUpdate(status=NoteStatus.closed))
+        r = self.client.post("/notes", json={"symbol": "005930"})
+        self.assertEqual(r.status_code, 200)
+
+    def test_create_allowed_for_new_symbol(self):
+        store.create_note(NoteCreate(symbol="005930"))
+        r = self.client.post("/notes", json={"symbol": "000660"})
+        self.assertEqual(r.status_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()

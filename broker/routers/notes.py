@@ -33,9 +33,19 @@ def _seoul_today() -> str:
     response_model=Note,
 )
 def create_note(req: NoteCreate) -> Note:
-    """새 투자노트(투자 thesis)를 만든다. 종목·목표가·보유기간·매수이유를
-    기록한다. status는 open으로 시작. 매수/매도 체결은 add_note_event로 따로
-    기록한다."""
+    """새 투자노트(투자 thesis)를 만든다. 종목·목표가·진입가·보유기간·매수이유를
+    기록한다. status는 idea로 시작. 매수/매도 체결은 add_note_event로 따로 기록한다.
+
+    종목당 노트 1개 원칙: 해당 종목에 활성 노트(idea/open/partial)가 이미 있으면
+    409로 거부한다(closed만 있으면 재관심으로 허용). 재매수는 새 노트가 아니라
+    기존 노트에 이벤트를 누적한다.
+    """
+    existing = store.active_note_for_symbol(req.symbol)
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{existing.symbol} 활성 노트가 이미 있습니다 (상태: {existing.status.value})",
+        )
     return store.create_note(req)
 
 

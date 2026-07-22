@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { brokerClient, type NoteDetail, type NoteStatus, type EventType } from "@/lib/broker-client";
+import { brokerClient, type Note, type NoteDetail, type NoteStatus, type EventType } from "@/lib/broker-client";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +54,8 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
   const [fHoldingPeriod, setFHoldingPeriod] = useState("");
   const [fBuyReason, setFBuyReason] = useState("");
   const [fMemo, setFMemo] = useState("");
+  // 종목당 노트 1개 원칙 — 활성 노트(idea/open/partial)가 이미 있으면 생성 막는다.
+  const [conflict, setConflict] = useState<Note | null>(null);
 
   useEffect(() => {
     if (uid === null) return;
@@ -64,6 +66,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
       setFHoldingPeriod("");
       setFBuyReason("");
       setFMemo("");
+      setConflict(null);
       setError(null);
       return;
     }
@@ -77,6 +80,28 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, [uid, isNew, symbol]);
+
+  // 새 노트: 종목코드 6자리 채워지면 활성 노트 존재 여부 확인.
+  useEffect(() => {
+    if (!isNew) return;
+    const s = fSymbol.trim();
+    if (s.length < 6) {
+      setConflict(null);
+      return;
+    }
+    let cancelled = false;
+    brokerClient
+      .listNotes({ symbol: s })
+      .then((ns) => {
+        if (!cancelled) setConflict(ns.find((n) => n.status !== "closed") ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setConflict(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fSymbol, isNew]);
 
   useEffect(() => {
     if (mode === "edit" && detail) {
@@ -192,6 +217,12 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
                 value={fSymbol}
                 onChange={(e) => setFSymbol(e.target.value)}
               />
+              {conflict && (
+                <p className="mt-1 text-xs text-status-loss">
+                  이미 {STATUS_LABEL[conflict.status]} 노트가 있습니다. 종목당 노트는 1개 —
+                  기존 노트에서 이어가세요.
+                </p>
+              )}
             </div>
             <div>
               <Label>목표가</Label>
@@ -244,7 +275,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={onClose} disabled={saving}>취소</Button>
-              <Button onClick={handleCreate} disabled={saving || !fSymbol.trim()}>
+              <Button onClick={handleCreate} disabled={saving || !fSymbol.trim() || !!conflict}>
                 {saving ? "저장 중..." : "저장"}
               </Button>
             </DialogFooter>
@@ -311,6 +342,12 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
                   <span className="font-mono tabular-nums text-status-idea">
                     {formatKrw(detail.entry_price)}
                   </span>
+                </div>
+              )}
+              {detail.entry_price != null && !detail.alerted_on && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">알림</span>
+                  <span className="text-status-idea">대기중 (진입가 도달 시)</span>
                 </div>
               )}
               {detail.alerted_on && (
