@@ -52,15 +52,16 @@ def create_note(data: NoteCreate) -> Note:
     conn.execute(
         """
         INSERT INTO notes
-            (uid, symbol, name, status, target_price, holding_period,
+            (uid, symbol, name, status, target_price, entry_price, holding_period,
              buy_reason, memo, user_id, created_at, updated_at)
-        VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, 'idea', ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             uid,
             symbol,
             name,
             data.target_price,
+            data.entry_price,
             data.holding_period,
             data.buy_reason,
             data.memo,
@@ -166,6 +167,35 @@ def update_note(uid: str, data: NoteUpdate) -> NoteDetail | None:
         if cur.rowcount == 0:
             return None
     return get_note(uid)
+
+
+def list_idea_alert_candidates(today: str) -> list[Note]:
+    """진입가 도달 감시 대상 idea 노트. today=YYYYMMDD.
+
+    idea 상태 + entry_price 있음 + 알림 안 끔 + 오늘 아직 미발송인 것만.
+    """
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT * FROM notes
+        WHERE status = 'idea'
+          AND entry_price IS NOT NULL
+          AND alert_off = 0
+          AND (alerted_on IS NULL OR alerted_on != ?)
+        """,
+        (today,),
+    ).fetchall()
+    return [Note(**dict(r)) for r in rows]
+
+
+def mark_alerted(uid: str, today: str) -> None:
+    """진입가 도달 알림을 오늘 보냈다고 기록. 하루 1회 발송 멱등 키."""
+    conn = get_conn()
+    conn.execute(
+        "UPDATE notes SET alerted_on = ?, updated_at = ? WHERE uid = ?",
+        (today, _now(), uid),
+    )
+    conn.commit()
 
 
 def delete_note(uid: str) -> bool:

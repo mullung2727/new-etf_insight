@@ -23,6 +23,7 @@
   --color-status-profit: var(--status-profit);
   --color-status-loss:   var(--status-loss);
   /* 투자노트 상태 */
+  --color-status-idea:    var(--status-idea);
   --color-status-open:    var(--status-open);
   --color-status-partial: var(--status-partial);
   --color-status-closed:  var(--status-closed);
@@ -119,6 +120,7 @@
 :root {
   --status-profit:  oklch(0.70 0.18 145);   /* emerald */
   --status-loss:    oklch(0.627 0.258 29);  /* red */
+  --status-idea:    oklch(0.70 0.13 240);   /* sky — 조사/관심 단계 */
   --status-open:    oklch(0.70 0.18 145);   /* emerald */
   --status-partial: oklch(0.75 0.16 77);    /* amber */
   --status-closed:  oklch(0.6 0 0 / 0.6);

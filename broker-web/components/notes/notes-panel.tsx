@@ -64,6 +64,7 @@ export function NotesPanel({ symbol }: NotesPanelProps) {
         <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as NoteStatus | "")}>
           <TabsList>
             <TabsTrigger value="">전체</TabsTrigger>
+            <TabsTrigger value="idea">관심</TabsTrigger>
             <TabsTrigger value="open">진행중</TabsTrigger>
             <TabsTrigger value="partial">분할매도</TabsTrigger>
             <TabsTrigger value="closed">종료</TabsTrigger>

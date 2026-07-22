@@ -6,12 +6,14 @@ import { formatKrw, formatPercent } from "@/lib/formatters";
 import type { Note, NotePnl, NoteStatus } from "@/lib/broker-client";
 
 const STATUS_LABEL: Record<NoteStatus, string> = {
+  idea: "관심",
   open: "진행중",
   partial: "분할매도",
   closed: "종료",
 };
 
 const STATUS_CLASS: Record<NoteStatus, string> = {
+  idea: "text-status-idea border-status-idea/30",
   open: "text-status-open border-status-open/30",
   partial: "text-status-partial border-status-partial/30",
   closed: "text-muted-foreground border-border",
@@ -41,12 +43,19 @@ export function NoteCard({ note, pnl, onClick }: NoteCardProps) {
           <span className="font-mono text-xs text-muted-foreground">{note.symbol}</span>
         </span>
         <div className="flex items-center gap-2">
-          {pnl && (
-            <span className={cn("text-xs font-medium tabular-nums", pnlColor)}>
-              {formatPercent(pnl.net_pnl_pct)} {pnl.net_pnl >= 0 ? "▲" : "▼"}
-              {formatKrw(Math.abs(pnl.net_pnl))}
-            </span>
-          )}
+          {note.status === "idea"
+            ? note.entry_price != null && (
+                <span className="text-xs font-medium tabular-nums text-status-idea">
+                  진입가 {formatKrw(note.entry_price)}
+                  {note.alerted_on && " · 도달"}
+                </span>
+              )
+            : pnl && (
+                <span className={cn("text-xs font-medium tabular-nums", pnlColor)}>
+                  {formatPercent(pnl.net_pnl_pct)} {pnl.net_pnl >= 0 ? "▲" : "▼"}
+                  {formatKrw(Math.abs(pnl.net_pnl))}
+                </span>
+              )}
           <Badge variant="outline" className={cn("text-xs", STATUS_CLASS[note.status])}>
             {STATUS_LABEL[note.status]}
           </Badge>

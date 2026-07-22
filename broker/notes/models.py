@@ -16,6 +16,7 @@ class _Base(BaseModel):
 
 
 class NoteStatus(str, Enum):
+    idea = "idea"        # 매수 전 조사 단계, 체결 이벤트 없음
     open = "open"        # 보유 중, 미청산
     partial = "partial"  # 일부 매도
     closed = "closed"    # 전량 매도
@@ -31,6 +32,9 @@ class EventType(str, Enum):
 class NoteCreate(_Base):
     symbol: str = Field(description="종목코드 6자리, 예: 005930")
     target_price: int | None = Field(default=None, description="목표가(원)")
+    entry_price: int | None = Field(
+        default=None, description="매수 진입 희망가(원). 도달하면 알림"
+    )
     holding_period: str | None = Field(
         default=None, description="예상 보유기간(자유텍스트), 예: '3개월'"
     )
@@ -44,6 +48,10 @@ class NoteUpdate(_Base):
 
     status: NoteStatus | None = None
     target_price: int | None = None
+    entry_price: int | None = None
+    alert_off: int | None = Field(
+        default=None, ge=0, le=1, description="1이면 진입가 도달 알림을 끈다"
+    )
     holding_period: str | None = None
     buy_reason: str | None = None
     memo: str | None = None
@@ -55,6 +63,9 @@ class Note(_Base):
     name: str | None = None
     status: NoteStatus
     target_price: int | None = None
+    entry_price: int | None = None
+    alert_off: int = 0
+    alerted_on: str | None = None
     holding_period: str | None = None
     buy_reason: str | None = None
     memo: str | None = None

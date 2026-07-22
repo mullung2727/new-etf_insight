@@ -25,6 +25,7 @@ const EVENT_LABEL: Record<EventType, string> = {
 };
 
 const STATUS_LABEL: Record<NoteStatus, string> = {
+  idea: "관심",
   open: "진행중",
   partial: "분할매도",
   closed: "종료",
@@ -49,6 +50,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
   const [fSymbol, setFSymbol] = useState("");
   const [fStatus, setFStatus] = useState<NoteStatus>("open");
   const [fTargetPrice, setFTargetPrice] = useState("");
+  const [fEntryPrice, setFEntryPrice] = useState("");
   const [fHoldingPeriod, setFHoldingPeriod] = useState("");
   const [fBuyReason, setFBuyReason] = useState("");
   const [fMemo, setFMemo] = useState("");
@@ -58,6 +60,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
     if (isNew) {
       setFSymbol(symbol ?? "");
       setFTargetPrice("");
+      setFEntryPrice("");
       setFHoldingPeriod("");
       setFBuyReason("");
       setFMemo("");
@@ -79,6 +82,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
     if (mode === "edit" && detail) {
       setFStatus(detail.status);
       setFTargetPrice(detail.target_price != null ? String(detail.target_price) : "");
+      setFEntryPrice(detail.entry_price != null ? String(detail.entry_price) : "");
       setFHoldingPeriod(detail.holding_period ?? "");
       setFBuyReason(detail.buy_reason ?? "");
       setFMemo(detail.memo ?? "");
@@ -93,6 +97,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
       await brokerClient.createNote({
         symbol: fSymbol.trim(),
         target_price: fTargetPrice ? Number(fTargetPrice) : null,
+        entry_price: fEntryPrice ? Number(fEntryPrice) : null,
         holding_period: fHoldingPeriod || null,
         buy_reason: fBuyReason || null,
         memo: fMemo || null,
@@ -114,6 +119,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
       await brokerClient.updateNote(detail.uid, {
         status: fStatus,
         target_price: fTargetPrice ? Number(fTargetPrice) : null,
+        entry_price: fEntryPrice ? Number(fEntryPrice) : null,
         holding_period: fHoldingPeriod || null,
         buy_reason: fBuyReason || null,
         memo: fMemo || null,
@@ -121,6 +127,21 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
       const updated = await brokerClient.getNote(detail.uid);
       setDetail(updated);
       setMode("view");
+      onSaved();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleAlert = async () => {
+    if (!detail) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await brokerClient.updateNote(detail.uid, { alert_off: detail.alert_off ? 0 : 1 });
+      setDetail(await brokerClient.getNote(detail.uid));
       onSaved();
     } catch (e) {
       setError(String(e));
@@ -180,6 +201,16 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
                 placeholder="85000"
                 value={fTargetPrice}
                 onChange={(e) => setFTargetPrice(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>진입가 (도달 시 알림)</Label>
+              <Input
+                className="mt-1 font-mono tabular-nums"
+                type="number"
+                placeholder="68000"
+                value={fEntryPrice}
+                onChange={(e) => setFEntryPrice(e.target.value)}
               />
             </div>
             <div>
@@ -274,6 +305,27 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
                   <span className="font-mono tabular-nums">{formatKrw(detail.target_price)}</span>
                 </div>
               )}
+              {detail.entry_price != null && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">진입가 (알림)</span>
+                  <span className="font-mono tabular-nums text-status-idea">
+                    {formatKrw(detail.entry_price)}
+                  </span>
+                </div>
+              )}
+              {detail.alerted_on && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    진입가 도달 알림 {detail.alert_off ? "꺼짐" : "켜짐"}
+                    <span className="ml-1.5 text-[11px] text-muted-foreground/70">
+                      ({detail.alerted_on.slice(0, 4)}-{detail.alerted_on.slice(4, 6)}-{detail.alerted_on.slice(6)} 도달)
+                    </span>
+                  </span>
+                  <Button variant="outline" size="sm" onClick={handleToggleAlert} disabled={saving}>
+                    {detail.alert_off ? "알림 켜기" : "알림 끄기"}
+                  </Button>
+                </div>
+              )}
               {detail.holding_period && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">보유기간</span>
@@ -323,6 +375,7 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
                   <span className="flex flex-1 text-left text-sm">{STATUS_LABEL[fStatus]}</span>
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="idea">관심</SelectItem>
                   <SelectItem value="open">진행중</SelectItem>
                   <SelectItem value="partial">분할매도</SelectItem>
                   <SelectItem value="closed">종료</SelectItem>
@@ -336,6 +389,15 @@ export function NoteModal({ uid, symbol, onClose, onSaved }: NoteModalProps) {
                 type="number"
                 value={fTargetPrice}
                 onChange={(e) => setFTargetPrice(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>진입가 (도달 시 알림)</Label>
+              <Input
+                className="mt-1 font-mono tabular-nums"
+                type="number"
+                value={fEntryPrice}
+                onChange={(e) => setFEntryPrice(e.target.value)}
               />
             </div>
             <div>

@@ -117,8 +117,21 @@ def get_note(uid: str) -> NoteDetail:
     response_model=NoteDetail,
 )
 def update_note(uid: str, req: NoteUpdate) -> NoteDetail:
-    """투자노트를 부분 수정한다. status(open/partial/closed)·목표가·보유기간·
-    매수이유·메모를 갱신한다. None인 필드는 그대로 둔다."""
+    """투자노트를 부분 수정한다. status(idea/open/partial/closed)·목표가·진입가·
+    알림끄기·보유기간·매수이유·메모를 갱신한다. None인 필드는 그대로 둔다.
+
+    alert_off=1(알림 끄기)은 진입가가 한 번이라도 도달(alerted_on 존재)한 뒤에만
+    허용한다 — 도달 전 무음 처리를 막아, 끄기가 '도달 시점의 판단'으로만 쓰이게 한다.
+    """
+    if req.alert_off == 1:
+        current = store.get_note(uid)
+        if current is None:
+            raise HTTPException(status_code=404, detail="note not found")
+        if current.alerted_on is None:
+            raise HTTPException(
+                status_code=400,
+                detail="alert can be muted only after a price hit",
+            )
     note = store.update_note(uid, req)
     if note is None:
         raise HTTPException(status_code=404, detail="note not found")

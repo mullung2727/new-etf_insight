@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 
 from kiwoom.ws.event_bus import bus
 from kiwoom.ws.manager import KiwoomWSManager
-from notes import autolink
+from notes import alert, autolink
 from routers import events as events_router
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,14 @@ _ws_manager = KiwoomWSManager()
 # 한국은 DST가 없으므로 고정 오프셋(notes/trades.py와 동일 패턴).
 _KST = timezone(timedelta(hours=9))
 _FILL_DEBOUNCE = 3.0  # 연속 체결을 모아 한 번만 재동기화
+_IDEA_POLL = 300  # idea 진입가 감시 폴링 주기(초). 5분 = 하루 78콜, 1콜/tick.
+
+
+def _in_market_hours(now: datetime) -> bool:
+    """장중(평일 09:00~15:30 KST)인가. idea 진입가 감시 창."""
+    if now.weekday() >= 5:  # 토·일
+        return False
+    return (now.hour, now.minute) >= (9, 0) and (now.hour, now.minute) <= (15, 30)
 
 
 def _seoul_today() -> str:
@@ -65,16 +73,36 @@ async def _fill_sync_loop() -> None:
         bus.unsubscribe("00", queue)
 
 
+async def _idea_alert_loop() -> None:
+    """장중 5분마다 idea 노트의 진입가 도달을 감시해 Discord로 알린다.
+
+    판정·발송은 alert.run_idea_alert_check(동기, kt/ka 시세 콜)에 위임하고 여기선
+    시간대 게이팅과 주기만 담당한다. 키움 콜은 to_thread로 오프로드. 한 tick의
+    실패가 루프를 죽이지 않도록 감싼다(_fill_sync_loop와 동일 패턴).
+    """
+    while True:
+        try:
+            if _in_market_hours(datetime.now(_KST)):
+                today = _seoul_today()
+                await asyncio.to_thread(alert.run_idea_alert_check, today)
+        except Exception:  # noqa: BLE001
+            logger.exception("idea 진입가 감시 실패")
+        await asyncio.sleep(_IDEA_POLL)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await _ws_manager.start()
     fill_task = asyncio.create_task(_fill_sync_loop())
+    idea_task = asyncio.create_task(_idea_alert_loop())
     yield
-    fill_task.cancel()
-    try:
-        await fill_task
-    except asyncio.CancelledError:
-        pass
+    for task in (fill_task, idea_task):
+        task.cancel()
+    for task in (fill_task, idea_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     await _ws_manager.stop()
 
 logging.basicConfig(

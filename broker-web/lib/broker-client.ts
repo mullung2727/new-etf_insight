@@ -130,7 +130,7 @@ export interface UnfilledOrder {
 
 // --- Notes types ---
 
-export type NoteStatus = "open" | "partial" | "closed";
+export type NoteStatus = "idea" | "open" | "partial" | "closed";
 export type EventType = "buy" | "add_buy" | "partial_sell" | "sell";
 
 export interface Note {
@@ -139,6 +139,9 @@ export interface Note {
   name: string | null;
   status: NoteStatus;
   target_price: number | null;
+  entry_price: number | null;
+  alert_off: number;
+  alerted_on: string | null;
   holding_period: string | null;
   buy_reason: string | null;
   memo: string | null;
@@ -186,6 +189,7 @@ export interface NotePnlSummaryItem {
 export interface NoteCreate {
   symbol: string;
   target_price?: number | null;
+  entry_price?: number | null;
   holding_period?: string | null;
   buy_reason?: string | null;
   memo?: string | null;
@@ -195,6 +199,8 @@ export interface NoteCreate {
 export interface NoteUpdate {
   status?: NoteStatus;
   target_price?: number | null;
+  entry_price?: number | null;
+  alert_off?: number;
   holding_period?: string | null;
   buy_reason?: string | null;
   memo?: string | null;

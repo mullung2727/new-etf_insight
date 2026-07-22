@@ -25,8 +25,11 @@ CREATE TABLE IF NOT EXISTS notes (
     uid            TEXT PRIMARY KEY,
     symbol         TEXT NOT NULL,
     name           TEXT,
-    status         TEXT NOT NULL DEFAULT 'open',
+    status         TEXT NOT NULL DEFAULT 'idea',
     target_price   INTEGER,
+    entry_price    INTEGER,
+    alert_off      INTEGER NOT NULL DEFAULT 0,
+    alerted_on     TEXT,
     holding_period TEXT,
     buy_reason     TEXT,
     memo           TEXT,
@@ -81,6 +84,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
     note_cols = {row["name"] for row in conn.execute("PRAGMA table_info(notes)")}
     if "name" not in note_cols:
         conn.execute("ALTER TABLE notes ADD COLUMN name TEXT")
+    if "entry_price" not in note_cols:
+        conn.execute("ALTER TABLE notes ADD COLUMN entry_price INTEGER")
+        conn.execute("ALTER TABLE notes ADD COLUMN alert_off INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE notes ADD COLUMN alerted_on TEXT")
+        # idea 도입 전 DB에는 체결 이벤트가 하나도 없는 open 노트가 있다 —
+        # 실제로는 매수 전 조사 단계였으므로 idea로 내린다. 컬럼을 막 추가한
+        # 이번 한 번만 실행(사용자가 이후 open으로 되돌린 걸 되돌리지 않도록).
+        conn.execute(
+            "UPDATE notes SET status = 'idea' WHERE status = 'open' "
+            "AND uid NOT IN (SELECT DISTINCT note_uid FROM note_events)"
+        )
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(note_events)")}
     if "order_no" not in cols:
         conn.execute("ALTER TABLE note_events ADD COLUMN order_no TEXT")
