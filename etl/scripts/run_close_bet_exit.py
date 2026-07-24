@@ -21,7 +21,6 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -35,18 +34,25 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.run_verify import normalize_order_no
     from scripts.wl_sqlite import connect_ro, connect_rw
     from scripts.close_bet_config import load as load_close_bet_config
+    # 연속매매 창(09:00~15:20) 판정은 주문창 판정과 동일 로직 — 공용 함수를 도메인 이름으로 씀
+    from scripts.trading_batch_common import (
+        REQUEST_TIMEOUT, fetch_realized,
+        in_order_window as in_trading_window, now_seoul as _now_seoul,
+    )
 except ImportError:
     from notify import send_discord
     from run_close_bet import ensure_exit_columns
     from run_verify import normalize_order_no
     from wl_sqlite import connect_ro, connect_rw
     from close_bet_config import load as load_close_bet_config
+    from trading_batch_common import (
+        REQUEST_TIMEOUT, fetch_realized,
+        in_order_window as in_trading_window, now_seoul as _now_seoul,
+    )
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
 DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
-
-REQUEST_TIMEOUT = 15
 
 
 # ── 순수 판정함수 (부작용 0, 단위테스트 핵심) ──────────────────────────────────
@@ -76,11 +82,6 @@ def _parse_hms(hms: str) -> tuple[int, int, int]:
 def _at(now: datetime, hms: str) -> datetime:
     h, m, s = _parse_hms(hms)
     return now.replace(hour=h, minute=m, second=s, microsecond=0)
-
-
-def in_trading_window(now: datetime, start_hms: str, end_hms: str) -> bool:
-    """연속매매 창(09:00~15:20)인지. 장전·종가단일가 제외."""
-    return _at(now, start_hms) <= now < _at(now, end_hms)
 
 
 def is_force_time(now: datetime, force_hms: str) -> bool:
@@ -184,10 +185,6 @@ def is_in_flight(ticker: str, ordered: set[str], unfilled: set[str]) -> bool:
 
 # ── broker REST 경유 ───────────────────────────────────────────────────────────
 
-def _now_seoul() -> datetime:
-    return datetime.now(ZoneInfo("Asia/Seoul"))
-
-
 def fetch_quotes(broker_url: str, codes: list[str]) -> dict[str, dict]:
     """GET /quotes?codes= → {stk_cd: quote dict}. 실패 시 {}."""
     if not codes:
@@ -254,23 +251,6 @@ def fetch_sell_fills(broker_url: str, date: str) -> dict[str, dict]:
         if not agg["cntr_uv"]:
             agg["cntr_uv"] = int(item.get("cntr_uv") or 0)
     return by_no
-
-
-def fetch_realized(broker_url: str, ticker: str) -> dict | None:
-    """GET /orders/realized/{ticker} → net 실현손익(키움 권위값). 실패/미발견 시 None.
-
-    당일 매도 체결 후 호출해 수수료·세금 차감된 pnl_pct·손익금을 받는다.
-    """
-    try:
-        resp = requests.get(
-            f"{broker_url}/orders/realized/{ticker}", timeout=REQUEST_TIMEOUT,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data if data.get("found") else None
-    except Exception as exc:
-        print(f"[exit] /orders/realized 조회 실패({ticker}): {exc}")
-        return None
 
 
 def place_sell_via_broker(broker_url: str, ticker: str, qty: int) -> dict:

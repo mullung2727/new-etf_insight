@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from scripts.trading_batch_common import (
     available_cash,
     current_price,
+    fetch_realized,
     in_order_window,
     market_order,
     quote_snapshot,
@@ -59,6 +60,21 @@ class TradingBatchCommonTest(unittest.TestCase):
         post.return_value = response
         result = market_order("http://broker", "005930", 2, "buy", "pullback_order", False)
         self.assertEqual(result["status"], "rejected")
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_fetch_realized_found(self, get: Mock):
+        response = Mock(json=lambda: {"found": True, "pnl_pct": 4.8, "cmsn": 1,
+                                      "tax": 2, "sel_pl_won": 100})
+        response.raise_for_status = Mock()
+        get.return_value = response
+        self.assertEqual(fetch_realized("http://broker", "005930")["pnl_pct"], 4.8)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_fetch_realized_not_found_returns_none(self, get: Mock):
+        response = Mock(json=lambda: {"found": False, "pnl_pct": 0.0})
+        response.raise_for_status = Mock()
+        get.return_value = response
+        self.assertIsNone(fetch_realized("http://broker", "005930"))
 
     def test_quantity_for_budget(self):
         self.assertEqual(quantity_for_budget(300000, 10000), 30)

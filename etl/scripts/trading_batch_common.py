@@ -57,6 +57,24 @@ def available_cash(broker_url: str) -> int | None:
         return None
 
 
+def fetch_realized(broker_url: str, ticker: str) -> dict | None:
+    """GET /orders/realized/{ticker} → net 실현손익(키움 권위값). 실패/미발견 시 None.
+
+    당일 매도 체결 후 호출해 수수료·세금 차감된 pnl_pct·손익금을 받는다.
+    키움 pnl_pct는 %(예: -4.84) — 분수 규약 DB에 넣을 땐 호출부에서 /100.
+    """
+    try:
+        response = requests.get(
+            f"{broker_url}/orders/realized/{ticker}", timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data if data.get("found") else None
+    except Exception as error:
+        print(f"[realized] /orders/realized 조회 실패({ticker}): {error}")
+        return None
+
+
 def market_order(
     broker_url: str, ticker: str, qty: int, side: str, source: str, dry_run: bool,
     *, now: datetime | None = None,

@@ -207,17 +207,7 @@ class TestBrokerSellHelpers(unittest.TestCase):
             out = fetch_unfilled_tickers("http://b")
         self.assertEqual(out, {"005930", "000660"})
 
-    def test_fetch_realized_found(self):
-        with patch.object(ex, "requests") as rq:
-            rq.get.return_value = _resp({"found": True, "pnl_pct": 4.8, "cmsn": 1,
-                                         "tax": 2, "sel_pl_won": 100})
-            out = ex.fetch_realized("http://b", "005930")
-        self.assertEqual(out["pnl_pct"], 4.8)
-
-    def test_fetch_realized_not_found_returns_none(self):
-        with patch.object(ex, "requests") as rq:
-            rq.get.return_value = _resp({"found": False, "pnl_pct": 0.0})
-            self.assertIsNone(ex.fetch_realized("http://b", "005930"))
+    # fetch_realized 단위테스트는 공용 모듈로 이동 → tests/test_trading_batch_common.py
 
     def test_fetch_sell_fills_aggregates_partial(self):
         with patch.object(ex, "requests") as rq:
