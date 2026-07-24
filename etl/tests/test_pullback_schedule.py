@@ -37,7 +37,11 @@ class PullbackScheduleTest(unittest.TestCase):
     def test_trading_exit_starts_one_pullback_worker(self):
         text = (OPS / "run-trading-exit.ps1").read_text(encoding="utf-8")
         self.assertEqual(text.count("Start-Process"), 1)
-        self.assertGreater(text.index("WaitForExit"), text.index("Start-Process"))
+        # ExitCode 판정 전 워커 종료를 기다려야 한다. PS 5.1은 -Wait 없이 -PassThru만
+        # 쓰면 ExitCode가 $null이라 $null -ne 0 으로 항상 rc=1(거짓 실패).
+        # 주석에도 "-Wait"이 있어 주석 제외 후 검사한다.
+        code = "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+        self.assertIn("-Wait", code)
 
     def test_xml_schedule_times_match_design(self):
         expected = {
