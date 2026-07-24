@@ -74,6 +74,9 @@ def create_pullback_orders_table(con: sqlite3.Connection) -> None:
             sold_at TEXT,
             exit_reason TEXT,
             pnl_pct REAL,
+            sell_cmsn INTEGER,
+            sell_tax INTEGER,
+            sell_pl_won INTEGER,
             note_uid TEXT,
             message TEXT,
             raw TEXT,
@@ -87,6 +90,9 @@ def create_pullback_orders_table(con: sqlite3.Connection) -> None:
         con.execute("ALTER TABLE pullback_orders ADD COLUMN remaining_hold_days INTEGER")
     if "last_hold_count_date" not in columns:
         con.execute("ALTER TABLE pullback_orders ADD COLUMN last_hold_count_date TEXT")
+    for col in ("sell_cmsn", "sell_tax", "sell_pl_won"):  # net 손익(키움 ka10077) 저장분
+        if col not in columns:
+            con.execute(f"ALTER TABLE pullback_orders ADD COLUMN {col} INTEGER")
 
 
 def is_terminal_watchlist_order(con: sqlite3.Connection, watchlist_date: str, ticker: str) -> bool:

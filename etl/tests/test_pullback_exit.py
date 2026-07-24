@@ -67,13 +67,30 @@ class PullbackExitTest(unittest.TestCase):
         mark_sell_ordered(self.db, position, "000077", "tp")
         self.assertEqual(load_positions(self.db), [])
         history = [{"order_no": "77", "cntr_uv": 1030, "cntr_qty": 3}]
-        with patch("scripts.run_pullback_exit.fetch_order_history", return_value=history) as fetch:
+        realized = {"found": True, "pnl_pct": 2.5, "cmsn": 30, "tax": 5, "sel_pl_won": 65}
+        with patch("scripts.run_pullback_exit.fetch_order_history", return_value=history) as fetch, \
+                patch("scripts.run_pullback_exit.fetch_realized", return_value=realized):
             self.assertEqual(settle_sell_orders(self.db, "http://broker", "20260716"), 1)
         # kt00007은 매수/매도 분리 조회 — side="sell" 빠지면 매도 체결을 영원히 못 찾는다
         self.assertEqual(fetch.call_args.kwargs.get("side"), "sell")
         with connect_ro(self.db) as con:
-            row = con.execute("SELECT status,sell_status,sell_price,sell_qty,exit_reason FROM pullback_orders").fetchone()
-        self.assertEqual(row, ("closed", "filled", 1030, 3, "tp"))
+            row = con.execute("SELECT status,sell_status,sell_price,sell_qty,exit_reason,"
+                              "pnl_pct,sell_cmsn,sell_tax,sell_pl_won FROM pullback_orders").fetchone()
+        # net 저장: 키움 %(-4.84식)를 /100 분수로, 수수료·세금·net손익금 원값
+        self.assertEqual(row, ("closed", "filled", 1030, 3, "tp", 0.025, 30, 5, 65))
+
+    def test_settle_falls_back_to_gross_pnl_when_realized_missing(self):
+        position = load_positions(self.db)[0]
+        mark_sell_ordered(self.db, position, "000077", "tp")
+        history = [{"order_no": "77", "cntr_uv": 1030, "cntr_qty": 3}]
+        with patch("scripts.run_pullback_exit.fetch_order_history", return_value=history), \
+                patch("scripts.run_pullback_exit.fetch_realized", return_value=None):
+            settle_sell_orders(self.db, "http://broker", "20260716")
+        with connect_ro(self.db) as con:
+            row = con.execute("SELECT pnl_pct,sell_cmsn,sell_tax,sell_pl_won FROM pullback_orders").fetchone()
+        # realized 없음 → gross(1030/1000-1=0.03), 수수료·세금 NULL
+        self.assertAlmostEqual(row[0], 0.03)
+        self.assertEqual(row[1:], (None, None, None))
 
 
 if __name__ == "__main__":

@@ -16,19 +16,22 @@ try:
     from scripts.run_pullback_order import DEFAULT_WATCHLIST_DB, create_pullback_orders_table
     from scripts.run_pullback_verify import aggregate_fills
     from scripts.run_verify import fetch_order_history, normalize_order_no
-    from scripts.trading_batch_common import market_order, now_seoul
+    from scripts.trading_batch_common import (
+        REQUEST_TIMEOUT, fetch_realized, market_order, now_seoul,
+    )
     from scripts.wl_sqlite import connect_ro, connect_rw
 except ImportError:
     from pullback_config import load
     from run_pullback_order import DEFAULT_WATCHLIST_DB, create_pullback_orders_table
     from run_pullback_verify import aggregate_fills
     from run_verify import fetch_order_history, normalize_order_no
-    from trading_batch_common import market_order, now_seoul
+    from trading_batch_common import (
+        REQUEST_TIMEOUT, fetch_realized, market_order, now_seoul,
+    )
     from wl_sqlite import connect_ro, connect_rw
 
 
 ROOT = Path(__file__).resolve().parents[2]
-REQUEST_TIMEOUT = 15
 
 
 def decide_exit(buy_bid: int | None, buy_price: int | None, tp: float, sl: float) -> str | None:
@@ -133,11 +136,20 @@ def settle_sell_orders(db_path: Path, broker_url: str, today: str) -> int:
             fill = fills.get(normalize_order_no(order_no))
             if not fill:
                 continue
-            pnl = fill["price"] / buy_price - 1 if buy_price else None
+            # net 손익(수수료·세금 차감) 우선 — 키움 ka10077. 조회 실패 시 gross 폴백.
+            realized = fetch_realized(broker_url, ticker)
+            if realized:
+                pnl = realized["pnl_pct"] / 100  # 키움 %(-4.84) → 분수 규약(-0.0484)
+                cmsn, tax, pl_won = realized["cmsn"], realized["tax"], realized["sel_pl_won"]
+            else:
+                pnl = fill["price"] / buy_price - 1 if buy_price else None
+                cmsn = tax = pl_won = None
             con.execute(
                 "UPDATE pullback_orders SET status='closed',sell_status='filled',sell_price=?,"
-                "sell_qty=?,sold_at=?,pnl_pct=? WHERE watchlist_date=? AND ticker=?",
-                (fill["price"], fill["qty"], now_seoul().isoformat(), pnl, watchlist_date, ticker),
+                "sell_qty=?,sold_at=?,pnl_pct=?,sell_cmsn=?,sell_tax=?,sell_pl_won=? "
+                "WHERE watchlist_date=? AND ticker=?",
+                (fill["price"], fill["qty"], now_seoul().isoformat(), pnl,
+                 cmsn, tax, pl_won, watchlist_date, ticker),
             )
             settled += 1
             print(
