@@ -1,283 +1,37 @@
 {
-  "generated_at": "2026-07-16T15:02:50+09:00",
+  "generated_at": "2026-07-23T15:00:28+09:00",
   "db_write": true,
-  "db_rows_written": 6,
+  "db_rows_written": 1,
   "operational_reports": [
-    "C:\\Users\\mullu\\.openclaw\\workspace\\reports\\watchlist_research_2026-07-16.json"
+    "C:\\Users\\mullu\\.openclaw\\workspace\\reports\\watchlist_research_2026-07-23.json"
   ],
   "results": [
     {
-      "date": "20260716",
+      "date": "20260723",
       "target": "D+1_OPEN_ABOVE_D_CLOSE",
-      "candidate_count": 6,
-      "scored_count": 6,
+      "candidate_count": 1,
+      "scored_count": 1,
       "scores": [
         {
-          "date": "20260716",
-          "as_of": "2026-07-16T15:00:00+09:00",
+          "date": "20260723",
+          "as_of": "2026-07-23T15:00:00+09:00",
           "old_score": null,
-          "ratio": 21.45728120791789,
-          "today_volume": 9225837,
-          "avg5_volume": 429963.0,
-          "trading_value": 56646639180,
-          "close": 6140,
-          "telegram_rows": 3,
-          "news_rows": 2,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiaEFVX3lxTFB5MkE2RkR0UmI4dE1XWGdmeXBLY1BiR1lNcW4yZ3RGeVVra3M1Y3pOQVI3d1MzRGJpaFBPdHhtODNPczBHUUlCMk9nb3AwQVNYRFRRV2xRVTMwODhzMG5CQ21WaTI4V1V2?oc=5",
-            "https://news.google.com/rss/articles/CBMihgFBVV95cUxQOEEzeHRvUkNiNHNybUQ4dm41WEpFTVZGdVhMSkJNenZfYTNLajFmUGdTU1Q1bzJDWnpwVEw0ZDVjZUFXZnIteU0wUnZjb3p2aS1odDZKaFEyODZGYnM5bVlGMU5ycUJWaUdTVHdHSDVSVmlsWk9iZndTa094Nll1Wk8zcFFldw?oc=5"
-          ],
-          "ticker": "000020",
-          "name": "동화약품",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 15,
-          "score_components": {
-            "catalyst_strength": 0,
-            "freshness": 0,
-            "confirmation": 0,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "high",
-            "priced_in_penalty": 20,
-            "exhaustion_level": "high",
-            "exhaustion_penalty": 15
-          },
-          "confidence": "medium",
-          "up_factors": [
-            "15:00 현재가는 전일 종가 대비 2.16% 상승",
-            "최근 5거래일 수익률이 23.54%로 강세"
-          ],
-          "down_factors": [
-            "확정 계약·허가·실적 등 직접적인 신규 재료가 확인되지 않음",
-            "장중 고점 대비 18.78% 하락해 상승분을 크게 반납",
-            "시가 대비 1.44% 하락해 장중 모멘텀이 약화",
-            "최근 5일 평균 대비 거래량이 21.46배로 급증한 상태에서 큰 폭의 고점 이탈 발생",
-            "전일부터 텔레그램에서 언급돼 당일 이전부터 관심이 형성됨"
-          ],
-          "news_summary": "당일 뉴스는 동화약품의 주가 급등과 VI 발동을 전달했지만, 상승을 뒷받침하는 구체적인 계약·허가·실적 재료는 제시하지 않았다.",
-          "telegram_summary": "7월 15일 단일 채널에서 종목명·코드가 언급됐으나 분석 내용과 독립적인 복수 채널 확인은 없다.",
-          "reasoning": "구체적인 사업 성과나 확정 이벤트가 없어 재료강도와 신선도는 0점으로 판정했다. 최근 5거래일간 23.54% 상승했고 재료 없이 장중 급등한 점을 고려해 선반영 수준을 높음으로 평가했다. 특히 고점 대비 18.78% 밀리고 시가 아래로 내려온 가운데 거래량이 평균의 21배를 넘어서 소진 위험을 높음으로 판정했다. 합산식은 50+0+0+0-0-0-20-15=15점이다.",
-          "evidence_quality": "moderate",
-          "llm_reported_probability_score": 15
-        },
-        {
-          "date": "20260716",
-          "as_of": "2026-07-16T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 23.791100759343596,
-          "today_volume": 7577123,
-          "avg5_volume": 318485.6,
-          "trading_value": 14836006834,
-          "close": 1958,
-          "telegram_rows": 0,
-          "news_rows": 2,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiUkFVX3lxTE5NanJzR2Q1QUhMY1BFRWNuZ3hkenkzUG1LYmt6QkR4WEYzVGhDNGQwaGZqUEtCbVFIUkFIVDVUSXVvOEhtN0d2bzA1ZE1oSFhOMlE?oc=5",
-            "https://news.google.com/rss/articles/CBMiUkFVX3lxTE9NLUVpaDJJSE1TVHVOSm55cXdCbWhqX3c1dUtOY3dScWN2YXdTeDZ3emNpQ09EcFpkNXRGdG0tQVE2VC0waXJsRWI2bVNqZG9iRUE?oc=5"
-          ],
-          "ticker": "004540",
-          "name": "깨끗한나라",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 37,
-          "score_components": {
-            "catalyst_strength": 5,
-            "freshness": 0,
-            "confirmation": 2,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "high",
-            "priced_in_penalty": 20,
-            "exhaustion_level": "low",
-            "exhaustion_penalty": 0
-          },
-          "confidence": "medium",
-          "up_factors": [
-            "마스크 테마 상승세가 신뢰 가능한 언론 기사에서 확인됨",
-            "15:00 현재 상한가 수준이며 고가 대비 하락률이 -0.051%로 매수세가 유지됨",
-            "시가 대비 27.31% 상승했고 거래량이 최근 5일 평균의 23.79배임"
-          ],
-          "down_factors": [
-            "확정 계약·허가·실적이 아닌 단순 테마 재료임",
-            "전일에도 동일한 마스크 테마 기사가 나와 새로운 정보가 없음",
-            "당일 29.93% 상승했고 5거래일 수익률도 44.72%여서 재료가 상당 부분 가격에 반영된 상태임"
-          ],
-          "news_summary": "깨끗한나라는 7월 15일과 16일 모두 마스크 테마 상승 종목으로 보도됐으나, 입력에는 신규 계약이나 실적 등 직접적인 기업 재료가 없다.",
-          "telegram_summary": "텔레그램 이력이 없어 독립적인 재료 확인이나 과열 여부를 보강할 근거가 없다.",
-          "reasoning": "재료강도는 구체적인 사업 성과가 없는 마스크 테마 상승이므로 5점이며, 전일에도 같은 내용이 보도돼 신선도는 0점이다. 당일 주가가 29.93% 상승해 상한가 수준이고 5거래일 수익률도 44.72%이므로 선반영 수준을 높음, 감점을 20점으로 판정했다. 다만 시가 대비 강한 상승과 고가 부근 가격 유지가 확인돼 고점 이탈에 따른 소진 감점은 적용하지 않았다. 합산식은 50+5+0+2-0-0-20-0=37점이다.",
-          "evidence_quality": "moderate",
-          "llm_reported_probability_score": 37
-        },
-        {
-          "date": "20260716",
-          "as_of": "2026-07-16T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 6.641878909883762,
-          "today_volume": 12770496,
-          "avg5_volume": 1922723.4,
-          "trading_value": 27711976320,
-          "close": 2170,
-          "telegram_rows": 0,
+          "ratio": 6.171412141579769,
+          "today_volume": 5840385,
+          "avg5_volume": 946361.2,
+          "trading_value": 47599137750,
+          "close": 8150,
+          "telegram_rows": 11,
           "news_rows": 1,
           "sources": [
-            "https://news.google.com/rss/articles/CBMiUkFVX3lxTE8wX2Qwb2pQbVFMaDl1QlNzMmI1T3R6eF84RkRNZkpuN2FfMi1BNWN1T3BOUVdndmhTVEtjS0Myc2praTR1TTh2bGZIZzRJXzBtbmc?oc=5"
+            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE9MYm10akphRHJhbi1MRGhzODRXWGhKVi1CYzY1M3Z0ZlpkN1YzODZCU2w3U2RxSXYxczl3LXlGWXBVRm9Rb3R2d0paVnY0X0doSzVR?oc=5"
           ],
-          "ticker": "012690",
-          "name": "모나리자",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 35,
-          "score_components": {
-            "catalyst_strength": 5,
-            "freshness": 3,
-            "confirmation": 2,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "high",
-            "priced_in_penalty": 20,
-            "exhaustion_level": "low",
-            "exhaustion_penalty": 5
-          },
-          "confidence": "medium",
-          "up_factors": [
-            "15:00 현재가가 당일 고가와 같아 고점 이탈 징후가 없음",
-            "시가 대비 23.30% 상승했고 5일 평균 대비 거래량이 6.64배로 매수세가 강함"
-          ],
-          "down_factors": [
-            "구체적인 계약·허가·실적이 아닌 마스크 테마 상승 재료임",
-            "주가가 이미 29.94% 상승해 재료가 상당 부분 가격에 반영됨",
-            "최근 5거래일 수익률이 60.50%로 단기 과열과 차익실현 가능성이 있음"
-          ],
-          "news_summary": "모나리자가 마스크 테마 상승세에 편승해 장중 강세를 보였다는 단일 보도가 확인됐다. 새로운 사업 성과나 확정 계약은 제시되지 않았다.",
-          "telegram_summary": "관련 텔레그램 이력은 없다.",
-          "reasoning": "재료는 마스크 테마 상승이라는 단순 업종 기대에 그쳐 재료강도를 5점으로 평가했다. 15:00 현재 상한가 수준인 29.94% 상승으로 재료가 상당 부분 선반영됐다고 판단해 20점을 감점했다. 다만 현재가가 당일 고가와 같고 시가 대비 상승폭도 커 고점 밀림에 따른 소진 증거는 약하지만, 최근 5일 60.50% 상승과 거래량 급증을 반영해 단기 과열 위험 5점을 적용했다.",
-          "evidence_quality": "moderate",
-          "llm_reported_probability_score": 35
-        },
-        {
-          "date": "20260716",
-          "as_of": "2026-07-16T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 4.538346508196562,
-          "today_volume": 2050975,
-          "avg5_volume": 451921.2,
-          "trading_value": 19176616250,
-          "close": 9350,
-          "telegram_rows": 2,
-          "news_rows": 7,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiUkFVX3lxTE1rZXdXV3F3OTBnM0hNU01sYjZKWDVvaFJsMTBNa1oyQlptSV9maFhCZTVjOU1IYkpRLXZWWEJZT29ZeENkM3duOGFhRFFCbzNzRmfSAVNBVV95cUxOMFpHV3RMVmlIUjd4Q1RHMW9ZUmR6Uk56NjlaX0xMb3FadGtIQ19GZGhXRjVlNFdGTmRBM1RTZzFDZlBQWmFEOUw4S3BXbnpacS11bw?oc=5",
-            "https://news.google.com/rss/articles/CBMiUkFVX3lxTE5FTTZPOFFYckJTVGdmVDRob2Ywd3hqbzY2SUw3YmNOQ0FoOFduVHhyamNoYWp0NWFCQkVDMTVJRHlSdFlrUnM0VERaMzl5a0x3ZGfSAVNBVV95cUxOODRtWmpIcWkzQzVyc2MxMmZoVkFjS2pwc0RwUXFpaE54VDJTNExUaWt5c2RPUm1fa3VpTWVCN0duUkZlTzhaWkdIT05scWVGaHgwMA?oc=5",
-            "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5iaDhxZGdyMWRKck1hNFNsaWEwRG1ENDdTNWR1dGVrTWFRYmdkb3h3cVpPSE1VVlZZVE40a3VGcE5YY0g5a2ZjWFZ3a0pHMDEyVXVNZTBiUklHNTTSAWBBVV95cUxQbGpkVG5yOE9nb1FpcWRDNDRPamY3N2xydjd1V1RNb3ZKV21jTmlzeVdUMm42dGxNcnZ5VEdVM3JoaVRKX2NselpDdWNsM2dJVkhBcVZsVlRWZ3U1VFU2YVg?oc=5",
-            "https://news.google.com/rss/articles/CBMiYEFVX3lxTFBneXJNZDI4aGVmM01KWnhVZzRTNzNzQ1d1SjUzZ2dCYTljcDFVZUFILVU0TU04LVVRSTRiZ1Nwc1plTEpiVDJVS2J0aFVrN2w1Vi1hc1U5dFRRVXBfbF9wNw?oc=5",
-            "https://news.google.com/rss/articles/CBMiYEFVX3lxTFBpeURGV0kwQWVPOWlxNU1kZDF3NmY3NnBYQTRQWjJrY2Z4akN6dWJyZS04dXVsVmo3Wl9nOVFzVE04R0RVRjlmeS1FOFpaeTVRTTZ5ZDVxVlFLa25rX2lNeNIBYEFVX3lxTFBpeURGV0kwQWVPOWlxNU1kZDF3NmY3NnBYQTRQWjJrY2Z4akN6dWJyZS04dXVsVmo3Wl9nOVFzVE04R0RVRjlmeS1FOFpaeTVRTTZ5ZDVxVlFLa25rX2lNeA?oc=5",
-            "https://news.google.com/rss/articles/CBMiaEFVX3lxTFBlZEZjODNBMUswMFZaN01Db1N1dFNFbUxtMFJNRUpTalFndHNfd1h0Mm1reFpzNE1fV0w5djViR2Z4cjY4dWJNU01PUkJHVUF1OU4wRkVabXl0R3VEZExERXktTVVicFZm?oc=5",
-            "https://news.google.com/rss/articles/CBMinAFBVV95cUxON3VKbXN1Z0VoSEI2ZnlmaGJ2SmpOakdNUlE5UnBzZ3hjU0txRGFwYTBQZHBHWjZqci12UGtQMGNDTjUwX0ZQVWtnVGYxWGhkMWRVdDlrX29hcHVCY1ZUZFVmQVAzdUpvTzN4VTVXbUJPcjhXZFRxLWFacU9qbi16VkJBa3V1OFNkbXZUZ3NhY2hRNkhMZ2UtZm9tVTXSAZwBQVVfeXFMTjd1Sm1zdWdFaEhCNmZ5ZmhidkpqTmpHTVJROVJwc2d4Y1NLcURhcGEwUGRwR1o2anItdlBrUDBjQ041MF9GUFVrZ1RmMVhoZDFkVXQ5a19vYXB1QmNWVGRVZkFQM3VKb08zeFU1V21CT3I4V2RUcS1hWnFPam4telZCQWt1dThTZG12VGdzYWNoUTZITGdlLWZvbVU1?oc=5"
-          ],
-          "ticker": "047920",
-          "name": "HLB제약",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 7,
-          "score_components": {
-            "catalyst_strength": 10,
-            "freshness": 0,
-            "confirmation": 2,
-            "negative_event_risk": 5,
-            "negative_trend_penalty": 15,
-            "priced_in_level": "high",
-            "priced_in_penalty": 20,
-            "exhaustion_level": "high",
-            "exhaustion_penalty": 15
-          },
-          "confidence": "high",
-          "up_factors": [
-            "HLB 간암 신약의 미국 승인 문제 일부 해소 기대가 그룹주 투자심리를 지지",
-            "15:00 기준 전일 대비 8.97% 상승과 5일 평균 대비 4.54배 거래량"
-          ],
-          "down_factors": [
-            "재료가 전일부터 반복 보도됐고 전일 상한가로 상당 부분 선반영",
-            "장중 고점 대비 11.21% 밀렸으며 시가 대비 10.10% 하락해 강한 소진 신호",
-            "최근 5거래일 수익률이 -23.61%로 최상위 하락 추세 감점 구간",
-            "미국 허가 확정이 아니라 불발 사유 일부 해소에 따른 기대여서 불확실성 잔존"
-          ],
-          "news_summary": "전일부터 HLB 간암 신약의 미국 승인 문제 일부 해소 기대가 보도되며 HLB그룹주가 급등했다. 당일에도 같은 재료를 다룬 후속 기사가 이어졌지만 새로운 확정 허가나 계약 내용은 확인되지 않았다.",
-          "telegram_summary": "7월 13일 단일 채널에서 종목명 또는 코드가 언급됐으나 분석 내용이 없어 독립적인 신규 재료 확인 근거로 사용하기 어렵다.",
-          "reasoning": "재료는 미국 허가의 확정이 아니라 문제 일부 해소에 따른 정성적 기대이고 HLB제약 자체의 직접 확정 재료도 아니어서 재료강도는 10점이다. 전일부터 같은 내용이 반복됐고 전일 상한가까지 기록해 선반영 수준은 높다. 15:00 현재 고점 대비 11.21% 밀리고 시가보다 10.10% 낮아 강한 소진·차익실현 신호로 판단했다. 합산식은 50+10+0+2-5-15-20-15=7점이다.",
-          "evidence_quality": "strong",
-          "llm_reported_probability_score": 7
-        },
-        {
-          "date": "20260716",
-          "as_of": "2026-07-16T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 8.984026276328636,
-          "today_volume": 8244030,
-          "avg5_volume": 917632.0,
-          "trading_value": 10651286760,
-          "close": 1292,
-          "telegram_rows": 0,
-          "news_rows": 4,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE1WMXdCRml1d25neDRQMDQ5Tm9JMFNjNnRKbWctSnpmUHYzSGVPVnMySjBwc2NRa0w5SV9uaFZsVmRCVU9YbEt6eE9CTlVwcEZ1V3lN?oc=5",
-            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE5weTM4Qm1wbUl3UTRRWTdrSWtkWVV4cU0wMlBXUmVDSUtfYnVsTUtMNlhUb2dnMEZzdzN3NExSNFZITGIxd2M0MTY2MzhTekYyaDR3?oc=5",
-            "https://news.google.com/rss/articles/CBMiUkFVX3lxTE5zSHRJN2EwS0laNjJfQVNIamdUOExEeVJSV2xZbmJfeWtoNGJFYmJJc1BtTl9jSGNqSFczalNLZENSLWZ4azJVRXFod0prUkZCamc?oc=5",
-            "https://news.google.com/rss/articles/CBMiYEFVX3lxTFAxZHZzUDR4UzVyXzZQRU9OQ25VbHJHZTRGS2htZTdyc3NOSG5hNEhBV2JSamdNRFBOelk5SG5UOG5OVEltNVB5QWRpa3VPbkZyY1JCaWpQZUhnNnR0enRycA?oc=5"
-          ],
-          "ticker": "065950",
-          "name": "웰크론",
+          "ticker": "317400",
+          "name": "자이에스앤디",
           "target": "D+1_OPEN_ABOVE_D_CLOSE",
           "probability_score": 42,
           "score_components": {
-            "catalyst_strength": 10,
-            "freshness": 7,
-            "confirmation": 2,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "high",
-            "priced_in_penalty": 12,
-            "exhaustion_level": "high",
-            "exhaustion_penalty": 15
-          },
-          "confidence": "high",
-          "up_factors": [
-            "인도네시아 국영 방산기업과 장갑차용 지뢰방호키트 공급 협력 소식",
-            "당일 처음 보도된 구체적 사업 협력 재료",
-            "최근 5거래일 수익률이 28.94%로 하락 추세 감점 없음"
-          ],
-          "down_factors": [
-            "확정 공급계약이나 계약 규모가 확인되지 않은 협력 단계",
-            "장중 고점 대비 17.71% 급락해 강한 차익실현 신호 발생",
-            "시가 대비 2.64% 하락한 채 거래돼 장중 모멘텀 약화",
-            "최근 5일간 28.94% 상승했고 당일 거래량이 5일 평균의 8.98배로 재료 선반영 가능성 큼"
-          ],
-          "news_summary": "웰크론이 인도네시아 국영 방산기업과 장갑차용 지뢰방호키트 공급 협력에 나선다는 소식이 당일 오전 보도됐다. 다만 확정 계약과 공급 규모는 입력에서 확인되지 않는다.",
-          "telegram_summary": "텔레그램 이력이 없어 추가적인 독립 확인이나 과열 정황은 확인되지 않는다.",
-          "reasoning": "재료는 구체적인 방산 공급 협력이지만 확정 계약이나 규모가 확인되지 않아 재료강도 10점으로 판정했다. 오전부터 보도된 뒤 장중 고가가 전일 종가 대비 크게 상승했고 최근 5일 수익률도 28.94%여서 상당 부분 선반영된 것으로 봤다. 특히 고점 대비 17.71% 밀리고 시가 아래로 하락했으며 거래량이 평균의 8.98배여서 소진 위험을 높게 판정했다. 합산식은 50+10+7+2-0-0-12-15=42점이다.",
-          "evidence_quality": "moderate",
-          "llm_reported_probability_score": 42
-        },
-        {
-          "date": "20260716",
-          "as_of": "2026-07-16T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 10.603153026083369,
-          "today_volume": 3360294,
-          "avg5_volume": 316914.6,
-          "trading_value": 48892277700,
-          "close": 14550,
-          "telegram_rows": 0,
-          "news_rows": 5,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE1jRmRBaFBWMUN2SllXN0JYV0VwU05zb255X3A2UzN5M05vNU5EallvYTQ4V0pHQzhQRmFTZDBiVWNFRFFfbU9IWFhZbHZhMXlualNz?oc=5",
-            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE4tNnpLeFA4c2JzS29qM1g0REN3bXVpOWh3ZTEtY0hnVVhVaGtGV1hhdHB3eFVUU1VlbWlCcmNoaGFGdXd1SG9HQnM2eG1KVXVOamdv?oc=5",
-            "https://news.google.com/rss/articles/CBMiW0FVX3lxTE04MXJMOW9qdGlmbVpCWWFzaEZGbW9ETW5oQjI3UW16RWkyeUxNcW91bVhGbUU2aktVX2t4RUhVRF9iYkRxREx1SXhvTE45SGFpLVhtOVNDVU5idkHSAWBBVV95cUxPMHdReWdMV0U5X0U4Qi1EazRJazZSVVJjT2dWRVNDUFhtYW1xdU5sYVNBSGMxcDFsbDhiek5Ra25TTmF4T0ZNaEtWdXpFTGFKLW4xMGRXb3JvdUNTODRwM3M?oc=5",
-            "https://news.google.com/rss/articles/CBMiW0FVX3lxTE11azJzdmZzaGp5bzhTc0FoQ3Yxenc2WGpPb3ZjNkhxOUU2NEV6Nk5FeXR4c3BhckdxVlI3a0o1QV9Sc0lOaWNWMzNyamZnME50LXg4XzE4TTNWZ0HSAWBBVV95cUxQQkVrUnJ5TFZYeExtQkhBUFZqWnlQbDd0aFNGTEE1cjNFdkUxZVNmY1gycDkzLUhJcEd0bV9CWGxWMC1lcFRORS0zRzdPbmU3bFFfVnZBeS1OUFo4NlFjZHE?oc=5",
-            "https://news.google.com/rss/articles/CBMiXEFVX3lxTE5jUHI2aFpRdFhkTnJQaTgxYjFzVTdFZjcxVFd0dVZQcW40TW54ZEV2MDd6ZkVtSzJoekc5VUxzNnlBVjNFUXpRY3pmYklzOGRMN2ZzLTVuMkJjQUo1?oc=5"
-          ],
-          "ticker": "476060",
-          "name": "온코닉테라퓨틱스",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 32,
-          "score_components": {
-            "catalyst_strength": 10,
+            "catalyst_strength": 20,
             "freshness": 0,
             "confirmation": 2,
             "negative_event_risk": 0,
@@ -289,100 +43,52 @@
           },
           "confidence": "medium",
           "up_factors": [
-            "자큐보와 심혈관계 치료제 4종의 병용 안전성 확인이라는 구체적 사업·임상 근거",
-            "15:00 현재 시가 대비 10.65% 상승한 강한 장중 흐름"
+            "매출액 대비 9.56% 규모인 1,326.8억원 공동주택 신축공사 수주",
+            "15:00 현재 시가 대비 25.97% 상승해 장중 매수세가 강함",
+            "최근 5거래일 수익률이 양수여서 하락 추세 감점 없음"
           ],
           "down_factors": [
-            "재료가 전일부터 반복 보도돼 신선도가 낮음",
-            "당일 20.75%, 최근 5거래일 33.73% 상승해 재료가 상당 부분 선반영됨",
-            "평균 대비 10.60배 거래량을 동반한 급등 후 고점에서 3.96% 밀려 차익실현 위험이 있음"
+            "수주 내용이 7월 21일 이미 보도돼 신선도가 낮음",
+            "최근 5거래일 78.34% 상승하고 당일에도 25.97% 급등해 재료가 상당 부분 반영됨",
+            "고점 대비 3.09% 밀렸고 거래량이 5일 평균의 6.17배여서 차익실현 위험이 있음",
+            "텔레그램 언급이 단일 채널에서 반복돼 독립 확인 효과가 제한적임"
           ],
-          "news_summary": "자큐보가 심혈관계 치료제 4종과 병용할 때의 안전성 근거를 확보했다는 소식이 전일 보도됐으며, 이후 애프터마켓 급등 기사도 반복됐다.",
-          "telegram_summary": "관련 텔레그램 이력이 없어 독립적인 채널 확인 근거는 없다.",
-          "reasoning": "병용 안전성 확인은 구체적인 임상 근거지만 신규 허가나 대규모 계약은 아니어서 재료강도는 10점으로 평가했다. 소식이 전일부터 알려졌고 당일 20.75%, 최근 5거래일 33.73% 상승해 선반영 수준은 높다. 장중 고점 대비 3.96% 밀렸고 거래량이 평균의 10.60배여서 급등 후 차익실현에 따른 소진 위험을 중간으로 평가했다.",
+          "news_summary": "7월 21일 자이에스앤디가 매출액의 9.56%에 해당하는 1,326.8억원 규모 영종하늘도시 공동주택 신축공사를 수주했다는 보도가 수집됐다.",
+          "telegram_summary": "7월 16일부터 23일까지 단일 채널에서 52주 신고가, 건설·주택공급 기대, 저PBR, 서초동 부지 매각과 실적 개선 기대가 반복 언급됐으며 최근에는 뚜렷한 신규 재료가 확인되지 않았다.",
+          "reasoning": "매출액 대비 9.56%의 확정 수주는 직접 재료지만 기업 전체를 크게 바꿀 수준으로 보기는 어려워 재료강도 20점을 적용했다. 재료가 이틀 전에 공개됐고 5거래일 78.34%, 당일 25.97% 급등한 상태여서 선반영 수준을 높음으로 판단했다. 장중 상승세는 강하지만 고점에서 3.09% 밀리고 거래량이 크게 증가해 중간 수준의 소진·차익실현 위험을 반영했다. 합산식은 50+20+0+2-0-0-20-10=42다.",
           "evidence_quality": "moderate",
-          "llm_reported_probability_score": 32
+          "llm_reported_probability_score": 42
         }
       ],
       "warnings": []
     }
   ],
   "comparison": {
-    "row_count": 6,
+    "row_count": 1,
     "mean_absolute_delta": null,
     "meaningfully_changed_count": 0,
     "meaningfully_changed_rate": 0.0,
     "old_score_stddev": null,
-    "new_score_stddev": 12.5963,
+    "new_score_stddev": null,
     "by_date": {
-      "20260716": [
+      "20260723": [
         {
-          "ticker": "000020",
-          "name": "동화약품",
-          "old_score": null,
-          "new_score": 15,
-          "delta": null,
-          "rank_change": -4,
-          "meaningfully_changed": false,
-          "telegram_rows": 3
-        },
-        {
-          "ticker": "004540",
-          "name": "깨끗한나라",
-          "old_score": null,
-          "new_score": 37,
-          "delta": null,
-          "rank_change": 0,
-          "meaningfully_changed": false,
-          "telegram_rows": 0
-        },
-        {
-          "ticker": "012690",
-          "name": "모나리자",
-          "old_score": null,
-          "new_score": 35,
-          "delta": null,
-          "rank_change": 0,
-          "meaningfully_changed": false,
-          "telegram_rows": 0
-        },
-        {
-          "ticker": "047920",
-          "name": "HLB제약",
-          "old_score": null,
-          "new_score": 7,
-          "delta": null,
-          "rank_change": -2,
-          "meaningfully_changed": false,
-          "telegram_rows": 2
-        },
-        {
-          "ticker": "065950",
-          "name": "웰크론",
+          "ticker": "317400",
+          "name": "자이에스앤디",
           "old_score": null,
           "new_score": 42,
           "delta": null,
-          "rank_change": 4,
+          "rank_change": 0,
           "meaningfully_changed": false,
-          "telegram_rows": 0
-        },
-        {
-          "ticker": "476060",
-          "name": "온코닉테라퓨틱스",
-          "old_score": null,
-          "new_score": 32,
-          "delta": null,
-          "rank_change": 2,
-          "meaningfully_changed": false,
-          "telegram_rows": 0
+          "telegram_rows": 11
         }
       ]
     }
   },
   "outcome_evaluation": {
-    "scored_count": 6,
+    "scored_count": 1,
     "evaluated_count": 0,
-    "pending_count": 6,
+    "pending_count": 1,
     "new_score_ranking_auc": null,
     "old_score_ranking_auc": null,
     "new_score_brier": null,
