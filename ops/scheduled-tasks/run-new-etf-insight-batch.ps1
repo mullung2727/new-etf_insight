@@ -16,46 +16,75 @@ $env:PYTHONPATH = "src"
 function Invoke-Step {
   param([string]$Label, [string]$Exe, [string[]]$StepArgs)
   "[$(Get-Date -Format o)] $Label" | Tee-Object -FilePath $log -Append | Write-Output
-  & $Exe @StepArgs 2>&1 | Tee-Object -FilePath $log -Append | Write-Output
-  $code = $LASTEXITCODE
+  # Native stderr is diagnostic output, not a failure signal. PowerShell 5.1 turns
+  # redirected stderr into ErrorRecord objects, so judge native commands only by exit code.
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $Exe @StepArgs 2>&1 | Tee-Object -FilePath $log -Append | Write-Output
+    $code = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
   if ($code -ne 0) {
     throw "$Label failed with exit code $code"
   }
 }
 
 try {
-  # 파이프라인 실행 + 사람용 요약을 한 번의 python 호출로(멀티라인 -c 인자 깨짐 회피).
-  # 상세 JSON은 파이썬이 직접 로그에 쓰고, stdout 은 Discord 보고용 요약만.
+  # 파이프라인의 상세 stdout은 로그로 격리하고, 알림 본문은 JSON 파일로 전달한다.
+  # 긴 JSON/따옴표가 PowerShell 5.1 명령행 인자로 재해석되는 일을 막는다.
+  $reportJson = Join-Path $etlDir ("runs\\" + $target + "\\report-messages.json")
   $runner = @'
 import json
+from contextlib import redirect_stdout
 from pathlib import Path
 from new_etf_insight.daily_pipeline import run_daily_pipeline
 
 date = "__DATE__"
-result = run_daily_pipeline(
-    date,
-    date,
-    Path("runs") / date / "records",
-    Path("runs") / date / "pdfs",
-)
-with open(r"__LOG__", "a", encoding="utf-8") as f:
-    f.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+log_path = Path(r"__LOG__")
+report_path = Path(r"__REPORT_JSON__")
+with log_path.open("a", encoding="utf-8") as log_file:
+    with redirect_stdout(log_file):
+        result = run_daily_pipeline(
+            date,
+            date,
+            Path("runs") / date / "records",
+            Path("runs") / date / "pdfs",
+        )
+    log_file.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
 actions = {}
 for item in (result.get("results") or []):
     a = item.get("action") or "unknown"
     actions[a] = actions.get(a, 0) + 1
-print(
+summary = (
     "[new_etf_insight daily] " + str(result.get("begin")) + "\n"
     + f"- candidates: {result.get('candidate_count')}\n"
     + f"- result actions: {actions}\n"
     + f"- DB synced: {result.get('db_synced')}\n"
     + f"- DB: {result.get('db_path')}"
 )
-'@.Replace("__DATE__", $target).Replace("__LOG__", $log)
+report_path.parent.mkdir(parents=True, exist_ok=True)
+report_path.write_text(
+    json.dumps({"messages": [summary]}, ensure_ascii=False, indent=2),
+    encoding="utf-8",
+)
+print(summary)
+'@.Replace("__DATE__", $target).Replace("__LOG__", $log).Replace("__REPORT_JSON__", $reportJson)
 
-  $summary = $runner | .\.venv\Scripts\python.exe -
-  $summary | Tee-Object -FilePath $log -Append | Write-Output
-  Invoke-Step "send Discord report" ".\.venv\Scripts\python.exe" @("scripts\send_report_messages.py", "--message", $summary)
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $runner | .\.venv\Scripts\python.exe - 2>&1 |
+      Tee-Object -FilePath $log -Append | Write-Output
+    $pipelineCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  if ($pipelineCode -ne 0) {
+    throw "run daily pipeline failed with exit code $pipelineCode"
+  }
+  Invoke-Step "send Discord report" ".\.venv\Scripts\python.exe" @("scripts\send_report_messages.py", "--json", $reportJson)
   exit 0
 } catch {
   $message = "[new_etf_insight daily] $target FAILED`n$($_.Exception.Message)`nlog: $log"
