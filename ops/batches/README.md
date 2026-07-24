@@ -113,3 +113,21 @@ The 15:21 report task is report-only and must not place or retry orders.
 - 기존 15:21 종가배팅 보고 작업은 주문 없는 보고 전용이므로 그대로 유지한다.
 - 기존 `close-bet-order`, `close-bet-verify`, `close-bet-exit`, `close-bet-force-exit`은
   비활성 상태로 유지한다.
+
+### 워커 프로세스 확인 시 주의 (python.exe 2개는 정상)
+
+`run_pullback_exit.py` 워커가 뜨면 `python.exe` 프로세스가 **부모-자식 2개**로
+보인다. 중복 실행이 아니라 uv venv 구조상 항상 이렇게 뜬다.
+
+| 프로세스 | ExecutablePath | 스레드 | 역할 |
+| --- | --- | --- | --- |
+| 부모 | `etl/.venv/Scripts/python.exe` | 1 | uv 트램폴린(껍데기). 자식 종료까지 대기만 |
+| 자식 | `C:\Python314\python.exe`(base 인터프리터) | 다수 | 실제 폴링·매도 판단·주문 |
+
+- uv가 만든 venv의 `python.exe`는 실행파일 복사본이 아니라 **트램폴린**이라,
+  실제 base 인터프리터를 자식 프로세스로 재실행한다. 두 프로세스는 명령줄이
+  동일하고 시작시각이 수십 ms 차이다.
+- **실제 워커는 자식(스레드 여러 개, broker :8001로 TCP 연결 보유)** 하나뿐이다.
+  중복 매도 위험 없음. 둘 중 하나를 kill해서 "정리"하려 하지 말 것.
+- 워커를 식별·kill할 때는 base 인터프리터 경로(`C:\Python314\python.exe`) PID나
+  스레드 많은 쪽을 기준으로 삼는다.
