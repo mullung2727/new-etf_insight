@@ -1,10 +1,16 @@
 """lower_low_bullish_reversal 1단계: 신호와 거래일 계산 테스트."""
 from __future__ import annotations
 
+import os
 import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
+import duckdb
+
+from scripts import run_pullback_order as target
 from scripts.run_pullback_order import (
     candidate_trading_days,
     create_pullback_orders_table,
@@ -102,6 +108,41 @@ class FindFirstSignalTest(unittest.TestCase):
         self.assertEqual(signal["signal_price"], 101)
 
 
+class BatchCandidateSnapshotTest(unittest.TestCase):
+    def setUp(self):
+        watch_fd, watch_name = tempfile.mkstemp(suffix=".sqlite3")
+        krx_fd, krx_name = tempfile.mkstemp(suffix=".duckdb")
+        os.close(watch_fd)
+        os.close(krx_fd)
+        Path(watch_name).unlink()
+        Path(krx_name).unlink()
+        self.watch_db = Path(watch_name)
+        self.krx_db = Path(krx_name)
+        with target.connect_rw(self.watch_db) as con:
+            con.execute("CREATE TABLE watchlist (date TEXT, stock_code TEXT)")
+            con.execute("INSERT INTO watchlist VALUES ('20260714','005930')")
+        with duckdb.connect(str(self.krx_db)) as con:
+            con.execute("CREATE TABLE ohlcv (ticker TEXT,date TEXT,open INTEGER,low INTEGER,close INTEGER)")
+            con.execute("INSERT INTO ohlcv VALUES ('005930','20260714',105,100,104)")
+
+    def tearDown(self):
+        self.watch_db.unlink(missing_ok=True)
+        self.krx_db.unlink(missing_ok=True)
+
+    @patch("scripts.run_pullback_order.batch_quote_snapshots")
+    def test_candidate_loader_uses_one_batch_snapshot(self, batch):
+        batch.return_value = {
+            "005930": {"current_price": 101, "open": 99, "low": 98,
+                       "upper_limit": 130}
+        }
+        result = target.load_today_signal_candidates(
+            self.watch_db, self.krx_db, "20260715", "http://broker", {"max_wait_days": 5}
+        )
+        batch.assert_called_once_with("http://broker", ["005930"])
+        self.assertEqual(result[0]["ticker"], "005930")
+        self.assertEqual(result[0]["upper_limit"], 130)
+
+
 class PullbackOrderStateTest(unittest.TestCase):
     def setUp(self):
         self.con = sqlite3.connect(":memory:")
@@ -153,6 +194,73 @@ class PullbackOrderStateTest(unittest.TestCase):
 
 
 class PullbackCandidateGuardTest(unittest.TestCase):
+    def test_limit_price_is_half_percent_above_and_rounded_up_to_tick(self):
+        self.assertEqual(target.pullback_limit_price(16_360, 21_250), 16_450)
+
+    def test_limit_price_never_exceeds_upper_limit(self):
+        self.assertEqual(target.pullback_limit_price(2_375, 2_375), 2_375)
+
+    def test_limit_price_uses_tick_band_of_final_price(self):
+        cases = [
+            (1_990, 2_000),
+            (4_976, 5_010),
+            (19_901, 20_050),
+            (49_800, 50_100),
+            (199_005, 200_500),
+            (497_512, 500_000),
+        ]
+        for current, expected in cases:
+            with self.subTest(current=current):
+                self.assertEqual(
+                    target.pullback_limit_price(current, 9_999_000), expected
+                )
+
+    @patch("scripts.run_pullback_order.requests.get")
+    def test_batch_quote_snapshots_uses_one_request(self, get):
+        get.return_value = Mock(
+            json=Mock(return_value=[{
+                "stk_cd": "005930", "cur_prc": 16_360, "upl_pric": 21_250,
+                "raw": {"stk_nm": "삼성전자", "open_pric": "+16000", "low_pric": "-15800"},
+            }])
+        )
+        snapshots = target.batch_quote_snapshots("http://broker", ["005930", "005930"])
+        get.assert_called_once_with(
+            "http://broker/quotes", params={"codes": "005930"}, timeout=target.REQUEST_TIMEOUT
+        )
+        self.assertEqual(
+            snapshots["005930"],
+            {"name": "삼성전자", "current_price": 16_360, "open": 16_000,
+             "low": 15_800, "upper_limit": 21_250},
+        )
+
+    @patch("scripts.run_pullback_order.requests.post")
+    def test_process_local_order_sends_limit_payload(self, post):
+        post.return_value = Mock(
+            status_code=200,
+            json=Mock(return_value={"accepted": True, "order_no": "123", "message": "ok"}),
+        )
+        result = target.pullback_limit_order(
+            "http://broker", "005930", 2, 70_000, "pullback_order", False
+        )
+        self.assertEqual(result["status"], "submitted")
+        self.assertEqual(result.get("requested_price"), 70_000)
+        self.assertEqual(
+            post.call_args.kwargs["json"],
+            {"symbol": "005930", "side": "buy", "qty": 2, "price": 70_000,
+             "order_type": "limit", "source": "pullback_order"},
+        )
+
+    @patch("scripts.run_pullback_order.requests.post")
+    def test_accepted_response_without_order_number_is_failed(self, post):
+        post.return_value = Mock(
+            status_code=200,
+            json=Mock(return_value={"accepted": True, "order_no": None, "message": "ok"}),
+        )
+        result = target.pullback_limit_order(
+            "http://broker", "005930", 2, 70_000, "pullback_order", False
+        )
+        self.assertEqual(result["status"], "failed")
+
     def test_excludes_tickers_held_by_either_strategy(self):
         candidates = [{"ticker": "005930"}, {"ticker": "000660"}, {"ticker": "035420"}]
         self.assertEqual(exclude_held_tickers(candidates, {"005930"}, {"000660"}), [{"ticker": "035420"}])
