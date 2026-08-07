@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["highlights"],
+  "properties": {
+    "highlights": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title", "summary", "evidence", "view_difference", "uncertainty",
+          "investment_links", "score_breakdown", "source_video_ids"
+        ],
+        "properties": {
+          "title": { "type": "string", "maxLength": 50 },
+          "summary": { "type": "string", "maxLength": 180 },
+          "evidence": { "type": "string", "maxLength": 150 },
+          "view_difference": { "type": ["string", "null"], "maxLength": 110 },
+          "uncertainty": { "type": ["string", "null"], "maxLength": 110 },
+          "investment_links": {
+            "type": "array",
+            "maxItems": 5,
+            "items": { "type": "string", "maxLength": 20 }
+          },
+          "score_breakdown": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "market_impact", "evidence_quality", "novelty",
+              "investment_relevance", "cross_channel"
+            ],
+            "properties": {
+              "market_impact": { "type": "integer", "minimum": 0, "maximum": 25 },
+              "evidence_quality": { "type": "integer", "minimum": 0, "maximum": 25 },
+              "novelty": { "type": "integer", "minimum": 0, "maximum": 20 },
+              "investment_relevance": { "type": "integer", "minimum": 0, "maximum": 20 },
+              "cross_channel": { "type": "integer", "minimum": 0, "maximum": 10 }
+            }
+          },
+          "source_video_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

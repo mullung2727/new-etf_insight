@@ -853,6 +853,10 @@ etl/tests/test_discover_youtube_stock_candidates.py
 - 자동 스케줄: `ops/scheduled-tasks/run-youtube-daily.ps1` 매일 **01:00 KST**.
   - 대상일 = **어제**(D-1). 수집 = 등록 채널 전부. 요약 = `summary_mode=auto` 미요약만 (`--lookback-days 2`).
   - 문서: `ops/batches/daily-youtube.md` · Task: `\new-etf_insight\daily-youtube`
+- 통합 시장 브리핑: `ops/scheduled-tasks/run-youtube-digest-session.ps1` 매일 **10:00 / 18:00 KST**.
+  - 영상별 요약(`youtube_video_summaries`)을 읽어 이슈별 통합 → `youtube_digest.py` LLM 1회 → Discord.
+  - 입력 선별 = **미전송 + cutoff 48시간 이내**. 전송 성공 후에만 `youtube_digest_deliveries` 기록.
+  - 문서: `ops/batches/youtube-twice-daily-digest.md` · Task: `\new-etf_insight\daily-youtube-digest-{morning,evening}`
 
 ### 13.4 UI /youtube
 

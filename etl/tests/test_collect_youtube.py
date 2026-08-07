@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import sqlite3
 import unittest
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 from scripts.collect_youtube import (
@@ -18,6 +19,7 @@ from scripts.collect_youtube import (
     ensure_schema,
     fetch_duration_seconds,
     fetch_transcript,
+    fetch_url,
     list_channel_catalog,
     list_channel_videos_rss,
     parse_video_id,
@@ -301,6 +303,60 @@ class TranscriptFailTest(unittest.TestCase):
         self.assertIsNone(row[2])
         self.assertEqual(stats["skipped_no_transcript"], 1)
         self.assertEqual(stats["matched_date"], 1)
+
+
+class FetchRetryTest(unittest.TestCase):
+    """유튜브 RSS 백엔드가 유효한 URL에도 404/500을 랜덤 반환하는 구간 대응."""
+
+    @staticmethod
+    def _http_error(code: int) -> urllib.error.HTTPError:
+        return urllib.error.HTTPError("https://x.test/y", code, "boom", {}, None)
+
+    def test_transient_404_then_success(self):
+        calls = []
+
+        def opener(req, timeout=40):
+            calls.append(1)
+            if len(calls) < 3:
+                raise self._http_error(404)
+            return io.BytesIO(b"ok")
+
+        self.assertEqual(fetch_url("https://x.test/y", opener=opener, _sleep=lambda s: None), b"ok")
+        self.assertEqual(len(calls), 3)
+
+    def test_retry_count_is_capped(self):
+        calls = []
+
+        def opener(req, timeout=40):
+            calls.append(1)
+            raise self._http_error(500)
+
+        with self.assertRaises(urllib.error.HTTPError):
+            fetch_url("https://x.test/y", opener=opener, retries=2, _sleep=lambda s: None)
+        self.assertEqual(len(calls), 3)  # 최초 1회 + 재시도 2회, 그 이상 없음
+
+    def test_non_retryable_status_fails_immediately(self):
+        calls = []
+
+        def opener(req, timeout=40):
+            calls.append(1)
+            raise self._http_error(403)
+
+        with self.assertRaises(urllib.error.HTTPError):
+            fetch_url("https://x.test/y", opener=opener, _sleep=lambda s: None)
+        self.assertEqual(len(calls), 1)
+
+    def test_backoff_grows_and_is_jittered(self):
+        waits = []
+
+        def opener(req, timeout=40):
+            raise self._http_error(500)
+
+        with self.assertRaises(urllib.error.HTTPError):
+            fetch_url("https://x.test/y", opener=opener, retries=2, _sleep=waits.append)
+        self.assertEqual(len(waits), 2)
+        self.assertLess(waits[0], waits[1])
+        self.assertGreaterEqual(waits[0], 4.0)
 
 
 class ListRssTest(unittest.TestCase):

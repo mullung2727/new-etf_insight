@@ -11,9 +11,12 @@ import argparse
 import datetime as dt
 import html as html_lib
 import json
+import random
 import re
 import sqlite3
 import sys
+import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -28,6 +31,12 @@ from youtube_transcript_api import YouTubeTranscriptApi
 KST = dt.timezone(dt.timedelta(hours=9))
 DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "youtube_public.sqlite3"
 FETCH_TIMEOUT = 40
+# `YouTube RSS Feeds server`가 유효한 피드에도 404/500을 요청 단위로 랜덤 반환하는 구간이
+# 있다(실측: 같은 URL이 몇 초 간격으로 404→200, 클라이언트·UA 무관). 재시도로 흡수하되
+# **횟수 상한**을 둬 무제한 재시도는 막는다. 404까지 재시도 대상인 건 이 오탐 때문이다.
+FETCH_RETRIES = 3  # 총 4회 시도, 최악 대기 ~4+8+12초 + 지터
+FETCH_RETRY_BACKOFF = 4.0
+_RETRYABLE_STATUS = {404, 429, 500, 502, 503, 504}
 _DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -64,16 +73,33 @@ def ensure_schema(con: sqlite3.Connection) -> None:
     con.execute(_CREATE_VIDEOS_IDX)
 
 
+def _is_retryable_fetch(exc: Exception) -> bool:
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in _RETRYABLE_STATUS
+    return isinstance(exc, urllib.error.URLError)  # DNS/연결 실패
+
+
 def fetch_url(
     url: str,
     *,
     timeout: int = FETCH_TIMEOUT,
     opener=urllib.request.urlopen,
+    retries: int = FETCH_RETRIES,
+    _sleep=time.sleep,
 ) -> bytes:
+    """일시적 404/429/5xx·연결 실패는 백오프 재시도(상한 `retries`). 그 외는 즉시 전파."""
     req = urllib.request.Request(url, headers={"User-Agent": _DEFAULT_UA})
-    with opener(req, timeout=timeout) as resp:
-        data = resp.read() if hasattr(resp, "read") else resp
-        return data if isinstance(data, bytes) else bytes(data)
+    for attempt in range(retries + 1):
+        try:
+            with opener(req, timeout=timeout) as resp:
+                data = resp.read() if hasattr(resp, "read") else resp
+                return data if isinstance(data, bytes) else bytes(data)
+        except Exception as exc:  # noqa: BLE001 — 재시도 판별 후 나머지는 재전파
+            if attempt >= retries or not _is_retryable_fetch(exc):
+                raise
+            # 지터: 채널 순회가 같은 초에 몰려 재요청하는 것을 흩는다.
+            _sleep(FETCH_RETRY_BACKOFF * (attempt + 1) + random.uniform(0, 1.5))
+    raise RuntimeError("unreachable")  # 루프가 반환/전파 — 타입체커 안심용
 
 
 def list_channel_videos_rss(
