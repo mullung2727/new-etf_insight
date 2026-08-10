@@ -106,7 +106,7 @@ function Start-DetachedServer {
     상시 서버 기동 (에이전트 Job 종료·콘솔 닫기와 무관하게 생존):
     - CREATE_BREAKAWAY_FROM_JOB | CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
     - 최소 PowerShell 창을 열지 않음 (이전 방식: Minimized 콘솔 → 닫히면 전멸)
-    - cmd 래퍼로 stdout/stderr 파일 리다이렉트
+    - PowerShell UTF-8 tee 러너로 stdout/stderr를 콘솔과 통합 로그에 동시 출력
     - 상시 모드: uvicorn --reload 제거 (워크스페이스 파일 변경 시 reloader 불안정)
     #>
     param(
@@ -117,19 +117,54 @@ function Start-DetachedServer {
     )
 
     $pidFile = Join-Path $pidDir "$Name.pid"
-    $outLog = Join-Path $logDir ("{0}-{1}.out.log" -f $Name, (Get-Date -Format "yyyyMMdd"))
-    $errLog = Join-Path $logDir ("{0}-{1}.err.log" -f $Name, (Get-Date -Format "yyyyMMdd"))
+    $combinedLog = Join-Path $logDir ("{0}-{1}.log" -f $Name, (Get-Date -Format "yyyyMMdd"))
     $cmdFile = Join-Path $pidDir "$Name-run.cmd"
+    $runnerFile = Join-Path $pidDir "$Name-run.ps1"
 
-    # cmd 래퍼: 작업 디렉터리 + 로그 append. 창 없음.
+    # PowerShell 러너: stdout/stderr를 한 스트림으로 합쳐 콘솔 표시 + 날짜별 UTF-8 로그 append.
+    # Windows PowerShell 5 Tee-Object는 UTF-16 고정이라 StreamWriter로 UTF-8을 보장한다.
+    $escapedWorkDir = $WorkDir.Replace("'", "''")
+    $escapedCommandLine = $CommandLine.Replace("'", "''")
+    $escapedCombinedLog = $combinedLog.Replace("'", "''")
+    $escapedTitle = $Title.Replace("'", "''")
+    $runnerBody = @"
+`$ErrorActionPreference = "Stop"
+Set-Location -LiteralPath '$escapedWorkDir'
+`$log = '$escapedCombinedLog'
+`$utf8NoBom = New-Object System.Text.UTF8Encoding(`$false)
+[Console]::InputEncoding = `$utf8NoBom
+[Console]::OutputEncoding = `$utf8NoBom
+`$OutputEncoding = `$utf8NoBom
+`$writer = New-Object System.IO.StreamWriter(`$log, `$true, `$utf8NoBom)
+function Write-LogLine {
+    param([AllowNull()][object]`$Value)
+    `$line = if (`$null -eq `$Value) { "" } else { [string]`$Value }
+    Write-Output `$line
+    `$writer.WriteLine(`$line)
+    `$writer.Flush()
+}
+`$code = 1
+try {
+    Write-LogLine ""
+    Write-LogLine "===== `$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') start $escapedTitle ====="
+    `$serverCommand = '$escapedCommandLine'
+    `$mergedCommand = `$serverCommand + ' 2>&1'
+    & `$env:ComSpec /d /s /c `$mergedCommand | ForEach-Object { Write-LogLine `$_ }
+    `$code = `$LASTEXITCODE
+    Write-LogLine "===== `$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') exit $escapedTitle code=`$code ====="
+} finally {
+    `$writer.Dispose()
+}
+exit `$code
+"@
+    Set-Content -LiteralPath $runnerFile -Value $runnerBody -Encoding UTF8
+
+    # cmd 래퍼는 기존 PID/프로세스 트리 계약을 유지하고 PowerShell 러너만 호출한다.
     $cmdBody = @"
 @echo off
 setlocal
-cd /d "$WorkDir"
-echo.>> "$outLog"
-echo ===== %DATE% %TIME% start $Title =====>> "$outLog"
-$CommandLine >> "$outLog" 2>> "$errLog"
-echo ===== %DATE% %TIME% exit $Title code=%ERRORLEVEL% =====>> "$outLog"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$runnerFile"
+exit /b %ERRORLEVEL%
 "@
     Set-Content -LiteralPath $cmdFile -Value $cmdBody -Encoding ASCII
 

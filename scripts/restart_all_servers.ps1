@@ -80,7 +80,7 @@ foreach ($n in @("api", "broker", "broker-web")) {
 }
 
 Write-Host "`r`nDone. Servers started detached (no window, job-breakaway). PIDs: $pidDir" -ForegroundColor Green
-Write-Host "Logs: $logDir\<name>-yyyyMMdd.(out|err).log" -ForegroundColor Cyan
+Write-Host "Logs: $logDir\<name>-yyyyMMdd.log (console + file)" -ForegroundColor Cyan
 Write-Host "Health: http://localhost:8000/health  http://localhost:8001/health  http://localhost:3100" -ForegroundColor Cyan
 Write-Host "Note: broker-web=prod(:3100, .next-prod). 코드 반영은 .\scripts\deploy_broker_web_prod.ps1. dev는 별도 npm run dev(:3000)." -ForegroundColor DarkGray
 

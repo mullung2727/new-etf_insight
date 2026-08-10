@@ -48,6 +48,6 @@ if ($okWeb -and $listening) {
     Write-Host "dev는 그대로 http://localhost:3000 (영향 없음)." -ForegroundColor DarkGray
     exit 0
 } else {
-    Write-Host "`r`nprod 기동 실패. 로그: $logDir\broker-web-*.err.log" -ForegroundColor Red
+    Write-Host "`r`nprod 기동 실패. 로그: $logDir\broker-web-*.log" -ForegroundColor Red
     exit 1
 }

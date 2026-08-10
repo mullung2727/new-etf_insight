@@ -64,7 +64,7 @@ Invoke-WebRequest -UseBasicParsing -Uri http://localhost:3000
 - `.server-pids/` 및 포트 리스너 정리
 - **Job/에이전트 세션에서 분리된(detached) 상시 프로세스**로 3개 기동
 - PID → `.server-pids\*.pid`
-- 로그 → `ops\logs\<name>-yyyyMMdd.(out|err).log`
+- 콘솔에 실시간 로그 표시 + 통합 로그 → `ops\logs\<name>-yyyyMMdd.log`
 - health + **기동 3초 후 durability 재확인**
 - 성공 시 exit 0, 실패 시 exit 1
 
@@ -73,7 +73,7 @@ Invoke-WebRequest -UseBasicParsing -Uri http://localhost:3000
 스크립트 종료 직후 **다시** health/Listen 확인.
 
 - 3개 모두 OK → “상시 서버로 기동됨” 보고. **프로세스를 종료·회수하지 말 것.**
-- 하나라도 실패 → `ops\logs\` 해당 out/err 로그 tail 후 원인 보고. 에이전트 백그라운드 uvicorn으로 때우지 말 것.
+- 하나라도 실패 → `ops\logs\` 해당 통합 로그 tail 후 원인 보고. 에이전트 백그라운드 uvicorn으로 때우지 말 것.
 
 ### 4) 금지 (에이전트)
 
