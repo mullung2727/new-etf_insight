@@ -35,6 +35,22 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "results" / "shadow_proba
 DEFAULT_REPORTS_DIR = ROOT.parents[1] / "reports"
 SCHEMA_PATH = Path(__file__).resolve().with_name("watchlist_scoring_schema.json")
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "watchlist_probability.md"
+LEGACY_CATALYST_PROMPT_VERSION = "catalyst-survival-v3"
+CATALYST_PROMPT_VERSION = "catalyst-survival-v4"
+PRICED_IN_POLICY_EFFECTIVE_DATE = "20260805"
+LEGACY_PRICED_IN_POLICY = """| 선반영 | 새 재료이며 반영 증거 없음 | 0 |
+|  | 일부 반복 보도 또는 사전 기대 | 5 |
+|  | 전일 급등·테마 확산 등 상당 부분 반영 | 12 |
+|  | 연속 급등·상한가·널리 알려진 재료 | 20 |"""
+CURRENT_PRICED_IN_POLICY = """| 선반영 | 없음 (`none`) — 새 재료이며 사전 반영 증거 없음 | 0 |
+|  | 낮음 (`low`) — 일부 반복 보도 또는 사전 기대 | 3 |
+|  | 중간 (`medium`) — 전일 급등·테마 확산 등 상당 부분 반영 | 7 |
+|  | 높음 (`high`) — 연속 급등·상한가·널리 알려진 재료 | 12 |
+
+- `priced_in_level`과 `priced_in_penalty`는 `none=0`, `low=3`, `medium=7`, `high=12`, `unknown=0`으로 반드시 고정한다.
+- 단순 당일 상승률·거래량 증가·최근 5거래일 상승만으로 선반영 감점을 주지 마라. 재료의 반복 노출이나 사전 기대가 함께 확인돼야 한다.
+- 같은 가격 움직임을 선반영과 소진에 중복 사용하지 마라. 선반영은 재료의 사전 노출, 소진은 고점 이탈과 모멘텀 둔화를 중심으로 판단한다."""
+CURRENT_PRICED_IN_PENALTY = {"unknown": 0, "none": 0, "low": 3, "medium": 7, "high": 12}
 SEOUL = ZoneInfo("Asia/Seoul")
 SESSION_RANK = {"morning": 0, "close": 1, "evening": 2}
 
@@ -175,7 +191,12 @@ def collect_news(state: State) -> State:
     news = {}
     warnings = list(state["warnings"])
     as_of = _as_of(state["date"])
+    is_live_date = state["date"] == dt.datetime.now(SEOUL).strftime("%Y%m%d")
     for candidate in state["candidates"]:
+        if not is_live_date:
+            news[candidate["ticker"]] = []
+            warnings.append(f"historical_live_news_excluded:{candidate['ticker']}")
+            continue
         try:
             news[candidate["ticker"]] = fetch_historical_news(
                 candidate["name"], candidate["ticker"], as_of
@@ -186,11 +207,24 @@ def collect_news(state: State) -> State:
     return {**state, "news_by_ticker": news, "warnings": warnings}
 
 
+def _parse_point_in_time(value: object) -> dt.datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(SEOUL)
+
+
 def load_telegram(state: State) -> State:
     output: dict[str, list[dict]] = {candidate["ticker"]: [] for candidate in state["candidates"]}
     if not output:
         return {**state, "telegram_by_ticker": output}
     target = dt.datetime.strptime(state["date"], "%Y%m%d").date()
+    as_of = _as_of(state["date"])
     lower = (target - dt.timedelta(days=7)).isoformat()
     target_dash = target.isoformat()
     marks = ",".join("?" for _ in output)
@@ -208,12 +242,18 @@ def load_telegram(state: State) -> State:
     finally:
         con.close()
     for row in rows:
+        created_at = _parse_point_in_time(row["created_at"])
+        updated_at = _parse_point_in_time(row["updated_at"])
+        if not created_at or not updated_at or created_at > as_of or updated_at > as_of:
+            continue
         if row["date_kst"] == target_dash and row["session"] != "morning":
             continue
         analysis = json.loads(row["analysis"]) if row["analysis"] else None
         output[row["ticker"]].append({
             "date": row["date_kst"],
             "session": row["session"],
+            "created_at": created_at.isoformat(timespec="seconds"),
+            "updated_at": updated_at.isoformat(timespec="seconds"),
             "channels": json.loads(row["mention_channels"] or "[]"),
             "post_refs": json.loads(row["source_post_refs"] or "[]"),
             "discovery_reason": row["discovery_reason"],
@@ -279,10 +319,22 @@ def build_score_input(state: State, candidate: dict) -> dict:
     }
 
 
+def prompt_version_for_date(date: str) -> str:
+    compact_date = date.replace("-", "")
+    if compact_date < PRICED_IN_POLICY_EFFECTIVE_DATE:
+        return LEGACY_CATALYST_PROMPT_VERSION
+    return CATALYST_PROMPT_VERSION
+
+
 def make_prompt(state: State, candidate: dict) -> str:
     template = PROMPT_PATH.read_text(encoding="utf-8")
     return template.format(
         date=state["date"],
+        priced_in_policy=(
+            CURRENT_PRICED_IN_POLICY
+            if state["date"].replace("-", "") >= PRICED_IN_POLICY_EFFECTIVE_DATE
+            else LEGACY_PRICED_IN_POLICY
+        ),
         input_json=json.dumps(build_score_input(state, candidate), ensure_ascii=False, indent=2),
     )
 
@@ -305,6 +357,15 @@ def calculate_probability_score(components: dict) -> int:
     return max(5, min(95, 50 + positive - negative))
 
 
+def apply_priced_in_policy(date: str, components: dict) -> None:
+    if date.replace("-", "") < PRICED_IN_POLICY_EFFECTIVE_DATE:
+        return
+    level = components["priced_in_level"]
+    if level not in CURRENT_PRICED_IN_PENALTY:
+        raise ValueError(f"invalid priced_in_level for current policy: {level}")
+    components["priced_in_penalty"] = CURRENT_PRICED_IN_PENALTY[level]
+
+
 def calculate_negative_trend_penalty(return_5d_pct: float | None) -> int:
     if return_5d_pct is None or return_5d_pct >= -3:
         return 0
@@ -315,6 +376,67 @@ def calculate_negative_trend_penalty(return_5d_pct: float | None) -> int:
     if return_5d_pct >= -20:
         return 10
     return 15
+
+
+_CATALYST_FIELDS = {
+    "label", "description", "category_raw", "status", "expected_duration",
+    "alive_score", "reason", "invalidation", "evidence_refs",
+}
+_CATALYST_STATUSES = {"alive", "uncertain", "exhausted"}
+_CATALYST_DURATIONS = {
+    "intraday", "two_to_five_trading_days", "one_week_or_more", "unknown",
+}
+
+
+def _validate_catalyst(catalyst: object, field: str) -> None:
+    if not isinstance(catalyst, dict):
+        raise ValueError(f"{field} must be an object")
+    if set(catalyst) != _CATALYST_FIELDS:
+        raise ValueError(f"{field} fields mismatch")
+    for key in ("label", "description", "category_raw", "reason", "invalidation"):
+        if not isinstance(catalyst[key], str) or not catalyst[key].strip():
+            raise ValueError(f"{field}.{key} must be a non-empty string")
+    if catalyst["status"] not in _CATALYST_STATUSES:
+        raise ValueError(f"{field}.status is invalid")
+    if catalyst["expected_duration"] not in _CATALYST_DURATIONS:
+        raise ValueError(f"{field}.expected_duration is invalid")
+    score = catalyst["alive_score"]
+    if isinstance(score, bool) or not isinstance(score, int) or not 1 <= score <= 5:
+        raise ValueError(f"{field}.alive_score must be an integer from 1 to 5")
+    refs = catalyst["evidence_refs"]
+    if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+        raise ValueError(f"{field}.evidence_refs must be a string array")
+
+
+def validate_catalyst_assessment(result: dict) -> None:
+    """주·보조재료 구조와 단순 1~5점 계약을 검증한다."""
+    if "primary_catalyst" not in result or "secondary_catalysts" not in result:
+        raise ValueError("catalyst assessment is required")
+    _validate_catalyst(result["primary_catalyst"], "primary_catalyst")
+    secondary = result["secondary_catalysts"]
+    if not isinstance(secondary, list):
+        raise ValueError("secondary_catalysts must be an array")
+    for index, catalyst in enumerate(secondary):
+        _validate_catalyst(catalyst, f"secondary_catalysts[{index}]")
+
+
+def validate_catalyst_evidence_refs(
+    result: dict, news_rows: list[dict], telegram_rows: list[dict]
+) -> None:
+    allowed = {
+        item["link"] for item in news_rows if isinstance(item.get("link"), str)
+    }
+    allowed.update(
+        ref for item in telegram_rows for ref in item.get("post_refs", [])
+        if isinstance(ref, str)
+    )
+    catalysts = [result["primary_catalyst"], *result["secondary_catalysts"]]
+    unknown = [
+        ref for catalyst in catalysts for ref in catalyst["evidence_refs"]
+        if ref not in allowed
+    ]
+    if unknown:
+        raise ValueError("catalyst evidence ref is not present in input")
 
 
 def score_candidates(state: State, score_fn: ScoreFn | None = None) -> State:
@@ -328,15 +450,18 @@ def score_candidates(state: State, score_fn: ScoreFn | None = None) -> State:
             result = json.loads(generator(make_prompt(state, candidate)))
             if result["ticker"] != candidate["ticker"]:
                 raise ValueError("ticker mismatch")
+            news_rows = state["news_by_ticker"].get(candidate["ticker"], [])
+            telegram_rows = state["telegram_by_ticker"].get(candidate["ticker"], [])
+            validate_catalyst_assessment(result)
+            validate_catalyst_evidence_refs(result, news_rows, telegram_rows)
             reported_score = result["probability_score"]
             snapshot = build_market_snapshot(candidate, state["date"])
+            apply_priced_in_policy(state["date"], result["score_components"])
             result["score_components"]["negative_trend_penalty"] = (
                 calculate_negative_trend_penalty(snapshot.get("return_5d_pct"))
             )
             result["probability_score"] = calculate_probability_score(result["score_components"])
             result["llm_reported_probability_score"] = reported_score
-            news_rows = state["news_by_ticker"].get(candidate["ticker"], [])
-            telegram_rows = state["telegram_by_ticker"].get(candidate["ticker"], [])
             scores.append({
                 "date": state["date"],
                 "as_of": _as_of(state["date"]).isoformat(),
@@ -346,6 +471,10 @@ def score_candidates(state: State, score_fn: ScoreFn | None = None) -> State:
                 "avg5_volume": candidate.get("avg5_volume"),
                 "trading_value": candidate.get("trading_value"),
                 "close": candidate.get("snapshot_current_price") or candidate.get("close"),
+                "change_rate_pct": snapshot.get("change_rate_pct"),
+                "rise_from_open_pct": snapshot.get("rise_from_open_pct"),
+                "pullback_from_high_pct": snapshot.get("pullback_from_high_pct"),
+                "return_5d_pct": snapshot.get("return_5d_pct"),
                 "telegram_rows": len(telegram_rows),
                 "news_rows": len(news_rows),
                 "sources": sorted({
@@ -518,6 +647,76 @@ def to_llm_score_row(score: dict) -> dict:
     components = score["score_components"]
     up_factors = "; ".join(score.get("up_factors") or []) or "확인된 상승 요인 없음"
     down_factors = "; ".join(score.get("down_factors") or []) or "확인된 하락 요인 없음"
+    primary = score["primary_catalyst"]
+    raw_score = (
+        50
+        + components["catalyst_strength"]
+        + components["freshness"]
+        + components["confirmation"]
+        - components["negative_event_risk"]
+        - components["negative_trend_penalty"]
+        - components["priced_in_penalty"]
+        - components["exhaustion_penalty"]
+    )
+    score_result = f"= {raw_score}점"
+    if raw_score != score["probability_score"]:
+        score_result += f" → clamp 최종 {score['probability_score']}점"
+
+    def format_integer(value: object, suffix: str) -> str:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return "데이터 없음"
+        return f"{value:,.0f}{suffix}"
+
+    def format_decimal(value: object, suffix: str, digits: int = 2) -> str:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return "데이터 없음"
+        return f"{value:+.{digits}f}{suffix}"
+
+    ratio = score.get("ratio")
+    ratio_text = (
+        f"{ratio:.2f}배"
+        if isinstance(ratio, (int, float)) and not isinstance(ratio, bool)
+        else "데이터 없음"
+    )
+    qualitative_reason = (
+        f"재료강도 {components['catalyst_strength']}점, "
+        f"신선도 {components['freshness']}점, "
+        f"독립확인 {components['confirmation']}점, "
+        f"악재위험 {components['negative_event_risk']}점. "
+        f"주재료: {primary['label']} "
+        f"({primary['status']}, 생존 {primary['alive_score']}/5) - {primary['reason']} "
+        f"뉴스: {score['news_summary']} 텔레그램: {score['telegram_summary']}"
+    )
+    quantitative_reason = (
+        f"현재가 {format_integer(score.get('close'), '원')}, "
+        f"등락률 {format_decimal(score.get('change_rate_pct'), '%')}, "
+        f"시가 대비 {format_decimal(score.get('rise_from_open_pct'), '%')}, "
+        f"고점 대비 {format_decimal(score.get('pullback_from_high_pct'), '%')}, "
+        f"거래량 {format_integer(score.get('today_volume'), '주')}, "
+        f"5일 평균 거래량 {format_integer(score.get('avg5_volume'), '주')}, "
+        f"거래량 배율 {ratio_text}, "
+        f"5일 수익률 {format_decimal(score.get('return_5d_pct'), '%')}. "
+        f"정량 감점: 최근하락 {components['negative_trend_penalty']}점, "
+        f"선반영 {components['priced_in_penalty']}점, "
+        f"소진 {components['exhaustion_penalty']}점."
+    )
+    overall_reason = score["reasoning"]
+    if "[종합]" in overall_reason:
+        overall_reason = overall_reason.split("[종합]", 1)[1].strip()
+    score_reason = (
+        "[점수 산식] "
+        f"50 + 재료강도 {components['catalyst_strength']} "
+        f"+ 신선도 {components['freshness']} "
+        f"+ 독립확인 {components['confirmation']} "
+        f"- 악재위험 {components['negative_event_risk']} "
+        f"- 최근하락 {components['negative_trend_penalty']} "
+        f"- 선반영 {components['priced_in_penalty']} "
+        f"- 소진 {components['exhaustion_penalty']} "
+        f"{score_result}.\n"
+        f"[정성적 근거] {qualitative_reason}\n"
+        f"[정량적 근거] {quantitative_reason}\n"
+        f"[종합 판단] {overall_reason}"
+    )
     return {
         "date": score["date"],
         "ticker": score["ticker"],
@@ -529,7 +728,7 @@ def to_llm_score_row(score: dict) -> dict:
         "close": score.get("close"),
         "score": score["probability_score"],
         "category": "D+1 시가 상승가능성",
-        "reason_summary": score["reasoning"],
+        "reason_summary": score_reason,
         "final_opinion": (
             f"상승 요인: {up_factors} / 하락 요인: {down_factors} / "
             f"신뢰도: {score['confidence']}·근거품질: {score['evidence_quality']}"
@@ -539,10 +738,13 @@ def to_llm_score_row(score: dict) -> dict:
         "evidence_web": f"텔레그램: {score['telegram_summary']}",
         "sources": score.get("sources") or [],
         "score_components": components,
+        "as_of": score.get("as_of"),
+        "primary_catalyst": score["primary_catalyst"],
+        "secondary_catalysts": score["secondary_catalysts"],
     }
 
 
-def upsert_llm_scores(db_path: Path, rows: list[dict]) -> int:
+def _upsert_llm_scores(con: sqlite3.Connection, rows: list[dict]) -> int:
     values = [(
         row["date"].replace("-", ""), row["ticker"], row["name"], row.get("ratio"),
         row.get("today_volume"), row.get("avg5_volume"), row.get("trading_value"),
@@ -550,30 +752,154 @@ def upsert_llm_scores(db_path: Path, rows: list[dict]) -> int:
         row["final_opinion"], row["evidence_board"], row["evidence_news"],
         row["evidence_web"], json.dumps(row["sources"], ensure_ascii=False),
     ) for row in rows]
+    if values:
+        con.executemany("""
+            INSERT INTO llm_scores (
+                date,ticker,name,ratio,today_volume,avg5_volume,trading_value,close,
+                score,category,reason_summary,final_opinion,evidence_board,
+                evidence_news,evidence_web,sources
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(date,ticker) DO UPDATE SET
+                name=excluded.name, ratio=excluded.ratio,
+                today_volume=excluded.today_volume, avg5_volume=excluded.avg5_volume,
+                trading_value=excluded.trading_value, close=excluded.close,
+                score=excluded.score, category=excluded.category,
+                reason_summary=excluded.reason_summary,
+                final_opinion=excluded.final_opinion,
+                evidence_board=excluded.evidence_board,
+                evidence_news=excluded.evidence_news,
+                evidence_web=excluded.evidence_web, sources=excluded.sources
+        """, values)
+    return len(values)
+
+
+def upsert_llm_scores(db_path: Path, rows: list[dict]) -> int:
     con = sqlite3.connect(db_path)
     try:
-        if values:
-            con.executemany("""
-                INSERT INTO llm_scores (
-                    date,ticker,name,ratio,today_volume,avg5_volume,trading_value,close,
-                    score,category,reason_summary,final_opinion,evidence_board,
-                    evidence_news,evidence_web,sources
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                ON CONFLICT(date,ticker) DO UPDATE SET
-                    name=excluded.name, ratio=excluded.ratio,
-                    today_volume=excluded.today_volume, avg5_volume=excluded.avg5_volume,
-                    trading_value=excluded.trading_value, close=excluded.close,
-                    score=excluded.score, category=excluded.category,
-                    reason_summary=excluded.reason_summary,
-                    final_opinion=excluded.final_opinion,
-                    evidence_board=excluded.evidence_board,
-                    evidence_news=excluded.evidence_news,
-                    evidence_web=excluded.evidence_web, sources=excluded.sources
-            """, values)
+        count = _upsert_llm_scores(con, rows)
         con.commit()
+        return count
+    except Exception:
+        con.rollback()
+        raise
     finally:
         con.close()
+
+
+def _upsert_catalyst_assessments(
+    con: sqlite3.Connection,
+    scores: list[dict],
+    *,
+    model: str | None,
+    generated_at: str,
+) -> int:
+    values = []
+    for score in scores:
+        validate_catalyst_assessment(score)
+        primary = score["primary_catalyst"]
+        all_catalysts = [primary, *score["secondary_catalysts"]]
+        assessment = {
+            "primary_catalyst": primary,
+            "secondary_catalysts": score["secondary_catalysts"],
+        }
+        values.append((
+            score["date"].replace("-", ""), score["ticker"], score["as_of"],
+            primary["category_raw"], primary["status"], primary["expected_duration"],
+            primary["alive_score"], max(item["alive_score"] for item in all_catalysts),
+            json.dumps(assessment, ensure_ascii=False), prompt_version_for_date(score["date"]),
+            model, generated_at,
+        ))
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS llm_catalyst_assessments (
+            date TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            as_of TEXT NOT NULL,
+            primary_category_raw TEXT NOT NULL,
+            primary_status TEXT NOT NULL,
+            primary_duration TEXT NOT NULL,
+            primary_alive_score INTEGER NOT NULL,
+            max_alive_score INTEGER NOT NULL,
+            assessment_json TEXT NOT NULL,
+            prompt_version TEXT NOT NULL,
+            model TEXT,
+            generated_at TEXT NOT NULL,
+            PRIMARY KEY (date, ticker)
+        )
+    """)
+    if values:
+        con.executemany("""
+            INSERT INTO llm_catalyst_assessments (
+                date,ticker,as_of,primary_category_raw,primary_status,
+                primary_duration,primary_alive_score,max_alive_score,
+                assessment_json,prompt_version,model,generated_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(date,ticker) DO UPDATE SET
+                as_of=excluded.as_of,
+                primary_category_raw=excluded.primary_category_raw,
+                primary_status=excluded.primary_status,
+                primary_duration=excluded.primary_duration,
+                primary_alive_score=excluded.primary_alive_score,
+                max_alive_score=excluded.max_alive_score,
+                assessment_json=excluded.assessment_json,
+                prompt_version=excluded.prompt_version,
+                model=excluded.model,
+                generated_at=excluded.generated_at
+        """, values)
     return len(values)
+
+
+def upsert_catalyst_assessments(
+    db_path: Path,
+    scores: list[dict],
+    *,
+    model: str | None = None,
+    generated_at: str | None = None,
+) -> int:
+    """기존 llm_scores와 분리해 주·보조재료 원본을 멱등 저장한다."""
+    generated = generated_at or dt.datetime.now(SEOUL).isoformat(timespec="seconds")
+    con = sqlite3.connect(db_path)
+    try:
+        count = _upsert_catalyst_assessments(
+            con, scores, model=model, generated_at=generated
+        )
+        con.commit()
+        return count
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+
+
+def persist_scoring_results(
+    db_path: Path,
+    results: list[dict],
+    *,
+    model: str | None = None,
+) -> dict[str, int]:
+    """완전한 실행 결과만 기존 점수와 신규 재료 테이블에 함께 저장한다."""
+    ensure_complete_scores(results)
+    scores = [score for result in results for score in result["scores"]]
+    for score in scores:
+        validate_catalyst_assessment(score)
+    operational_rows = [to_llm_score_row(score) for score in scores]
+    generated_at = dt.datetime.now(SEOUL).isoformat(timespec="seconds")
+    con = sqlite3.connect(db_path)
+    try:
+        counts = {
+            "llm_scores": _upsert_llm_scores(con, operational_rows),
+            "catalyst_assessments": _upsert_catalyst_assessments(
+                con, scores, model=model, generated_at=generated_at
+            ),
+        }
+        con.commit()
+        return counts
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
 
 
 def write_operational_report(reports_dir: Path, date: str, rows: list[dict], db_path: Path) -> Path:
@@ -586,6 +912,8 @@ def write_operational_report(reports_dir: Path, date: str, rows: list[dict], db_
             "build_watchlist": "success",
             "watchlist_db": str(db_path),
             "definition": "score is probability of D+1 open above D close",
+            "catalyst_definition": "primary and secondary catalyst survival assessment",
+            "catalyst_prompt_version": prompt_version_for_date(date),
         },
         "items": rows,
         "sources": sorted({source for row in rows for source in row["sources"]}),
@@ -612,15 +940,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--telegram-db", type=Path, default=DEFAULT_TELEGRAM_DB)
     parser.add_argument("--krx-db", type=Path, default=DEFAULT_KRX_DB)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-    parser.add_argument("--write-db", action="store_true", help="llm_scores를 신규 점수로 갱신")
+    parser.add_argument("--write-db", action="store_true", help="llm_scores와 catalyst shadow를 갱신")
+    parser.add_argument("--model-label", default="codex", help="catalyst 재현용 provider/model 식별자")
     parser.add_argument("--reports-dir", type=Path, default=DEFAULT_REPORTS_DIR)
     args = parser.parse_args(argv)
     dates = args.dates or latest_watchlist_dates(args.watchlist_db)
     results = [run_date(date, args.watchlist_db, args.telegram_db, args.krx_db) for date in dates]
+    write_counts = {"llm_scores": 0, "catalyst_assessments": 0}
     if args.write_db:
-        ensure_complete_scores(results)
+        write_counts = persist_scoring_results(
+            args.watchlist_db, results, model=args.model_label
+        )
     operational_rows = [to_llm_score_row(score) for result in results for score in result["scores"]]
-    written = upsert_llm_scores(args.watchlist_db, operational_rows) if args.write_db else 0
     report_paths = []
     if args.write_db:
         for result in results:
@@ -631,7 +962,8 @@ def main(argv: list[str] | None = None) -> None:
     output = {
         "generated_at": dt.datetime.now(SEOUL).isoformat(timespec="seconds"),
         "db_write": args.write_db,
-        "db_rows_written": written,
+        "db_rows_written": write_counts["llm_scores"],
+        "catalyst_rows_written": write_counts["catalyst_assessments"],
         "operational_reports": report_paths,
         "results": results,
         "comparison": compare_scores(results),
