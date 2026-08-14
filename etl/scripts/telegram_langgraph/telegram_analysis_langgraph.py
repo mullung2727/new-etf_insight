@@ -86,6 +86,7 @@ def _load_prompt(name: str) -> str:
 
 class State(TypedDict):
     date_kst: str
+    start_date_kst: str
     session: str                     # morning | close | evening (run 라벨)
     db_path: str
     stock_db_path: str
@@ -119,7 +120,7 @@ _POSTS_QUERY = """
 SELECT channel, post_id, post_ref, posted_at_utc, date_kst, text,
        links_json, created_at, updated_at
 FROM telegram_posts
-WHERE date_kst = ?
+WHERE date_kst BETWEEN ? AND ?
 ORDER BY channel, post_id
 """
 
@@ -142,7 +143,10 @@ def load_posts(state: State) -> State:
     try:
         con.execute("PRAGMA query_only=ON")
         watermark_in = read_watermarks(con)
-        cur = con.execute(_POSTS_QUERY, (state["date_kst"],))
+        cur = con.execute(
+            _POSTS_QUERY,
+            (state.get("start_date_kst") or state["date_kst"], state["date_kst"]),
+        )
         cols = [c[0] for c in cur.description]
         all_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     finally:
@@ -555,6 +559,7 @@ def build_graph():
 def analyze_telegram_session(
     date_kst: str,
     session: str,
+    start_date_kst: str | None = None,
     db_path: Path = Path("db/telegram_public.sqlite3"),
     output_path: Path | None = None,
     history_days: int = 7,
@@ -565,6 +570,7 @@ def analyze_telegram_session(
     app = build_graph()
     result = app.invoke({
         "date_kst": date_kst,
+        "start_date_kst": start_date_kst or date_kst,
         "session": session,
         "db_path": str(db_path),
         "stock_db_path": stock_db_path,
@@ -604,6 +610,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="텔레그램 증분 종목 분석 LangGraph")
     ap.add_argument("--date", required=True, help="분석 대상 KST 일자 YYYY-MM-DD")
     ap.add_argument("--session", required=True, choices=["morning", "close", "evening"])
+    ap.add_argument("--start-date", help="증분 조회 시작 KST 일자(기본: --date)")
     ap.add_argument("--db", default="db/telegram_public.sqlite3")
     ap.add_argument("--output", help="디버그 JSON 덤프 경로(선택)")
     ap.add_argument("--history-days", type=int, default=7)
@@ -613,6 +620,7 @@ def main() -> None:
     report = analyze_telegram_session(
         args.date,
         args.session,
+        start_date_kst=args.start_date,
         db_path=Path(args.db),
         output_path=Path(args.output) if args.output else None,
         history_days=args.history_days,

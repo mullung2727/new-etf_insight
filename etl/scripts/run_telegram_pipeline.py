@@ -33,6 +33,7 @@ def run_pipeline(
     date: str,
     session: str,
     *,
+    start_date: str | None = None,
     digest_channel: str | None = None,
     dry_run: bool = False,
     runner=subprocess.run,
@@ -43,6 +44,8 @@ def run_pipeline(
     """
     for name, script in STAGES:
         cmd = [sys.executable, script, "--date", date, "--session", session]
+        if start_date and name in {"discover", "analyze"}:
+            cmd += ["--start-date", start_date]
         if name == "digest":
             if digest_channel:
                 cmd += ["--channel", digest_channel]
@@ -57,10 +60,14 @@ def main() -> int:
     p = argparse.ArgumentParser(description="텔레그램 종목 요약 파이프라인 (discover→analyze→digest)")
     p.add_argument("--date", required=True, help="KST 일자 YYYY-MM-DD")
     p.add_argument("--session", default="close", help="morning|close|evening")
+    p.add_argument("--start-date", help="증분 조회 시작 KST 일자(기본: --date)")
     p.add_argument("--channel", help="digest notify 채널 (discord/telegram/…)")
     p.add_argument("--dry-run", action="store_true", help="digest 전송 없이 메시지만")
     args = p.parse_args()
-    run_pipeline(args.date, args.session, digest_channel=args.channel, dry_run=args.dry_run)
+    run_pipeline(
+        args.date, args.session, start_date=args.start_date,
+        digest_channel=args.channel, dry_run=args.dry_run,
+    )
     return 0
 
 

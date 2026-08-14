@@ -89,6 +89,13 @@ class FetchDiscoveryPostsTest(unittest.TestCase):
         refs = {p["post_ref"] for p in posts}
         self.assertEqual(refs, {"getfeed/1", "corevalue/9"})
 
+    def test_filters_by_two_day_range(self):
+        posts = fetch_discovery_posts(
+            self.con, ["getfeed", "corevalue"], "2026-07-02", "2026-07-01"
+        )
+        refs = {p["post_ref"] for p in posts}
+        self.assertEqual(refs, {"getfeed/1", "getfeed/2", "corevalue/9"})
+
 
 if __name__ == "__main__":
     unittest.main()

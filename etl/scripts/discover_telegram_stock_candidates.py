@@ -53,14 +53,19 @@ def extract_mentions(
     return list(found.items())
 
 
-def fetch_discovery_posts(con: sqlite3.Connection, channels: list[str], date_kst: str) -> list[dict]:
+def fetch_discovery_posts(
+    con: sqlite3.Connection,
+    channels: list[str],
+    date_kst: str,
+    start_date_kst: str | None = None,
+) -> list[dict]:
     if not channels:
         return []
     placeholders = ",".join("?" * len(channels))
     rows = con.execute(
         f"SELECT channel, post_ref, text FROM telegram_posts "
-        f"WHERE channel IN ({placeholders}) AND date_kst = ?",
-        (*channels, date_kst),
+        f"WHERE channel IN ({placeholders}) AND date_kst BETWEEN ? AND ?",
+        (*channels, start_date_kst or date_kst, date_kst),
     ).fetchall()
     return [{"channel": r[0], "post_ref": r[1], "text": r[2]} for r in rows]
 
@@ -92,6 +97,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", required=True, help="KST date YYYY-MM-DD")
     ap.add_argument("--session", default="close", help="세션 라벨 morning|close|evening")
+    ap.add_argument("--start-date", help="조회 시작 KST 일자(기본: --date)")
     ap.add_argument("--db", default=str(DEFAULT_DB))
     ap.add_argument("--stock-db", default=str(DEFAULT_STOCK_DB))
     ap.add_argument("--dry-run", action="store_true")
@@ -103,7 +109,7 @@ def main() -> None:
 
     con = sqlite3.connect(args.db)
     try:
-        posts = fetch_discovery_posts(con, channels, args.date)
+        posts = fetch_discovery_posts(con, channels, args.date, args.start_date)
 
         stock_con = duckdb.connect(args.stock_db, read_only=True)
         try:

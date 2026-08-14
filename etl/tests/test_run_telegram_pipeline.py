@@ -65,6 +65,19 @@ class RunPipelineTest(unittest.TestCase):
             self.assertNotIn("--dry-run", c)
             self.assertNotIn("--channel", c)
 
+    def test_start_date_only_on_discover_and_analyze(self):
+        calls = []
+
+        def runner(cmd, **kw):
+            calls.append(cmd)
+            return SimpleNamespace(returncode=0)
+
+        run_pipeline("2026-07-07", "morning", start_date="2026-07-06", runner=runner)
+        for c in calls[:2]:
+            self.assertIn("--start-date", c)
+            self.assertIn("2026-07-06", c)
+        self.assertNotIn("--start-date", calls[2])
+
 
 if __name__ == "__main__":
     unittest.main()

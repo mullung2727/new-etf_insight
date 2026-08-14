@@ -42,6 +42,7 @@ MODULE = "scripts.telegram_langgraph.telegram_analysis_langgraph"
 def _base_state(db_path, stock_db=""):
     return {
         "date_kst": "2026-07-03",
+        "start_date_kst": "2026-07-03",
         "session": "close",
         "db_path": db_path,
         "stock_db_path": stock_db,
@@ -183,6 +184,15 @@ class LoadPostsTest(unittest.TestCase):
         self.assertEqual(refs, {"getfeed/8", "corevalue/2"})
         self.assertEqual(out["watermark_in"], {"getfeed": 5})
         self.assertEqual(out["channel_post_counts"], {"getfeed": 1, "corevalue": 1})
+
+    def test_two_day_window_keeps_only_posts_after_watermark(self):
+        discovery = {"getfeed": {}, "corevalue": {}}
+        state = _base_state(self.db)
+        state["start_date_kst"] = "2026-07-02"
+        with patch(f"{MODULE}.load_discovery_channels", return_value=discovery):
+            out = load_posts(state)
+        refs = {r["post_ref"] for r in out["rows"]}
+        self.assertEqual(refs, {"getfeed/8", "getfeed/9", "corevalue/2"})
 
 
 class ExtractNodesTest(unittest.TestCase):
