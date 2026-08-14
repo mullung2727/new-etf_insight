@@ -81,13 +81,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\ops\batches\Export-OpenCla
 Production execution does not rely on OpenClaw. Windows Task Scheduler runs the
 project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
 
-- `\new_etf_insight\daily-new-etf-insight-batch` — daily 07:00,
+- `\new-etf_insight\daily-new-etf-insight-batch` — daily 07:00,
   `ops/scheduled-tasks/run-new-etf-insight-batch.ps1`.
-- `\new_etf_insight\daily-etf-watchlist-krx-ohlcv` — Tue-Sat 08:00,
+- `\new-etf_insight\daily-etf-watchlist-krx-ohlcv` — Tue-Sat 08:00,
   `ops/scheduled-tasks/run-krx-ohlcv.ps1`.
 - `\new-etf_insight\daily-etf-watchlist-intraday-kiwoom` — Mon-Fri 14:59 시작, 15:00 스냅샷,
   `ops/scheduled-tasks/run-watchlist-intraday.ps1`.
-- `\new_etf_insight\daily-close-bet-order-report` — Mon-Fri 15:21,
+- `\new-etf_insight\daily-close-bet-order-report` — Mon-Fri 15:21,
   `ops/scheduled-tasks/run-close-bet-order-report.ps1`.
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).
@@ -96,23 +96,46 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
 
 The 15:21 report task is report-only and must not place or retry orders.
 
-## 통합 매매 작업
+## 자동매매 전략과 Windows 작업 매핑
 
-기존 종가배팅 실행 작업은 비활성화하고, `lower_low_bullish_reversal`만
-아래 3개 Windows 작업 스케줄러 진입점으로 실행한다.
+눌림목과 종가베팅은 동시에 운영하는 **서로 다른 전략**이다. 작업 이름을 보고
+`신규`/`구형` 전략으로 부르지 말고, 아래 전략명으로 구분한다.
 
-| 작업 | 시각 | 실행 파일 |
-| --- | --- | --- |
-| `\OpenClaw\trading-exit` | 평일 08:50 | `run-trading-exit.ps1` |
-| `\OpenClaw\trading-order` | 평일 15:19 | `run-trading-order.ps1` |
-| `\OpenClaw\trading-verify` | 평일 16:00 | `run-trading-verify.ps1` |
+### 눌림목 (`lower_low_bullish_reversal`)
+
+| 단계 | Windows 작업 | 시각 | 실행 파일 |
+| --- | --- | --- | --- |
+| 청산 감시 | `\OpenClaw\trading-exit` | 평일 08:50 | `run-trading-exit.ps1` |
+| 매수 | `\OpenClaw\trading-order` | 평일 15:19 | `run-trading-order.ps1` |
+| 체결 검증 | `\OpenClaw\trading-verify` | 평일 16:00 | `run-trading-verify.ps1` |
 
 - XML 원본은 `ops/scheduled-tasks/trading-*.xml`이다.
-- 눌림목 청산 워커는 08:50에 시작해 15:25까지 동작한다.
+- 청산 워커는 08:50에 시작해 15:25까지 동작한다.
+
+### 종가베팅 (`close_bet`)
+
+| 단계 | Windows 작업 | 시각 | 실행 파일 |
+| --- | --- | --- | --- |
+| 청산 감시 | `\OpenClaw\close-bet-exit` | 평일 08:50 | `run-close-bet-exit.ps1` |
+| 매수 | `\OpenClaw\close-bet-order` | 평일 15:19 | `run-close-bet-order.ps1` |
+| 강제청산 백스톱 | `\OpenClaw\close-bet-force-exit` | 평일 15:19:30 | `run-close-bet-force-exit.ps1` |
+| 체결 검증 | `\OpenClaw\close-bet-verify` | 평일 16:00 | `run-close-bet-verify.ps1` |
+| 주문 결과 보고 | `\new-etf_insight\daily-close-bet-order-report` | 평일 15:21 | `run-close-bet-order-report.ps1` |
+
+- 15:21 작업은 보고 전용이며 주문을 넣거나 재시도하면 안 된다.
+- 두 전략의 매수 작업은 모두 15:19에 실행되므로 주문 가능 현금을 함께 사용한다.
 - 로그는 `etl/logs`에 저장한다.
-- 기존 15:21 종가배팅 보고 작업은 주문 없는 보고 전용이므로 그대로 유지한다.
-- 기존 `close-bet-order`, `close-bet-verify`, `close-bet-exit`, `close-bet-force-exit`은
-  비활성 상태로 유지한다.
+
+### 기대 상태와 실제 등록 상태 구분
+
+- 운영 의도: 눌림목과 종가베팅을 모두 실행한다.
+- 전략·단계·작업 매핑은 이 문서를 기준으로 한다.
+- 활성화 여부, 마지막/다음 실행 시각, `Last Result`는 변경 가능한 운영 상태이므로
+  분석 시 **실제 Windows Task Scheduler 등록값을 조회**한다. XML이나 이 문서만으로
+  현재 활성 상태를 단정하지 않는다.
+- 2026-08-10 조회 스냅샷: 눌림목 3개 작업은 활성화. 종가베팅은 매수 작업과
+  15:21 보고 작업만 활성화되어 있고 청산 감시·강제청산·체결 검증은 비활성화.
+  이 줄은 당시 상태 기록이며 현재 상태의 권위값이 아니다.
 
 ### 워커 프로세스 확인 시 주의 (python.exe 2개는 정상)
 

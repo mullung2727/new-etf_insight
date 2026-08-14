@@ -5,6 +5,7 @@
 - When running or debugging the ETF batch pipeline, first read `skills/new-etf-insight-batch/SKILL.md`.
 - When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
 - When starting, restarting, checking, or debugging local project servers, first read `skills/new-etf-insight-server-dev/SKILL.md`.
+- 자동매매·예약 배치를 조사하거나 설명하기 전에 `ops/batches/README.md`의 전략별 작업 매핑을 먼저 읽는다. 전략 매핑은 README를 기준으로 하고, 활성화·마지막/다음 실행·결과는 실제 Windows Task Scheduler 등록값을 별도로 조회해 구분한다. 작업을 `신규`/`구형`으로 추정해 부르지 않는다.
 
 이 문서는 `new-etf-insight` 프로젝트에서 에이전트가 항상 따라야 하는 최상위 작업 지침이다.
 코드 수정, 설계, 테스트, 응답 방식은 반드시 이 문서를 우선한다.
