@@ -4,7 +4,7 @@ KRX OpenAPI는 전일까지만 제공하므로 당일(D) 거래량 상위는 키
 `ka10030`(당일거래량상위요청)으로 수집한다. 매 거래일 15:35 이후 실행.
 
 수집 규칙 (PLAN_WATCHLIST_INTRADAY.md):
-  - 전체시장, 거래량 정렬, ETF+ETN 제외(mang_stk_incls=16), KRX+NXT 통합
+  - 전체시장, 거래량 정렬, ETF+ETN 제외(mang_stk_incls=16), KRX 단독
   - stk_cd 의 "_AL" 등 suffix 제거 → 6자리 ticker
   - 순수 거래량 상위 N_TOP(30) 슬라이스 — 동전주 컷은 여기서 하지 않는다
     (원본 build_watchlist 로직과 동일하게 후보 산출 단계에서 적용)
@@ -80,7 +80,7 @@ _KA10030_BODY = {
     "pric_tp": "0",
     "trde_prica_tp": "0",
     "mrkt_open_tp": "0",     # 장운영구분 전체 (장 마감 후에도 당일 최종값)
-    "stex_tp": "3",          # KRX+NXT 통합
+    "stex_tp": "1",          # KRX 단독 — 과거 krx_ohlcv와 동일 기준
 }
 
 _CREATE_RANKING = """
@@ -231,8 +231,7 @@ def _is_holiday_stale(con: sqlite3.Connection, date: str, rows: list[tuple]) -> 
     해당 직전 날짜 반환, 아니면 None.
 
     휴장일에 ka10030은 직전 거래일 데이터를 그대로 반환 → 같은 소스(키움
-    스냅샷)끼리 비교해야 정확히 일치. krx_ohlcv 와는 집계 기준이 달라
-    (KRX+NXT 통합 vs KRX 단독, 실측 불일치) 비교 불가.
+    스냅샷)끼리 비교해야 정확히 일치한다.
     """
     con.execute(_CREATE_RANKING)
     prev_date = con.execute(

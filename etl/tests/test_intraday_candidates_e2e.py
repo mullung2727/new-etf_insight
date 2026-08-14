@@ -27,6 +27,7 @@ from scripts.build_intraday_ranking import (
     N_TOP,
     PENNY_MAX,
     fetch_past_top_union,
+    compute_candidates,
     run,
     run_candidates,
 )
@@ -43,6 +44,22 @@ def _krx_dates(limit_after: int = 0) -> list[str]:
         return [r[0] for r in con.execute("SELECT DISTINCT date FROM ohlcv ORDER BY date").fetchall()]
     finally:
         con.close()
+
+
+class TestCandidateDeduplication(unittest.TestCase):
+    def test_manyeo_factory_appears_only_on_first_krx_top30_day(self):
+        today_rows = [
+            (1, "439090", "마녀공장", 6_398_231, 19_600),
+            (2, "257720", "실리콘투", 5_000_000, 45_200),
+        ]
+
+        first_day = compute_candidates(today_rows, set())
+        next_day = compute_candidates(today_rows, {"439090"})
+
+        self.assertEqual(first_day, ["257720", "439090"])
+        self.assertEqual(first_day.count("439090"), 1)
+        self.assertEqual(next_day, ["257720"])
+        self.assertEqual(next_day.count("439090"), 0)
 
 
 class TestEquivalenceWithBuildWatchlist(unittest.TestCase):

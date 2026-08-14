@@ -12,8 +12,13 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
-from scripts.build_intraday_ranking import N_TOP, run
+from scripts.build_intraday_ranking import N_TOP, _KA10030_BODY, run
 from scripts.wl_sqlite import connect_ro
+
+
+class TestKa10030RequestContract(unittest.TestCase):
+    def test_requests_krx_only_to_match_historical_krx_ohlcv(self):
+        self.assertEqual(_KA10030_BODY["stex_tp"], "1")
 
 
 class TestIntradayRankingE2E(unittest.TestCase):
