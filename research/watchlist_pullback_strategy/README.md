@@ -15,6 +15,8 @@
 - `phase8_minute_pullback_strategy.json`: 분봉 규칙별 전반부 선택·후반부 검증과 비용 민감도 원본이다.
 - `phase9_minute_strategy_design.md`: 캐시 완전성을 수정한 뒤 전반부에서 재설계하고 후반부 검증한 최종 결과다.
 - `phase9_minute_strategy_design.json`: 312개 고정 후보 조합과 선택 전략의 상세 수치 원본이다.
+- `phase11_upper_limit_strategy_search.md`: 상한가 체결 제외, 210개 조합, 코스피 상대성과 및 최종 잠정 후보 3개를 정리한 최신 문서다.
+- `phase11_upper_limit_strategy_search.json`: 전체 210개 조합과 상한가 제외 사례·LLM overlay·코스피 상대성과 원본이다.
 - `minute_cache/`: 키움 `ka10080` 원본을 정규화한 종목·기준일별 재사용 캐시다.
 - 실행 코드: `../watchlist_expected_return/phase7_pullback_strategy.py`
 - 분봉 공통 캐시 코드: `../watchlist_expected_return/minute_bar_cache.py`
@@ -75,6 +77,23 @@
 - 장중 진입 3개는 비용 1% 차감 후 후반부 평균이 각각 -1.55%, -1.57%, -2.07%였다.
 - 기존 `close_confirm`은 같은 조건에서 후반부 평균 +3.47%였지만 표본은 11건이다.
 
+## phase11 최신 재검증
+
+- 상한가 가격과 같거나 높은 진입은 체결 불가로 하드 제외했다. 실제 제외된 종목·일자는 4건이다.
+- 과거 DB에는 권위 상한가 필드가 없으므로 `전일 종가 × 130%`를 최종 가격대 호가단위로 내린 추정값을 썼다. 신규상장·권리락·기준가격 변경일에는 오판 가능성이 있어 향후 권위 기준가격 적재가 필요하다.
+- D+1~D+5 중 최초 lower-low 발생일을 대상으로 한 139건을 공통 모집단으로 두고 7개 진입 규칙 × 30개 청산 규칙, 총 210개 조합을 재실행했다.
+- 왕복 비용 1%와 전반/후반 각 최소 10건, 양 구간 평균 양수 조건을 모두 충족한 조합은 0개였다.
+- 기존 phase9의 `close_confirm + TP3/SL3/D3` 검증 결과도 상한가 진입 3건을 제거하면 후반부 11건·평균 +3.47%에서 9건·평균 +0.33%로 바뀌어 최소 표본 조건을 잃는다. 따라서 기존 `candidate_validated` 결론은 폐기한다.
+- 절대수익 기준 상위 3개는 모두 `15:19 양봉확정` 계열이지만 후반부 9건뿐이라 잠정 후보로만 남겼다.
+  - TP 8% / SL 4% / 3일: 전체 27건 평균 +1.89%
+  - TP 8% / SL 5% / 3일: 전체 27건 평균 +1.29%
+  - TP 6% / SL 4% / 3일: 전체 27건 평균 +1.61%
+- 그러나 같은 진입 신호의 코스피 대비 초과수익은 D+1 평균 -1.05%p, D+3 평균 -1.62%p였고 상회율은 각각 39.29%, 37.04%였다.
+- 따라서 현재 운영 적용 후보는 0개다. 위 3개는 다음 독립 기간 재검증 우선순위일 뿐이다.
+- 현재 정의의 LLM 확률점수와 안전하게 결합되는 표본은 최종 후보별 2건뿐이어서 증분 효과는 확정하지 않았다.
+- 현재 점수는 뉴스·텔레그램뿐 아니라 최근 수익률·고점 이탈·시가 대비 등 가격요인을 포함하므로 순수 정성점수가 아니라 `LLM 정성 + 가격 hybrid overlay`다.
+- 과거 뉴스 발행시각과 텔레그램 행 생성·수정시각이 forensic-grade로 고정되지 않은 구간은 PIT 재채점 표본으로 사용하지 않는다.
+
 ## phase10 파일 구성
 
 - `phase10_intraday_entry_comparison.md`: 네 전략의 핵심 비교표와 해석 주의사항
@@ -89,6 +108,7 @@
 ```powershell
 etl\.venv\Scripts\python.exe -m research.watchlist_expected_return.phase7_pullback_strategy
 etl\.venv\Scripts\python.exe -m research.watchlist_expected_return.phase10_intraday_entry_comparison
+etl\.venv\Scripts\python.exe -m research.watchlist_expected_return.phase11_upper_limit_strategy_search
 ```
 
 - 실행하면 이 폴더의 해당 단계 `.md`와 `.json`이 갱신된다.
