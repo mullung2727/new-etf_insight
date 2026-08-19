@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.run_pullback_exit import (
-    advance_holding_day, decide_exit, load_positions, mark_sell_ordered,
+    advance_holding_day, decide_exit, load_positions, mark_missing_positions, mark_sell_ordered,
     sell_quantity, settle_sell_orders,
 )
 from scripts.run_pullback_order import create_pullback_orders_table
@@ -95,3 +95,48 @@ class PullbackExitTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarkMissingPositionsTest(unittest.TestCase):
+    """잔고에서 사라진 눌림목 포지션을 종료로 확정한다.
+
+    기존 run_cycle 은 매도가능수량 0이면 continue 로 넘어가기만 해서 sell_status 가
+    영원히 빈 값으로 남았다. 종가베팅 쪽 reconcile_balance 와 같은 결함이 두 벌로
+    존재했고, 그래서 판정을 trading_batch_common 으로 합쳤다.
+    """
+
+    def setUp(self):
+        fd, name = tempfile.mkstemp(suffix=".sqlite3"); os.close(fd); os.unlink(name)
+        self.db = Path(name)
+        with connect_rw(self.db) as con:
+            create_pullback_orders_table(con)
+            con.execute(
+                "INSERT INTO pullback_orders (watchlist_date,signal_date,ticker,strategy,"
+                "prior_low,day_open,signal_price,qty,status,buy_price,buy_qty,bought_at,"
+                "remaining_hold_days,created_at) VALUES "
+                "('20260819','20260819','025320','lower_low_bullish_reversal',100,99,101,"
+                "75,'confirmed',3970,75,'2026-08-19 16:00:04+09:00',3,'2026-08-19')"
+            )
+
+    def tearDown(self):
+        self.db.unlink(missing_ok=True)
+
+    def _sell_status(self):
+        with connect_ro(self.db) as con:
+            return con.execute(
+                "SELECT sell_status FROM pullback_orders WHERE ticker='025320'"
+            ).fetchone()[0]
+
+    def test_position_absent_from_balance_is_closed_as_missing(self):
+        mark_missing_positions(self.db, load_positions(self.db), {"acnt_evlt_remn_indv_tot": []})
+        self.assertEqual(self._sell_status(), "missing")
+        self.assertEqual(load_positions(self.db), [])
+
+    def test_held_position_is_untouched(self):
+        balance = {"acnt_evlt_remn_indv_tot": [{"stk_cd": "A025320", "trde_able_qty": "75"}]}
+        mark_missing_positions(self.db, load_positions(self.db), balance)
+        self.assertIsNone(self._sell_status())
+
+    def test_balance_lookup_failure_marks_nothing(self):
+        mark_missing_positions(self.db, load_positions(self.db), {})
+        self.assertIsNone(self._sell_status())

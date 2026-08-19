@@ -346,3 +346,61 @@ class TestLoadOrderedPending(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMarkMissingPositions(unittest.TestCase):
+    """잔고에서 사라진 포지션을 종료로 확정한다.
+
+    기존엔 reconcile_balance 가 미보유 포지션을 조용히 탈락시키기만 해서
+    sell_status 가 영원히 NULL 로 남았다(050110, 2026-07-15). 그 결과 매일
+    청산 워커가 헛돌고, 중복매수 가드가 그 종목을 영구 매수차단했다.
+    """
+
+    def _db_with(self, ticker: str) -> Path:
+        path = _fresh_db()
+        with connect_rw(path) as con:
+            create_close_bet_orders_table(con)
+            ensure_exit_columns(con)
+            con.execute(
+                "INSERT INTO close_bet_orders(date,ticker,score,qty,order_type,status,cntr_price)"
+                " VALUES('20260715',?,52,2606,'market','confirmed',1150)",
+                (ticker,),
+            )
+        return path
+
+    def _sell_status(self, path: Path, ticker: str):
+        with connect_rw(path) as con:
+            row = con.execute(
+                "SELECT sell_status FROM close_bet_orders WHERE ticker=?", (ticker,)
+            ).fetchone()
+        return row[0]
+
+    def test_position_absent_from_balance_is_closed_as_missing(self):
+        path = self._db_with("050110")
+        positions = [{"date": "20260715", "ticker": "050110", "cntr_price": 1150, "qty": 11}]
+        ex.mark_missing_positions(path, positions, {"acnt_evlt_remn_indv_tot": []})
+        self.assertEqual(self._sell_status(path, "050110"), "missing")
+
+    def test_held_position_is_untouched(self):
+        path = self._db_with("025320")
+        positions = [{"date": "20260715", "ticker": "025320", "cntr_price": 1150, "qty": 75}]
+        balance = {"acnt_evlt_remn_indv_tot": [
+            {"stk_cd": "A025320", "trde_able_qty": "75"},
+        ]}
+        ex.mark_missing_positions(path, positions, balance)
+        self.assertIsNone(self._sell_status(path, "025320"))
+
+    def test_balance_lookup_failure_marks_nothing(self):
+        """조회 한 번 실패로 전 포지션을 유령 처리하면 실보유분 청산이 막힌다."""
+        path = self._db_with("050110")
+        positions = [{"date": "20260715", "ticker": "050110", "cntr_price": 1150, "qty": 11}]
+        ex.mark_missing_positions(path, positions, {})
+        self.assertIsNone(self._sell_status(path, "050110"))
+
+    def test_unsold_query_skips_closed_rows(self):
+        """마감된 행은 다음날부터 청산 대상에서 빠진다 — 매일 헛도는 루프 종료."""
+        path = self._db_with("050110")
+        positions = [{"date": "20260715", "ticker": "050110", "cntr_price": 1150, "qty": 11}]
+        ex.mark_missing_positions(path, positions, {"acnt_evlt_remn_indv_tot": []})
+        with connect_rw(path) as con:
+            self.assertEqual(load_unsold_positions(con, "20260819"), [])

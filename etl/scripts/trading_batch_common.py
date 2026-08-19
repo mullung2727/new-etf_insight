@@ -9,6 +9,13 @@ import requests
 
 REQUEST_TIMEOUT = 15
 
+# 청산이 끝난 것으로 간주하는 sell_status. 청산 워커의 미청산 조회와 주문 배치의
+# 중복매수 가드가 같은 집합을 봐야 한다 — 한쪽만 알면 유령 포지션이 매수를 영구 차단한다.
+#   filled  = 실제 매도 체결
+#   missing = 매수 기록은 있으나 계좌 잔고에 없음(모의계좌 리셋 등). 매도할 물량이
+#             없으므로 청산 불가 — 조용히 건너뛰지 말고 종료로 확정한다.
+CLOSED_SELL_STATUSES = ("filled", "missing")
+
 
 def now_seoul() -> datetime:
     return datetime.now(ZoneInfo("Asia/Seoul"))
@@ -106,3 +113,31 @@ def market_order(
 
 def quantity_for_budget(budget: int, price: int) -> int:
     return budget // price if budget > 0 and price > 0 else 0
+
+
+def _strip_ticker(code: object) -> str:
+    """키움 잔고의 'A005930' 접두를 벗긴다."""
+    text = str(code).strip()
+    return text[1:] if text[:1] == "A" and text[1:].isdigit() else text
+
+
+def _padint(value: object) -> int:
+    try:
+        return int(str(value).replace(",", "").strip() or 0)
+    except (ValueError, TypeError):
+        return 0
+
+
+def held_quantities(balance: dict) -> dict[str, int] | None:
+    """잔고 응답 → {종목코드: 매도가능수량}.
+
+    조회 실패·응답 이상이면 None. 이걸 빈 dict로 뭉개면 호출부가 '전 종목 미보유'로
+    읽어서 멀쩡한 포지션까지 유령으로 마감해버린다. 보유 0건인 정상 응답({})과
+    반드시 구분해야 한다.
+    """
+    if not isinstance(balance, dict):
+        return None
+    rows = balance.get("acnt_evlt_remn_indv_tot")
+    if not isinstance(rows, list):
+        return None
+    return {_strip_ticker(r.get("stk_cd", "")): _padint(r.get("trde_able_qty")) for r in rows}

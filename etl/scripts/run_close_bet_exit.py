@@ -36,7 +36,7 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.close_bet_config import load as load_close_bet_config
     # 연속매매 창(09:00~15:20) 판정은 주문창 판정과 동일 로직 — 공용 함수를 도메인 이름으로 씀
     from scripts.trading_batch_common import (
-        REQUEST_TIMEOUT, fetch_realized,
+        REQUEST_TIMEOUT, fetch_realized, held_quantities,
         in_order_window as in_trading_window, now_seoul as _now_seoul,
     )
 except ImportError:
@@ -46,7 +46,7 @@ except ImportError:
     from wl_sqlite import connect_ro, connect_rw
     from close_bet_config import load as load_close_bet_config
     from trading_batch_common import (
-        REQUEST_TIMEOUT, fetch_realized,
+        REQUEST_TIMEOUT, fetch_realized, held_quantities,
         in_order_window as in_trading_window, now_seoul as _now_seoul,
     )
 
@@ -149,6 +149,37 @@ def reconcile_balance(positions: list[dict], balance: dict) -> list[dict]:
         if qty_eff > 0:
             out.append({**p, "qty_eff": qty_eff})
     return out
+
+
+def mark_missing_positions(db_path, positions: list[dict], balance: dict) -> list[str]:
+    """잔고에 없는 포지션을 sell_status='missing' 으로 확정한다.
+
+    감시 대상에서 빼기만 하면 sell_status 가 NULL 로 남아 매일 다시 조회되고,
+    중복매수 가드가 그 종목을 계속 '보유중'으로 읽어 매수를 영구 차단한다.
+
+    잔고 조회 실패 시에는 아무것도 마감하지 않는다 — 실패를 '전 종목 미보유'로
+    오독하면 실제 보유분까지 유령 처리돼 청산 경로가 통째로 막힌다.
+    """
+    held = held_quantities(balance)
+    if held is None:
+        print("[exit] 잔고 조회 실패 — 미보유 마감 처리 건너뜀")
+        return []
+
+    missing = [p for p in positions if held.get(p["ticker"], 0) <= 0]
+    if not missing:
+        return []
+
+    with connect_rw(db_path) as con:
+        ensure_exit_columns(con)
+        for p in missing:
+            con.execute(
+                "UPDATE close_bet_orders SET sell_status='missing', sold_at=?, "
+                "exit_reason='missing' WHERE date=? AND ticker=? AND sell_status IS NULL",
+                (_now_seoul().isoformat(), p["date"], p["ticker"]),
+            )
+    tickers = [p["ticker"] for p in missing]
+    print(f"[exit] 잔고 미보유 {len(tickers)}건 종료 처리(missing): {', '.join(tickers)}")
+    return tickers
 
 
 # ── 매도 상태머신 (close_bet_orders) ──────────────────────────────────────────
@@ -289,6 +320,7 @@ def build_watch_set(args, broker_url: str, today: str) -> dict[str, dict]:
     with connect_rw(DEFAULT_WATCHLIST_DB) as con:
         positions = load_unsold_positions(con, today)
     balance = fetch_balance(broker_url)
+    mark_missing_positions(DEFAULT_WATCHLIST_DB, positions, balance)
     watch = reconcile_balance(positions, balance)
     print(f"[exit] 포지션 {len(positions)}건 → 잔고대조 후 감시 {len(watch)}건")
     return {w["ticker"]: w for w in watch}

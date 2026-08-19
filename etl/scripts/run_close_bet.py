@@ -44,13 +44,17 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     )
     from scripts.wl_sqlite import connect_ro, connect_rw
     from scripts.close_bet_config import load as load_close_bet_config
-    from scripts.trading_batch_common import available_cash, current_price, in_order_window, market_order
+    from scripts.trading_batch_common import (
+        CLOSED_SELL_STATUSES, available_cash, current_price, in_order_window, market_order,
+    )
 except ImportError:
     from notify import send_discord
     from run_verify import fetch_order_history, mark_confirmed, normalize_order_no
     from wl_sqlite import connect_ro, connect_rw
     from close_bet_config import load as load_close_bet_config
-    from trading_batch_common import available_cash, current_price, in_order_window, market_order
+    from trading_batch_common import (
+        CLOSED_SELL_STATUSES, available_cash, current_price, in_order_window, market_order,
+    )
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
@@ -153,8 +157,10 @@ def load_order_candidates(
             guards.append(
                 "NOT EXISTS (SELECT 1 FROM pullback_orders p WHERE p.ticker=l.ticker "
                 "AND p.status IN ('submitted','unconfirmed','confirmed','sell_ordered') "
-                "AND COALESCE(p.sell_status, '') != 'filled')"
+                "AND COALESCE(p.sell_status, '') NOT IN "
+                f"({','.join('?' for _ in CLOSED_SELL_STATUSES)}))"
             )
+            params.extend(CLOSED_SELL_STATUSES)
         guard_sql = "".join(f" AND {guard}" for guard in guards)
         rows = con.execute(
             "SELECT l.ticker, l.score, l.name, l.close FROM llm_scores l "

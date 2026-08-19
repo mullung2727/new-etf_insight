@@ -25,14 +25,16 @@ try:
     from scripts.notify import send_discord
     from scripts.pullback_config import load
     from scripts.trading_batch_common import (
-        available_cash, in_order_window, now_seoul, quantity_for_budget,
+        CLOSED_SELL_STATUSES, available_cash, in_order_window, now_seoul,
+        quantity_for_budget,
     )
     from scripts.wl_sqlite import connect_ro, connect_rw
 except ImportError:
     from notify import send_discord
     from pullback_config import load
     from trading_batch_common import (
-        available_cash, in_order_window, now_seoul, quantity_for_budget,
+        CLOSED_SELL_STATUSES, available_cash, in_order_window, now_seoul,
+        quantity_for_budget,
     )
     from wl_sqlite import connect_ro, connect_rw
 
@@ -103,6 +105,10 @@ def is_terminal_watchlist_order(con: sqlite3.Connection, watchlist_date: str, ti
     return row is not None
 
 
+def _closed_placeholders() -> str:
+    return ",".join("?" for _ in CLOSED_SELL_STATUSES)
+
+
 def load_open_pullback_tickers(con: sqlite3.Connection) -> set[str]:
     exists = con.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pullback_orders'"
@@ -112,8 +118,8 @@ def load_open_pullback_tickers(con: sqlite3.Connection) -> set[str]:
     placeholders = ",".join("?" for _ in OPEN_PULLBACK_STATUSES)
     rows = con.execute(
         f"SELECT DISTINCT ticker FROM pullback_orders WHERE status IN ({placeholders}) "
-        "AND COALESCE(sell_status, '') != 'filled'",
-        OPEN_PULLBACK_STATUSES,
+        f"AND COALESCE(sell_status, '') NOT IN ({_closed_placeholders()})",
+        (*OPEN_PULLBACK_STATUSES, *CLOSED_SELL_STATUSES),
     )
     return {row[0] for row in rows}
 
@@ -126,10 +132,14 @@ def load_open_close_bet_tickers(con: sqlite3.Connection) -> set[str]:
         return set()
     placeholders = ",".join("?" for _ in OPEN_CLOSE_BET_STATUSES)
     columns = {row[1] for row in con.execute("PRAGMA table_info(close_bet_orders)")}
-    sell_guard = " AND COALESCE(sell_status, '') != 'filled'" if "sell_status" in columns else ""
+    has_sell_status = "sell_status" in columns
+    sell_guard = (
+        f" AND COALESCE(sell_status, '') NOT IN ({_closed_placeholders()})"
+        if has_sell_status else ""
+    )
     rows = con.execute(
         f"SELECT DISTINCT ticker FROM close_bet_orders WHERE status IN ({placeholders})" + sell_guard,
-        OPEN_CLOSE_BET_STATUSES,
+        (*OPEN_CLOSE_BET_STATUSES, *(CLOSED_SELL_STATUSES if has_sell_status else ())),
     )
     return {row[0] for row in rows}
 

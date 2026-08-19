@@ -6,9 +6,11 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 
 from scripts.trading_batch_common import (
+    CLOSED_SELL_STATUSES,
     available_cash,
     current_price,
     fetch_realized,
+    held_quantities,
     in_order_window,
     market_order,
     quote_snapshot,
@@ -83,3 +85,31 @@ class TradingBatchCommonTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HeldQuantitiesTest(unittest.TestCase):
+    """잔고 → 보유수량 맵. 두 청산 배치가 각자 복사해 갖고 있던 파싱을 공용화한 것."""
+
+    def test_strips_prefix_and_zero_pad(self):
+        balance = {"acnt_evlt_remn_indv_tot": [
+            {"stk_cd": "A005930", "trde_able_qty": "000000000000014"},
+            {"stk_cd": "025320", "trde_able_qty": "75"},
+        ]}
+        self.assertEqual(held_quantities(balance), {"005930": 14, "025320": 75})
+
+    def test_empty_account_is_not_a_failure(self):
+        """보유 0건은 정상 응답 — 유령 마감 판정이 진행돼야 한다."""
+        self.assertEqual(held_quantities({"acnt_evlt_remn_indv_tot": []}), {})
+
+    def test_lookup_failure_returns_none(self):
+        """조회 실패를 '전 종목 미보유'로 오독하면 멀쩡한 포지션이 몰살된다."""
+        self.assertIsNone(held_quantities({}))
+        self.assertIsNone(held_quantities({"return_code": 3, "return_msg": "오류"}))
+        self.assertIsNone(held_quantities({"acnt_evlt_remn_indv_tot": None}))
+
+
+class ClosedSellStatusesTest(unittest.TestCase):
+    def test_missing_counts_as_closed(self):
+        """'missing' 이 종료로 안 잡히면 중복매수 가드가 그 종목을 영구 차단한다."""
+        self.assertIn("filled", CLOSED_SELL_STATUSES)
+        self.assertIn("missing", CLOSED_SELL_STATUSES)

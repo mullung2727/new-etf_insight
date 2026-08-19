@@ -24,6 +24,8 @@ from scripts.run_pullback_order import (
     rank_candidates,
     record_signal_note,
 )
+from scripts.run_close_bet import create_close_bet_orders_table, ensure_exit_columns
+from scripts.wl_sqlite import connect_ro, connect_rw
 
 
 def day(date: str, *, open_: int, low: int, close: int) -> dict:
@@ -308,3 +310,59 @@ class RecordSignalNoteTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClosedSellStatusGuardTest(unittest.TestCase):
+    """유령 포지션이 매수를 영구 차단하지 않는지.
+
+    청산 워커가 sell_status='missing' 으로 마감해도 가드가 'filled' 만 종료로
+    인정하면 그 종목은 신호가 떠도 영원히 매수 후보에서 빠진다(050110 사례).
+    """
+
+    def setUp(self):
+        fd, name = tempfile.mkstemp(suffix=".sqlite3"); os.close(fd); os.unlink(name)
+        self.db = Path(name)
+
+    def tearDown(self):
+        self.db.unlink(missing_ok=True)
+
+    def _insert(self, table: str, ticker: str, sell_status):
+        with connect_rw(self.db) as con:
+            create_pullback_orders_table(con)
+            create_close_bet_orders_table(con)
+            ensure_exit_columns(con)
+            if table == "pullback_orders":
+                con.execute(
+                    "INSERT INTO pullback_orders (watchlist_date,signal_date,ticker,strategy,"
+                    "prior_low,day_open,signal_price,qty,status,buy_price,buy_qty,"
+                    "remaining_hold_days,created_at,sell_status) VALUES "
+                    "('20260819','20260819',?,'lower_low_bullish_reversal',100,99,101,"
+                    "75,'confirmed',3970,75,3,'2026-08-19',?)",
+                    (ticker, sell_status),
+                )
+            else:
+                con.execute(
+                    "INSERT INTO close_bet_orders(date,ticker,score,qty,order_type,status,"
+                    "cntr_price,sell_status) VALUES('20260715',?,52,2606,'market','confirmed',1150,?)",
+                    (ticker, sell_status),
+                )
+
+    def test_unsold_position_still_blocks_rebuy(self):
+        self._insert("pullback_orders", "025320", None)
+        with connect_ro(self.db) as con:
+            self.assertEqual(load_open_pullback_tickers(con), {"025320"})
+
+    def test_missing_position_no_longer_blocks_rebuy(self):
+        self._insert("pullback_orders", "025320", "missing")
+        with connect_ro(self.db) as con:
+            self.assertEqual(load_open_pullback_tickers(con), set())
+
+    def test_missing_close_bet_position_no_longer_blocks_rebuy(self):
+        """050110: 종가베팅 유령이 눌림목 매수를 막던 경로."""
+        self._insert("close_bet_orders", "050110", None)
+        with connect_ro(self.db) as con:
+            self.assertEqual(load_open_close_bet_tickers(con), {"050110"})
+        with connect_rw(self.db) as con:
+            con.execute("UPDATE close_bet_orders SET sell_status='missing'")
+        with connect_ro(self.db) as con:
+            self.assertEqual(load_open_close_bet_tickers(con), set())

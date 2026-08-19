@@ -17,7 +17,7 @@ try:
     from scripts.run_pullback_verify import aggregate_fills
     from scripts.run_verify import fetch_order_history, normalize_order_no
     from scripts.trading_batch_common import (
-        REQUEST_TIMEOUT, fetch_realized, market_order, now_seoul,
+        REQUEST_TIMEOUT, fetch_realized, held_quantities, market_order, now_seoul,
     )
     from scripts.wl_sqlite import connect_ro, connect_rw
 except ImportError:
@@ -26,7 +26,7 @@ except ImportError:
     from run_pullback_verify import aggregate_fills
     from run_verify import fetch_order_history, normalize_order_no
     from trading_batch_common import (
-        REQUEST_TIMEOUT, fetch_realized, market_order, now_seoul,
+        REQUEST_TIMEOUT, fetch_realized, held_quantities, market_order, now_seoul,
     )
     from wl_sqlite import connect_ro, connect_rw
 
@@ -90,6 +90,35 @@ def load_positions(db_path: Path) -> list[dict[str, Any]]:
     return [dict(zip(keys, row)) for row in rows]
 
 
+def mark_missing_positions(db_path: Path, positions: list[dict[str, Any]], balance: dict) -> list[str]:
+    """잔고에 없는 포지션을 sell_status='missing' 으로 확정한다.
+
+    수량 0이라 continue 로 넘기기만 하면 sell_status 가 빈 값으로 남아 매일 다시
+    조회되고, 중복매수 가드가 그 종목을 '보유중'으로 읽어 매수를 영구 차단한다.
+    잔고 조회 실패 시에는 아무것도 마감하지 않는다(실보유분 몰살 방지).
+    """
+    held = held_quantities(balance)
+    if held is None:
+        print("[pullback-exit] 잔고 조회 실패 — 미보유 마감 처리 건너뜀")
+        return []
+
+    missing = [p for p in positions if held.get(p["ticker"], 0) <= 0]
+    if not missing:
+        return []
+
+    with connect_rw(db_path) as con:
+        for position in missing:
+            con.execute(
+                "UPDATE pullback_orders SET status='closed',sell_status='missing',"
+                "sold_at=?,exit_reason='missing' "
+                "WHERE watchlist_date=? AND ticker=? AND COALESCE(sell_status,'')=''",
+                (now_seoul().isoformat(), position["watchlist_date"], position["ticker"]),
+            )
+    tickers = [p["ticker"] for p in missing]
+    print(f"[pullback-exit] 잔고 미보유 {len(tickers)}건 종료 처리(missing): {', '.join(tickers)}")
+    return tickers
+
+
 def fetch_best_bids(broker_url: str, tickers: list[str]) -> dict[str, int]:
     if not tickers:
         return {}
@@ -101,13 +130,14 @@ def fetch_best_bids(broker_url: str, tickers: list[str]) -> dict[str, int]:
         return {}
 
 
-def fetch_tradable_quantities(broker_url: str) -> dict[str, int]:
+def fetch_balance(broker_url: str) -> dict:
+    """GET /account/balance. 실패 시 {} — held_quantities 가 None 으로 판정한다."""
     try:
         response = requests.get(f"{broker_url}/account/balance", timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
-        rows = response.json().get("acnt_evlt_remn_indv_tot", []) or []
-        return {str(row.get("stk_cd", "")).lstrip("A"): int(row.get("trde_able_qty") or 0) for row in rows}
-    except Exception:
+        return response.json()
+    except Exception as error:
+        print(f"[pullback-exit] /account/balance 조회 실패: {error}")
         return {}
 
 
@@ -164,8 +194,11 @@ def run_cycle(db_path: Path, broker_url: str, config: dict[str, Any], today: str
     if force:
         advance_holding_day(db_path, today, is_confirmed_market_day(db_path, today))
     positions = load_positions(db_path)
+    balance = fetch_balance(broker_url)
+    missing = set(mark_missing_positions(db_path, positions, balance))
+    positions = [p for p in positions if p["ticker"] not in missing]
     bids = fetch_best_bids(broker_url, [position["ticker"] for position in positions])
-    tradable = fetch_tradable_quantities(broker_url)
+    tradable = held_quantities(balance) or {}
     ordered = 0
     for position in positions:
         reason = "forced" if force and position.get("expiry_date") == today else decide_exit(

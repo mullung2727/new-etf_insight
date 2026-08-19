@@ -54,6 +54,10 @@ function StatusCell({ r }: { r: CloseBetBuy }) {
   if (r.sell_status === "ordered") {
     return <Badge variant="outline" className="font-mono">매도중</Badge>;
   }
+  // 매수기록은 있으나 계좌 잔고에 없어 청산 워커가 종료 확정한 건(모의계좌 리셋 등)
+  if (r.sell_status === "missing") {
+    return <Badge variant="outline" className="font-mono text-muted-foreground">잔고없음</Badge>;
+  }
   return <span className="font-mono text-sm">{r.status}</span>;
 }
 
