@@ -92,8 +92,13 @@ def list_notes(
         clauses.append("user_id = ?")
         params.append(user_id)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    # 진행중(open/partial) → 관심(idea) → 종료(closed) 순, 그 안에서 최신순.
+    # 한 종목에 종가배팅·눌림목이 겹칠 수 있어 살아있는 건을 항상 위로 올린다.
     rows = conn.execute(
-        f"SELECT * FROM notes {where} ORDER BY created_at DESC", params
+        f"SELECT * FROM notes {where} "
+        "ORDER BY CASE status WHEN 'open' THEN 0 WHEN 'partial' THEN 0 "
+        "WHEN 'idea' THEN 1 ELSE 2 END, created_at DESC",
+        params,
     ).fetchall()
     notes = [Note(**dict(r)) for r in rows]
     if normalized_symbol:

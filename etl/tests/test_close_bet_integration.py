@@ -98,6 +98,15 @@ def _seed_caps(caps: dict[str, int]) -> Path:
     return Path(path)
 
 
+# 사이징 테스트용 고정 전략값 — 운영 close_bet.json 과 독립.
+_TEST_CFG = {
+    "score_threshold": 50,
+    "tp": 0.05,
+    "sl": 0.03,
+    "budget_by_count": {1: 3_000_000, 2: 2_000_000, 3: 5_000_000 // 3},
+}
+
+
 def _run_main(
     argv: list[str],
     db: Path,
@@ -124,9 +133,16 @@ def _run_main(
         stack.enter_context(patch("scripts.run_close_bet.fetch_price_via_broker", return_value=cur_prc))
         stack.enter_context(patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=cash))
         stack.enter_context(patch("scripts.run_close_bet.load_dotenv"))
+        # 전략값은 테스트가 고정한다. 운영 close_bet.json 을 읽으면 웹에서 예산을 바꿀 때마다
+        # 수량 기대값이 깨져, 사이징 "로직"이 아니라 현재 설정값을 테스트하게 된다.
+        stack.enter_context(patch("scripts.run_close_bet.load_close_bet_config",
+                                  return_value=dict(_TEST_CFG)))
         stack.enter_context(patch("time.sleep"))
         stack.enter_context(patch("sys.argv", ["run_close_bet.py"] + argv))
         stack.enter_context(patch("scripts.run_close_bet.confirm_fills", return_value={}))
+        # 투자노트 기록은 broker HTTP 호출 — 다른 broker 호출과 동일하게 막는다.
+        # 안 막으면 응답 없는 테스트 URL에 종목당 REQUEST_TIMEOUT 만큼 대기한다.
+        stack.enter_context(patch("scripts.run_close_bet.record_close_bet_notes", return_value=0))
         if mock_place_order:
             stack.enter_context(patch(
                 "scripts.run_close_bet.place_order_via_broker",
@@ -243,6 +259,7 @@ class TestDryRun(unittest.TestCase):
              patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=1_000_000_000), \
              patch("scripts.run_close_bet.place_order_via_broker", side_effect=fake_place), \
              patch("scripts.run_close_bet.confirm_fills", return_value={}), \
+             patch("scripts.run_close_bet.record_close_bet_notes", return_value=0), \
              patch("scripts.run_close_bet.load_dotenv"), \
              patch("time.sleep"), \
              patch("sys.argv", ["run_close_bet.py", "--date", _DATE, "--dry-run", "false",
@@ -334,6 +351,7 @@ class TestBudgetSizing(unittest.TestCase):
              patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=1_000_000_000), \
              patch("scripts.run_close_bet.place_order_via_broker", side_effect=fake_place), \
              patch("scripts.run_close_bet.confirm_fills", return_value={}), \
+             patch("scripts.run_close_bet.record_close_bet_notes", return_value=0), \
              patch("scripts.run_close_bet.load_dotenv"), \
              patch("time.sleep"), \
              patch("sys.argv", ["run_close_bet.py", "--date", _DATE,
@@ -393,6 +411,7 @@ class TestDeadlineMidLoop(unittest.TestCase):
              patch("scripts.run_close_bet.place_order_via_broker",
                    return_value={"order_no": "0000001", "status": "submitted", "message": ""}), \
              patch("scripts.run_close_bet.confirm_fills", return_value={}), \
+             patch("scripts.run_close_bet.record_close_bet_notes", return_value=0), \
              patch("scripts.run_close_bet.load_dotenv"), \
              patch("time.sleep"), \
              patch("sys.argv", ["run_close_bet.py", "--date", _DATE,

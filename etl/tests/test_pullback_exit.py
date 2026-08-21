@@ -9,8 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.run_pullback_exit import (
-    advance_holding_day, decide_exit, load_positions, mark_missing_positions, mark_sell_ordered,
-    sell_quantity, settle_sell_orders,
+    advance_holding_day, decide_exit, expire_stale_orders, load_positions, mark_missing_positions,
+    mark_sell_ordered, sell_quantity, settle_sell_orders,
 )
 from scripts.run_pullback_order import create_pullback_orders_table
 from scripts.wl_sqlite import connect_ro, connect_rw
@@ -140,3 +140,48 @@ class MarkMissingPositionsTest(unittest.TestCase):
     def test_balance_lookup_failure_marks_nothing(self):
         mark_missing_positions(self.db, load_positions(self.db), {})
         self.assertIsNone(self._sell_status())
+
+
+class ExpireStaleOrdersTest(unittest.TestCase):
+    """전일 미체결 주문이 종료 처리돼 중복매수 가드를 막지 않는지."""
+
+    def setUp(self):
+        fd, name = tempfile.mkstemp(suffix=".sqlite3"); os.close(fd); os.unlink(name)
+        self.db = Path(name)
+        with connect_rw(self.db) as con:
+            create_pullback_orders_table(con)
+            for watchlist_date, signal_date, ticker, status in (
+                ("20260818", "20260820", "950260", "unconfirmed"),   # 전일 미체결
+                ("20260818", "20260820", "111111", "submitted"),     # 전일 전송만
+                ("20260818", "20260821", "222222", "unconfirmed"),   # 당일 — 아직 대조 전
+                ("20260818", "20260820", "333333", "confirmed"),     # 전일 체결
+            ):
+                con.execute(
+                    "INSERT INTO pullback_orders (watchlist_date,signal_date,ticker,strategy,"
+                    "prior_low,day_open,signal_price,qty,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (watchlist_date, signal_date, ticker, "lower_low_bullish_reversal",
+                     100, 99, 101, 5, status, "2026-08-20"),
+                )
+
+    def tearDown(self):
+        self.db.unlink(missing_ok=True)
+
+    def _status(self, ticker):
+        with connect_ro(self.db) as con:
+            return con.execute(
+                "SELECT status FROM pullback_orders WHERE ticker=?", (ticker,)
+            ).fetchone()[0]
+
+    def test_previous_day_unfilled_orders_expire(self):
+        self.assertEqual(expire_stale_orders(self.db, "20260821"), 2)
+        self.assertEqual(self._status("950260"), "expired")
+        self.assertEqual(self._status("111111"), "expired")
+
+    def test_same_day_and_confirmed_untouched(self):
+        expire_stale_orders(self.db, "20260821")
+        self.assertEqual(self._status("222222"), "unconfirmed")
+        self.assertEqual(self._status("333333"), "confirmed")
+
+    def test_idempotent(self):
+        expire_stale_orders(self.db, "20260821")
+        self.assertEqual(expire_stale_orders(self.db, "20260821"), 0)

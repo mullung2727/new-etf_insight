@@ -520,7 +520,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         qty = order_qty(budget, price)
         if qty <= 0:
-            result = {"order_no": "", "status": "skipped", "message": "예산<지정가"}
+            result = {"order_no": "", "status": "skipped",
+                      "message": f"예산<지정가({budget:,}<{price:,})"}
         else:
             result = pullback_limit_order(
                 broker_url, candidate["ticker"], qty, price, "pullback_order", dry_run,

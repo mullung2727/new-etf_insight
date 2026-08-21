@@ -33,6 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
 import sqlite3
 
 import duckdb
+import requests
 from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
@@ -45,7 +46,8 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.wl_sqlite import connect_ro, connect_rw
     from scripts.close_bet_config import load as load_close_bet_config
     from scripts.trading_batch_common import (
-        CLOSED_SELL_STATUSES, available_cash, current_price, in_order_window, market_order,
+        CLOSED_SELL_STATUSES, REQUEST_TIMEOUT, available_cash, current_price,
+        in_order_window, market_order,
     )
 except ImportError:
     from notify import send_discord
@@ -53,7 +55,8 @@ except ImportError:
     from wl_sqlite import connect_ro, connect_rw
     from close_bet_config import load as load_close_bet_config
     from trading_batch_common import (
-        CLOSED_SELL_STATUSES, available_cash, current_price, in_order_window, market_order,
+        CLOSED_SELL_STATUSES, REQUEST_TIMEOUT, available_cash, current_price,
+        in_order_window, market_order,
     )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -413,6 +416,62 @@ def confirm_fills(
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+def record_close_bet_notes(
+    broker_url: str,
+    watchlist_db: Path,
+    date: str,
+    tickers: list[str],
+    cfg: dict[str, Any],
+    threshold: int,
+) -> int:
+    """매수 종목의 전략 근거를 투자노트에 기록하고 실패 건수를 반환한다.
+
+    체결 → 노트 이벤트(매수/매도)는 broker autolink(kt00007)가 이미 자동 기록한다.
+    여기서 채우는 건 "왜 샀는가"뿐 — 눌림목 record_signal_note 와 같은 역할이다.
+    종목당 노트는 하나이므로 기존 노트가 있으면 갱신한다.
+    """
+    if not tickers:
+        return 0
+    with connect_ro(watchlist_db) as con:
+        rows = con.execute(
+            "SELECT ticker, score, qty, cntr_price, order_no FROM close_bet_orders "
+            f"WHERE date=? AND ticker IN ({','.join('?' for _ in tickers)})",
+            [date, *tickers],
+        ).fetchall()
+
+    failures = 0
+    for ticker, score, qty, cntr_price, order_no in rows:
+        payload = {
+            "holding_period": "익일 15:19 강제청산",
+            "buy_reason": f"[close_bet] LLM 점수 {score} (기준 {threshold}) · 종가 시장가 매수",
+            "memo": (f"date={date}; score={score}; threshold={threshold}; qty={qty}; "
+                     f"cntr_price={cntr_price}; order_no={order_no}"),
+        }
+        if cntr_price:  # 체결가 미확정(16:00 대조 대기)이면 목표가는 비워 둔다
+            payload["target_price"] = int(cntr_price * (1 + cfg["tp"]))
+        try:
+            listed = requests.get(
+                f"{broker_url}/notes", params={"symbol": ticker}, timeout=REQUEST_TIMEOUT
+            )
+            listed.raise_for_status()
+            notes = listed.json()
+            if notes:
+                uid = min(notes, key=lambda item: (item.get("created_at", ""), item["uid"]))["uid"]
+                response = requests.patch(
+                    f"{broker_url}/notes/{uid}", json=payload, timeout=REQUEST_TIMEOUT
+                )
+            else:
+                response = requests.post(
+                    f"{broker_url}/notes", json={"symbol": ticker, **payload},
+                    timeout=REQUEST_TIMEOUT,
+                )
+            response.raise_for_status()
+        except Exception as exc:  # 노트 실패로 주문 배치를 멈추지 않음
+            failures += 1
+            print(f"[close_bet] NOTE FAIL {ticker} {exc}")
+    return failures
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="종가배팅 주문 배치")
     parser.add_argument("--date", help="대상 날짜 YYYYMMDD; 기본: 오늘(Asia/Seoul)")
@@ -525,7 +584,9 @@ def main() -> None:
                 "message": f"예산<현재가({budget}<{cur_prc})", "raw": "{}",
             })
             skipped += 1
-            report_lines.append(f"⏭ {label} score={score} skip(예산<현재가)")
+            report_lines.append(
+                f"⏭ {label} score={score} skip(예산 {budget:,} < 현재가 {cur_prc:,})"
+            )
             continue
 
         result = place_order_via_broker(broker_url, ticker, qty, dry_run)
@@ -560,6 +621,12 @@ def main() -> None:
         )
         if remaining:
             print(f"[close_bet] 미확정 {list(remaining)} — submitted 유지, 16:00 체결대조 백업")
+
+        note_failures = record_close_bet_notes(
+            broker_url, watchlist_db, date, list(fill_pending), cfg, args.score_threshold
+        )
+        if note_failures:
+            report_lines.append(f"⚠ 투자노트 기록 실패 {note_failures}건")
 
     print(f"[close_bet] 완료: submitted={submitted} skipped={skipped} failed={failed}")
     summary = (

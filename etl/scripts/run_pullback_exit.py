@@ -49,6 +49,24 @@ def sell_quantity(strategy_qty: int, tradable_qty: int) -> int:
     return max(0, min(strategy_qty, tradable_qty))
 
 
+def expire_stale_orders(db_path: Path, today: str) -> int:
+    """전일 이전 주문인데 아직 체결확정이 안 된 행을 미체결로 종료 처리한다.
+
+    15:19 지정가는 당일 종가 단일가에서 체결되거나 소멸한다. 다음 거래일까지
+    'submitted'/'unconfirmed' 로 남아 있으면 체결 없이 사라진 주문이다. 그대로 두면
+    중복매수 가드(OPEN_PULLBACK_STATUSES)가 그 종목을 '보유중'으로 읽어 매수를
+    영구 차단한다.
+    """
+    with connect_rw(db_path) as con:
+        create_pullback_orders_table(con)
+        cursor = con.execute(
+            "UPDATE pullback_orders SET status='expired' "
+            "WHERE status IN ('submitted','unconfirmed') AND signal_date<?",
+            (today,),
+        )
+        return cursor.rowcount
+
+
 def advance_holding_day(db_path: Path, today: str, market_open: bool) -> int:
     if not market_open:
         return 0
@@ -236,6 +254,9 @@ def main(argv: list[str] | None = None) -> int:
     broker_url = args.broker_url or os.getenv("BROKER_API_URL", "http://localhost:8001")
     dry_run = args.dry_run.lower() not in ("false", "0", "no")
     config = load()
+    expired = expire_stale_orders(DEFAULT_WATCHLIST_DB, now_seoul().strftime("%Y%m%d"))
+    if expired:
+        print(f"[pullback-exit] 전일 미체결 {expired}건 expired 처리")
     counted = False
     while True:
         now = now_seoul()
