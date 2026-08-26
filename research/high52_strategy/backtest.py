@@ -92,6 +92,11 @@ def base_band(gap) -> str:
     return BAND_LABELS[0] if gap <= 3 else BAND_LABELS[1] if gap <= 20 else BAND_LABELS[2]
 
 
+def _num(v, default: float = 0.0) -> float:
+    """pandas nullable(pd.NA) 안전 변환. `v or 0` 은 pd.NA 에서 예외가 난다."""
+    return default if v is None or pd.isna(v) else float(v)
+
+
 def cap_bucket(cap_eok: float) -> str:
     return str(pd.cut([cap_eok], bins=CAP_EDGES, labels=CAP_LABELS, right=False)[0])
 
@@ -177,7 +182,7 @@ def run(db_path: Path = KRX_DB, *, stop: float = STOP, hold: int = HOLD,
             continue
         o, h, l, c = (g[x].to_numpy(float) for x in "ohlc")
         r0 = g.iloc[0]
-        cap = (r0.market_cap or 0) / 1e8
+        cap = _num(r0.market_cap) / 1e8
         tbl = idx.get(cap_bucket(cap), {})
         ret, days = trailing_exit(o, h, l, c, float(r0.entry), stop)
         x, y = tbl.get(ms), tbl.get(int(g.mms.to_numpy(int)[days - 1]))
@@ -186,7 +191,7 @@ def run(db_path: Path = KRX_DB, *, stop: float = STOP, hold: int = HOLD,
         rows.append({
             "ticker": tk, "name": names.get(tk, ""), "date": r0.date, "ms": ms,
             "band": base_band(r0.gap), "conf": bool(r0.conf), "market": r0.market,
-            "cap": cap, "tval": (r0.trading_value or 0) / 1e8,
+            "cap": cap, "tval": _num(r0.trading_value) / 1e8,
             "depth": r0.depth, "volx": r0.volx, "chg": r0.chg,
             "days": days, "net": ret - cost, "exc": ret - cost - (y / x - 1),
         })
