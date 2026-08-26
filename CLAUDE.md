@@ -6,6 +6,7 @@
 - When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
 - When starting, restarting, checking, or debugging local project servers, first read `skills/new-etf-insight-server-dev/SKILL.md`.
 - When writing or updating a PLAN/design doc (설계문서) before implementation, first read `skills/new-etf-insight-plan-writing/SKILL.md`.
+- When backtesting a trading strategy (일봉/분봉 데이터 조회, 청산 시뮬레이션, 표본 확장), first read `research/BACKTEST_DATA.md`.
 
 이 문서는 `new-etf-insight` 프로젝트에서 에이전트가 항상 따라야 하는 최상위 작업 지침이다.
 코드 수정, 설계, 테스트, 응답 방식은 반드시 이 문서를 우선한다.
