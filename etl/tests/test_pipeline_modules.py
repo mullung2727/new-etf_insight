@@ -828,6 +828,7 @@ class LlmProviderTest(unittest.TestCase):
             "prompt",
             output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH,
             search=False,
+            model=None,
         )
         self.assertEqual(result, '{"ok": true}')
 

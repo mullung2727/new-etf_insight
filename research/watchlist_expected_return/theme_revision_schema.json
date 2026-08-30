@@ -1,0 +1,37 @@
+{
+  "$defs": {
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "members"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "members": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "old_value", "new_value", "action"],
+      "properties": {
+        "axis": {"type": "string", "enum": ["sector", "event"]},
+        "old_value": {"type": "string", "minLength": 1},
+        "new_value": {"type": ["string", "null"]},
+        "action": {
+          "type": "string",
+          "enum": ["kept", "added", "merged", "split", "retired"]
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "theme_sector", "theme_event", "migrations", "reasoning"],
+  "properties": {
+    "version": {"type": "string", "minLength": 1},
+    "theme_sector": {"type": "array", "items": {"$ref": "#/$defs/theme"}},
+    "theme_event": {"type": "array", "items": {"$ref": "#/$defs/theme"}},
+    "migrations": {"type": "array", "items": {"$ref": "#/$defs/migration"}},
+    "reasoning": {"type": "string"}
+  }
+}

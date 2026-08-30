@@ -13,11 +13,14 @@ class CodexProvider:
         *,
         output_schema_path: Path,
         search: bool = False,
+        model: str | None = None,
     ) -> str:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "codex_last_message.txt"
 
             command = ["codex.cmd" if os.name == "nt" else "codex"]
+            if model:
+                command.extend(["-m", model])
             if search:
                 command.append("--search")
 

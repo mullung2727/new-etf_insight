@@ -16,6 +16,18 @@ from research.watchlist_expected_return.watchlist_probability_langgraph import (
     apply_priced_in_policy,
     build_market_snapshot,
     build_score_input,
+    build_scoring_schema,
+    escalate_theme_scores,
+    load_theme_dictionary,
+    make_escalation_prompt,
+    route_after_scoring,
+    theme_escalation_reason,
+    validate_theme_catalyst_consistency,
+    normalize_theme_scores,
+    render_theme_dictionary,
+    theme_axis_names,
+    theme_terminal_names,
+    validate_theme_scores,
     calculate_probability_score,
     calculate_negative_trend_penalty,
     compare_scores,
@@ -50,6 +62,12 @@ def catalyst_fields() -> dict:
             "evidence_refs": [],
         },
         "secondary_catalysts": [],
+        "theme_scores": {
+            "sector": [{"name": "메모리·반도체", "score": 100}],
+            "event": [{"name": "수주·공급계약", "score": 100}],
+        },
+        "theme_event_direction": "positive",
+        "new_theme_candidate": None,
     }
 
 
@@ -264,6 +282,321 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
         invalid["primary_catalyst"]["score_components"] = {"freshness": 1}
         with self.assertRaises(ValueError):
             validate_catalyst_assessment(invalid)
+
+    def test_theme_scores_are_renormalized_to_100_per_axis(self) -> None:
+        result = {"theme_scores": {
+            "sector": [{"name": "메모리·반도체", "score": 40}, {"name": "IT부품·전자", "score": 20}],
+            "event": [{"name": "실적·가이던스", "score": 7}],
+        }}
+        normalize_theme_scores(result)
+        self.assertEqual(
+            [item["score"] for item in result["theme_scores"]["sector"]], [67, 33]
+        )
+        self.assertEqual(result["theme_scores"]["event"][0]["score"], 100)
+
+    def test_theme_scores_reject_empty_or_zero_axis(self) -> None:
+        for items in ([], [{"name": "메모리·반도체", "score": 0}]):
+            with self.assertRaises(ValueError):
+                normalize_theme_scores({"theme_scores": {
+                    "sector": items, "event": [{"name": "실적·가이던스", "score": 100}],
+                }})
+
+    def test_theme_scores_reject_name_outside_dictionary(self) -> None:
+        theme_dict = load_theme_dictionary()
+        result = {
+            "theme_scores": {
+                "sector": [{"name": "양자컴퓨팅", "score": 100}],
+                "event": [{"name": "실적·가이던스", "score": 100}],
+            },
+            "theme_event_direction": "positive",
+            "new_theme_candidate": None,
+        }
+        with self.assertRaises(ValueError):
+            validate_theme_scores(result, theme_dict)
+
+    def test_new_theme_candidate_is_required_only_when_not_in_dict_scored(self) -> None:
+        theme_dict = load_theme_dictionary()
+        base = {
+            "theme_scores": {
+                "sector": [{"name": "사전에없음", "score": 100}],
+                "event": [{"name": "실적·가이던스", "score": 100}],
+            },
+            "theme_event_direction": "positive",
+            "new_theme_candidate": None,
+        }
+        with self.assertRaises(ValueError):
+            validate_theme_scores(base, theme_dict)
+
+        base["new_theme_candidate"] = "양자컴퓨팅"
+        validate_theme_scores(base, theme_dict)
+
+        base["theme_scores"]["sector"] = [{"name": "메모리·반도체", "score": 100}]
+        with self.assertRaises(ValueError):
+            validate_theme_scores(base, theme_dict)
+
+    def test_event_direction_must_be_neutral_when_no_catalyst(self) -> None:
+        theme_dict = load_theme_dictionary()
+        result = {
+            "theme_scores": {
+                "sector": [{"name": "재료없음", "score": 100}],
+                "event": [{"name": "재료없음", "score": 100}],
+            },
+            "theme_event_direction": "positive",
+            "new_theme_candidate": None,
+        }
+        with self.assertRaises(ValueError):
+            validate_theme_scores(result, theme_dict)
+
+        result["theme_event_direction"] = "neutral"
+        validate_theme_scores(result, theme_dict)
+
+    def test_scoring_schema_injects_dictionary_names_as_enum(self) -> None:
+        theme_dict = load_theme_dictionary()
+        schema = build_scoring_schema(theme_dict)
+        names = theme_axis_names(theme_dict)
+        for axis in ("sector", "event"):
+            enum = schema["properties"]["theme_scores"]["properties"][axis]["items"][
+                "properties"]["name"]["enum"]
+            self.assertEqual(enum, names[axis])
+            self.assertIn("재료없음", enum)
+            self.assertIn("사전에없음", enum)
+        self.assertNotIn(
+            "enum",
+            json.loads(Path(
+                "research/watchlist_expected_return/watchlist_scoring_schema.json"
+            ).read_text(encoding="utf-8"))["$defs"]["theme_score"]["properties"]["name"],
+        )
+
+    def test_prompt_contains_theme_dictionary_and_special_values(self) -> None:
+        rendered = render_theme_dictionary(load_theme_dictionary())
+        self.assertIn("재료없음", rendered)
+        self.assertIn("사전에없음", rendered)
+        self.assertIn("메모리·반도체", rendered)
+        self.assertNotIn("기관 순매수", rendered.split("쓰지 말 것")[0])
+
+    def test_escalation_uses_score_threshold_not_rank(self) -> None:
+        clear = {"theme_scores": {
+            "sector": [{"name": "메모리·반도체", "score": 60},
+                       {"name": "사전에없음", "score": 40}],
+            "event": [{"name": "실적·가이던스", "score": 100}],
+        }}
+        self.assertEqual(theme_escalation_reason(clear), "sector: 사전에없음 40점")
+
+        ambiguous = {"theme_scores": {
+            "sector": [{"name": "메모리·반도체", "score": 34},
+                       {"name": "IT부품·전자", "score": 33},
+                       {"name": "AI·데이터센터·클라우드", "score": 33}],
+            "event": [{"name": "실적·가이던스", "score": 100}],
+        }}
+        self.assertEqual(theme_escalation_reason(ambiguous), "sector: 1위-2위 격차 1점")
+
+        decided = {"theme_scores": {
+            "sector": [{"name": "메모리·반도체", "score": 80},
+                       {"name": "IT부품·전자", "score": 20}],
+            "event": [{"name": "실적·가이던스", "score": 100}],
+        }}
+        self.assertIsNone(theme_escalation_reason(decided))
+
+    def test_industry_agnostic_is_sector_only_and_terminal(self) -> None:
+        theme_dict = load_theme_dictionary()
+        names = theme_axis_names(theme_dict)
+        self.assertIn("산업무관", names["sector"])
+        self.assertNotIn("산업무관", names["event"])
+        self.assertEqual(theme_terminal_names(theme_dict), {"재료없음", "산업무관"})
+
+        # 실측 사고: 에스엠벡셀의 '최대주주 지분 매입'이 sector 사전에없음으로 찍혔다
+        result = {
+            "theme_scores": {
+                "sector": [{"name": "산업무관", "score": 100}],
+                "event": [{"name": "M&A·지배구조·주주환원", "score": 100}],
+            },
+            "theme_event_direction": "positive",
+            "new_theme_candidate": None,
+        }
+        validate_theme_scores(result, theme_dict)
+        validate_theme_catalyst_consistency(
+            result["theme_scores"], {"category_raw": "최대주주 지분 매입"}
+        )
+        self.assertIsNone(theme_escalation_reason(result, theme_dict))
+
+    def test_no_catalyst_top_never_escalates(self) -> None:
+        result = {"theme_scores": {
+            "sector": [{"name": "재료없음", "score": 55}, {"name": "사전에없음", "score": 45}],
+            "event": [{"name": "재료없음", "score": 100}],
+        }}
+        self.assertIsNone(theme_escalation_reason(result))
+        self.assertEqual(route_after_scoring({"scores": [
+            {"theme_escalation_reason": None},
+        ]}), "end")
+        self.assertEqual(route_after_scoring({"scores": [
+            {"theme_escalation_reason": None}, {"theme_escalation_reason": "sector: ..."},
+        ]}), "escalate")
+
+    def _escalation_state(self) -> dict:
+        first = {
+            "ticker": "000001", "theme_escalation_reason": "sector: 사전에없음 40점",
+            "theme_scores": {
+                "sector": [{"name": "메모리·반도체", "score": 60},
+                           {"name": "사전에없음", "score": 40}],
+                "event": [{"name": "실적·가이던스", "score": 100}],
+            },
+            "theme_event_direction": "positive",
+            "new_theme_candidate": "양자컴퓨팅",
+            "primary_catalyst": {
+                "label": "양자 수주", "description": "양자 연산 장비 수주가 확인됐다.",
+                "category_raw": "양자 연산 수주", "status": "alive",
+            },
+        }
+        return {
+            "date": "20260827", "candidates": [{"ticker": "000001", "name": "테스트"}],
+            "news_by_ticker": {}, "telegram_by_ticker": {}, "scores": [first], "warnings": [],
+        }
+
+    def test_escalation_replaces_theme_fields_and_marks_model(self) -> None:
+        state = self._escalation_state()
+        seen = {}
+
+        def escalate_fn(prompt: str) -> str:
+            seen["prompt"] = prompt
+            return json.dumps({"ticker": "000001", "theme_scores": {
+                "sector": [{"name": "메모리·반도체", "score": 90},
+                           {"name": "IT부품·전자", "score": 10}],
+                "event": [{"name": "수주·공급계약", "score": 100}],
+            }, "theme_event_direction": "positive", "new_theme_candidate": None})
+
+        result = escalate_theme_scores(state, escalate_fn, model="gpt-5.6-luna")
+        score = result["scores"][0]
+        self.assertTrue(score["theme_escalated"])
+        self.assertEqual(score["theme_escalation_model"], "gpt-5.6-luna")
+        self.assertEqual(score["theme_scores"]["event"][0]["name"], "수주·공급계약")
+        self.assertIsNone(score["new_theme_candidate"])
+        self.assertEqual(result["warnings"], [])
+
+    def test_escalation_failure_keeps_first_result(self) -> None:
+        state = self._escalation_state()
+
+        def escalate_fn(prompt: str) -> str:
+            return json.dumps({"ticker": "000001", "theme_scores": {
+                "sector": [{"name": "없는테마", "score": 100}],
+                "event": [{"name": "실적·가이던스", "score": 100}],
+            }, "theme_event_direction": "positive", "new_theme_candidate": None})
+
+        result = escalate_theme_scores(state, escalate_fn)
+        score = result["scores"][0]
+        self.assertNotIn("theme_escalated", score)
+        self.assertEqual(score["new_theme_candidate"], "양자컴퓨팅")
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertTrue(result["warnings"][0].startswith("theme_escalation_failed:000001:"))
+
+    def test_escalation_prompt_fixes_catalyst_and_states_reason(self) -> None:
+        state = self._escalation_state()
+        prompt = make_escalation_prompt(
+            state, state["candidates"][0], state["scores"][0],
+            state["scores"][0]["theme_escalation_reason"], load_theme_dictionary(),
+        )
+        self.assertIn("## 재판단 배경", prompt)
+        self.assertIn("사전에없음 40점", prompt)
+        self.assertIn("확정 사실 - 다시 판단하지 마라", prompt)
+        self.assertIn("양자 연산 수주", prompt)
+        self.assertIn("`재료없음`을 1위로 두면 안 된다", prompt)
+
+    def test_escalation_prompt_requires_no_material_theme_when_catalyst_is_none(self) -> None:
+        state = self._escalation_state()
+        state["scores"][0]["primary_catalyst"] = {
+            "label": "확인된 재료 없음", "description": "재료를 확인할 수 없다",
+            "category_raw": "재료 없음", "status": "uncertain",
+        }
+        prompt = make_escalation_prompt(
+            state, state["candidates"][0], state["scores"][0], "sector: ...", load_theme_dictionary()
+        )
+        self.assertIn("두 축 모두 `재료없음`이 1위여야 한다", prompt)
+
+    def test_theme_and_catalyst_must_not_contradict(self) -> None:
+        no_material = {
+            "sector": [{"name": "재료없음", "score": 100}],
+            "event": [{"name": "재료없음", "score": 100}],
+        }
+        has_material = {
+            "sector": [{"name": "메모리·반도체", "score": 100}],
+            "event": [{"name": "수주·공급계약", "score": 100}],
+        }
+        none_catalyst = {"category_raw": "재료 없음"}
+        real_catalyst = {"category_raw": "소방사업 인수 성장 기대"}
+
+        validate_theme_catalyst_consistency(no_material, none_catalyst)
+        validate_theme_catalyst_consistency(has_material, real_catalyst)
+        with self.assertRaises(ValueError):
+            validate_theme_catalyst_consistency(no_material, real_catalyst)
+        with self.assertRaises(ValueError):
+            validate_theme_catalyst_consistency(has_material, none_catalyst)
+
+    def test_escalation_rejects_flipping_catalyst_to_no_material(self) -> None:
+        """실측 사고: 478560이 같은 입력으로 재판단되며 재료 있음을 재료없음으로 뒤집었다."""
+        state = self._escalation_state()
+
+        def escalate_fn(prompt: str) -> str:
+            return json.dumps({"ticker": "000001", "theme_scores": {
+                "sector": [{"name": "재료없음", "score": 100}],
+                "event": [{"name": "재료없음", "score": 100}],
+            }, "theme_event_direction": "neutral", "new_theme_candidate": None})
+
+        result = escalate_theme_scores(state, escalate_fn)
+        score = result["scores"][0]
+        self.assertNotIn("theme_escalated", score)
+        self.assertEqual(score["theme_scores"]["sector"][0]["name"], "메모리·반도체")
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertTrue(result["warnings"][0].startswith("theme_escalation_failed:000001:"))
+
+    def test_prompt_version_splits_v4_and_theme_v5(self) -> None:
+        self.assertEqual(prompt_version_for_date("20260804"), "catalyst-survival-v3")
+        self.assertEqual(prompt_version_for_date("20260805"), "catalyst-survival-v4")
+        self.assertEqual(prompt_version_for_date("20260827"), "catalyst-survival-v4")
+        self.assertEqual(prompt_version_for_date("20260828"), "catalyst-theme-v5")
+
+    def test_theme_columns_are_added_to_existing_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "watchlist.sqlite3"
+            with closing(sqlite3.connect(db_path)) as con:
+                con.execute("""
+                    CREATE TABLE llm_catalyst_assessments (
+                        date TEXT NOT NULL, ticker TEXT NOT NULL, as_of TEXT NOT NULL,
+                        primary_category_raw TEXT NOT NULL, primary_status TEXT NOT NULL,
+                        primary_duration TEXT NOT NULL, primary_alive_score INTEGER NOT NULL,
+                        max_alive_score INTEGER NOT NULL, assessment_json TEXT NOT NULL,
+                        prompt_version TEXT NOT NULL, model TEXT, generated_at TEXT NOT NULL,
+                        PRIMARY KEY (date, ticker)
+                    )
+                """)
+                con.commit()
+
+            score = {
+                "date": "20260828", "ticker": "000001", "as_of": "2026-08-28T15:00:00+09:00",
+                **catalyst_fields(),
+                "theme_dict_version": "2026-08-28",
+                "theme_escalation_reason": "sector: 사전에없음 40점",
+                "theme_escalated": True, "theme_escalation_model": "gpt-5.6-luna",
+            }
+            upsert_catalyst_assessments(db_path, [score], model="codex")
+
+            with closing(sqlite3.connect(db_path)) as con:
+                columns = {row[1] for row in con.execute(
+                    "PRAGMA table_info(llm_catalyst_assessments)")}
+                self.assertTrue({"theme_scores_json", "theme_dict_version",
+                                 "theme_escalated", "theme_escalation_model"} <= columns)
+                row = con.execute(
+                    "SELECT theme_scores_json, theme_event_direction, new_theme_candidate,"
+                    " theme_dict_version, theme_escalated, theme_escalation_model"
+                    " FROM llm_catalyst_assessments"
+                ).fetchone()
+                self.assertEqual(
+                    json.loads(row[0])["event"][0]["name"], "수주·공급계약")
+                self.assertEqual(row[1], "positive")
+                self.assertIsNone(row[2])
+                self.assertEqual(row[3], "2026-08-28")
+                self.assertEqual(row[4], 1)
+                self.assertEqual(row[5], "gpt-5.6-luna")
+                self.assertIn("theme_dict_migrations", {r[0] for r in con.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")})
 
     def test_probability_score_is_forced_from_components(self) -> None:
         self.assertEqual(calculate_probability_score({

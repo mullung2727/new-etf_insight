@@ -1,5 +1,14 @@
 {
   "$defs": {
+    "theme_score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "score"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "score": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    },
     "catalyst": {
       "type": "object",
       "additionalProperties": false,
@@ -28,7 +37,8 @@
   "required": [
     "ticker", "name", "target", "probability_score", "score_components", "confidence",
     "up_factors", "down_factors", "news_summary", "telegram_summary",
-    "reasoning", "evidence_quality", "primary_catalyst", "secondary_catalysts"
+    "reasoning", "evidence_quality", "primary_catalyst", "secondary_catalysts",
+    "theme_scores", "theme_event_direction", "new_theme_candidate"
   ],
   "properties": {
     "ticker": {"type": "string"},
@@ -66,6 +76,20 @@
     "secondary_catalysts": {
       "type": "array",
       "items": {"$ref": "#/$defs/catalyst"}
-    }
+    },
+    "theme_scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sector", "event"],
+      "properties": {
+        "sector": {"type": "array", "items": {"$ref": "#/$defs/theme_score"}},
+        "event": {"type": "array", "items": {"$ref": "#/$defs/theme_score"}}
+      }
+    },
+    "theme_event_direction": {
+      "type": "string",
+      "enum": ["positive", "negative", "neutral"]
+    },
+    "new_theme_candidate": {"type": ["string", "null"]}
   }
 }

@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import email.utils
 import json
 import sqlite3
 import statistics
 import sys
+import tempfile
 import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -34,9 +36,20 @@ DEFAULT_KRX_DB = ETL_DIR / "db" / "krx_ohlcv.duckdb"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "results" / "shadow_probability"
 DEFAULT_REPORTS_DIR = ROOT.parents[1] / "reports"
 SCHEMA_PATH = Path(__file__).resolve().with_name("watchlist_scoring_schema.json")
+THEME_DICT_PATH = Path(__file__).resolve().with_name("theme_dictionary.json")
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "watchlist_probability.md"
 LEGACY_CATALYST_PROMPT_VERSION = "catalyst-survival-v3"
-CATALYST_PROMPT_VERSION = "catalyst-survival-v4"
+CATALYST_PROMPT_VERSION = "catalyst-theme-v5"
+THEME_PROMPT_EFFECTIVE_DATE = "20260828"
+V4_CATALYST_PROMPT_VERSION = "catalyst-survival-v4"
+THEME_NO_CATALYST = "재료없음"
+THEME_NOT_IN_DICT = "사전에없음"
+# 프롬프트가 재료 부재 시 쓰게 한 category_raw 값. 테마 축 값과 표기가 다르다.
+CATALYST_NO_MATERIAL = "재료 없음"
+# 순위가 아니라 점수로 재판단을 건다. {A:60, 사전에없음:40}은 2위여도 명확하고
+# {A:34, B:33, 사전에없음:33}은 3위여도 애매하다.
+THEME_ESCALATION_UNKNOWN_SCORE = 30
+THEME_ESCALATION_MARGIN = 15
 PRICED_IN_POLICY_EFFECTIVE_DATE = "20260805"
 LEGACY_PRICED_IN_POLICY = """| 선반영 | 새 재료이며 반영 증거 없음 | 0 |
 |  | 일부 반복 보도 또는 사전 기대 | 5 |
@@ -323,10 +336,12 @@ def prompt_version_for_date(date: str) -> str:
     compact_date = date.replace("-", "")
     if compact_date < PRICED_IN_POLICY_EFFECTIVE_DATE:
         return LEGACY_CATALYST_PROMPT_VERSION
+    if compact_date < THEME_PROMPT_EFFECTIVE_DATE:
+        return V4_CATALYST_PROMPT_VERSION
     return CATALYST_PROMPT_VERSION
 
 
-def make_prompt(state: State, candidate: dict) -> str:
+def make_prompt(state: State, candidate: dict, theme_dict: dict | None = None) -> str:
     template = PROMPT_PATH.read_text(encoding="utf-8")
     return template.format(
         date=state["date"],
@@ -335,6 +350,7 @@ def make_prompt(state: State, candidate: dict) -> str:
             if state["date"].replace("-", "") >= PRICED_IN_POLICY_EFFECTIVE_DATE
             else LEGACY_PRICED_IN_POLICY
         ),
+        theme_dictionary=render_theme_dictionary(theme_dict or load_theme_dictionary()),
         input_json=json.dumps(build_score_input(state, candidate), ensure_ascii=False, indent=2),
     )
 
@@ -386,6 +402,260 @@ _CATALYST_STATUSES = {"alive", "uncertain", "exhausted"}
 _CATALYST_DURATIONS = {
     "intraday", "two_to_five_trading_days", "one_week_or_more", "unknown",
 }
+
+
+def load_theme_dictionary(path: Path | None = None) -> dict:
+    return json.loads((path or THEME_DICT_PATH).read_text(encoding="utf-8"))
+
+
+def theme_axis_names(theme_dict: dict) -> dict[str, list[str]]:
+    """축별 배분 대상 이름. 산업·사건 값 + 그 축에 허용된 special."""
+    return {
+        axis: [item["name"] for item in theme_dict[key]]
+        + [item["name"] for item in theme_dict["special"] if axis in item["axes"]]
+        for axis, key in (("sector", "theme_sector"), ("event", "theme_event"))
+    }
+
+
+def theme_terminal_names(theme_dict: dict) -> set[str]:
+    """1위로 나와도 재판단하지 않는 값. 사전 결함이 아니라 정상 종착점이다."""
+    return {
+        item["name"] for item in theme_dict["special"]
+        if item["name"] != THEME_NOT_IN_DICT
+    }
+
+
+def render_theme_dictionary(theme_dict: dict) -> str:
+    """프롬프트에 주입할 사전 본문. enum 이름과 소속 판단 근거를 함께 준다."""
+    lines = [f"사전 버전: {theme_dict['version']}", ""]
+    for axis, key in (("sector", "theme_sector"), ("event", "theme_event")):
+        lines.append(f"#### {axis}")
+        for item in theme_dict[key]:
+            lines.append(f"- `{item['name']}` — 예: {', '.join(item['members'][:12])}")
+        lines.append("")
+    lines.append("#### 특수값")
+    for item in theme_dict["special"]:
+        axes = " / ".join(item["axes"])
+        lines.append(f"- `{item['name']}` ({axes} 축) — {item['description']}")
+    lines.append("")
+    lines.append("#### 테마가 아니므로 쓰지 말 것")
+    for axis in theme_dict["excluded_axes"]:
+        lines.append(f"- {axis['axis']}: {axis['reason']}")
+    return "\n".join(lines)
+
+
+def build_scoring_schema(theme_dict: dict) -> dict:
+    """사전 이름을 name enum으로 주입한 출력 스키마.
+
+    사전은 개정되므로 스키마 파일에 enum을 박지 않는다. 호출 직전에 주입해
+    codex --output-schema 의 생성 시점 강제와 사전 단일 원천을 동시에 지킨다.
+    """
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    base = schema["$defs"]["theme_score"]
+    for axis, names in theme_axis_names(theme_dict).items():
+        item = copy.deepcopy(base)
+        item["properties"]["name"] = {"type": "string", "enum": names}
+        schema["properties"]["theme_scores"]["properties"][axis]["items"] = item
+    return schema
+
+
+def normalize_theme_scores(result: dict) -> None:
+    """축별 합계를 정확히 100으로 재계산한다.
+
+    LLM 산술은 믿지 않는다(사전 클러스터링에서 합계 오차 실측). 최대잔여법으로
+    정수 합 100을 보장하고, 원래 비율은 유지한다.
+    """
+    for axis, items in result["theme_scores"].items():
+        if not items:
+            raise ValueError(f"theme_scores.{axis} must not be empty")
+        total = sum(item["score"] for item in items)
+        if total <= 0:
+            raise ValueError(f"theme_scores.{axis} total must be positive")
+        exact = [item["score"] * 100 / total for item in items]
+        floors = [int(value) for value in exact]
+        order = sorted(range(len(items)), key=lambda i: floors[i] - exact[i])
+        for index in order[: 100 - sum(floors)]:
+            floors[index] += 1
+        for item, score in zip(items, floors):
+            item["score"] = score
+
+
+def validate_theme_scores(result: dict, theme_dict: dict) -> None:
+    """사전 대조·중복·특수값 정합성. codex 스키마 강제를 로컬에서 다시 확인한다."""
+    scores = result.get("theme_scores")
+    if not isinstance(scores, dict) or set(scores) != {"sector", "event"}:
+        raise ValueError("theme_scores must have sector and event")
+    allowed = theme_axis_names(theme_dict)
+    tops = {}
+    for axis, items in scores.items():
+        if not isinstance(items, list):
+            raise ValueError(f"theme_scores.{axis} must be an array")
+        names = [item["name"] for item in items]
+        if len(names) != len(set(names)):
+            raise ValueError(f"theme_scores.{axis} has duplicate names")
+        unknown = [name for name in names if name not in allowed[axis]]
+        if unknown:
+            raise ValueError(f"theme_scores.{axis} name is not in dictionary: {unknown}")
+        if sum(item["score"] for item in items) != 100:
+            raise ValueError(f"theme_scores.{axis} must sum to 100")
+        tops[axis] = max(items, key=lambda item: item["score"])["name"]
+
+    if result["theme_event_direction"] not in {"positive", "negative", "neutral"}:
+        raise ValueError("theme_event_direction is invalid")
+    if tops["event"] == THEME_NO_CATALYST and result["theme_event_direction"] != "neutral":
+        raise ValueError("theme_event_direction must be neutral when event top is 재료없음")
+
+    not_in_dict = max(
+        (item["score"] for items in scores.values() for item in items
+         if item["name"] == THEME_NOT_IN_DICT),
+        default=0,
+    )
+    candidate = result["new_theme_candidate"]
+    if not_in_dict > 0 and not (isinstance(candidate, str) and candidate.strip()):
+        raise ValueError("new_theme_candidate is required when 사전에없음 scored")
+    if not_in_dict == 0 and candidate is not None:
+        raise ValueError("new_theme_candidate must be null when 사전에없음 is zero")
+
+
+def validate_theme_catalyst_consistency(theme_scores: dict, primary_catalyst: dict) -> None:
+    """재료 판정과 테마 배분의 모순을 양방향으로 막는다.
+
+    재판단은 테마 배분이 애매해서 걸린 것이지 재료 판정이 틀려서가 아니다. 같은
+    입력에 새 정보가 없는데 재료 유무를 뒤집으면 여기서 거부된다.
+    """
+    no_material = primary_catalyst["category_raw"].strip() == CATALYST_NO_MATERIAL
+    theme_says_none = all(
+        max(items, key=lambda item: item["score"])["name"] == THEME_NO_CATALYST
+        for items in theme_scores.values()
+    )
+    if no_material and not theme_says_none:
+        raise ValueError("category_raw is 재료 없음 but theme top is not 재료없음")
+    if theme_says_none and not no_material:
+        raise ValueError("theme top is 재료없음 but a catalyst was identified")
+
+
+def theme_escalation_reason(result: dict, theme_dict: dict | None = None) -> str | None:
+    """상위 모델 재판단이 필요한 축과 사유. 필요 없으면 None.
+
+    `재료없음`·`산업무관`이 1위인 축은 정상 종착점이라 재판단하지 않는다. 실측상
+    `재료 없음`만 34%라, 걸러내지 않으면 재판단이 그 표본에서 헛돈다.
+    """
+    terminal = theme_terminal_names(theme_dict or load_theme_dictionary())
+    for axis, items in result["theme_scores"].items():
+        ranked = sorted(items, key=lambda item: -item["score"])
+        if ranked[0]["name"] in terminal:
+            continue
+        unknown = next(
+            (item["score"] for item in items if item["name"] == THEME_NOT_IN_DICT), 0
+        )
+        if unknown >= THEME_ESCALATION_UNKNOWN_SCORE:
+            return f"{axis}: 사전에없음 {unknown}점"
+        margin = ranked[0]["score"] - (ranked[1]["score"] if len(ranked) > 1 else 0)
+        if margin < THEME_ESCALATION_MARGIN:
+            return f"{axis}: 1위-2위 격차 {margin}점"
+    return None
+
+
+def make_escalation_prompt(
+    state: State, candidate: dict, first: dict, reason: str, theme_dict: dict
+) -> str:
+    """1차 판정과 그 한계를 배경으로 붙인 재판단 프롬프트."""
+    primary = first["primary_catalyst"]
+    fixed = {
+        "label": primary["label"],
+        "description": primary["description"],
+        "category_raw": primary["category_raw"],
+        "status": primary["status"],
+    }
+    no_material = primary["category_raw"].strip() == CATALYST_NO_MATERIAL
+    background = "\n".join([
+        "",
+        "## 재판단 배경",
+        "",
+        "1차 판정에서 **테마 배분만** 아래 사유로 확정되지 않았다.",
+        "",
+        f"- 재판단 사유: {reason}",
+        f"- 1차 테마 배분: {json.dumps(first['theme_scores'], ensure_ascii=False)}",
+        "",
+        "### 확정 사실 - 다시 판단하지 마라",
+        "",
+        "1차가 판정한 주재료는 확정이다. 재판단은 새 정보 없이 같은 입력을 다시 보는 것이라",
+        "재료 유무를 뒤집을 근거가 없다.",
+        "",
+        "```json",
+        json.dumps(fixed, ensure_ascii=False, indent=2),
+        "```",
+        "",
+        "### 다시 판단할 것",
+        "",
+        "- `theme_scores`의 두 축 배분만 다시 정하라. 1차 배분에 끌려가지 마라.",
+        "- 위 주재료가 어느 판에 속하고 어떤 종류의 사건인지에 집중하라.",
+        (
+            "- 위 주재료가 `재료 없음`이므로 두 축 모두 `재료없음`이 1위여야 한다."
+            if no_material else
+            "- 위 주재료가 확인된 재료이므로 `재료없음`을 1위로 두면 안 된다."
+        ),
+        "- 사전의 어느 값에도 맞지 않으면 `사전에없음`에 점수를 주고 `new_theme_candidate`를 채워라.",
+        "- 나머지 필드는 1차와 같은 기준으로 채우되 채점에 쓰이지 않는다.",
+    ])
+    return make_prompt(state, candidate, theme_dict) + "\n" + background
+
+
+def escalate_theme_scores(
+    state: State, escalate_fn: ScoreFn | None = None, model: str | None = None
+) -> State:
+    """재판단이 걸린 종목만 상위 모델로 1회 다시 판정한다.
+
+    실패하면 1차 결과를 그대로 둔다. 재판단은 1회뿐이라 여기서 다시 걸지 않는다.
+    """
+    targets = [score for score in state["scores"] if score.get("theme_escalation_reason")]
+    if not targets:
+        return state
+
+    theme_dict = load_theme_dictionary()
+    candidates = {candidate["ticker"]: candidate for candidate in state["candidates"]}
+    warnings = list(state["warnings"])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        schema_path = Path(tmpdir) / "watchlist_scoring_schema.json"
+        schema_path.write_text(
+            json.dumps(build_scoring_schema(theme_dict), ensure_ascii=False), encoding="utf-8"
+        )
+        generator = escalate_fn or (
+            lambda prompt: generate_json(
+                prompt, output_schema_path=schema_path, search=False, model=model
+            )
+        )
+        for score in targets:
+            ticker = score["ticker"]
+            try:
+                prompt = make_escalation_prompt(
+                    state, candidates[ticker], score, score["theme_escalation_reason"], theme_dict
+                )
+                result = json.loads(generator(prompt))
+                if result["ticker"] != ticker:
+                    raise ValueError("ticker mismatch")
+                normalize_theme_scores(result)
+                validate_theme_scores(result, theme_dict)
+                # 1차 재료 판정이 기준이다. 재판단이 낸 catalyst는 쓰지 않는다.
+                validate_theme_catalyst_consistency(
+                    result["theme_scores"], score["primary_catalyst"]
+                )
+            except Exception as exc:  # noqa: BLE001 — 재판단 실패는 1차 결과를 유지한다
+                warnings.append(f"theme_escalation_failed:{ticker}:{type(exc).__name__}")
+                continue
+            score["theme_scores"] = result["theme_scores"]
+            score["theme_event_direction"] = result["theme_event_direction"]
+            score["new_theme_candidate"] = result["new_theme_candidate"]
+            score["theme_escalated"] = True
+            score["theme_escalation_model"] = model
+    return {**state, "warnings": warnings}
+
+
+def route_after_scoring(state: State) -> str:
+    if any(score.get("theme_escalation_reason") for score in state["scores"]):
+        return "escalate"
+    return "end"
 
 
 def _validate_catalyst(catalyst: object, field: str) -> None:
@@ -440,20 +710,39 @@ def validate_catalyst_evidence_refs(
 
 
 def score_candidates(state: State, score_fn: ScoreFn | None = None) -> State:
-    generator = score_fn or (
-        lambda prompt: generate_json(prompt, output_schema_path=SCHEMA_PATH, search=False)
-    )
+    theme_dict = load_theme_dictionary()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        schema_path = Path(tmpdir) / "watchlist_scoring_schema.json"
+        schema_path.write_text(
+            json.dumps(build_scoring_schema(theme_dict), ensure_ascii=False), encoding="utf-8"
+        )
+        generator = score_fn or (
+            lambda prompt: generate_json(prompt, output_schema_path=schema_path, search=False)
+        )
+        return _score_with(state, generator, theme_dict)
+
+
+def _score_with(state: State, generator: ScoreFn, theme_dict: dict) -> State:
     scores = []
     warnings = list(state["warnings"])
     for candidate in state["candidates"]:
         try:
-            result = json.loads(generator(make_prompt(state, candidate)))
+            result = json.loads(generator(make_prompt(state, candidate, theme_dict)))
             if result["ticker"] != candidate["ticker"]:
                 raise ValueError("ticker mismatch")
             news_rows = state["news_by_ticker"].get(candidate["ticker"], [])
             telegram_rows = state["telegram_by_ticker"].get(candidate["ticker"], [])
             validate_catalyst_assessment(result)
             validate_catalyst_evidence_refs(result, news_rows, telegram_rows)
+            normalize_theme_scores(result)
+            validate_theme_scores(result, theme_dict)
+            validate_theme_catalyst_consistency(
+                result["theme_scores"], result["primary_catalyst"]
+            )
+            result["theme_escalation_reason"] = theme_escalation_reason(result, theme_dict)
+            result["theme_escalated"] = False
+            result["theme_escalation_model"] = None
+            result["theme_dict_version"] = theme_dict["version"]
             reported_score = result["probability_score"]
             snapshot = build_market_snapshot(candidate, state["date"])
             apply_priced_in_policy(state["date"], result["score_components"])
@@ -494,17 +783,30 @@ def score_candidates(state: State, score_fn: ScoreFn | None = None) -> State:
     return {**state, "scores": scores, "warnings": warnings}
 
 
-def build_graph(score_fn: ScoreFn | None = None):
+def build_graph(
+    score_fn: ScoreFn | None = None,
+    escalate_fn: ScoreFn | None = None,
+    escalation_model: str | None = None,
+):
     graph = StateGraph(State)
     graph.add_node("load_candidates", load_candidates)
     graph.add_node("collect_news", collect_news)
     graph.add_node("load_telegram", load_telegram)
     graph.add_node("score_candidates", lambda state: score_candidates(state, score_fn))
+    graph.add_node(
+        "escalate_theme_scores",
+        lambda state: escalate_theme_scores(state, escalate_fn, escalation_model),
+    )
     graph.set_entry_point("load_candidates")
     graph.add_edge("load_candidates", "collect_news")
     graph.add_edge("collect_news", "load_telegram")
     graph.add_edge("load_telegram", "score_candidates")
-    graph.add_edge("score_candidates", END)
+    graph.add_conditional_edges(
+        "score_candidates",
+        route_after_scoring,
+        {"escalate": "escalate_theme_scores", "end": END},
+    )
+    graph.add_edge("escalate_theme_scores", END)
     return graph.compile()
 
 
@@ -514,6 +816,8 @@ def run_date(
     telegram_db: Path = DEFAULT_TELEGRAM_DB,
     krx_db: Path = DEFAULT_KRX_DB,
     score_fn: ScoreFn | None = None,
+    escalate_fn: ScoreFn | None = None,
+    escalation_model: str | None = None,
 ) -> dict:
     initial: State = {
         "date": date,
@@ -526,7 +830,7 @@ def run_date(
         "scores": [],
         "warnings": [],
     }
-    final = build_graph(score_fn).invoke(initial)
+    final = build_graph(score_fn, escalate_fn, escalation_model).invoke(initial)
     return {
         "date": date,
         "target": "D+1_OPEN_ABOVE_D_CLOSE",
@@ -786,6 +1090,37 @@ def upsert_llm_scores(db_path: Path, rows: list[dict]) -> int:
         con.close()
 
 
+_THEME_COLUMNS = (
+    ("theme_scores_json", "TEXT"),
+    ("theme_event_direction", "TEXT"),
+    ("new_theme_candidate", "TEXT"),
+    ("theme_dict_version", "TEXT"),
+    ("theme_escalated", "INTEGER"),
+    ("theme_escalation_reason", "TEXT"),
+    ("theme_escalation_model", "TEXT"),
+)
+
+
+def _add_missing_theme_columns(con: sqlite3.Connection) -> None:
+    """CREATE TABLE IF NOT EXISTS는 기존 테이블에 컬럼을 추가하지 않는다."""
+    existing = {row[1] for row in con.execute("PRAGMA table_info(llm_catalyst_assessments)")}
+    for name, sql_type in _THEME_COLUMNS:
+        if name not in existing:
+            con.execute(f"ALTER TABLE llm_catalyst_assessments ADD COLUMN {name} {sql_type}")
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS theme_dict_migrations (
+            from_version TEXT NOT NULL,
+            to_version TEXT NOT NULL,
+            axis TEXT NOT NULL,
+            old_value TEXT NOT NULL,
+            new_value TEXT,
+            action TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (from_version, to_version, axis, old_value)
+        )
+    """)
+
+
 def _upsert_catalyst_assessments(
     con: sqlite3.Connection,
     scores: list[dict],
@@ -808,6 +1143,11 @@ def _upsert_catalyst_assessments(
             primary["alive_score"], max(item["alive_score"] for item in all_catalysts),
             json.dumps(assessment, ensure_ascii=False), prompt_version_for_date(score["date"]),
             model, generated_at,
+            json.dumps(score["theme_scores"], ensure_ascii=False)
+            if score.get("theme_scores") else None,
+            score.get("theme_event_direction"), score.get("new_theme_candidate"),
+            score.get("theme_dict_version"), int(bool(score.get("theme_escalated"))),
+            score.get("theme_escalation_reason"), score.get("theme_escalation_model"),
         ))
 
     con.execute("""
@@ -824,16 +1164,27 @@ def _upsert_catalyst_assessments(
             prompt_version TEXT NOT NULL,
             model TEXT,
             generated_at TEXT NOT NULL,
+            theme_scores_json TEXT,
+            theme_event_direction TEXT,
+            new_theme_candidate TEXT,
+            theme_dict_version TEXT,
+            theme_escalated INTEGER,
+            theme_escalation_reason TEXT,
+            theme_escalation_model TEXT,
             PRIMARY KEY (date, ticker)
         )
     """)
+    _add_missing_theme_columns(con)
     if values:
         con.executemany("""
             INSERT INTO llm_catalyst_assessments (
                 date,ticker,as_of,primary_category_raw,primary_status,
                 primary_duration,primary_alive_score,max_alive_score,
-                assessment_json,prompt_version,model,generated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                assessment_json,prompt_version,model,generated_at,
+                theme_scores_json,theme_event_direction,new_theme_candidate,
+                theme_dict_version,theme_escalated,theme_escalation_reason,
+                theme_escalation_model
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(date,ticker) DO UPDATE SET
                 as_of=excluded.as_of,
                 primary_category_raw=excluded.primary_category_raw,
@@ -844,7 +1195,14 @@ def _upsert_catalyst_assessments(
                 assessment_json=excluded.assessment_json,
                 prompt_version=excluded.prompt_version,
                 model=excluded.model,
-                generated_at=excluded.generated_at
+                generated_at=excluded.generated_at,
+                theme_scores_json=excluded.theme_scores_json,
+                theme_event_direction=excluded.theme_event_direction,
+                new_theme_candidate=excluded.new_theme_candidate,
+                theme_dict_version=excluded.theme_dict_version,
+                theme_escalated=excluded.theme_escalated,
+                theme_escalation_reason=excluded.theme_escalation_reason,
+                theme_escalation_model=excluded.theme_escalation_model
         """, values)
     return len(values)
 
@@ -942,10 +1300,21 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--write-db", action="store_true", help="llm_scores와 catalyst shadow를 갱신")
     parser.add_argument("--model-label", default="codex", help="catalyst 재현용 provider/model 식별자")
+    parser.add_argument(
+        "--escalation-model",
+        default=None,
+        help="테마 배분이 애매할 때 재판단에 쓸 모델. 미지정이면 1차와 같은 모델",
+    )
     parser.add_argument("--reports-dir", type=Path, default=DEFAULT_REPORTS_DIR)
     args = parser.parse_args(argv)
     dates = args.dates or latest_watchlist_dates(args.watchlist_db)
-    results = [run_date(date, args.watchlist_db, args.telegram_db, args.krx_db) for date in dates]
+    results = [
+        run_date(
+            date, args.watchlist_db, args.telegram_db, args.krx_db,
+            escalation_model=args.escalation_model,
+        )
+        for date in dates
+    ]
     write_counts = {"llm_scores": 0, "catalyst_assessments": 0}
     if args.write_db:
         write_counts = persist_scoring_results(

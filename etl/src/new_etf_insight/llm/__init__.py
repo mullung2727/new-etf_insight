@@ -53,6 +53,7 @@ def generate_json(
     *,
     output_schema_path: Path,
     search: bool = False,
+    model: str | None = None,
     provider_name: str | None = None,
     _sleep=time.sleep,
 ) -> str:
@@ -68,6 +69,7 @@ def generate_json(
                 prompt,
                 output_schema_path=output_schema_path,
                 search=search,
+                model=model,
             )
         except Exception as exc:  # noqa: BLE001 — transient 판별 후 나머지는 재전파
             if attempt < LLM_RETRIES and _is_transient(exc):

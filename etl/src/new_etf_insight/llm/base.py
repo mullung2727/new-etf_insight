@@ -11,5 +11,6 @@ class LlmProvider(Protocol):
         *,
         output_schema_path: Path,
         search: bool = False,
+        model: str | None = None,
     ) -> str:
         ...
