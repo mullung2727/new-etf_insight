@@ -189,6 +189,7 @@ class TestBrokerSellHelpers(unittest.TestCase):
             rq.post.return_value = _resp({"accepted": True, "order_no": "0000070"})
             res = place_sell_via_broker("http://b", "005930", 3)
         self.assertEqual(res, {"order_no": "0000070", "status": "submitted", "message": ""})
+        self.assertEqual(rq.post.call_args.args[0], "http://b/orders/strategy")
         body = rq.post.call_args.kwargs["json"]
         self.assertEqual(body["side"], "sell")
         self.assertEqual(body["order_type"], "market")

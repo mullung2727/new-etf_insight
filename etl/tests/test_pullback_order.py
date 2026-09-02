@@ -246,6 +246,7 @@ class PullbackCandidateGuardTest(unittest.TestCase):
         )
         self.assertEqual(result["status"], "submitted")
         self.assertEqual(result.get("requested_price"), 70_000)
+        self.assertEqual(post.call_args.args[0], "http://broker/orders/strategy")
         self.assertEqual(
             post.call_args.kwargs["json"],
             {"symbol": "005930", "side": "buy", "qty": 2, "price": 70_000,

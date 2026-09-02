@@ -285,10 +285,10 @@ def fetch_sell_fills(broker_url: str, date: str) -> dict[str, dict]:
 
 
 def place_sell_via_broker(broker_url: str, ticker: str, qty: int) -> dict:
-    """POST /orders 시장가 매도. {order_no, status, message}. 거부/실패 시 order_no=''."""
+    """POST /orders/strategy 시장가 매도. {order_no, status, message}. 거부/실패 시 order_no=''."""
     try:
         resp = requests.post(
-            f"{broker_url}/orders",
+            f"{broker_url}/orders/strategy",
             json={"symbol": ticker, "side": "sell", "qty": qty,
                   "order_type": "market", "source": "close_bet_exit"},
             timeout=REQUEST_TIMEOUT,

@@ -131,6 +131,38 @@ class TestPlaceOrderRecords(_OrdersTestBase):
         self.assertEqual(_trade_rows(self.db), [])
 
 
+class TestOrderRoutePolicy(_OrdersTestBase):
+    """금액 상한 정책은 request source가 아니라 서버 라우트가 결정한다."""
+
+    def test_manual_route_forces_cap_exemption_even_with_strategy_source(self):
+        fake = OrderResult(accepted=True, order_no="0000901", message="", raw={})
+        with patch("routers.orders.orders.place_order", return_value=fake) as submit:
+            resp = self.client.post(
+                "/orders",
+                json={
+                    "symbol": "161890", "side": "buy", "qty": 1,
+                    "order_type": "market", "source": "close_bet",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(submit.call_args.kwargs["enforce_amount_cap"])
+
+    def test_strategy_route_forces_cap_even_with_manual_source(self):
+        fake = OrderResult(accepted=True, order_no="0000902", message="", raw={})
+        with patch("routers.orders.orders.place_order", return_value=fake) as submit:
+            resp = self.client.post(
+                "/orders/strategy",
+                json={
+                    "symbol": "005930", "side": "buy", "qty": 1,
+                    "order_type": "market", "source": "manual",
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(submit.call_args.kwargs["enforce_amount_cap"])
+
+
 class TestFriendlyOrderError(unittest.TestCase):
     """_friendly_order_error — 키움 원문에서 사람 메시지를 뽑고, '모의투자 장종료'류만
     장중 안내로 바꾼다. '모의투자' 글자만으로 다른 에러(매도가능수량 부족 등)를
@@ -528,6 +560,152 @@ class TestRealizedRoute(_OrdersTestBase):
         self.assertFalse(body["found"])
         self.assertEqual(body["pnl_pct"], 0.0)
         self.assertEqual(body["sel_pl_won"], 0)
+
+
+class TestMarketOrderGuard(unittest.TestCase):
+    """시장가 주문 금액 상한 — 매수만 현재가로 예상금액을 검사하고, 매도는 면제한다.
+
+    매도까지 상한을 걸면 급등 종목의 손절/강제청산이 거부돼 포지션이 갇힌다.
+    매도 수량 초과는 키움이 800033으로 거부하므로 가드가 중복으로 막을 필요가 없다.
+    """
+
+    MAX = 150_000
+
+    def _cfg(self):
+        from kiwoom.config import Config
+
+        return Config(
+            appkey="k", secretkey="s", env="paper",
+            rest_host="https://mockapi.kiwoom.com", ws_host="wss://x",
+            account_no="1", max_order_amount=self.MAX,
+            token_cache_path=Path("/tmp/none.json"),
+        )
+
+    def _check(self, **kwargs):
+        from kiwoom.guards import check_order
+
+        base = {
+            "qty": 1,
+            "price": 0,
+            "market": True,
+            "side": "buy",
+            "est_price": None,
+            "enforce_amount_cap": True,
+        }
+        base.update(kwargs)
+        check_order(self._cfg(), **base)
+
+    def test_market_buy_over_cap_rejected(self):
+        from kiwoom.guards import OrderRejected
+
+        # 10,000원 × 20주 = 200,000 > 150,000
+        with self.assertRaises(OrderRejected):
+            self._check(qty=20, est_price=10_000)
+
+    def test_market_buy_within_cap_passes(self):
+        # 10,000원 × 10주 = 100,000 ≤ 150,000
+        self._check(qty=10, est_price=10_000)
+
+    def test_market_buy_without_price_rejected(self):
+        from kiwoom.guards import OrderRejected
+
+        with self.assertRaises(OrderRejected) as ctx:
+            self._check(qty=1, est_price=None)
+        self.assertIn("현재가", str(ctx.exception))
+
+    def test_market_sell_exempt_from_cap(self):
+        # 매도는 상한 초과 금액이어도 통과해야 한다(청산 차단 방지).
+        self._check(qty=999, side="sell", est_price=10_000)
+
+    def test_limit_sell_still_requires_positive_price(self):
+        from kiwoom.guards import OrderRejected
+
+        with self.assertRaises(OrderRejected):
+            self._check(side="sell", market=False, price=0)
+
+    def test_sell_zero_qty_rejected(self):
+        from kiwoom.guards import OrderRejected
+
+        with self.assertRaises(OrderRejected):
+            self._check(qty=0, side="sell")
+
+
+    def test_limit_cap_unchanged(self):
+        from kiwoom.guards import OrderRejected
+
+        self._check(qty=10, price=10_000, market=False)          # 100,000 ≤ 상한
+        with self.assertRaises(OrderRejected):
+            self._check(qty=20, price=10_000, market=False)      # 200,000 > 상한
+
+    def test_manual_market_buy_skips_amount_cap_and_estimated_price(self):
+        self._check(qty=1, est_price=None, enforce_amount_cap=False)
+
+    def test_manual_limit_buy_skips_amount_cap_but_validates_price(self):
+        from kiwoom.guards import OrderRejected
+
+        self._check(qty=20, price=10_000, market=False, enforce_amount_cap=False)
+        with self.assertRaises(OrderRejected):
+            self._check(price=0, market=False, enforce_amount_cap=False)
+
+    def test_manual_market_order_skips_quote_lookup(self):
+        """수동 시장가는 상한 계산용 quote 장애와 무관하게 주문선까지 도달한다."""
+        from kiwoom import orders as kiwoom_orders
+        from kiwoom.client import TrResult
+        from kiwoom.models import OrderRequest
+
+        req = OrderRequest(
+            symbol="161890", side="buy", qty=1,
+            order_type="market", source="manual",
+        )
+        wire_result = TrResult(
+            data={"ord_no": "0000001", "return_msg": "ok"},
+            cont_yn="N", next_key="",
+        )
+        with patch("kiwoom.orders._config", return_value=self._cfg()), \
+             patch("kiwoom.orders.quotes.get_quote") as quote, \
+             patch("kiwoom.orders.request", return_value=wire_result) as wire:
+            result = kiwoom_orders.place_order(req, enforce_amount_cap=False)
+
+        quote.assert_not_called()
+        wire.assert_called_once()
+        self.assertTrue(result.accepted)
+
+    def test_enforced_route_cannot_be_bypassed_by_manual_source(self):
+        """자동매매 라우트는 body source가 manual이어도 상한을 유지한다."""
+        from kiwoom import orders as kiwoom_orders
+        from kiwoom.guards import OrderRejected
+        from kiwoom.models import OrderRequest
+
+        req = OrderRequest(
+            symbol="005930", side="buy", qty=20,
+            order_type="market", source="manual",
+        )
+        with patch("kiwoom.orders._config", return_value=self._cfg()), \
+             patch("kiwoom.orders.quotes.get_quote") as quote, \
+             patch("kiwoom.orders.request") as wire:
+            quote.return_value.price = 10_000
+            with self.assertRaises(OrderRejected):
+                kiwoom_orders.place_order(req, enforce_amount_cap=True)
+
+        quote.assert_called_once_with("005930")
+        wire.assert_not_called()
+
+    def test_quote_failure_rejects_before_wire(self):
+        """자동 시장가의 현재가 조회가 실패하면 주문을 보내지 않고 거부한다."""
+        from kiwoom import orders as kiwoom_orders
+        from kiwoom.guards import OrderRejected
+        from kiwoom.models import OrderRequest
+
+        req = OrderRequest(
+            symbol="005930", side="buy", qty=1,
+            order_type="market", source="close_bet",
+        )
+        with patch("kiwoom.orders._config", return_value=self._cfg()), \
+             patch("kiwoom.orders.quotes.get_quote", side_effect=RuntimeError("boom")), \
+             patch("kiwoom.orders.request") as wire:
+            with self.assertRaises(OrderRejected):
+                kiwoom_orders.place_order(req, enforce_amount_cap=True)
+        wire.assert_not_called()
 
 
 if __name__ == "__main__":
