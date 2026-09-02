@@ -53,6 +53,7 @@ class TradingBatchCommonTest(unittest.TestCase):
         response.raise_for_status = Mock()
         post.return_value = response
         result = market_order("http://broker", "005930", 2, "buy", "pullback_order", False)
+        self.assertEqual(post.call_args.args[0], "http://broker/orders/strategy")
         self.assertEqual(post.call_args.kwargs["json"]["source"], "pullback_order")
         self.assertEqual(result["status"], "submitted")
 

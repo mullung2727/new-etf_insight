@@ -92,7 +92,7 @@ def market_order(
                 "message": "dry_run — 실제 주문 없음"}
     try:
         response = requests.post(
-            f"{broker_url}/orders",
+            f"{broker_url}/orders/strategy",
             json={"symbol": ticker, "side": side, "qty": qty,
                   "order_type": "market", "source": source},
             timeout=REQUEST_TIMEOUT,

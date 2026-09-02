@@ -35,7 +35,11 @@ class OrderRequest(_Base):
     order_type: OrderType = OrderType.limit
     source: str = Field(
         default="manual",
-        description="주문 출처 — 거래 원장 기록용. ETL 배치='close_bet', 수동 주문='manual'",
+        description=(
+            "거래 원장용 주문 출처. 웹/MCP 수동 주문='manual', "
+            "종가베팅='close_bet', 눌림목='pullback_order'. "
+            "금액상한 정책은 source가 아니라 서버 라우트가 결정"
+        ),
     )
 
 

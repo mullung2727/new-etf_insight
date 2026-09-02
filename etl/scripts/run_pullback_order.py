@@ -235,7 +235,7 @@ def pullback_limit_order(
                 "message": "dry_run — 실제 주문 없음", "requested_price": price}
     try:
         response = requests.post(
-            f"{broker_url}/orders",
+            f"{broker_url}/orders/strategy",
             json={"symbol": ticker, "side": "buy", "qty": qty, "price": price,
                   "order_type": "limit", "source": source},
             timeout=REQUEST_TIMEOUT,

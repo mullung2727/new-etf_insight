@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import tr
+from . import quotes, tr
 from .client import request
 from .config import Config, load_config
 from .guards import check_order
@@ -24,11 +24,32 @@ _TRDE_LIMIT = "0"   # 지정가
 _TRDE_MARKET = "3"  # 시장가
 
 
-def place_order(req: OrderRequest) -> OrderResult:
-    """Submit a buy/sell order after enforcing the configured guards."""
+def _est_price(symbol: str) -> int | None:
+    """시장가 매수 금액가드용 현재가. 조회 실패는 None — 가드가 주문을 거부한다."""
+    try:
+        return quotes.get_quote(symbol).price
+    except Exception:  # noqa: BLE001 — 조회 실패는 곧 거부, 원인 구분 불필요
+        return None
+
+
+def place_order(
+    req: OrderRequest, *, enforce_amount_cap: bool
+) -> OrderResult:
+    """Submit an order using the server-route policy supplied by the caller."""
     cfg = _config()
     market = req.order_type == OrderType.market
-    check_order(cfg, qty=req.qty, price=req.price, market=market)
+    # 정책은 request body의 source가 아니라 수동/전략 서버 라우트가 결정한다.
+    # 자동 시장가 매수만 상한 계산용 현재가 1콜 추가. 수동 매수와 매도는 조회하지 않는다.
+    est = (
+        _est_price(req.symbol)
+        if enforce_amount_cap and market and req.side == Side.buy
+        else None
+    )
+    check_order(
+        cfg, qty=req.qty, price=req.price, market=market,
+        side=req.side.value, est_price=est,
+        enforce_amount_cap=enforce_amount_cap,
+    )
 
     api_id = tr.TR_ORDER_BUY if req.side == Side.buy else tr.TR_ORDER_SELL
     body = {
