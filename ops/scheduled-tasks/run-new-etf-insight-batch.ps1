@@ -35,24 +35,22 @@ try {
   # 파이프라인의 상세 stdout은 로그로 격리하고, 알림 본문은 JSON 파일로 전달한다.
   # 긴 JSON/따옴표가 PowerShell 5.1 명령행 인자로 재해석되는 일을 막는다.
   $reportJson = Join-Path $etlDir ("runs\\" + $target + "\\report-messages.json")
+  # 로그 파일 기록자는 Tee-Object 하나뿐이다. 파이썬이 같은 파일을 붙잡고 있으면
+  # 파이프에 첫 출력이 흐르는 순간 Tee 가 공유 위반으로 죽는다(신규 ETF 있는 날만 배치 사망).
   $runner = @'
 import json
-from contextlib import redirect_stdout
 from pathlib import Path
 from new_etf_insight.daily_pipeline import run_daily_pipeline
 
 date = "__DATE__"
-log_path = Path(r"__LOG__")
 report_path = Path(r"__REPORT_JSON__")
-with log_path.open("a", encoding="utf-8") as log_file:
-    with redirect_stdout(log_file):
-        result = run_daily_pipeline(
-            date,
-            date,
-            Path("runs") / date / "records",
-            Path("runs") / date / "pdfs",
-        )
-    log_file.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+result = run_daily_pipeline(
+    date,
+    date,
+    Path("runs") / date / "records",
+    Path("runs") / date / "pdfs",
+)
+print(json.dumps(result, ensure_ascii=False, indent=2))
 actions = {}
 for item in (result.get("results") or []):
     a = item.get("action") or "unknown"
@@ -70,7 +68,7 @@ report_path.write_text(
     encoding="utf-8",
 )
 print(summary)
-'@.Replace("__DATE__", $target).Replace("__LOG__", $log).Replace("__REPORT_JSON__", $reportJson)
+'@.Replace("__DATE__", $target).Replace("__REPORT_JSON__", $reportJson)
 
   $previousErrorActionPreference = $ErrorActionPreference
   $ErrorActionPreference = "Continue"

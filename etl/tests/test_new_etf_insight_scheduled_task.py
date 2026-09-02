@@ -76,11 +76,15 @@ class NewEtfInsightScheduledTaskTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("probe failed with exit code 7", result.stdout + result.stderr)
 
-    def test_pipeline_chatter_is_logged_but_not_put_in_report_payload(self) -> None:
+    def test_pipeline_chatter_is_not_put_in_report_payload(self) -> None:
         runner = RUNNER.read_text(encoding="utf-8-sig")
         start = runner.index("$runner = @'\n") + len("$runner = @'\n")
         end = runner.index("\n'@.Replace", start)
         embedded_python = runner[start:end]
+
+        # 로그 파일은 Tee-Object 만 연다. 파이썬이 같은 파일을 붙잡으면 공유 위반으로
+        # 파이프라인이 통째로 죽는다(신규 ETF 후보가 있는 날만 재현되던 배치 사망).
+        self.assertNotIn("__LOG__", embedded_python)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -97,12 +101,9 @@ class NewEtfInsightScheduledTaskTest(unittest.TestCase):
                 "    }\n",
                 encoding="utf-8",
             )
-            log_path = temp / "batch.log"
             report_path = temp / "report.json"
-            code = (
-                embedded_python.replace("__DATE__", "20260723")
-                .replace("__LOG__", str(log_path))
-                .replace("__REPORT_JSON__", str(report_path))
+            code = embedded_python.replace("__DATE__", "20260723").replace(
+                "__REPORT_JSON__", str(report_path)
             )
             env = os.environ.copy()
             env["PYTHONPATH"] = str(temp)
@@ -123,7 +124,7 @@ class NewEtfInsightScheduledTaskTest(unittest.TestCase):
             self.assertEqual(len(payload["messages"]), 1)
             self.assertIn("[new_etf_insight daily] 20260723", payload["messages"][0])
             self.assertNotIn("fund_name", payload["messages"][0])
-            self.assertIn("fund_name", log_path.read_text(encoding="utf-8"))
+            self.assertIn("fund_name", result.stdout)
 
 
 if __name__ == "__main__":
