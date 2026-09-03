@@ -490,6 +490,9 @@ def grade_evidence(
         prompt = make_cause_prompt(evidence["date"], record)
         judgements: list[dict] = []
         failures: list[str] = []
+        # 같은 강등·환각 지적이 회차마다 똑같이 나온다. 종목당 1회만 남긴다 —
+        # 안 그러면 repeat=3 일 때 보고문에 같은 ⚠️ 줄이 세 번 찍힌다.
+        enforced_seen: list[str] = []
         for _ in range(repeat):
             try:
                 judgement = json.loads(generate(prompt))
@@ -498,7 +501,10 @@ def grade_evidence(
                 continue
             judgement, enforced = enforce_grade(judgement, record)
             judgements.append(judgement)
-            warnings.extend(enforced)
+            for item in enforced:
+                if item not in enforced_seen:
+                    enforced_seen.append(item)
+        warnings.extend(enforced_seen)
 
         if not judgements:
             # 전 회차가 실패해야 판정 실패다. 일부만 실패하면 남은 것으로 판정한다.
@@ -576,6 +582,14 @@ CAUSE_COLUMNS = (
 )
 
 
+# DDL 에서 컬럼 타입을 뽑아 둔다 — 27개짜리 목록을 손으로 두 벌 유지하면 어긋난다.
+CAUSE_COLUMN_TYPES = {
+    parts[0]: parts[1]
+    for line in CAUSE_TABLE_DDL.splitlines()
+    if (parts := line.strip().rstrip(",").split()) and parts[0] in CAUSE_COLUMNS
+}
+
+
 def _held_days(bought_date: object, date_compact: str) -> int | None:
     """매수일부터 매도일까지 달력 일수. 거래일 수가 아니다."""
     if not isinstance(bought_date, str) or len(bought_date) != 8 or not bought_date.isdigit():
@@ -640,6 +654,19 @@ def cause_rows(evidence: dict, *, model: str | None = None, generated_at: str | 
     return rows
 
 
+def _migrate_cause_table(con) -> None:
+    """이미 있는 trading_result_causes 에 빠진 컬럼을 채운다.
+
+    ``CREATE TABLE IF NOT EXISTS`` 는 기존 테이블을 손대지 않으므로, CAUSE_COLUMNS 가
+    늘어난 뒤 첫 실행이 ``no such column`` 으로 죽는다. ALTER 로 붙이는 컬럼에는
+    NOT NULL 을 줄 수 없다(기존 행에 채울 값이 없다) — 타입만 준다.
+    """
+    have = {row[1] for row in con.execute("PRAGMA table_info(trading_result_causes)")}
+    for column, col_type in CAUSE_COLUMN_TYPES.items():
+        if column not in have:
+            con.execute(f"ALTER TABLE trading_result_causes ADD COLUMN {column} {col_type}")
+
+
 def save_causes(
     db_path: Path, evidence: dict, *, model: str | None = None, generated_at: str | None = None
 ) -> int:
@@ -653,6 +680,7 @@ def save_causes(
     marks = ",".join("?" for _ in CAUSE_COLUMNS)
     with connect_rw(db_path) as con:
         con.execute(CAUSE_TABLE_DDL)
+        _migrate_cause_table(con)
         con.executemany(
             f"INSERT OR REPLACE INTO trading_result_causes "
             f"({','.join(CAUSE_COLUMNS)}) VALUES ({marks})",

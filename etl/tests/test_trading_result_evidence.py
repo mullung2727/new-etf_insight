@@ -420,6 +420,19 @@ class GradeEvidenceTest(unittest.TestCase):
         self.assertEqual(record["grade_runs"], ["B", "B"])
         self.assertIn("grade_partial:005930:1/3", result["warnings"])
 
+    def test_repeated_downgrade_warning_is_recorded_once(self) -> None:
+        """회차마다 같은 강등 경고가 나온다 — 보고문에 같은 줄이 세 번 찍히면 안 된다."""
+        records = [self._record("005930", sourced=False)]
+
+        def generate(prompt: str) -> str:
+            return self._judgement("A")
+
+        result = grade_evidence(self._evidence(records), generate=generate, repeat=3)
+
+        downgrades = [w for w in result["warnings"] if "005930" in w and "A" in w]
+        self.assertEqual(len(downgrades), len(set(downgrades)))
+        self.assertEqual(len(downgrades), 1)
+
     def test_even_repeat_picks_the_weaker_side(self) -> None:
         # 가운데가 둘이면 근거가 약한 쪽(뒤 글자)을 택한다. 과대평가를 막는다.
         grades = iter(["B", "C"])
@@ -513,6 +526,29 @@ class SaveCausesTest(unittest.TestCase):
         self.assertEqual((row["filing_count"], row["news_count"], row["telegram_count"]), (1, 1, 0))
         self.assertEqual(json.loads(row["grade_runs_json"]), ["B", "C", "B"])
         self.assertEqual(row["grade_spread"], 1)
+
+    def test_missing_column_on_an_older_table_is_migrated(self) -> None:
+        """CREATE TABLE IF NOT EXISTS 는 기존 테이블을 안 고친다 — ALTER 로 채워야 한다."""
+        with closing(sqlite3.connect(self.watchlist)) as con:
+            con.execute(
+                "CREATE TABLE trading_result_causes ("
+                " date TEXT NOT NULL, ticker TEXT NOT NULL, strategy TEXT NOT NULL,"
+                " grade TEXT NOT NULL, cause TEXT NOT NULL,"
+                " buy_rationale_match TEXT NOT NULL, evidence_refs_json TEXT NOT NULL,"
+                " grade_runs_json TEXT NOT NULL, filing_count INTEGER NOT NULL,"
+                " news_count INTEGER NOT NULL, telegram_count INTEGER NOT NULL,"
+                " as_of TEXT NOT NULL, generated_at TEXT NOT NULL,"
+                " PRIMARY KEY (date, ticker, strategy))"
+            )
+            con.commit()
+        judgement = {"grade": "B", "cause": "공급계약", "evidence_refs": ["https://news/1"],
+                     "buy_rationale_match": "same_sustained", "reasoning": "단일 출처"}
+
+        self.assertEqual(save_causes(self.watchlist, self._evidence(judgement=judgement)), 1)
+
+        (row,) = self._saved()
+        self.assertEqual(row["catalyst_date"], "20260827")
+        self.assertEqual(row["held_days"], 1)
 
     def test_rerun_overwrites_instead_of_duplicating(self) -> None:
         first = {"grade": "C", "cause": "원인 불명", "evidence_refs": [],
