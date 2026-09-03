@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,14 @@ def _to_float(value: Any) -> float:
         return float(str(value).strip().lstrip("+"))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _to_decimal(value: Any) -> Decimal:
+    """키움의 소수 문자열 금액을 정밀하게 변환한다. 빈값/오류는 0."""
+    try:
+        return Decimal(str(value).strip())
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal(0)
 
 
 def _friendly_order_error(exc: KiwoomError) -> str:
@@ -190,13 +199,17 @@ def get_today_realized(ticker: str, date: str | None = None) -> dict[str, Any]:
     rows = orders.get_realized_by_date(ticker, date) if date else orders.get_today_realized(ticker)
     cmsn = sum(_to_int(r.get("tdy_trde_cmsn")) for r in rows)
     tax = sum(_to_int(r.get("tdy_trde_tax")) for r in rows)
-    sel_pl = sum(_to_int(r.get("tdy_sel_pl")) for r in rows)
+    sel_pl_decimal = sum((_to_decimal(r.get("tdy_sel_pl")) for r in rows), Decimal(0))
+    sel_pl = int(sel_pl_decimal.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     qty = sum(_to_int(r.get("cntr_qty")) for r in rows)
-    cost = sum(_to_int(r.get("buy_uv")) * _to_int(r.get("cntr_qty")) for r in rows)
+    cost = sum(
+        (_to_decimal(r.get("buy_uv")) * _to_int(r.get("cntr_qty")) for r in rows),
+        Decimal(0),
+    )
     if len(rows) == 1:
         pnl_pct = _to_float(rows[0].get("pl_rt"))
     else:
-        pnl_pct = round(sel_pl / cost * 100, 2) if cost else 0.0
+        pnl_pct = float(round(sel_pl_decimal / cost * 100, 2)) if cost else 0.0
     return {
         "ticker": _TICKER_PREFIX.sub("", ticker),
         "found": bool(rows),

@@ -397,6 +397,7 @@ class TestModifyWrapper(unittest.TestCase):
         self.assertEqual(res.order_no, "0000099")
         self.assertEqual(calls[0]["api_id"], "kt10002")
         b = calls[0]["body"]
+        self.assertEqual(b["dmst_stex_tp"], "SOR")
         self.assertEqual(b["orig_ord_no"], "0000070")
         self.assertEqual(b["mdfy_uv"], "71000")
         self.assertEqual(b["mdfy_qty"], "5")
@@ -411,6 +412,28 @@ class TestModifyWrapper(unittest.TestCase):
                    TrResult(data={"ord_no": "1"}, cont_yn="N", next_key="")):
             korders.modify_order("0000070", "005930", 71000)
         self.assertEqual(seen, ["0"])
+
+
+class TestCancelWrapper(unittest.TestCase):
+    """kiwoom.orders.cancel_order — SOR 거래소를 유지한다."""
+
+    def test_body_uses_sor(self):
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append({"api_id": api_id, "body": dict(body)})
+            return TrResult(data={"ord_no": "0000099"}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.orders.request", side_effect=fake):
+            res = korders.cancel_order("0000070", "005930", qty=5)
+
+        self.assertEqual(res.order_no, "0000099")
+        self.assertEqual(calls[0]["api_id"], "kt10003")
+        self.assertEqual(calls[0]["body"]["dmst_stex_tp"], "SOR")
+        self.assertEqual(calls[0]["body"]["cncl_qty"], "5")
 
 
 class TestModifyRoute(_OrdersTestBase):
@@ -554,6 +577,26 @@ class TestRealizedRoute(_OrdersTestBase):
         # cost = 5*1000 + 5*1000 = 10000, pl 1000 → 10.0%
         self.assertEqual(body["pnl_pct"], 10.0)
 
+    def test_decimal_money_fields_are_summed_without_becoming_zero(self):
+        # ka10077은 분할체결의 평균원가·손익을 소수 문자열로 반환할 수 있다.
+        raw = [
+            {"stk_cd": "290560", "cntr_qty": "16", "buy_uv": "1348.3013699",
+             "tdy_sel_pl": "863.1780822", "pl_rt": "+4.00",
+             "tdy_trde_cmsn": "0", "tdy_trde_tax": "44"},
+            {"stk_cd": "290560", "cntr_qty": "45", "buy_uv": "1348.3013699",
+             "tdy_sel_pl": "2380.4383562", "pl_rt": "+3.92",
+             "tdy_trde_cmsn": "0", "tdy_trde_tax": "126"},
+            {"stk_cd": "290560", "cntr_qty": "12", "buy_uv": "1348.3013699",
+             "tdy_sel_pl": "623.3835616", "pl_rt": "+3.85",
+             "tdy_trde_cmsn": "0", "tdy_trde_tax": "33"},
+        ]
+        with patch("routers.orders.orders.get_today_realized", return_value=raw):
+            body = self.client.get("/orders/realized/290560").json()
+        self.assertEqual(body["sel_pl_won"], 3867)
+        self.assertEqual(body["pnl_pct"], 3.93)
+        self.assertEqual(body["qty"], 73)
+        self.assertEqual(body["tax"], 203)
+
     def test_empty_not_found(self):
         with patch("routers.orders.orders.get_today_realized", return_value=[]):
             body = self.client.get("/orders/realized/005930").json()
@@ -668,6 +711,7 @@ class TestMarketOrderGuard(unittest.TestCase):
 
         quote.assert_not_called()
         wire.assert_called_once()
+        self.assertEqual(wire.call_args.args[2]["dmst_stex_tp"], "SOR")
         self.assertTrue(result.accepted)
 
     def test_enforced_route_cannot_be_bypassed_by_manual_source(self):
@@ -706,6 +750,103 @@ class TestMarketOrderGuard(unittest.TestCase):
             with self.assertRaises(OrderRejected):
                 kiwoom_orders.place_order(req, enforce_amount_cap=True)
         wire.assert_not_called()
+
+
+class TestEnvFixedAtStartup(unittest.TestCase):
+    """매매환경은 프로세스 시작 시 .env 로 고정 — 런타임 전환 경로가 없어야 한다.
+
+    전환 API 는 접속 주소만 바꾸고 자격증명·계좌·실시간 체결 연결은 그대로 남겨
+    혼합 상태를 만든다. FastApiMCP 가 라우트를 그대로 툴로 노출하므로 라우트가
+    남아 있으면 LLM 에이전트도 환경을 뒤집을 수 있다.
+    """
+
+    def setUp(self):
+        from main import app
+
+        self.client = TestClient(app)
+
+    def test_settings_post_is_gone(self):
+        resp = self.client.post("/settings", json={"env": "real"})
+        self.assertEqual(resp.status_code, 405)
+
+    def test_update_settings_not_exposed_as_mcp_tool(self):
+        schema = self.client.get("/openapi.json").json()
+        ops = {
+            op.get("operationId")
+            for methods in schema["paths"].values()
+            for op in methods.values()
+            if isinstance(op, dict)
+        }
+        self.assertNotIn("update_settings", ops)
+        self.assertIn("get_settings", ops)  # 조회는 남아야 함
+
+    def test_no_runtime_env_setter(self):
+        from kiwoom import config as cfg_mod
+
+        self.assertFalse(hasattr(cfg_mod, "set_runtime_env"))
+
+
+class TestEnvScopedCredentials(unittest.TestCase):
+    """KIWOOM_ENV 한 줄로 주소·키·계좌가 함께 움직여야 한다.
+
+    접두사 없는 이름만 쓰면 실전 키를 넣은 뒤 paper 로 되돌렸을 때
+    "모의 주소 + 실전 키" 혼합 상태가 된다.
+    """
+
+    ENV_KEYS = (
+        "KIWOOM_ENV",
+        "KIWOOM_PAPER_APPKEY", "KIWOOM_PAPER_SECRETKEY", "KIWOOM_PAPER_ACCOUNT_NO",
+        "KIWOOM_REAL_APPKEY", "KIWOOM_REAL_SECRETKEY", "KIWOOM_REAL_ACCOUNT_NO",
+        "KIWOOM_APPKEY", "KIWOOM_SECRETKEY", "KIWOOM_ACCOUNT_NO",
+        "KIWOON_MOCK_TR_APP_KEY", "KIWOON_MOCK_TR_APP_SECRET",
+        "KIWOON_MOCK_TR_ACCOUNT_NO",
+    )
+
+    def _load(self, **env):
+        from kiwoom.config import load_config
+
+        clean = {k: "" for k in self.ENV_KEYS}
+        clean.update(env)
+        with patch.dict(os.environ, clean, clear=False):
+            return load_config()
+
+    def test_real_picks_real_credentials(self):
+        cfg = self._load(
+            KIWOOM_ENV="real",
+            KIWOOM_PAPER_APPKEY="pk", KIWOOM_PAPER_SECRETKEY="ps",
+            KIWOOM_PAPER_ACCOUNT_NO="1111",
+            KIWOOM_REAL_APPKEY="rk", KIWOOM_REAL_SECRETKEY="rs",
+            KIWOOM_REAL_ACCOUNT_NO="9999",
+        )
+        self.assertEqual(cfg.appkey, "rk")
+        self.assertEqual(cfg.account_no, "9999")
+        self.assertEqual(cfg.rest_host, "https://api.kiwoom.com")
+
+    def test_paper_picks_paper_credentials(self):
+        cfg = self._load(
+            KIWOOM_ENV="paper",
+            KIWOOM_PAPER_APPKEY="pk", KIWOOM_PAPER_SECRETKEY="ps",
+            KIWOOM_PAPER_ACCOUNT_NO="1111",
+            KIWOOM_REAL_APPKEY="rk", KIWOOM_REAL_SECRETKEY="rs",
+            KIWOOM_REAL_ACCOUNT_NO="9999",
+        )
+        self.assertEqual(cfg.appkey, "pk")
+        self.assertEqual(cfg.account_no, "1111")
+        self.assertEqual(cfg.rest_host, "https://mockapi.kiwoom.com")
+
+    def test_legacy_names_still_work(self):
+        """접두사 없는 기존 .env(KIWOON_MOCK_TR_*)도 그대로 로드된다."""
+        cfg = self._load(
+            KIWOOM_ENV="paper",
+            KIWOON_MOCK_TR_APP_KEY="old", KIWOON_MOCK_TR_APP_SECRET="olds",
+            KIWOON_MOCK_TR_ACCOUNT_NO="2222",
+        )
+        self.assertEqual(cfg.appkey, "old")
+        self.assertEqual(cfg.account_no, "2222")
+
+    def test_missing_credentials_raise(self):
+        with self.assertRaises(RuntimeError):
+            self._load(KIWOOM_ENV="real")
 
 
 if __name__ == "__main__":
