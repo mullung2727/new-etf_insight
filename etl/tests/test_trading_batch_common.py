@@ -98,6 +98,12 @@ class HeldQuantitiesTest(unittest.TestCase):
         ]}
         self.assertEqual(held_quantities(balance), {"005930": 14, "025320": 75})
 
+    def test_strips_prefix_from_alphanumeric_ticker(self):
+        balance = {"acnt_evlt_remn_indv_tot": [
+            {"stk_cd": "A0220W0", "trde_able_qty": "000000000000009"},
+        ]}
+        self.assertEqual(held_quantities(balance), {"0220W0": 9})
+
     def test_empty_account_is_not_a_failure(self):
         """보유 0건은 정상 응답 — 유령 마감 판정이 진행돼야 한다."""
         self.assertEqual(held_quantities({"acnt_evlt_remn_indv_tot": []}), {})

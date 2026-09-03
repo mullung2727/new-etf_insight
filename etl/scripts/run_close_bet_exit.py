@@ -102,7 +102,7 @@ def is_locked(
 
 def _strip_code(code: str) -> str:
     code = str(code).strip()
-    return code[1:] if code[:1] == "A" and code[1:].isdigit() else code
+    return code[1:] if len(code) == 7 and code[:1] == "A" else code
 
 
 def _padint(val: object) -> int:

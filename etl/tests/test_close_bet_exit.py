@@ -135,6 +135,15 @@ class TestReconcileBalance(unittest.TestCase):
         positions = [{"ticker": "005930", "cntr_price": 1000, "qty": 5}]
         self.assertEqual(reconcile_balance(positions, {}), [])
 
+    def test_keeps_alphanumeric_ticker_with_kiwoom_prefix(self):
+        positions = [{"ticker": "0220W0", "cntr_price": 10100, "qty": 9}]
+        balance = {"acnt_evlt_remn_indv_tot": [
+            {"stk_cd": "A0220W0", "trde_able_qty": "000000000000009"},
+        ]}
+        self.assertEqual(reconcile_balance(positions, balance), [
+            {"ticker": "0220W0", "cntr_price": 10100, "qty": 9, "qty_eff": 9},
+        ])
+
 
 def _resp(json_data, status=200):
     m = MagicMock()
