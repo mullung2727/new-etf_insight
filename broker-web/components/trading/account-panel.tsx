@@ -73,11 +73,10 @@ export function AccountPanel({ onHoldingSelect }: { onHoldingSelect?: (symbol: s
   const [settings, setSettings] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [envSwitching, setEnvSwitching] = useState(false);
   // 체결 연타 시 재조회가 겹칠 수 있음 → 최신 호출만 state에 반영 (stale 응답 무시)
   const reqSeq = useRef(0);
 
-  // 잔고+예수금만 재조회 (체결 이벤트 경로 — settings 토글과 무관)
+  // 잔고+예수금만 재조회 (체결 이벤트 경로)
   const loadAccount = async () => {
     const seq = ++reqSeq.current;
     setLoading(true);
@@ -108,21 +107,6 @@ export function AccountPanel({ onHoldingSelect }: { onHoldingSelect?: (symbol: s
     await loadAccount();
   };
 
-  const toggleEnv = async () => {
-    if (!settings || envSwitching) return;
-    const next = settings.env === "paper" ? "real" : "paper";
-    setEnvSwitching(true);
-    try {
-      const s = await brokerClient.updateSettings(next);
-      setSettings(s);
-      await loadAccount();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setEnvSwitching(false);
-    }
-  };
-
   useEffect(() => { load(); }, []);
 
   // 체결 통보(913=체결) 오면 주문가능/총평가금액 즉시 재조회
@@ -140,17 +124,20 @@ export function AccountPanel({ onHoldingSelect }: { onHoldingSelect?: (symbol: s
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">계좌</h2>
           {settings && (
-            <button
-              onClick={toggleEnv}
-              disabled={envSwitching}
-              className={`text-xs px-2 py-0.5 rounded border font-medium transition-colors ${
-                settings.env === "paper"
-                  ? "border-status-partial/50 text-status-partial hover:bg-status-partial/10"
-                  : "border-status-profit/50 text-status-profit hover:bg-status-profit/10"
+            // 읽기 전용 — env 는 broker 기동 시 .env 로 고정된다(런타임 전환 없음).
+            // 실전은 경고색으로 채워 오인을 막고, 계좌 뒷자리를 붙여 "실전인데 모의 계좌"
+            // 같은 어긋난 상태가 눈에 보이게 한다.
+            <span
+              title="broker 기동 시 .env 의 KIWOOM_ENV 로 고정됨"
+              className={`text-xs px-2 py-0.5 rounded border font-medium tabular-nums ${
+                settings.env === "real"
+                  ? "border-status-loss bg-status-loss/15 text-status-loss"
+                  : "border-status-closed text-muted-foreground"
               }`}
             >
-              {envSwitching ? "..." : settings.env === "paper" ? "모의" : "실전"}
-            </button>
+              {settings.env === "real" ? "실전" : "모의"}
+              {settings.account_tail && ` ···${settings.account_tail}`}
+            </span>
           )}
         </div>
         <Button variant="ghost" size="sm" onClick={load} disabled={loading}>

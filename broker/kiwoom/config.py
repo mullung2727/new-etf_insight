@@ -1,7 +1,8 @@
 """Environment config + host selection for the Kiwoom broker.
 
-Loaded once at import. ``KIWOOM_ENV`` picks the REST/WebSocket host: ``paper``
-(모의투자) is the safe default, ``real`` (실전) moves actual money.
+Loaded once at import. ``KIWOOM_ENV`` picks the REST/WebSocket host **and** the
+credential set: ``paper`` (모의투자) is the safe default, ``real`` (실전) moves
+actual money. Fixed at process start — there is no runtime switch.
 """
 
 from __future__ import annotations
@@ -67,16 +68,9 @@ class Config:
         return self.env == "paper"
 
 
-_runtime_env: str | None = None
-
-
-def set_runtime_env(env: str) -> None:
-    global _runtime_env
-    _runtime_env = env
-
-
 def get_current_env() -> str:
-    return _runtime_env or os.getenv("KIWOOM_ENV", "paper").strip().lower()
+    """KIWOOM_ENV. 프로세스 시작 시 .env 로 고정 — 런타임 전환 경로는 없다."""
+    return os.getenv("KIWOOM_ENV", "paper").strip().lower()
 
 
 def load_config() -> Config:
@@ -89,14 +83,24 @@ def load_config() -> Config:
     if not cache_path.is_absolute():
         cache_path = _ENV_PATH.parent / cache_path
 
+    # 자격증명은 env 별 이름을 먼저 본다(KIWOOM_REAL_* / KIWOOM_PAPER_*).
+    # 덕분에 KIWOOM_ENV 한 줄만 바꾸면 주소·키·계좌가 통째로 같이 움직여
+    # "실전 주소 + 모의 키" 같은 혼합 상태가 생기지 않는다.
+    # 접두사 없는 이름과 KIWOON_MOCK_TR_* 는 기존 .env 호환용 폴백.
+    prefix = f"KIWOOM_{env.upper()}_"
     return Config(
-        # Accept both canonical names and the KIWOON_MOCK_TR_* convention.
-        appkey=_require_first("KIWOOM_APPKEY", "KIWOON_MOCK_TR_APP_KEY"),
-        secretkey=_require_first("KIWOOM_SECRETKEY", "KIWOON_MOCK_TR_APP_SECRET"),
+        appkey=_require_first(
+            f"{prefix}APPKEY", "KIWOOM_APPKEY", "KIWOON_MOCK_TR_APP_KEY"
+        ),
+        secretkey=_require_first(
+            f"{prefix}SECRETKEY", "KIWOOM_SECRETKEY", "KIWOON_MOCK_TR_APP_SECRET"
+        ),
         env=env,
         rest_host=_HOSTS[env],
         ws_host=_WS_HOSTS[env],
-        account_no=_get_first("KIWOOM_ACCOUNT_NO", "KIWOON_MOCK_TR_ACCOUNT_NO"),
+        account_no=_get_first(
+            f"{prefix}ACCOUNT_NO", "KIWOOM_ACCOUNT_NO", "KIWOON_MOCK_TR_ACCOUNT_NO"
+        ),
         max_order_amount=int(os.getenv("MAX_ORDER_AMOUNT", "1000000")),
         token_cache_path=cache_path,
     )

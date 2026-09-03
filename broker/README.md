@@ -39,5 +39,9 @@ credentials, `uv sync`, then `uv run python server.py`.
 ## Safety
 
 - `.env` / `.token_cache.json` are git-ignored.
-- Default `KIWOOM_ENV=paper`; switching to `real` is an explicit env change.
-- All orders pass `guards.check_order` (MAX_ORDER_AMOUNT).
+- Default `KIWOOM_ENV=paper`; switching to `real` means editing the root `.env`
+  and restarting — there is no runtime switch (API or UI). `KIWOOM_ENV` selects the
+  host *and* the `KIWOOM_PAPER_*` / `KIWOOM_REAL_*` credential set together.
+- All orders pass `guards.check_order` (MAX_ORDER_AMOUNT). Limit orders are capped on
+  `price*qty`, market **buys** on `current_price*qty` (rejected if the quote fails).
+  Market **sells** are exempt so a position can always be closed.

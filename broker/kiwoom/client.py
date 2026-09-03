@@ -73,11 +73,6 @@ class TrResult:
     next_key: str  # pass back as next_key to fetch the next page
 
 
-def clear_cache() -> None:
-    global _cfg
-    _cfg = None
-
-
 def request(
     api_id: str,
     endpoint: str,
