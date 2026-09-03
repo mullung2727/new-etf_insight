@@ -4,5 +4,39 @@
     "code-simplifier@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
     "playwright@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-bare-python.sh",
+            "shell": "bash"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-main-commit.sh",
+            "shell": "bash"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-nonroot-env.sh",
+            "shell": "bash"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-hardcoded-color.sh",
+            "shell": "bash"
+          }
+        ]
+      }
+    ]
   }
 }
