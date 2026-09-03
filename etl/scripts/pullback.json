@@ -1,5 +1,5 @@
 {
-  "budget_per_stock": 300000,
+  "budget_per_stock": 100000,
   "max_new_positions": 3,
   "tp": 0.04,
   "sl": 0.04,

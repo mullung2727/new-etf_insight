@@ -7,9 +7,13 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime
 
 import holidays
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows cp949 크래시 가드
 
 NON_TRADING_EXIT_CODE = 3
 
