@@ -116,9 +116,9 @@ def quantity_for_budget(budget: int, price: int) -> int:
 
 
 def _strip_ticker(code: object) -> str:
-    """키움 잔고의 'A005930' 접두를 벗긴다."""
+    """키움 잔고의 ``A`` + 6자리 종목코드 접두를 벗긴다."""
     text = str(code).strip()
-    return text[1:] if text[:1] == "A" and text[1:].isdigit() else text
+    return text[1:] if len(text) == 7 and text[:1] == "A" else text
 
 
 def _padint(value: object) -> int:
