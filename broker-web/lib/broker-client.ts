@@ -93,6 +93,8 @@ export interface DepositData {
 
 export interface Settings {
   env: "paper" | "real";
+  account_tail: string;
+  max_order_amount: number;
 }
 
 export interface ConditionItem {
@@ -271,9 +273,8 @@ export const brokerClient = {
   modifyOrder: (orderNo: string, symbol: string, price: number, qty = 0) =>
     patch<OrderResult>(`/orders/${orderNo}`, { symbol, price, qty }),
 
-  // settings
+  // settings — 읽기 전용. env 는 broker 기동 시 .env 로 고정되며 런타임 전환 API 는 없다.
   getSettings: () => get<Settings>("/settings"),
-  updateSettings: (env: "paper" | "real") => post<Settings>("/settings", { env }),
 
   // notes
   listNotes: (params?: { symbol?: string; status?: NoteStatus }) => {

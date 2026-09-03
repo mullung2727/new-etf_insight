@@ -103,13 +103,6 @@ def _issue(cfg: Config) -> None:
     logger.info("kiwoom token issued (env=%s)", cfg.env)
 
 
-def clear_cache() -> None:
-    global _token, _expires_at, _cfg
-    _token = None
-    _expires_at = 0.0
-    _cfg = None
-
-
 def get_token() -> str:
     """Return a valid bearer token, issuing/refreshing as needed."""
     cfg = _config()

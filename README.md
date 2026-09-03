@@ -211,8 +211,9 @@ cd broker-web; npm run dev
 
 | 키 | 위치 | 용도 |
 | --- | --- | --- |
-| `KIWOON_MOCK_TR_APP_KEY` / `SECRET` | 루트 `.env` | 키움 모의 OAuth |
-| `KIWOOM_ENV` | 루트 `.env` | `paper`(기본) / `real` |
+| `KIWOOM_ENV` | 루트 `.env` | `paper`(기본) / `real`. broker 기동 시 고정, 런타임 전환 없음 |
+| `KIWOOM_PAPER_*` / `KIWOOM_REAL_*` | 루트 `.env` | 키움 OAuth 키·시크릿·계좌번호. `KIWOOM_ENV` 값에 맞는 쪽을 읽는다 |
+| `MAX_ORDER_AMOUNT` | 루트 `.env` | 1회 주문 금액 상한(원). 전략 예산보다 크게 |
 | `DART_API_KEY` | 루트 또는 `broker-web/.env.local` | DART 공시·PDF·재무 |
 | `DUCKDB_PATH` | `api` 등 | ETF DB 경로 (기본 `etl/db/etf_insight.sqlite3`) |
 | `WATCHLIST_DB_PATH` | api/배치 | `watchlist.sqlite3` |

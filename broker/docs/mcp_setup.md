@@ -21,15 +21,20 @@ direct child process of the MCP client.
 
 ## 1. 자격증명
 
-`broker/.env.example` → `broker/.env` 복사 후 채움:
+루트 `.env` 에 채움(`broker/.env.example` 참고). `broker/.env` 는 만들지 않는다:
 
 ```
-KIWOOM_APPKEY=...
-KIWOOM_SECRETKEY=...
-KIWOOM_ENV=paper          # 모의투자. 실전 전환 시 real
-KIWOOM_ACCOUNT_NO=...     # 모의투자 계좌번호
+KIWOOM_ENV=paper          # 모의투자. 실전 전환 시 real → broker 재기동 필요
+KIWOOM_PAPER_APPKEY=...
+KIWOOM_PAPER_SECRETKEY=...
+KIWOOM_PAPER_ACCOUNT_NO=...
+KIWOOM_REAL_APPKEY=...    # 실전 앱키는 모의와 별도 발급
+KIWOOM_REAL_SECRETKEY=...
+KIWOOM_REAL_ACCOUNT_NO=...
 MAX_ORDER_AMOUNT=1000000  # 1회 주문 최대 금액(원)
 ```
+
+`KIWOOM_ENV` 한 줄이 주소·키·계좌를 함께 바꾼다 — 혼합 상태가 생기지 않는다.
 
 `.env`는 `.gitignore`에 있음 — 절대 커밋 금지.
 

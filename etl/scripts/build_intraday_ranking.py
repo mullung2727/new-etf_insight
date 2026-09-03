@@ -102,10 +102,19 @@ def _kiwoom_env() -> str:
 
 
 def _load_keys() -> tuple[str, str]:
-    appkey = (os.getenv("KIWOOM_APPKEY") or os.getenv("KIWOON_MOCK_TR_APP_KEY") or "").strip()
-    secret = (os.getenv("KIWOOM_SECRETKEY") or os.getenv("KIWOON_MOCK_TR_APP_SECRET") or "").strip()
+    # env 별 이름(KIWOOM_REAL_* / KIWOOM_PAPER_*)을 먼저 본다 — broker/kiwoom/config.py 와 동일 규칙.
+    # 접두사 없는 이름만 보면 KIWOOM_ENV=real 인데 모의 앱키로 실전 호스트를 때려 토큰이 안 나온다.
+    prefix = f"KIWOOM_{_kiwoom_env().upper()}_"
+    appkey = (
+        os.getenv(f"{prefix}APPKEY") or os.getenv("KIWOOM_APPKEY")
+        or os.getenv("KIWOON_MOCK_TR_APP_KEY") or ""
+    ).strip()
+    secret = (
+        os.getenv(f"{prefix}SECRETKEY") or os.getenv("KIWOOM_SECRETKEY")
+        or os.getenv("KIWOON_MOCK_TR_APP_SECRET") or ""
+    ).strip()
     if not appkey or not secret:
-        raise RuntimeError("키움 앱키 없음 — 루트 .env 의 KIWOOM_APPKEY/KIWOON_MOCK_TR_APP_KEY 확인")
+        raise RuntimeError(f"키움 앱키 없음 — 루트 .env 의 {prefix}APPKEY/SECRETKEY 확인")
     return appkey, secret
 
 

@@ -5,6 +5,7 @@ import { TelegramPanel } from "@/components/admin/telegram-panel";
 import { CloseBetPanel } from "@/components/admin/close-bet-panel";
 import { YoutubePanel } from "@/components/admin/youtube-panel";
 import { PullbackPanel } from "@/components/admin/pullback-panel";
+import { OrderCapNotice } from "@/components/admin/order-cap-notice";
 
 type Tab = "telegram" | "closebet" | "pullback" | "youtube";
 
@@ -29,6 +30,9 @@ export default function SettingsPage() {
           유튜브
         </TabButton>
       </div>
+
+      {/* 예산을 편집하는 탭에서만 주문 상한을 함께 보여준다(읽기 전용). */}
+      {(tab === "closebet" || tab === "pullback") && <OrderCapNotice />}
 
       {tab === "telegram" && <TelegramPanel />}
       {tab === "closebet" && <CloseBetPanel />}
