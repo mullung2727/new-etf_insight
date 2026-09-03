@@ -337,6 +337,22 @@ class FormatMessageTest(unittest.TestCase):
         self.assertIn("주요 이슈 없음", msg)
         self.assertIn("신규 영상 2개", msg)
 
+    def test_multiline_summary_becomes_one_bullet_per_line(self):
+        item = _highlight(summary="HBF는 HBM 대체 아닌 새 계층\n512GB 용량으로 저장 계층 겨냥")
+        msg = yd.format_digest_message(
+            "2026-08-07", "morning", self.rows, self._validated([item])
+        )
+        self.assertIn("  - HBF는 HBM 대체 아닌 새 계층", msg)
+        self.assertIn("  - 512GB 용량으로 저장 계층 겨냥", msg)
+
+    def test_single_paragraph_summary_stays_one_line(self):
+        """개조식 이전에 쌓인 행은 기계적으로 쪼개지 않는다."""
+        msg = yd.format_digest_message(
+            "2026-08-07", "morning", self.rows, self._validated([_highlight()])
+        )
+        summary_lines = [ln for ln in msg.splitlines() if ln.startswith("  - ")]
+        self.assertEqual(len(summary_lines), 1)
+
     def test_channel_label_not_channel_id_is_shown(self):
         msg = yd.format_digest_message(
             "2026-08-07", "morning", self.rows, self._validated([_highlight()])

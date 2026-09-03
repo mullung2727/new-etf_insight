@@ -59,6 +59,19 @@ def fetch_insights(con: sqlite3.Connection, date_kst: str, session: str) -> list
     return out
 
 
+def _summary_lines(summary: str) -> list[str]:
+    """LLM 이 줄바꿈으로 끊어 준 개조식 항목을 들여쓴 줄로 편다.
+
+    한 문단으로 오는 과거 데이터도 그대로 한 줄이 된다 — 기계적으로 쪼개지 않는다.
+    """
+    out = []
+    for line in summary.splitlines():
+        text = line.strip().lstrip("-•·").strip()
+        if text:
+            out.append(f"  - {text}")
+    return out
+
+
 def _section_lines(rows: list[dict]) -> list[str]:
     """섹션 내 종목 줄. 신규 먼저, 채널 수 많은 순."""
     order = {"new": 0, "continued": 1}
@@ -92,7 +105,7 @@ def format_digest(
         lines += [f"🧭 텔레그램 세션 개괄 {date_kst} ({session})", "", f"🔥 중요 내용 ({len(highlights)})"]
         for item in highlights:
             lines.append(f"• [{item['score_total']}점] {item['title']}")
-            lines.append(f"  {item['summary']}")
+            lines += _summary_lines(item["summary"])
             lines.append(f"  가치: {item['importance_reason']}")
         lines += ["", "※ 정보가치 점수이며 사실 확정도·수익률 전망이 아님"]
 
