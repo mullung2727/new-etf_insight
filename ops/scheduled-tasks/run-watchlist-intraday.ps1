@@ -57,11 +57,16 @@ try {
 
   Invoke-Step "build intraday ranking" ".\.venv\Scripts\python.exe" @("scripts\build_intraday_ranking.py", "--date", $todayCompact)
   Invoke-BestEffortStep "capture 15:00 market snapshot" ".\.venv\Scripts\python.exe" @("scripts\collect_watchlist_market_snapshot.py", "--date", $todayCompact)
+  # --output-dir 를 넘기지 않으면 스크립트 옆 research/.../results/shadow_probability 로
+  # 떨어진다. 그 폴더는 연구 스냅샷(규칙 변경 전후 비교본)이라 git 추적 대상이어서,
+  # 매 거래일 배치가 그 위를 덮어써 작업 트리를 더럽혔다. 이 덤프는 읽는 코드가 없으니
+  # 다른 산출물과 같이 저장소 밖 reports 로 보낸다.
   Invoke-Step "D+1 open probability scoring" ".\.venv\Scripts\python.exe" @(
     "..\research\watchlist_expected_return\watchlist_probability_langgraph.py",
     "--dates", $todayCompact,
     "--write-db",
-    "--reports-dir", $reportsDir
+    "--reports-dir", $reportsDir,
+    "--output-dir", $reportsDir
   )
 
   $researchJson = Join-Path $reportsDir ("watchlist_research_" + $todayDash + ".json")

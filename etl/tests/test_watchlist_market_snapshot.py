@@ -155,6 +155,14 @@ class WatchlistMarketSnapshotTest(unittest.TestCase):
         self.assertIn('"--write-db"', runner)
         self.assertNotIn('run_watchlist_research.py', runner)
 
+    def test_runner_keeps_the_probability_dump_out_of_the_research_folder(self) -> None:
+        """--output-dir 없으면 추적 대상 연구 스냅샷 폴더를 매일 덮어쓴다."""
+        runner = (
+            Path(__file__).resolve().parents[2]
+            / "ops" / "scheduled-tasks" / "run-watchlist-intraday.ps1"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"--output-dir", $reportsDir', runner)
+
 
 if __name__ == "__main__":
     unittest.main()
