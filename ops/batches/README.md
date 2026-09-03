@@ -40,6 +40,8 @@ reader before composing the Discord report.
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
 - `daily-close-bet-order.md`
   - Purpose: report the Windows Task Scheduler 15:19 close-bet order result.
+- `daily-trading-result.md`
+  - Purpose: report both strategies' actual filled sells, fees, tax, and broker net realized P/L after the exit workers stop.
 
 See `openclaw-cron.registry.json` for the active schedules, Windows task
 bindings, and Discord webhook env key. Do not duplicate schedules in this README.
@@ -89,6 +91,8 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
   `ops/scheduled-tasks/run-watchlist-intraday.ps1`.
 - `\new-etf_insight\daily-close-bet-order-report` — Mon-Fri 15:21,
   `ops/scheduled-tasks/run-close-bet-order-report.ps1`.
+- `\new-etf_insight\daily-trading-result` — Mon-Fri 16:20,
+  `ops/scheduled-tasks/run-daily-trading-result.ps1` (눌림목·종가베팅 실제 매도 통합 보고).
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).
 - `\OpenClaw\close-bet-verify` — Mon-Fri 16:00, `etl/scripts/run_verify.py`

@@ -276,6 +276,36 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "55e59971-07e5-400a-b9ea-1d6d0b126a43",
+      "name": "daily-trading-result",
+      "description": "Mon-Fri 16:20 report actual filled sells and broker-authoritative realized P/L for pullback and close-bet",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-trading-result.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative and starts at 16:20:00, after the 16:00 telegram close session and post-market filings land; report only, never place or retry orders.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-trading-result",
+        "xmlFile": "ops/scheduled-tasks/daily-trading-result.xml",
+        "runnerScript": "ops/scheduled-tasks/run-daily-trading-result.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }
