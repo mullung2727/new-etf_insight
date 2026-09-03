@@ -278,6 +278,64 @@
       }
     },
     {
+      "id": "fab36a6e-01cf-4e07-b2ca-000235853ecc",
+      "name": "daily-youtube-digest-morning",
+      "description": "Daily 10:00 KST youtube market digest (morning): collect D-1+D, auto-summarize pending, cross-video digest to Discord",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 10 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/youtube-twice-daily-digest.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-youtube-digest-morning",
+        "xmlFile": "ops/scheduled-tasks/youtube-digest-morning.xml",
+        "runnerScript": "ops/scheduled-tasks/run-youtube-digest-session.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "TELEGRAM_REPORT_TO_DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "2704ec75-00f1-4a0d-8195-d82dbb2f67a0",
+      "name": "daily-youtube-digest-evening",
+      "description": "Daily 18:00 KST youtube market digest (evening): collect D, auto-summarize pending, cross-video digest to Discord",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 18 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/youtube-twice-daily-digest.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-youtube-digest-evening",
+        "xmlFile": "ops/scheduled-tasks/youtube-digest-evening.xml",
+        "runnerScript": "ops/scheduled-tasks/run-youtube-digest-session.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "TELEGRAM_REPORT_TO_DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "55e59971-07e5-400a-b9ea-1d6d0b126a43",
       "name": "daily-trading-result",
       "description": "Mon-Fri 16:20 report actual filled sells and broker-authoritative realized P/L for pullback and close-bet",
