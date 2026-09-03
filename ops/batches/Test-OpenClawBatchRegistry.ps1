@@ -82,6 +82,23 @@ foreach ($job in $registry.jobs) {
     }
 }
 
+# 파일 존재만 검사하면 "레지스트리엔 있는데 실제로는 등록 안 된" 배치를 못 잡는다.
+# 2026-09-04: daily-naver-research 가 정확히 그 상태로 2개월 방치됐다.
+# throw 하지 않고 경고만 낸다. Export-WindowsScheduledTaskSpecs.ps1 이 등록 명령을 뽑기 전에
+# 이 스크립트를 먼저 통과시키므로, throw 하면 미등록 작업을 영영 등록할 수 없다.
+$declared = @($registry.jobs | Where-Object { $_.windowsTask -and $_.windowsTask.enabled })
+foreach ($taskPath in @($declared.windowsTask.taskPath | Sort-Object -Unique)) {
+    $registered = @((Get-ScheduledTask -TaskPath $taskPath -ErrorAction SilentlyContinue).TaskName)
+    $expected = @(($declared | Where-Object { $_.windowsTask.taskPath -eq $taskPath }).windowsTask.taskName)
+
+    foreach ($missing in @($expected | Where-Object { $_ -notin $registered })) {
+        Write-Warning "Declared in registry but not registered in Windows: $taskPath$missing"
+    }
+    foreach ($extra in @($registered | Where-Object { $_ -notin $expected })) {
+        Write-Warning "Registered in Windows but missing from registry: $taskPath$extra"
+    }
+}
+
 if (-not $Quiet) {
     Write-Host "OK: $($registry.jobs.Count) project batch jobs validated from $registryFile"
 }
