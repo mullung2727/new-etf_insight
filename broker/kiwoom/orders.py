@@ -53,7 +53,7 @@ def place_order(
 
     api_id = tr.TR_ORDER_BUY if req.side == Side.buy else tr.TR_ORDER_SELL
     body = {
-        "dmst_stex_tp": "KRX",
+        "dmst_stex_tp": "SOR",
         "stk_cd": req.symbol,
         "ord_qty": str(req.qty),
         "ord_uv": "" if market else str(req.price),
@@ -157,7 +157,7 @@ def get_realized_by_date(symbol: str, date: str) -> list[dict[str, Any]]:
 def modify_order(order_no: str, symbol: str, price: int, qty: int = 0) -> OrderResult:
     """kt10002 — 미체결 주문 정정. qty=0이면 잔량 전부 정정. price=정정단가."""
     body = {
-        "dmst_stex_tp": "KRX",
+        "dmst_stex_tp": "SOR",
         "orig_ord_no": str(order_no),
         "stk_cd": symbol,
         "mdfy_qty": str(qty) if qty else "0",
@@ -176,7 +176,7 @@ def modify_order(order_no: str, symbol: str, price: int, qty: int = 0) -> OrderR
 def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
     """Cancel a resting order. qty=0 cancels the full remaining quantity."""
     body = {
-        "dmst_stex_tp": "KRX",
+        "dmst_stex_tp": "SOR",
         "orig_ord_no": str(order_no),
         "stk_cd": symbol,
         "cncl_qty": str(qty) if qty else "0",
