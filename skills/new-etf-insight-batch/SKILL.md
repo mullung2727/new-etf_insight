@@ -1,6 +1,7 @@
 # new_etf_insight Batch Run Guide
 
 Use this skill when running or debugging the `new_etf_insight` ETF batch pipeline.
+For the pullback/close-bet realized-result report and its 16:20:00 Windows task, use `new-etf-insight-daily-trading-result` instead.
 
 ## Core Rules
 

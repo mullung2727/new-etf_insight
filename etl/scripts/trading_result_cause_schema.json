@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["grade", "cause", "evidence_refs", "buy_rationale_match", "reasoning"],
+  "properties": {
+    "grade": {
+      "type": "string",
+      "enum": ["A", "B", "C", "D", "E"]
+    },
+    "cause": {
+      "type": "string"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "buy_rationale_match": {
+      "type": "string",
+      "enum": ["same_sustained", "same_plus_new", "different", "unknown"]
+    },
+    "reasoning": {
+      "type": "string"
+    }
+  }
+}
