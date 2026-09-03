@@ -353,6 +353,14 @@ class FormatMessageTest(unittest.TestCase):
         summary_lines = [ln for ln in msg.splitlines() if ln.startswith("  - ")]
         self.assertEqual(len(summary_lines), 1)
 
+    def test_leading_minus_of_a_number_is_kept(self):
+        """기호 제거가 부호까지 먹으면 하락이 상승으로 읽힌다."""
+        item = _highlight(summary="-10% 급락 후 저가 매수 유입\n외국인 순매도 지속")
+        msg = yd.format_digest_message(
+            "2026-08-07", "morning", self.rows, self._validated([item])
+        )
+        self.assertIn("  - -10% 급락 후 저가 매수 유입", msg)
+
     def test_channel_label_not_channel_id_is_shown(self):
         msg = yd.format_digest_message(
             "2026-08-07", "morning", self.rows, self._validated([_highlight()])

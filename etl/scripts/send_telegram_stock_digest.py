@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -59,6 +60,11 @@ def fetch_insights(con: sqlite3.Connection, date_kst: str, session: str) -> list
     return out
 
 
+# 항목 기호는 뒤에 공백이 있을 때만 뗀다. 그냥 벗기면 `-10% 하락` 의 부호까지 뜯겨
+# 하락이 상승으로 읽힌다.
+_LIST_MARKER = re.compile(r"^[-•·]\s+")
+
+
 def _summary_lines(summary: str) -> list[str]:
     """LLM 이 줄바꿈으로 끊어 준 개조식 항목을 들여쓴 줄로 편다.
 
@@ -66,7 +72,7 @@ def _summary_lines(summary: str) -> list[str]:
     """
     out = []
     for line in summary.splitlines():
-        text = line.strip().lstrip("-•·").strip()
+        text = _LIST_MARKER.sub("", line.strip())
         if text:
             out.append(f"  - {text}")
     return out

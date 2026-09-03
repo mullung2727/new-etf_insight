@@ -56,6 +56,13 @@ class FormatTelegramDigestTest(unittest.TestCase):
         self.assertIn("  - GPU 수요 상향", msg)
         self.assertNotIn("- - ", msg)
 
+    def test_leading_minus_of_a_number_is_kept(self):
+        """기호 제거가 부호까지 먹으면 하락이 상승으로 읽힌다."""
+        item = self._highlight()
+        item["summary"] = "-10% 급락 후 저가 매수 유입\n외국인 순매도 지속"
+        msg = format_digest("2026-07-18", "close", rows=[], highlights=[item])
+        self.assertIn("  - -10% 급락 후 저가 매수 유입", msg)
+
     def test_empty_highlights_and_stocks_returns_none(self):
         self.assertIsNone(format_digest("2026-07-18", "close", rows=[], highlights=[]))
 
