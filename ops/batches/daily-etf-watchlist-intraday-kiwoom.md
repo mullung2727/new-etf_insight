@@ -52,8 +52,13 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 .\.venv\Scripts\python.exe scripts\collect_watchlist_market_snapshot.py --date <TODAY_YYYYMMDD>
 .\.venv\Scripts\python.exe ..\research\watchlist_expected_return\watchlist_probability_langgraph.py `
   --dates <TODAY_YYYYMMDD> --write-db `
-  --reports-dir C:\Users\mullu\.openclaw\workspace\reports
+  --reports-dir C:\Users\mullu\.openclaw\workspace\reports `
+  --output-dir C:\Users\mullu\.openclaw\workspace\reports
 ```
+
+`--output-dir` is required. Without it the scorer dumps
+`recent_3day_probability_scores.json` next to its own source, into the tracked
+research snapshot folder, and every run shows up as a repo change.
 
 The probability scorer must use saved same-day watchlist and 15:00 snapshot rows
 and upsert `etl/db/watchlist.sqlite3` `llm_scores`. It uses prior KRX rows for
