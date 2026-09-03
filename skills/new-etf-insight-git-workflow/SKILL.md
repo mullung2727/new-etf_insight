@@ -31,6 +31,20 @@ git log origin/main..main
 push 는 사용자가 한다. 에이전트는 커밋까지만 하고 `! git push -u origin <branch>` 를 안내한다.
 (과거 wincredman 크래시 이력. 실패하면 사용자에게 넘긴다.)
 
+## 리뷰 기다리기
+
+PR 을 만든 직후, 그리고 PR 브랜치에 다시 push 한 직후 감시를 띄운다.
+사용자가 "리뷰 왔나" 묻지 않아도 도착하는 즉시 알림이 온다.
+
+```
+Monitor(command="bash scripts/watch_coderabbit.sh", persistent=false, timeout_ms=1800000)
+```
+
+**끄지 않아도 된다.** 리뷰를 기다리는 PR 이 없어지면 스크립트가 스스로 종료한다
+(리뷰 도착, 전부 머지, 또는 30분 타임아웃). 세션에 남아 도는 폴링을 만들지 않는다.
+
+이미 리뷰가 끝난 상태에서 띄우면 첫 바퀴에 바로 끝난다 — 그때는 리뷰 내용을 직접 읽는다.
+
 ## CodeRabbit 지적 다루기
 
 **그대로 수용하지 않는다.** 답하기 전에 세 가지를 코드로 확인한다.
