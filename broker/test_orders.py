@@ -848,6 +848,25 @@ class TestEnvScopedCredentials(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self._load(KIWOOM_ENV="real")
 
+    def test_real_refuses_legacy_fallback(self):
+        """real 은 KIWOOM_REAL_* 만 받는다 — 오타 하나로 모의 키가 실전에 실리면 안 된다."""
+        with self.assertRaises(RuntimeError):
+            self._load(
+                KIWOOM_ENV="real",
+                KIWOOM_APPKEY="old", KIWOOM_SECRETKEY="olds",
+                KIWOON_MOCK_TR_APP_KEY="mk", KIWOON_MOCK_TR_APP_SECRET="ms",
+                KIWOON_MOCK_TR_ACCOUNT_NO="2222",
+            )
+
+    def test_real_ignores_legacy_account_no(self):
+        """키는 맞게 넣고 계좌만 레거시로 남긴 경우 — 모의 계좌번호가 새어들면 안 된다."""
+        cfg = self._load(
+            KIWOOM_ENV="real",
+            KIWOOM_REAL_APPKEY="rk", KIWOOM_REAL_SECRETKEY="rs",
+            KIWOON_MOCK_TR_ACCOUNT_NO="2222",
+        )
+        self.assertEqual(cfg.account_no, "")
+
 
 if __name__ == "__main__":
     unittest.main()

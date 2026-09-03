@@ -126,12 +126,18 @@ def bootstrap_delta(rows: list[dict], predicate, rounds: int = 20000) -> tuple[f
     rng = random.Random(20260826)
     vals = []
     n = len(rows)
+    if not n:
+        return 0.0, 0.0, 0.0
     for _ in range(rounds):
         sample = [rows[rng.randrange(n)] for _ in range(n)]
         kept = [r for r in sample if not predicate(r)]
         if not kept:
             continue
         vals.append(metrics(kept)["mean_return"] - metrics(sample)["mean_return"])
+    # predicate 가 모든 회차의 전 표본을 걸러내면 vals 가 빈다(넓은 임계값 + 작은 표본).
+    # statistics.mean([]) 는 예외라 보고 생성 전체가 죽는다.
+    if not vals:
+        return 0.0, 0.0, 0.0
     vals.sort()
     return statistics.mean(vals), vals[int(len(vals) * 0.025)], vals[int(len(vals) * 0.975)]
 
