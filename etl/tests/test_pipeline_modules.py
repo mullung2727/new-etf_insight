@@ -1,7 +1,10 @@
+import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -860,6 +863,7 @@ class LlmProviderTest(unittest.TestCase):
             patch("new_etf_insight.llm.codex_provider.tempfile.TemporaryDirectory") as tempdir_mock,
         ):
             tempdir_mock.return_value.__enter__.return_value = "/tmp/llm"
+            run_mock.return_value.returncode = 0
             Path("/tmp/llm").mkdir(parents=True, exist_ok=True)
             Path("/tmp/llm/codex_last_message.txt").write_text('{"ok": true}', encoding="utf-8")
 
@@ -877,6 +881,25 @@ class LlmProviderTest(unittest.TestCase):
         self.assertEqual(command[-1], "-")
         self.assertEqual(run_mock.call_args.kwargs["input"], "prompt")
         self.assertEqual(result, '{"ok": true}')
+        # codex stdout 을 잡지 않으면 부모 stdout 으로 새어 보고문을 오염시킨다.
+        self.assertTrue(run_mock.call_args.kwargs["capture_output"])
+
+    def test_codex_provider_failure_raises_without_writing_to_stdout(self) -> None:
+        buffer = io.StringIO()
+        with (
+            patch("new_etf_insight.llm.codex_provider.subprocess.run") as run_mock,
+            redirect_stdout(buffer),
+        ):
+            run_mock.return_value.returncode = 1
+            run_mock.return_value.stdout = "codex noise"
+            run_mock.return_value.stderr = "boom"
+
+            with self.assertRaises(subprocess.CalledProcessError):
+                CodexProvider().generate_json(
+                    "prompt", output_schema_path=CORRECTION_REVIEW_SCHEMA_PATH
+                )
+
+        self.assertEqual(buffer.getvalue(), "")
 
 
 class CollectEtfCandidatesScriptTest(unittest.TestCase):
