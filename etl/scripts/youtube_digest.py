@@ -371,8 +371,22 @@ def validate_digest(raw: dict, input_rows: list[dict]) -> tuple[list[dict], list
     return highlights, warnings
 
 
+def _summary_lines(summary: str) -> list[str]:
+    """LLM 이 줄바꿈으로 끊어 준 개조식 항목을 들여쓴 줄로 편다.
+
+    한 문단으로 오는 과거 데이터도 그대로 한 줄이 된다 — 기계적으로 쪼개지 않는다.
+    """
+    out = []
+    for line in summary.splitlines():
+        text = line.strip().lstrip("-•·").strip()
+        if text:
+            out.append(f"  - {text}")
+    return out
+
+
 def _highlight_block(rank_item: dict) -> list[str]:
-    lines = [f"• [{rank_item['score_total']}점] {rank_item['title']}", f"  {rank_item['summary']}"]
+    lines = [f"• [{rank_item['score_total']}점] {rank_item['title']}"]
+    lines += _summary_lines(rank_item["summary"])
     if rank_item["evidence"]:
         lines.append(f"  근거: {rank_item['evidence']}")
     if rank_item["view_difference"]:
