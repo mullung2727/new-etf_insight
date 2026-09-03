@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest.mock import patch
 
 import requests
+from urllib3.connectionpool import HTTPConnectionPool
 
 import tests as tests_pkg
 
@@ -53,9 +55,19 @@ class TestNotifyGuard(unittest.TestCase):
                     getattr(requests, method)("http://localhost:8001/notes", timeout=2)
 
     def test_external_writes_still_pass(self):
-        """외부 호스트 쓰기는 통과 — KRX OpenAPI 는 조회를 POST 로 한다."""
-        with self.assertRaises(requests.exceptions.RequestException):
-            requests.post("http://198.51.100.1:9/never", timeout=2)
+        """외부 호스트 쓰기는 통과 — KRX OpenAPI 는 조회를 POST 로 한다.
+
+        백스톱 바로 아래(urllib3)를 막아 두고, 거기까지 닿았는지로 통과를 확인한다.
+        진짜 주소로 쏘면 프록시 env 를 타거나 타임아웃까지 붙잡힌다.
+        """
+        before = tests_pkg.blocked_count
+        with patch.object(
+            HTTPConnectionPool, "urlopen", side_effect=RuntimeError("reached transport")
+        ) as urlopen:
+            with self.assertRaises(RuntimeError):
+                requests.post("http://198.51.100.1:9/never", timeout=2)
+        self.assertTrue(urlopen.called)
+        self.assertEqual(tests_pkg.blocked_count, before)
 
 
 if __name__ == "__main__":

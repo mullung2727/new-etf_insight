@@ -1325,9 +1325,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.write_db:
         for result in results:
             rows = [to_llm_score_row(score) for score in result["scores"]]
-            report_paths.append(str(write_operational_report(
+            # 파일명만 남긴다. 절대경로를 커밋되는 산출물에 박으면 OS 계정명이 같이 들어가고
+            # 다른 머신에서는 가리키는 곳이 없다. 디렉터리는 --reports-dir 이 정한다.
+            report_paths.append(write_operational_report(
                 args.reports_dir, result["date"], rows, args.watchlist_db
-            )))
+            ).name)
     output = {
         "generated_at": dt.datetime.now(SEOUL).isoformat(timespec="seconds"),
         "db_write": args.write_db,
