@@ -86,21 +86,21 @@ def load_config() -> Config:
     # 자격증명은 env 별 이름을 먼저 본다(KIWOOM_REAL_* / KIWOOM_PAPER_*).
     # 덕분에 KIWOOM_ENV 한 줄만 바꾸면 주소·키·계좌가 통째로 같이 움직여
     # "실전 주소 + 모의 키" 같은 혼합 상태가 생기지 않는다.
-    # 접두사 없는 이름과 KIWOON_MOCK_TR_* 는 기존 .env 호환용 폴백.
+    #
+    # 접두사 없는 이름과 KIWOON_MOCK_TR_* 는 기존 .env 호환용 폴백이지만 paper 에서만 쓴다.
+    # real 에서 폴백을 허용하면 KIWOOM_REAL_APPKEY 오타 하나로 실전 주소에 모의 키가 실려
+    # 나가 이 분리가 막으려던 상태로 그대로 되돌아간다. real 은 전용 이름만 받는다.
     prefix = f"KIWOOM_{env.upper()}_"
+    legacy_appkey = ("KIWOOM_APPKEY", "KIWOON_MOCK_TR_APP_KEY") if env == "paper" else ()
+    legacy_secret = ("KIWOOM_SECRETKEY", "KIWOON_MOCK_TR_APP_SECRET") if env == "paper" else ()
+    legacy_account = ("KIWOOM_ACCOUNT_NO", "KIWOON_MOCK_TR_ACCOUNT_NO") if env == "paper" else ()
     return Config(
-        appkey=_require_first(
-            f"{prefix}APPKEY", "KIWOOM_APPKEY", "KIWOON_MOCK_TR_APP_KEY"
-        ),
-        secretkey=_require_first(
-            f"{prefix}SECRETKEY", "KIWOOM_SECRETKEY", "KIWOON_MOCK_TR_APP_SECRET"
-        ),
+        appkey=_require_first(f"{prefix}APPKEY", *legacy_appkey),
+        secretkey=_require_first(f"{prefix}SECRETKEY", *legacy_secret),
         env=env,
         rest_host=_HOSTS[env],
         ws_host=_WS_HOSTS[env],
-        account_no=_get_first(
-            f"{prefix}ACCOUNT_NO", "KIWOOM_ACCOUNT_NO", "KIWOON_MOCK_TR_ACCOUNT_NO"
-        ),
+        account_no=_get_first(f"{prefix}ACCOUNT_NO", *legacy_account),
         max_order_amount=int(os.getenv("MAX_ORDER_AMOUNT", "1000000")),
         token_cache_path=cache_path,
     )

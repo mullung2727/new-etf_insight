@@ -19,11 +19,17 @@ def pct(value: float) -> str:
 def load() -> list[dict]:
     with INPUT.open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
+    # 생산자(analyze_listing_market_cap_impact.py)는 KRX 메타가 안 붙으면 market_cap 을
+    # 빈칸으로 쓴다. int("") 로 전체 분석이 죽으므로 그 행은 버린다 — turnover20 도 못 낸다.
+    parsed = []
     for r in rows:
+        if not r["investment"] or not r["market_cap"]:
+            continue
         for key in ("investment", "market_cap"):
             r[key] = int(r[key])
         r["gross_return"] = float(r["gross_return"])
-    return rows
+        parsed.append(r)
+    return parsed
 
 
 def enrich_liquidity(rows: list[dict]) -> None:
