@@ -1,595 +1,127 @@
 {
-  "generated_at": "2026-08-13T15:04:41+09:00",
+  "generated_at": "2026-09-02T15:01:04+09:00",
   "db_write": true,
-  "db_rows_written": 7,
-  "catalyst_rows_written": 7,
+  "db_rows_written": 1,
+  "catalyst_rows_written": 1,
   "operational_reports": [
-    "C:\\Users\\mullu\\.openclaw\\workspace\\reports\\watchlist_research_2026-08-13.json"
+    "C:\\Users\\mullu\\.openclaw\\workspace\\reports\\watchlist_research_2026-09-02.json"
   ],
   "results": [
     {
-      "date": "20260813",
+      "date": "20260902",
       "target": "D+1_OPEN_ABOVE_D_CLOSE",
-      "candidate_count": 7,
-      "scored_count": 7,
+      "candidate_count": 1,
+      "scored_count": 1,
       "scores": [
         {
-          "date": "20260813",
-          "as_of": "2026-08-13T15:00:00+09:00",
+          "date": "20260902",
+          "as_of": "2026-09-02T15:00:00+09:00",
           "old_score": null,
-          "ratio": 5.049842318509737,
-          "today_volume": 7935300,
-          "avg5_volume": 1571395.6,
-          "trading_value": 66815226000,
-          "close": 8420,
-          "change_rate_pct": 8.65,
-          "rise_from_open_pct": 8.3655,
-          "pullback_from_high_pct": -12.8364,
-          "return_5d_pct": 24.0059,
-          "telegram_rows": 2,
-          "news_rows": 4,
+          "ratio": 16.731897013819577,
+          "today_volume": 5880800,
+          "avg5_volume": 351472.4,
+          "trading_value": 25316844000,
+          "close": 4305,
+          "change_rate_pct": 17.95,
+          "rise_from_open_pct": 14.4947,
+          "pullback_from_high_pct": -9.2729,
+          "return_5d_pct": -7.4194,
+          "telegram_rows": 0,
+          "news_rows": 3,
           "sources": [
-            "https://news.google.com/rss/articles/CBMiSkFVX3lxTE85dVE5WFJLUUVmelpjWi1CLThoRngyMlctUF9ESGlDeHFaSXJ0dEZpU2pPRTJuRjUwRmt5R3IyX2hHY2pTclpMajlB?oc=5",
-            "https://news.google.com/rss/articles/CBMiU0FVX3lxTFAyajRjVGlVTERNZ3JXQlRhemRjVGpoQ3ppYjZqNGp0ampUbEVRZmxfTGN4T2dGRE9aUlRsSFVQQ29lZUkzNFZMTWFuX2o2ZkFzSFFR?oc=5",
-            "https://news.google.com/rss/articles/CBMiakFVX3lxTE9SY2Vwa2xtRU1Eei1lUDFNOW1IM2tjM1ZIRDBfTjNuOHE2emU5bWp4MTdRNG9YYzJYeV90bVRaNnVHU29uMUlKQnplSmtwS284SkJ1dDVjVTVjNWVWdXQ5Zm5PZWVPVmdfUUHSAW5BVV95cUxOQ3U0ZlV3WUR2ZDRKZnZUWC15N1VGTEhCN1BMWlJGM0xRRzMxdEhubzdxWW5SRlN4ckNxUWZxRC1fdmdYeTZXcHNfQWhVRWp0cGt2aGpBejNTUkhFVG5NMkRSMHVjYnR4bDVSeFFDZw?oc=5",
-            "https://news.google.com/rss/articles/CBMic0FVX3lxTE1HVzZyZzMyOXd5dklvcktkNTV0cFoxcHh3NjRnb1A4RVR3bjlZNmtkM2ZfdThxakVXVUJRbnhDWlh5UUFwbC1nUGxmaklfb21MVm9KLVh5NlQ5Q1RYdkhHR1BKOE8xZ3RMMUlWbmxkRW13MDjSAXdBVV95cUxOWmVMd25xaFpkdTRnRjYzMVN2NFhvalpTbmxWOWV6aUdqMldMMUdYbnZwQkUyeldzejAyaGIwVk9vZklxZ1RZOWs0dkpvc0MteVAzcEFOTzBZeC1tYXRWQUtxc3pyaHJ3czRtMk5lTl9mamFJZy1OOA?oc=5"
+            "https://news.google.com/rss/articles/CBMiRkFVX3lxTFB6cktCUEpoZ01SbkFMcHlreTFGSF9pNExjU3JwTk4xemVVZFVLY092UjFvQzNiNzZZU0xsekJmbEpMQTVYb1E?oc=5",
+            "https://news.google.com/rss/articles/CBMiX0FVX3lxTE9ZRkgxQUVoU2tpOGo0WTZfRllyLXcyMzFOUFVWa2dGRHBobVctRFdCNTJ6dzJQeEUwUm1LZ2JyUkpNRDc0RzNIa3JfV25vUUQwLUQ5VmtEd2Fvbnl1bnU00gFkQVVfeXFMT1NwTHdMaEFyV0tQSWVha09nQVpSVnlPY01RZGJsbDI4Z1RvRlpOT1Rmb00zU3kyLVI4aklER0YzdVk4Vk10eG04WGhNV2l5UXNMbWVKLW1BUmNpUDlzQ3FCcFFvMA?oc=5",
+            "https://news.google.com/rss/articles/CBMiYEFVX3lxTFBXX25Ma250cGN6ejFRdmsxRUd3SkR0aWJHem9Oc2pMVHNxSjlGeE5JZEp1cU0weUpxb1pjMXhQbV9sdzZFSm5lVlU5TExrckpyRlB2UllvT0VXXzFyVUdBdNIBYEFVX3lxTFBXX25Ma250cGN6ejFRdmsxRUd3SkR0aWJHem9Oc2pMVHNxSjlGeE5JZEp1cU0weUpxb1pjMXhQbV9sdzZFSm5lVlU5TExrckpyRlB2UllvT0VXXzFyVUdBdA?oc=5"
           ],
-          "ticker": "000490",
-          "name": "대동",
+          "ticker": "210980",
+          "name": "SK디앤디",
           "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 57,
+          "probability_score": 9,
           "score_components": {
             "catalyst_strength": 10,
-            "freshness": 10,
+            "freshness": 0,
             "confirmation": 2,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "none",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "high",
-            "exhaustion_penalty": 15
-          },
-          "confidence": "medium",
-          "up_factors": [
-            "15:00 직전 대동·레인보우의 농업 피지컬AI 실증 착수 보도가 처음 확인됨",
-            "구체적인 공동 실증 활동으로 단순 테마 기대보다 직접성이 높음",
-            "2분기 영업이익 64% 증가 보도가 별도 보조재료로 존재함",
-            "최근 5거래일 수익률이 양수여서 최근 하락 감점이 없음"
-          ],
-          "down_factors": [
-            "현재가가 장중 고점보다 12.8364% 낮아 강한 차익실현 및 모멘텀 소진 신호가 나타남",
-            "평균 5일 대비 거래량이 5.0498배로 증가한 상태에서 고점 이탈 폭이 큼",
-            "피지컬AI 실증 착수는 확정 계약이나 매출 규모가 확인된 재료는 아님",
-            "텔레그램 기록에 구체적인 분석 텍스트가 없어 독립적인 재료 확인에 활용하기 어려움"
-          ],
-          "news_summary": "14시 44분 대동과 레인보우의 농업 피지컬AI 실증 착수 보도가 확인됐으며, 8월 11일에는 대동의 2분기 영업이익 64% 증가 관련 보도가 있었다.",
-          "telegram_summary": "8월 7일과 12일 대동 언급 기록은 있으나 분석 텍스트가 없어 구체적인 재료나 독립 확인 근거로 평가하지 않았다.",
-          "reasoning": "[정성적 근거] 대동·레인보우의 농업 피지컬AI 실증 착수는 구체적인 사업 활동이지만 계약 규모나 직접 매출 효과가 확인되지 않아 재료강도 10점으로 판정했다. 해당 보도가 14시 44분 처음 확인돼 신선도 10점, 신뢰 가능한 단일 뉴스 출처로 독립확인 2점을 부여했으며 확인된 악재는 없어 악재위험은 0점이다. 주재료는 후속 실증 전개 가능성이 있어 alive, 생존점수 4점으로 평가했지만 텔레그램 기록에는 구체적인 본문이 없어 보강 근거로 사용하지 않았다. [정량적 근거] 15시 현재 등락률은 8.65%, 시가 대비 상승률은 8.3655%지만 장중 고점 대비 12.8364% 밀렸고 거래량은 최근 5일 평균의 5.0498배여서 소진위험 15점을 적용했다. 5거래일 수익률은 24.0059%로 최근 하락 감점은 0점이며, 새 재료가 사전에 반복 노출됐다는 증거가 없어 선반영은 none, 0점으로 판정했다. [종합] 50 + 10 + 10 + 2 - 0 - 0 - 0 - 15 = 57점으로, 새 재료의 신선도가 D+1 시가 상승 가능성을 높이지만 장중 고점에서 크게 밀린 소진 신호가 상승 우위를 제한한다.",
-          "evidence_quality": "moderate",
-          "primary_catalyst": {
-            "label": "농업 피지컬AI 실증 착수",
-            "description": "대동과 레인보우가 AI의 판단을 활용한 수확 작업 등 농업 피지컬AI 실증에 착수했다는 보도다.",
-            "category_raw": "농업 피지컬AI 공동 실증",
-            "status": "alive",
-            "expected_duration": "two_to_five_trading_days",
-            "alive_score": 4,
-            "reason": "15:00 직전 확인된 구체적인 공동 사업 활동이며 향후 실증 진행에 따른 후속 보도 가능성이 있지만, 계약 규모나 상용 매출 효과는 아직 확인되지 않았다.",
-            "invalidation": "실증 중단·지연이 확인되거나 대동의 실질적인 사업 참여 및 상용화 연계가 부인될 경우 무효화된다.",
-            "evidence_refs": [
-              "https://news.google.com/rss/articles/CBMiU0FVX3lxTFAyajRjVGlVTERNZ3JXQlRhemRjVGpoQ3ppYjZqNGp0ampUbEVRZmxfTGN4T2dGRE9aUlRsSFVQQ29lZUkzNFZMTWFuX2o2ZkFzSFFR?oc=5"
-            ]
-          },
-          "secondary_catalysts": [
-            {
-              "label": "2분기 영업이익 64% 증가",
-              "description": "대동의 2분기 영업이익이 전년 동기 대비 64% 증가했다는 주요공시 관련 보도다.",
-              "category_raw": "분기 실적 개선",
-              "status": "alive",
-              "expected_duration": "two_to_five_trading_days",
-              "alive_score": 3,
-              "reason": "실적 개선이라는 직접 재료는 존재하지만 8월 11일 이미 보도돼 신선도가 낮아졌고 추가 후속 동력은 불확실하다.",
-              "invalidation": "후속 정정공시로 증가 폭이 축소되거나 일회성 요인 중심으로 확인될 경우 약화된다.",
-              "evidence_refs": [
-                "https://news.google.com/rss/articles/CBMic0FVX3lxTE1HVzZyZzMyOXd5dklvcktkNTV0cFoxcHh3NjRnb1A4RVR3bjlZNmtkM2ZfdThxakVXVUJRbnhDWlh5UUFwbC1nUGxmaklfb21MVm9KLVh5NlQ5Q1RYdkhHR1BKOE8xZ3RMMUlWbmxkRW13MDjSAXdBVV95cUxOWmVMd25xaFpkdTRnRjYzMVN2NFhvalpTbmxWOWV6aUdqMldMMUdYbnZwQkUyeldzejAyaGIwVk9vZklxZ1RZOWs0dkpvc0MteVAzcEFOTzBZeC1tYXRWQUtxc3pyaHJ3czRtMk5lTl9mamFJZy1OOA?oc=5",
-                "https://news.google.com/rss/articles/CBMiakFVX3lxTE9SY2Vwa2xtRU1Eei1lUDFNOW1IM2tjM1ZIRDBfTjNuOHE2emU5bWp4MTdRNG9YYzJYeV90bVRaNnVHU29uMUlKQnplSmtwS284SkJ1dDVjVTVjNWVWdXQ5Zm5PZWVPVmdfUUHSAW5BVV95cUxOQ3U0ZlV3WUR2ZDRKZnZUWC15N1VGTEhCN1BMWlJGM0xRRzMxdEhubzdxWW5SRlN4ckNxUWZxRC1fdmdYeTZXcHNfQWhVRWp0cGt2aGpBejNTUkhFVG5NMkRSMHVjYnR4bDVSeFFDZw?oc=5"
-              ]
-            }
-          ],
-          "llm_reported_probability_score": 57
-        },
-        {
-          "date": "20260813",
-          "as_of": "2026-08-13T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 11.764313978657958,
-          "today_volume": 7744742,
-          "avg5_volume": 658325.0,
-          "trading_value": 61338356640,
-          "close": 7920,
-          "change_rate_pct": 9.24,
-          "rise_from_open_pct": 8.3447,
-          "pullback_from_high_pct": -6.1611,
-          "return_5d_pct": 18.0328,
-          "telegram_rows": 0,
-          "news_rows": 0,
-          "sources": [],
-          "ticker": "006910",
-          "name": "보성파워텍",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 40,
-          "score_components": {
-            "catalyst_strength": 0,
-            "freshness": 0,
-            "confirmation": 0,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "unknown",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "medium",
-            "exhaustion_penalty": 10
-          },
-          "confidence": "low",
-          "up_factors": [
-            "15:00 현재가가 시가보다 8.3447% 높아 장중 상승 흐름이 유지됨",
-            "5거래일 수익률이 18.0328%로 최근 하락 감점이 없음",
-            "최근 5일 평균 대비 거래량이 11.7643배로 수급 관심이 큼"
-          ],
-          "down_factors": [
-            "확인된 뉴스와 텔레그램 근거가 없어 D+1까지 이어질 재료를 확인할 수 없음",
-            "현재가가 장중 고점보다 6.1611% 낮아 급등 후 모멘텀 둔화와 차익실현 위험이 있음",
-            "재료의 사전 노출 여부를 판정할 근거가 없어 선반영 수준이 불명확함"
-          ],
-          "news_summary": "수집된 뉴스가 없어 확인된 재료가 없다.",
-          "telegram_summary": "텔레그램 이력이 없어 보강하거나 독립 확인할 근거가 없다.",
-          "reasoning": "[정성적 근거] 수집된 뉴스와 텔레그램 이력이 없어 재료강도 0점, 신선도 0점, 독립확인 0점으로 판정했다. 확인된 악재도 없어 악재위험은 0점이며, 주재료는 확인된 재료 없음으로 상태 uncertain, 생존점수 1점이다. [정량적 근거] 15:00 현재 등락률은 9.24%, 시가 대비 상승률은 8.3447%이고 거래량은 최근 5일 평균의 11.7643배지만, 고점 대비 6.1611% 밀려 소진위험을 medium 10점으로 판정했다. 5거래일 수익률은 18.0328%이므로 최근 하락 감점은 0점이며, 재료의 반복 노출이나 사전 기대를 판단할 근거가 없어 선반영은 unknown 0점으로 두었다. [종합] 50 + 0 + 0 + 0 - 0 - 0 - 0 - 10 = 40점이다. 장중 수급과 상승 흐름은 강하지만 이를 설명하고 다음 거래일까지 이어질 확인 재료가 없고 고점 이탈도 커, D+1 시가가 당일 종가보다 높을 가능성을 중립보다 낮게 평가했다.",
-          "evidence_quality": "weak",
-          "primary_catalyst": {
-            "label": "확인된 재료 없음",
-            "description": "뉴스와 텔레그램 근거에서 15:00 이전에 확인된 가격 재료를 찾을 수 없다.",
-            "category_raw": "재료 없음",
-            "status": "uncertain",
-            "expected_duration": "unknown",
-            "alive_score": 1,
-            "reason": "평가 가능한 뉴스 또는 텔레그램 텍스트가 제공되지 않아 재료의 존재와 지속성을 확인할 수 없다.",
-            "invalidation": "15:00 이전 시각이 확인되는 공식 공시나 신뢰 가능한 뉴스·텔레그램 근거가 추가되면 재평가가 필요하다.",
-            "evidence_refs": []
-          },
-          "secondary_catalysts": [],
-          "llm_reported_probability_score": 40
-        },
-        {
-          "date": "20260813",
-          "as_of": "2026-08-13T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 7.653915176771071,
-          "today_volume": 6832497,
-          "avg5_volume": 892680.0,
-          "trading_value": 30951211410,
-          "close": 4530,
-          "change_rate_pct": -1.09,
-          "rise_from_open_pct": -5.625,
-          "pullback_from_high_pct": -11.5234,
-          "return_5d_pct": 37.8995,
-          "telegram_rows": 0,
-          "news_rows": 1,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiZEFVX3lxTFBpekc3VDB3cTAzX2ZZQklIQ1dva2NNcmt0Nk1Fd2Y4dzlzOVM3alQ5bDBEaU5UazJXd0gwZ0ZEZkl4LVpBQzEtWEwyc2FDTUJPbkxKeU5iaV85akFxcUNwSTMySmc?oc=5"
-          ],
-          "ticker": "007820",
-          "name": "엠엑스로보틱스",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 35,
-          "score_components": {
-            "catalyst_strength": 0,
-            "freshness": 0,
-            "confirmation": 0,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "unknown",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "high",
-            "exhaustion_penalty": 15
-          },
-          "confidence": "medium",
-          "up_factors": [
-            "최근 5거래일 수익률이 37.8995%로 상승 추세여서 최근 하락 감점이 없음",
-            "평균 대비 거래량이 7.6539배로 시장 관심은 높음"
-          ],
-          "down_factors": [
-            "수집된 뉴스에서 엠엑스로보틱스와 직접 연결되는 재료가 확인되지 않음",
-            "현재가가 시가보다 5.625% 낮고 장중 고점보다 11.5234% 밀려 강한 모멘텀 소진 신호가 나타남",
-            "당일 등락률이 -1.09%로 약세이며 대량 거래 속 차익실현 위험이 큼"
-          ],
-          "news_summary": "수집된 기사는 호남 반도체 투자 관련 특징주 기사지만, 제공된 제목만으로는 엠엑스로보틱스와 직접 연결되는 구체적 사업·계약·허가 재료를 확인할 수 없다.",
-          "telegram_summary": "제공된 텔레그램 이력이 없어 추가 재료나 독립 확인 근거가 없다.",
-          "reasoning": "[정성적 근거] 뉴스 제목에서 엠엑스로보틱스와 직접 연결되는 재료가 확인되지 않아 재료강도 0점, 신선도 0점, 독립확인 0점으로 판정했다. 확인된 악재도 없어 악재위험은 0점이며, 주재료는 확인된 재료 없음으로 상태 uncertain, 생존점수 1점이다. [정량적 근거] 당일 등락률은 -1.09%, 시가 대비 상승률은 -5.625%, 고점 대비 하락률은 -11.5234%이고 거래량은 5일 평균의 7.6539배여서 강한 고점 이탈과 차익실현 위험에 따라 소진위험 15점을 적용했다. 5거래일 수익률은 37.8995%여서 최근 하락 감점은 0점이며, 식별 가능한 재료가 없어 사전 노출 정도를 판단할 수 없으므로 선반영 수준은 unknown, 감점은 0점이다. [종합] 50 + 0 + 0 + 0 - 0 - 0 - 0 - 15 = 35점으로, 확인된 상승 재료가 없는 가운데 장중 모멘텀 소진이 강해 D+1 시가가 당일 종가보다 높을 가능성을 기준선보다 낮게 평가한다.",
-          "evidence_quality": "moderate",
-          "primary_catalyst": {
-            "label": "확인된 재료 없음",
-            "description": "제공된 뉴스와 텔레그램 자료에서 엠엑스로보틱스의 가격 서사를 직접 설명하는 구체적 재료를 확인할 수 없다.",
-            "category_raw": "재료 없음",
-            "status": "uncertain",
-            "expected_duration": "unknown",
-            "alive_score": 1,
-            "reason": "수집된 뉴스 제목에 종목과 직접 연결되는 사업 활동, 계약, 허가 또는 실적 정보가 없고 텔레그램 근거도 없다.",
-            "invalidation": "엠엑스로보틱스와 직접 관련된 공식 공시나 신뢰할 수 있는 후속 보도가 as_of 이전 자료에서 확인될 경우 무효화된다.",
-            "evidence_refs": []
-          },
-          "secondary_catalysts": [],
-          "llm_reported_probability_score": 35
-        },
-        {
-          "date": "20260813",
-          "as_of": "2026-08-13T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 4.844332252560002,
-          "today_volume": 4819351,
-          "avg5_volume": 994843.2,
-          "trading_value": 158797615450,
-          "close": 32950,
-          "change_rate_pct": -7.05,
-          "rise_from_open_pct": -4.0757,
-          "pullback_from_high_pct": -4.9062,
-          "return_5d_pct": -8.3449,
-          "telegram_rows": 3,
-          "news_rows": 6,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiSkFVX3lxTFB0anJDemE2VGlXeEVLamxTZlhkSUh1alBNOWhzZ2wzVDdvRWN1MFBsYkNJMnRDNVFzM2dMcXloNUhhdlZNR3JLSmF3?oc=5",
-            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE1UaWlNQTBfdDNJUmtvMGVhR3lxdGpmZHVoVFl5S09Wa09DM0JjcGR1QjF0bWlGLWVBdEpUaS15cmhPdFZXcG53WjdTZlJrQmdMQ3pV?oc=5",
-            "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5OT1Q5enJhN2lfVGtxTkVHZ0FDZ28wczR1ZHVSNHNYQkdSYVRJWExZOEY1LWZTMFZ4b2NhU0YtNzRiZzctRXlyak5pWThFQ1VvMG5pakp0N3FQOTDSAWBBVV95cUxQTHJpcVNoenY0a0NuNE43c05wWGFOZEt6WHJ5WW1ZQW5OSDdTMU1IMm90R05PRF91dGowNjdjUUZ2dHR1SmkycVY2VzlFYmdnemluYUFjbXgtbk5mRTZYWEU?oc=5",
-            "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5zX2swNEVVSmFIMEJQdUJrbl9WdVY5VWJGT1NUNy1fUkdUamU5Z0dkUU8ya1JDMk9Ld2FRWTd5eVVfcGxrNjNJQjZqVXBYYmpSR3R2a0ZyNHBEbDTSAWBBVV95cUxQbUN0SGZlRnItdXNkMXJrU25TNERLQ0tMRkhHbnRNR1hOYThZdGF1eFhMYkZRWE91ZHBPS0NvVXd4bTVkLW9uMmtZajBtWFQ5ekkxdWZkNGkwVmFFMG95OVY?oc=5",
-            "https://news.google.com/rss/articles/CBMiW0FVX3lxTE9OZXEzTXMyVmZzOTJfQ3libjlUWHZ0WDVSZmo1LUZGTDRFR29JTXVzbm9McWc1QjdESm5VUWNmWXNBN3gtSEcyZjdtejFFamxKUktSVjlWdzVjWHPSAWBBVV95cUxQUW53UGFINFlVeWZ2SkpQTHVKbHcyVVFwT1ozbHh4WFN2ZnV1dTYyYXB4QUtuS2NTRW85TUNVODlLZ29YZ2VQc3BHaV9xdEw4d1lYMnhFNThlYjJZaHVwTkc?oc=5",
-            "https://news.google.com/rss/articles/CBMiW0FVX3lxTFBiTi1sOTI3UnNBWXhOUnZYanVmc0pRZlZBd1UzNGF0WE05LWpIVHZsTWdiMmNRTjhMbVJzdkNMc1h4LUU0SERyMm9MbkgyX0lWekRNSkNLSl9jMjDSAWBBVV95cUxPbFZxME1rdWVnZlltUEd4RVFlTnhBWmhxM3lkQmhkTzdmMUhpcFdkX2tpQ21qV041b0NmODQxcUtuTHBWZU1WbE9yQVowQWdVLWRDZ0hYZmh0em15eTd1TUc?oc=5"
-          ],
-          "ticker": "015760",
-          "name": "한국전력",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 14,
-          "score_components": {
-            "catalyst_strength": 0,
-            "freshness": 3,
-            "confirmation": 5,
             "negative_event_risk": 20,
             "negative_trend_penalty": 6,
-            "priced_in_level": "low",
-            "priced_in_penalty": 3,
-            "exhaustion_level": "high",
-            "exhaustion_penalty": 15
-          },
-          "confidence": "high",
-          "up_factors": [
-            "공식 실적 보도와 복수 언론의 독립 확인으로 정보 불확실성은 낮음",
-            "악재가 전일 장 마감 후 공개돼 전일 정규장 내 사전 반영 시간은 제한적이었음"
-          ],
-          "down_factors": [
-            "2분기 영업이익이 전년 대비 47.2% 감소한 어닝쇼크",
-            "하반기 연료비 상승 부담과 증권사 목표가 하향",
-            "15:00 현재 전일 대비 7.05% 하락하고 시가보다 4.08% 낮은 약한 가격 흐름",
-            "고점 대비 4.91% 밀리고 평균 대비 거래량이 4.84배로 증가해 차익·투매성 소진 위험이 큼",
-            "5거래일 수익률이 -8.34%로 최근 하락 위험 구간에 해당"
-          ],
-          "news_summary": "한국전력의 2분기 영업이익은 1조1,286억원으로 전년 대비 47.2% 감소했고, 당일 어닝쇼크 관련 급락 보도가 복수 확인됐다. iM증권은 하반기 연료비 상승 부담을 이유로 목표가를 낮췄다.",
-          "telegram_summary": "당일 오전 두 채널에서 다수 언급됐지만 분석 텍스트가 없어 실적 악화나 별도 재료를 독립적으로 확인하는 근거로는 사용하지 않았다.",
-          "reasoning": "[정성적 근거] 전년 대비 영업이익 급감과 어닝쇼크가 복수 신뢰 매체에서 확인돼 직접적인 부정 재료이며, 상승 재료강도는 0점, 독립확인은 5점, 악재위험은 20점으로 판단했다. 전일 장 마감 후 공개된 실적이 당일 반복 보도된 사안이므로 신선도는 3점이며, 주재료는 살아 있고 단기 추가 반응 가능성이 있어 생존점수 4점으로 평가했다. [정량적 근거] 15:00 현재 등락률은 -7.05%, 시가 대비 상승률은 -4.08%, 고점 대비 하락률은 -4.91%이고 거래량은 최근 5일 평균의 4.84배여서 소진위험을 15점으로 적용했다. 5거래일 수익률 -8.34%에는 최근 하락 감점 6점을 적용했고, 전일 장 마감 후 재료 노출에 따른 제한적 사전 기대만 인정해 선반영은 low 3점으로 판단했다. [종합] 50 + 0 + 3 + 5 - 20 - 6 - 3 - 15 = 14점이다. 강한 실적 악재와 약한 장중 가격 위치가 이어져 D+1 시가가 당일 종가를 웃돌 가능성은 낮다고 판단한다.",
-          "evidence_quality": "strong",
-          "primary_catalyst": {
-            "label": "2분기 어닝쇼크",
-            "description": "2분기 영업이익이 1조1,286억원으로 전년 대비 47.2% 감소했고, 잠정 실적 부진과 어닝쇼크가 복수 언론에서 확인됐다.",
-            "category_raw": "분기 실적 급감",
-            "status": "alive",
-            "expected_duration": "two_to_five_trading_days",
-            "alive_score": 4,
-            "reason": "공식 수치가 포함된 실적 악화가 확인됐고 당일 복수 매체가 어닝쇼크로 재확인해 단기 후속 반응 가능성이 남아 있다.",
-            "invalidation": "시장 예상치와의 차이가 크지 않았다는 후속 분석이나 실적 회복을 뒷받침하는 공식 전망이 확인되는 경우",
-            "evidence_refs": [
-              "https://news.google.com/rss/articles/CBMiW0FVX3lxTE5zX2swNEVVSmFIMEJQdUJrbl9WdVY5VWJGT1NUNy1fUkdUamU5Z0dkUU8ya1JDMk9Ld2FRWTd5eVVfcGxrNjNJQjZqVXBYYmpSR3R2a0ZyNHBEbDTSAWBBVV95cUxQbUN0SGZlRnItdXNkMXJrU25TNERLQ0tMRkhHbnRNR1hOYThZdGF1eFhMYkZRWE91ZHBPS0NvVXd4bTVkLW9uMmtZajBtWFQ5ekkxdWZkNGkwVmFFMG95OVY?oc=5",
-              "https://news.google.com/rss/articles/CBMiW0FVX3lxTFBiTi1sOTI3UnNBWXhOUnZYanVmc0pRZlZBd1UzNGF0WE05LWpIVHZsTWdiMmNRTjhMbVJzdkNMc1h4LUU0SERyMm9MbkgyX0lWekRNSkNLSl9jMjDSAWBBVV95cUxPbFZxME1rdWVnZlltUEd4RVFlTnhBWmhxM3lkQmhkTzdmMUhpcFdkX2tpQ21qV041b0NmODQxcUtuTHBWZU1WbE9yQVowQWdVLWRDZ0hYZmh0em15eTd1TUc?oc=5",
-              "https://news.google.com/rss/articles/CBMiSkFVX3lxTFB0anJDemE2VGlXeEVLamxTZlhkSUh1alBNOWhzZ2wzVDdvRWN1MFBsYkNJMnRDNVFzM2dMcXloNUhhdlZNR3JLSmF3?oc=5"
-            ]
-          },
-          "secondary_catalysts": [
-            {
-              "label": "하반기 비용 부담과 목표가 하향",
-              "description": "iM증권이 하반기 연료비 등의 상승 부담을 근거로 한국전력 목표가를 하향했다.",
-              "category_raw": "증권사 목표가 하향",
-              "status": "alive",
-              "expected_duration": "one_week_or_more",
-              "alive_score": 3,
-              "reason": "비용 부담은 단기간에 해소되기 어려운 요인이지만 단일 증권사 의견이어서 영향력과 확산 여부는 불확실하다.",
-              "invalidation": "연료비 하락, 요금 인상 또는 실적 전망 상향을 뒷받침하는 공식 자료가 확인되는 경우",
-              "evidence_refs": [
-                "https://news.google.com/rss/articles/CBMiW0FVX3lxTE9OZXEzTXMyVmZzOTJfQ3libjlUWHZ0WDVSZmo1LUZGTDRFR29JTXVzbm9McWc1QjdESm5VUWNmWXNBN3gtSEcyZjdtejFFamxKUktSVjlWdzVjWHPSAWBBVV95cUxQUW53UGFINFlVeWZ2SkpQTHVKbHcyVVFwT1ozbHh4WFN2ZnV1dTYyYXB4QUtuS2NTRW85TUNVODlLZ29YZ2VQc3BHaV9xdEw4d1lYMnhFNThlYjJZaHVwTkc?oc=5"
-              ]
-            }
-          ],
-          "llm_reported_probability_score": 14
-        },
-        {
-          "date": "20260813",
-          "as_of": "2026-08-13T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 30.559349636868806,
-          "today_volume": 8477787,
-          "avg5_volume": 277420.4,
-          "trading_value": 18947853945,
-          "close": 2235,
-          "change_rate_pct": 4.2,
-          "rise_from_open_pct": 2.2883,
-          "pullback_from_high_pct": -12.6953,
-          "return_5d_pct": 15.4442,
-          "telegram_rows": 0,
-          "news_rows": 1,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiU0FVX3lxTFBoQzJMVGZuVnpVRl9QZVRnT3V6T1JXSktuVWJ3V01kMmd1Ql8zVWZYWkFzc2JBbEZ2ak9WZWRLMmctM3dxLVppdm5vcERFd3ZCNlZr?oc=5"
-          ],
-          "ticker": "289080",
-          "name": "SV인베스트먼트",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 54,
-          "score_components": {
-            "catalyst_strength": 10,
-            "freshness": 7,
-            "confirmation": 2,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "none",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "high",
-            "exhaustion_penalty": 15
-          },
-          "confidence": "medium",
-          "up_factors": [
-            "론디안왓슨의 미국 상장에 따른 투자 성과 기대가 당일 처음 보도됨",
-            "5거래일 수익률이 15.4442%로 최근 하락 추세 감점이 없음",
-            "평균 5거래일 대비 거래량이 30.5593배로 관심과 유동성이 크게 증가함"
-          ],
-          "down_factors": [
-            "장중 고점 대비 12.6953% 밀려 강한 차익실현과 모멘텀 소진 징후가 나타남",
-            "시가 대비 상승률이 2.2883%에 그쳐 장중 급등분을 상당 부분 반납함",
-            "확정된 상장이나 회수 금액이 아니라 기대를 다룬 단일 기사에 의존함"
-          ],
-          "news_summary": "SV인베스트먼트가 투자한 론디안왓슨의 미국 상장에 따른 해외투자 성과 가시화와 투자 회수 기대가 보도됐다. 다만 입력된 기사 제목만으로 상장 확정 여부나 예상 회수 규모는 확인되지 않는다.",
-          "telegram_summary": "15:00 이전 텔레그램 근거가 없다.",
-          "reasoning": "[정성적 근거] 론디안왓슨의 미국 상장에 따른 투자 성과 기대는 구체적 사업 활동에 관한 정성적 기대이므로 재료강도 10점으로 판정했다. 당일 처음 확인된 기사라 신선도는 7점이지만 신뢰 가능한 단일 보도만 있어 독립확인은 2점이며, 확인된 악재는 없어 악재위험은 0점이다. 주재료는 존재하지만 상장 확정 여부와 회수 규모가 확인되지 않아 상태는 uncertain, 생존점수는 3점이다. [정량적 근거] 15:00 현재 등락률은 4.2%, 시가 대비 상승률은 2.2883%지만 장중 고점 대비 12.6953% 하락했고 거래량은 5일 평균의 30.5593배여서 소진위험을 15점으로 판정했다. 5거래일 수익률은 15.4442%라 최근 하락 감점은 0점이며, 재료의 사전 노출 증거가 없어 선반영은 none, 0점이다. [종합] 50 + 10 + 7 + 2 - 0 - 0 - 0 - 15 = 54점으로, D+1 시가 상승 가능성이 비상승 가능성보다 소폭 높지만 강한 장중 고점 이탈 때문에 우위는 제한적이다.",
-          "evidence_quality": "moderate",
-          "primary_catalyst": {
-            "label": "론디안왓슨 미국 상장에 따른 투자 회수 기대",
-            "description": "SV인베스트먼트의 투자기업 론디안왓슨이 미국 증시에 상장할 경우 해외투자 성과와 투자 회수가 가시화될 수 있다는 기대다.",
-            "category_raw": "피투자기업 미국 상장 기대",
-            "status": "uncertain",
-            "expected_duration": "one_week_or_more",
-            "alive_score": 3,
-            "reason": "당일 기사에서 구체적인 피투자기업과 미국 상장 기대가 제시됐지만, 상장 확정 여부와 예상 회수 금액은 확인되지 않아 지속성에 불확실성이 있다.",
-            "invalidation": "론디안왓슨의 미국 상장 계획이 부인·철회되거나 SV인베스트먼트의 투자 및 회수 가능성이 사실과 다른 것으로 확인되는 경우",
-            "evidence_refs": [
-              "https://news.google.com/rss/articles/CBMiU0FVX3lxTFBoQzJMVGZuVnpVRl9QZVRnT3V6T1JXSktuVWJ3V01kMmd1Ql8zVWZYWkFzc2JBbEZ2ak9WZWRLMmctM3dxLVppdm5vcERFd3ZCNlZr?oc=5"
-            ]
-          },
-          "secondary_catalysts": [],
-          "llm_reported_probability_score": 54
-        },
-        {
-          "date": "20260813",
-          "as_of": "2026-08-13T15:00:00+09:00",
-          "old_score": null,
-          "ratio": 54.21287837832505,
-          "today_volume": 8243079,
-          "avg5_volume": 152050.2,
-          "trading_value": 85975313970,
-          "close": 10430,
-          "change_rate_pct": 29.89,
-          "rise_from_open_pct": 27.6622,
-          "pullback_from_high_pct": 0.0,
-          "return_5d_pct": 34.4072,
-          "telegram_rows": 3,
-          "news_rows": 0,
-          "sources": [],
-          "ticker": "388050",
-          "name": "지투파워",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 45,
-          "score_components": {
-            "catalyst_strength": 0,
-            "freshness": 0,
-            "confirmation": 0,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
-            "priced_in_level": "unknown",
-            "priced_in_penalty": 0,
-            "exhaustion_level": "low",
-            "exhaustion_penalty": 5
-          },
-          "confidence": "low",
-          "up_factors": [
-            "15:00 현재가가 당일 고가와 같아 장중 상승 모멘텀이 유지됨",
-            "5거래일 수익률이 34.4072%로 최근 하락 감점이 없음"
-          ],
-          "down_factors": [
-            "뉴스가 없고 텔레그램 본문도 없어 상승을 뒷받침할 구체적 재료를 확인할 수 없음",
-            "당일 29.89% 상승과 최근 5일 평균 대비 54.2129배 거래량으로 단기 과열 가능성이 있음",
-            "확인 가능한 재료가 없어 반복 노출 여부와 선반영 수준을 판정하기 어려움"
-          ],
-          "news_summary": "수집된 뉴스가 없어 15:00 이전의 구체적인 계약·허가·실적 또는 기타 직접 재료를 확인할 수 없다.",
-          "telegram_summary": "2026년 8월 6일 두 채널에서 종목명 또는 코드가 언급됐으나 게시물 본문과 분석이 없어 언급의 내용과 재료성을 확인할 수 없다.",
-          "reasoning": "[정성적 근거] 수집 뉴스가 없고 텔레그램에는 종목 언급 기록만 있어 구체적인 재료가 확인되지 않으므로 재료강도 0점, 신선도 0점, 독립확인 0점으로 판정했다. 확인된 부정적 사건도 없어 악재위험은 0점이며, 주재료는 확인된 재료 없음으로 상태 uncertain, 생존점수 1점이다. [정량적 근거] 15:00 등락률은 29.89%, 시가 대비 상승률은 27.6622%, 고점 대비 하락률은 0.0%이고 거래량은 최근 5일 평균의 54.2129배다. 5거래일 수익률은 34.4072%여서 최근 하락 감점은 0점이며, 재료의 사전 노출을 확인할 수 없어 선반영 수준은 unknown·감점 0점으로 두고, 고점 이탈은 없지만 거래 과열 가능성을 반영해 소진위험은 low·5점으로 판정했다. [종합] 50 + 0 + 0 + 0 - 0 - 0 - 0 - 5 = 45점이다. 가격 모멘텀은 강하지만 원인을 확인할 텍스트 근거가 부족하고 단기 과열 가능성이 있어 D+1 시가가 당일 종가보다 높을 확률을 중립보다 낮게 평가하며 신뢰도는 낮다.",
-          "evidence_quality": "weak",
-          "primary_catalyst": {
-            "label": "확인된 재료 없음",
-            "description": "뉴스가 없고 텔레그램 본문도 제공되지 않아 15:00 이전의 구체적인 가격 촉매를 확인할 수 없다.",
-            "category_raw": "재료 없음",
-            "status": "uncertain",
-            "expected_duration": "unknown",
-            "alive_score": 1,
-            "reason": "종목 언급 기록만으로는 재료의 내용·발생 시점·유효성을 판정할 수 없다.",
-            "invalidation": "공시·기사·텔레그램 본문에서 15:00 이전에 발생한 구체적 재료가 확인되면 이 판정은 무효화된다.",
-            "evidence_refs": []
-          },
-          "secondary_catalysts": [],
-          "llm_reported_probability_score": 45
-        },
-        {
-          "date": "20260813",
-          "as_of": "2026-08-13T15:00:00+09:00",
-          "old_score": null,
-          "ratio": null,
-          "today_volume": 23779931,
-          "avg5_volume": null,
-          "trading_value": 370253525670,
-          "close": 15570,
-          "change_rate_pct": 41.55,
-          "rise_from_open_pct": -25.8571,
-          "pullback_from_high_pct": -36.7073,
-          "return_5d_pct": null,
-          "telegram_rows": 0,
-          "news_rows": 5,
-          "sources": [
-            "https://news.google.com/rss/articles/CBMiU0FVX3lxTE9vcEdWRjljN05ISE0wRnZQYS1pX2phalUtMWh5NmtOb2VReTBibFdMRVF5bk42NHJFS3d3MVNzUEZCWjJPdzNQQndYU2tyaUlPMjRZ?oc=5",
-            "https://news.google.com/rss/articles/CBMiYEFVX3lxTE1lUjBYaUVIcFJvZ0dobWYzQWZwazBxbWU3N0NXVy10VHEwQUV3dGM5R2NkR0RSNTJaWWw2TTh1NXNvdjBheGdBV1JKaDhIMWUyVmRrcGVCZGRkR1lDVk9fRtIBYEFVX3lxTE1lUjBYaUVIcFJvZ0dobWYzQWZwazBxbWU3N0NXVy10VHEwQUV3dGM5R2NkR0RSNTJaWWw2TTh1NXNvdjBheGdBV1JKaDhIMWUyVmRrcGVCZGRkR1lDVk9fRg?oc=5",
-            "https://news.google.com/rss/articles/CBMibEFVX3lxTE5PMEFTZmZ4cnM1WkhZMlBCcVk1LVhwV0oxcUtQODFRZkxDUlY0NGpLNUJUVXFLN09Jd2dyZTlnbG14UllfakxLTkt6UVFkM3Z6anRneFBBMEdVRGVOQXN1MXdkVVh0UXFhN1RBdw?oc=5",
-            "https://news.google.com/rss/articles/CBMidEFVX3lxTE1vOWlVVTBVZmFoTDgzWXlrODhSbnpTeWMxa2RjX1NKb0EtdnZMZTdwelViRmFhOTk0YVpfa1ptY0gxbjBpRXI0R2tvSmFUNGhTTExPdVNoSEpkclBkVlBDdW90My1kUXFCQjZuUTB6ZlA3S2Vj?oc=5",
-            "https://news.google.com/rss/articles/CBMigAFBVV95cUxPdnp1bmVaWDZUMnZGZXNRbW1xTi1RbUhaLUdGbjZaZzRialBzYnBhWGEzZldhMTg1N2dmOEVpTFhKY3FtX3JQaXhZNU5Uam9taHgyampUVUkyYkMybWpxUkxXR0xKWC00QXFiLW84MmJoall1Sjc2Zk0xV1FsNlVBVg?oc=5"
-          ],
-          "ticker": "487400",
-          "name": "케이앤에스아이앤씨",
-          "target": "D+1_OPEN_ABOVE_D_CLOSE",
-          "probability_score": 33,
-          "score_components": {
-            "catalyst_strength": 5,
-            "freshness": 3,
-            "confirmation": 2,
-            "negative_event_risk": 0,
-            "negative_trend_penalty": 0,
             "priced_in_level": "high",
             "priced_in_penalty": 12,
             "exhaustion_level": "high",
             "exhaustion_penalty": 15
           },
-          "confidence": "medium",
+          "confidence": "high",
           "up_factors": [
-            "코스닥 신규 상장이라는 당일 관심 재료가 존재함",
-            "복수 언론이 상장 첫날의 높은 관심을 보도함"
+            "권리락 이후 주가가 권리락 전 수준을 돌파했다는 당일 보도",
+            "15:00 현재 시가 대비 14.4947% 상승하며 강한 장중 매수세 유지",
+            "최근 5일 평균 대비 거래량이 16.7319배로 급증"
           ],
           "down_factors": [
-            "상장 일정과 기대가 사전에 알려졌고 유사한 내용의 보도가 반복돼 선반영 수준이 높음",
-            "15:00 현재 시가 대비 -25.86%, 장중 고점 대비 -36.71%로 크게 밀려 소진 및 차익실현 위험이 강함",
-            "5거래일 수익률과 평균 거래량 자료가 없어 추세 및 거래량 확인이 제한됨"
+            "유상증자에 따른 확정적 주주가치 희석 위험",
+            "전일 권리락 첫날 상한가와 당일 반복 보도로 재료가 이미 널리 노출됨",
+            "장중 고점 대비 9.2729% 하락해 강한 차익실현과 모멘텀 소진 신호 확인",
+            "5거래일 수익률이 -7.4194%로 최근 하락 위험 구간에 해당"
           ],
-          "news_summary": "케이앤에스아이앤씨의 코스닥 상장 첫날 주가 강세와 장중 공모가 대비 두 배 상승이 복수 매체에서 보도됐다. 다만 상장 일정과 위성통신주라는 성격은 당일 이전부터 알려진 내용이며, 별도의 신규 계약·허가·실적 재료는 확인되지 않는다.",
-          "telegram_summary": "제공된 텔레그램 이력이 없다.",
-          "reasoning": "[정성적 근거] 확인된 주재료는 코스닥 신규 상장으로, 확정 계약·허가·실적이 아닌 상장일 관심 재료이므로 재료강도 5점, 사전 공개된 일정의 당일 재부각이므로 신선도 3점으로 판단했다. 복수 기사로 사실은 확인되지만 공시 근거가 입력에 없어 독립확인 2점이며, 확인된 악재가 없어 악재위험은 0점이다. 주재료는 상장 당일에 집중되는 단기 재료로 지속성이 불확실해 status는 uncertain, 생존점수는 2점이다. [정량적 근거] 15:00 등락률은 +41.55%지만 시가 대비 -25.86%, 고점 대비 -36.71%로 크게 밀려 소진위험 high와 15점을 적용했다. 상장 기대가 사전 노출된 가운데 큰 폭의 상승이 나타나 선반영 high와 12점을 적용했으며, 거래량 배율과 5거래일 수익률은 자료가 없어 최근 하락 감점은 0점으로 뒀다. [종합] 50 + 5 + 3 + 2 - 0 - 0 - 12 - 15 = 33점으로, 다음 거래일 시가가 당일 종가보다 높을 가능성을 비상승 가능성보다 낮게 평가한다.",
+          "news_summary": "SK디앤디는 유상증자 1차 발행가 2,260원 확정과 권리락을 계기로 전일 상한가를 기록했으며, 당일에도 권리락 전 주가를 넘어서는 급등세가 보도됐다. 다만 유상증자는 조달 규모 감소와 주주가치 희석을 수반하는 확정적 부정 요인이다.",
+          "telegram_summary": "관련 텔레그램 근거 없음.",
+          "reasoning": "[정성적 근거] 유상증자 1차 발행가 확정과 권리락은 구체적인 자본시장 사건이지만 기업가치 개선을 직접 뒷받침하는 재료가 아니어서 재료강도 10점으로 판정했다. 전일부터 반복 보도된 내용이므로 신선도는 0점이며, 사실상 동일 언론사의 기사들만 확인돼 독립확인은 2점으로 제한했다. 유상증자에 따른 확정적 희석 위험으로 악재위험은 20점이고, 주재료는 대부분 알려져 후속 동력이 약한 exhausted 상태·생존점수 2점으로 평가했다. [정량적 근거] 15:00 등락률은 17.95%, 시가 대비 상승률은 14.4947%, 거래량은 최근 5일 평균의 16.7319배지만, 고점 대비 9.2729% 밀려 소진위험 15점을 적용했다. 5거래일 수익률 -7.4194%에는 최근 하락 감점 6점을 적용했고, 전일 급등으로 상당 부분 반영된 상태가 반복 노출과 함께 확인돼 선반영 수준 high·12점으로 판정했다. [종합] 50 + 10 + 0 + 2 - 20 - 6 - 12 - 15 = 9점으로, 강한 장중 상승에도 희석 악재와 선반영·고점 이탈이 겹쳐 D+1 시가가 당일 종가보다 높을 가능성을 매우 낮게 평가했다.",
           "evidence_quality": "moderate",
           "primary_catalyst": {
-            "label": "코스닥 신규 상장 첫날 관심",
-            "description": "케이앤에스아이앤씨가 2026년 8월 13일 코스닥에 신규 상장하며 상장 첫날 매수 관심이 집중된 재료다.",
-            "category_raw": "코스닥 신규 상장",
-            "status": "uncertain",
+            "label": "유상증자 권리락과 1차 발행가 확정",
+            "description": "유상증자 1차 발행가가 2,260원으로 정해진 뒤 권리락이 발생했고, 권리락 전 주가와 비교한 가격 착시 및 단기 수급이 주가 서사를 형성했다.",
+            "category_raw": "유상증자·권리락",
+            "status": "exhausted",
             "expected_duration": "intraday",
             "alive_score": 2,
-            "reason": "상장 사실은 명확하지만 일정이 사전에 알려졌고 상장 당일에 효과가 집중되는 일회성 재료여서 후속 동력이 불확실하다.",
-            "invalidation": "상장일 이후 신규 수주·사업 성과 등 별도의 후속 재료가 확인되지 않으면 상장 자체의 가격 영향은 빠르게 약화된다.",
+            "reason": "전일부터 권리락과 발행가가 알려져 반복 보도됐으며, 유상증자는 희석을 수반해 긍정적 후속 동력이 약하다.",
+            "invalidation": "유상증자 조건의 중대한 변경·철회 또는 희석 부담을 상쇄할 새로운 공식 사업 재료가 확인될 경우",
             "evidence_refs": [
-              "https://news.google.com/rss/articles/CBMiYEFVX3lxTE1lUjBYaUVIcFJvZ0dobWYzQWZwazBxbWU3N0NXVy10VHEwQUV3dGM5R2NkR0RSNTJaWWw2TTh1NXNvdjBheGdBV1JKaDhIMWUyVmRrcGVCZGRkR1lDVk9fRtIBYEFVX3lxTE1lUjBYaUVIcFJvZ0dobWYzQWZwazBxbWU3N0NXVy10VHEwQUV3dGM5R2NkR0RSNTJaWWw2TTh1NXNvdjBheGdBV1JKaDhIMWUyVmRrcGVCZGRkR1lDVk9fRg?oc=5",
-              "https://news.google.com/rss/articles/CBMigAFBVV95cUxPdnp1bmVaWDZUMnZGZXNRbW1xTi1RbUhaLUdGbjZaZzRialBzYnBhWGEzZldhMTg1N2dmOEVpTFhKY3FtX3JQaXhZNU5Uam9taHgyampUVUkyYkMybWpxUkxXR0xKWC00QXFiLW84MmJoall1Sjc2Zk0xV1FsNlVBVg?oc=5",
-              "https://news.google.com/rss/articles/CBMiU0FVX3lxTE9vcEdWRjljN05ISE0wRnZQYS1pX2phalUtMWh5NmtOb2VReTBibFdMRVF5bk42NHJFS3d3MVNzUEZCWjJPdzNQQndYU2tyaUlPMjRZ?oc=5"
+              "https://news.google.com/rss/articles/CBMiYEFVX3lxTFBXX25Ma250cGN6ejFRdmsxRUd3SkR0aWJHem9Oc2pMVHNxSjlGeE5JZEp1cU0weUpxb1pjMXhQbV9sdzZFSm5lVlU5TExrckpyRlB2UllvT0VXXzFyVUdBdNIBYEFVX3lxTFBXX25Ma250cGN6ejFRdmsxRUd3SkR0aWJHem9Oc2pMVHNxSjlGeE5JZEp1cU0weUpxb1pjMXhQbV9sdzZFSm5lVlU5TExrckpyRlB2UllvT0VXXzFyVUdBdA?oc=5",
+              "https://news.google.com/rss/articles/CBMiRkFVX3lxTFB6cktCUEpoZ01SbkFMcHlreTFGSF9pNExjU3JwTk4xemVVZFVLY092UjFvQzNiNzZZU0xsekJmbEpMQTVYb1E?oc=5",
+              "https://news.google.com/rss/articles/CBMiX0FVX3lxTE9ZRkgxQUVoU2tpOGo0WTZfRllyLXcyMzFOUFVWa2dGRHBobVctRFdCNTJ6dzJQeEUwUm1LZ2JyUkpNRDc0RzNIa3JfV25vUUQwLUQ5VmtEd2Fvbnl1bnU00gFkQVVfeXFMT1NwTHdMaEFyV0tQSWVha09nQVpSVnlPY01RZGJsbDI4Z1RvRlpOT1Rmb00zU3kyLVI4aklER0YzdVk4Vk10eG04WGhNV2l5UXNMbWVKLW1BUmNpUDlzQ3FCcFFvMA?oc=5"
             ]
           },
-          "secondary_catalysts": [
-            {
-              "label": "위성통신주 기대",
-              "description": "상장 전 기사에서 회사를 위성통신주로 소개하며 관련 사업 분야에 대한 테마성 기대를 부각했다.",
-              "category_raw": "위성통신 테마 기대",
-              "status": "uncertain",
-              "expected_duration": "two_to_five_trading_days",
-              "alive_score": 2,
-              "reason": "사업 분야에 대한 기대는 존재하지만 입력 자료에서 신규 계약이나 구체적인 사업 성과는 확인되지 않아 지속 여부가 불확실하다.",
-              "invalidation": "위성통신 사업과 연결되는 구체적 수주·실적·사업 일정이 후속 확인되지 않으면 테마 기대가 약화된다.",
-              "evidence_refs": [
-                "https://news.google.com/rss/articles/CBMibEFVX3lxTE5PMEFTZmZ4cnM1WkhZMlBCcVk1LVhwV0oxcUtQODFRZkxDUlY0NGpLNUJUVXFLN09Jd2dyZTlnbG14UllfakxLTkt6UVFkM3Z6anRneFBBMEdVRGVOQXN1MXdkVVh0UXFhN1RBdw?oc=5"
-              ]
-            }
-          ],
-          "llm_reported_probability_score": 33
+          "secondary_catalysts": [],
+          "theme_scores": {
+            "sector": [
+              {
+                "name": "산업무관",
+                "score": 100
+              }
+            ],
+            "event": [
+              {
+                "name": "상장·자본시장 이벤트",
+                "score": 100
+              }
+            ]
+          },
+          "theme_event_direction": "negative",
+          "new_theme_candidate": null,
+          "theme_escalation_reason": null,
+          "theme_escalated": false,
+          "theme_escalation_model": null,
+          "theme_dict_version": "2026-08-28",
+          "llm_reported_probability_score": 9
         }
       ],
       "warnings": []
     }
   ],
   "comparison": {
-    "row_count": 7,
+    "row_count": 1,
     "mean_absolute_delta": null,
     "meaningfully_changed_count": 0,
     "meaningfully_changed_rate": 0.0,
     "old_score_stddev": null,
-    "new_score_stddev": 13.4134,
+    "new_score_stddev": null,
     "by_date": {
-      "20260813": [
+      "20260902": [
         {
-          "ticker": "000490",
-          "name": "대동",
+          "ticker": "210980",
+          "name": "SK디앤디",
           "old_score": null,
-          "new_score": 57,
+          "new_score": 9,
           "delta": null,
           "rank_change": 0,
-          "meaningfully_changed": false,
-          "telegram_rows": 2
-        },
-        {
-          "ticker": "006910",
-          "name": "보성파워텍",
-          "old_score": null,
-          "new_score": 40,
-          "delta": null,
-          "rank_change": -2,
-          "meaningfully_changed": false,
-          "telegram_rows": 0
-        },
-        {
-          "ticker": "007820",
-          "name": "엠엑스로보틱스",
-          "old_score": null,
-          "new_score": 35,
-          "delta": null,
-          "rank_change": -2,
-          "meaningfully_changed": false,
-          "telegram_rows": 0
-        },
-        {
-          "ticker": "015760",
-          "name": "한국전력",
-          "old_score": null,
-          "new_score": 14,
-          "delta": null,
-          "rank_change": -3,
-          "meaningfully_changed": false,
-          "telegram_rows": 3
-        },
-        {
-          "ticker": "289080",
-          "name": "SV인베스트먼트",
-          "old_score": null,
-          "new_score": 54,
-          "delta": null,
-          "rank_change": 3,
-          "meaningfully_changed": false,
-          "telegram_rows": 0
-        },
-        {
-          "ticker": "388050",
-          "name": "지투파워",
-          "old_score": null,
-          "new_score": 45,
-          "delta": null,
-          "rank_change": 3,
-          "meaningfully_changed": false,
-          "telegram_rows": 3
-        },
-        {
-          "ticker": "487400",
-          "name": "케이앤에스아이앤씨",
-          "old_score": null,
-          "new_score": 33,
-          "delta": null,
-          "rank_change": 1,
           "meaningfully_changed": false,
           "telegram_rows": 0
         }
@@ -597,9 +129,9 @@
     }
   },
   "outcome_evaluation": {
-    "scored_count": 7,
+    "scored_count": 1,
     "evaluated_count": 0,
-    "pending_count": 7,
+    "pending_count": 1,
     "new_score_ranking_auc": null,
     "old_score_ranking_auc": null,
     "new_score_brier": null,
