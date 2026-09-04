@@ -22,6 +22,7 @@ from unittest.mock import patch
 
 import duckdb
 
+from scripts import run_close_bet as target
 from scripts.run_close_bet import create_close_bet_orders_table
 from scripts.wl_sqlite import connect_ro, connect_rw
 
@@ -29,7 +30,7 @@ from scripts.wl_sqlite import connect_ro, connect_rw
 # environment webhook leak real Discord messages from fixture data.
 os.environ.pop("DISCORD_WEBHOOK_URL", None)
 
-# 실재하지 않는 경로 → DEFAULT_KRX_DB.exists()=False → 시총 동점깸 생략(caps={}).
+# 실재하지 않는 경로. 이제 main()은 여기서 ABORT한다 — 상장일을 못 보면 주문하지 않는다.
 _NO_KRX = Path("__no_krx_db__.duckdb")
 
 _DATE = "20260615"
@@ -41,6 +42,26 @@ def _fresh_db() -> Path:
     fd, path = tempfile.mkstemp(suffix=".sqlite3")
     os.close(fd)
     os.unlink(path)
+    return Path(path)
+
+
+def _seed_listing_history(db: Path) -> Path:
+    """llm_scores의 종목을 오래된 상장일로 채운 KRX 픽스처.
+
+    신규상장 가드가 상장일을 못 읽으면 main()이 ABORT하므로, 그 가드를 다루지 않는
+    테스트에도 최소 이력이 필요하다. market_cap은 NULL — fetch_market_caps가
+    None을 걸러내 caps={}가 되어 시총 동점깸은 기존처럼 생략된다.
+    """
+    fd, path = tempfile.mkstemp(suffix=".duckdb")
+    os.close(fd)
+    os.unlink(path)
+    with connect_ro(db) as con:
+        tickers = [r[0] for r in con.execute("SELECT DISTINCT ticker FROM llm_scores")]
+    with duckdb.connect(path) as con:
+        con.execute("CREATE TABLE ohlcv (date VARCHAR, ticker VARCHAR, market_cap BIGINT)")
+        if tickers:  # duckdb executemany는 빈 파라미터 목록을 거부한다
+            con.executemany("INSERT INTO ohlcv VALUES (?,?,NULL)",
+                            [("20210802", t) for t in tickers])
     return Path(path)
 
 
@@ -121,14 +142,18 @@ def _run_main(
 
     mock_place_order=False 시 실제 place_order_via_broker를 호출
     (dry_run 내부 로직 검증용 — HTTP 호출 없음).
-    krx_db=None이면 시총 동점깸 생략(_NO_KRX, exists=False).
+    krx_db=None이면 상장 이력만 담은 최소 픽스처를 쓴다(시총 NULL → 동점깸 생략).
+    상장일 자체를 못 읽는 상황은 _NO_KRX를 명시적으로 넘겨 검증한다.
     """
     mock_now = now_dt or _DEFAULT_NOW
     default_result = {"order_no": "0000099", "status": "submitted", "message": ""}
 
     with contextlib.ExitStack() as stack:
+        if krx_db is None:
+            krx_db = _seed_listing_history(db)
+            stack.callback(krx_db.unlink, missing_ok=True)
         stack.enter_context(patch("scripts.run_close_bet.DEFAULT_WATCHLIST_DB", db))
-        stack.enter_context(patch("scripts.run_close_bet.DEFAULT_KRX_DB", krx_db or _NO_KRX))
+        stack.enter_context(patch("scripts.run_close_bet.DEFAULT_KRX_DB", krx_db))
         stack.enter_context(patch("scripts.run_close_bet._now_seoul", return_value=mock_now))
         stack.enter_context(patch("scripts.run_close_bet.fetch_price_via_broker", return_value=cur_prc))
         stack.enter_context(patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=cash))
@@ -252,8 +277,10 @@ class TestDryRun(unittest.TestCase):
             dry_run_args_seen.append(dry_run)
             return {"order_no": "0000001", "status": "submitted", "message": ""}
 
+        krx = _seed_listing_history(self.db)
+        self.addCleanup(krx.unlink, missing_ok=True)
         with patch("scripts.run_close_bet.DEFAULT_WATCHLIST_DB", self.db), \
-             patch("scripts.run_close_bet.DEFAULT_KRX_DB", _NO_KRX), \
+             patch("scripts.run_close_bet.DEFAULT_KRX_DB", krx), \
              patch("scripts.run_close_bet._now_seoul", return_value=_DEFAULT_NOW), \
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=5000), \
              patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=1_000_000_000), \
@@ -344,8 +371,10 @@ class TestBudgetSizing(unittest.TestCase):
             called.append(a)
             return {"order_no": "x", "status": "submitted", "message": ""}
 
+        krx = _seed_listing_history(self.db)
+        self.addCleanup(krx.unlink, missing_ok=True)
         with patch("scripts.run_close_bet.DEFAULT_WATCHLIST_DB", self.db), \
-             patch("scripts.run_close_bet.DEFAULT_KRX_DB", _NO_KRX), \
+             patch("scripts.run_close_bet.DEFAULT_KRX_DB", krx), \
              patch("scripts.run_close_bet._now_seoul", return_value=_DEFAULT_NOW), \
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=4_000_000), \
              patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=1_000_000_000), \
@@ -403,8 +432,10 @@ class TestDeadlineMidLoop(unittest.TestCase):
                 return datetime(2026, 6, 15, 15, 19, 30)
             return datetime(2026, 6, 15, 15, 20, 1)
 
+        krx = _seed_listing_history(self.db)
+        self.addCleanup(krx.unlink, missing_ok=True)
         with patch("scripts.run_close_bet.DEFAULT_WATCHLIST_DB", self.db), \
-             patch("scripts.run_close_bet.DEFAULT_KRX_DB", _NO_KRX), \
+             patch("scripts.run_close_bet.DEFAULT_KRX_DB", krx), \
              patch("scripts.run_close_bet._now_seoul", side_effect=advancing_now), \
              patch("scripts.run_close_bet.fetch_price_via_broker", return_value=5000), \
              patch("scripts.run_close_bet.fetch_available_cash_via_broker", return_value=1_000_000_000), \
@@ -427,3 +458,52 @@ class TestDeadlineMidLoop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExcludeRecentListingsTest(unittest.TestCase):
+    """신규상장 배제가 실제 주문 후보에서 걸러지는지. 순수 함수만 보면 가드를
+    호출부에서 지워도 초록불이라 여기서 배선을 붙잡는다."""
+
+    def setUp(self):
+        fd, name = tempfile.mkstemp(suffix=".duckdb")
+        os.close(fd)
+        Path(name).unlink()
+        self.krx_db = Path(name)
+        with duckdb.connect(str(self.krx_db)) as con:
+            con.execute("CREATE TABLE ohlcv (date VARCHAR, ticker VARCHAR)")
+            con.executemany("INSERT INTO ohlcv VALUES (?,?)", [
+                ("20210802", "005930"),   # 오래된 상장
+                ("20260904", "005930"),
+                ("20260901", "999999"),   # 3일 전 상장
+            ])
+
+    def tearDown(self):
+        self.krx_db.unlink(missing_ok=True)
+
+    def test_newly_listed_candidate_is_dropped(self):
+        pool = [{"ticker": "005930"}, {"ticker": "999999"}]
+        kept, excluded = target.exclude_recent_listings(pool, self.krx_db, "20260904")
+        self.assertEqual([c["ticker"] for c in kept], ["005930"])
+        self.assertEqual(excluded, ["999999"])
+
+    def test_missing_krx_db_refuses_instead_of_passing_everything(self):
+        # 안전장치가 데이터 없을 때 열리면 안 된다 — 검증 불가면 주문을 내지 않는다.
+        with self.assertRaises(FileNotFoundError):
+            target.exclude_recent_listings([{"ticker": "999999"}], Path("nope.duckdb"), "20260904")
+
+
+class MissingKrxDbAbortTest(unittest.TestCase):
+    """상장일을 못 읽으면 주문을 내지 않는다. 안전장치가 데이터 없을 때만 열리면 안 된다."""
+
+    def setUp(self):
+        self.db = _fresh_db()
+        _seed(self.db, [("005930", 85)])
+
+    def tearDown(self):
+        self.db.unlink(missing_ok=True)
+
+    def test_aborts_without_placing_orders(self):
+        code = _run_main(["--date", _DATE, "--allow-order-outside-close-window"],
+                         self.db, krx_db=_NO_KRX)
+        self.assertEqual(code, 1)
+        self.assertEqual(_order_rows(self.db), [])

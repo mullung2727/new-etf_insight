@@ -368,3 +368,39 @@ class ClosedSellStatusGuardTest(unittest.TestCase):
             con.execute("UPDATE close_bet_orders SET sell_status='missing'")
         with connect_ro(self.db) as con:
             self.assertEqual(load_open_close_bet_tickers(con), set())
+
+
+class ListingAgeCandidateGuardTest(unittest.TestCase):
+    """신규상장 종목이 눌림목 진입 후보에서 빠지는지. 순수 함수 테스트만으로는
+    load_today_signal_candidates 안의 가드를 지워도 통과한다."""
+
+    def setUp(self):
+        watch_fd, watch_name = tempfile.mkstemp(suffix=".sqlite3")
+        krx_fd, krx_name = tempfile.mkstemp(suffix=".duckdb")
+        os.close(watch_fd)
+        os.close(krx_fd)
+        Path(watch_name).unlink()
+        Path(krx_name).unlink()
+        self.watch_db = Path(watch_name)
+        self.krx_db = Path(krx_name)
+        with target.connect_rw(self.watch_db) as con:
+            con.execute("CREATE TABLE watchlist (date TEXT, stock_code TEXT)")
+            con.execute("INSERT INTO watchlist VALUES ('20260714','999999')")
+        with duckdb.connect(str(self.krx_db)) as con:
+            con.execute("CREATE TABLE ohlcv (ticker TEXT,date TEXT,open INTEGER,low INTEGER,close INTEGER)")
+            # 신호일이 곧 최초 거래일 — 상장 하루짜리 종목
+            con.execute("INSERT INTO ohlcv VALUES ('999999','20260714',105,100,104)")
+
+    def tearDown(self):
+        self.watch_db.unlink(missing_ok=True)
+        self.krx_db.unlink(missing_ok=True)
+
+    @patch("scripts.run_pullback_order.batch_quote_snapshots")
+    def test_newly_listed_ticker_is_not_a_candidate(self, batch):
+        batch.return_value = {
+            "999999": {"current_price": 101, "open": 99, "low": 98, "upper_limit": 130}
+        }
+        result = target.load_today_signal_candidates(
+            self.watch_db, self.krx_db, "20260715", "http://broker", {"max_wait_days": 5}
+        )
+        self.assertEqual(result, [])
