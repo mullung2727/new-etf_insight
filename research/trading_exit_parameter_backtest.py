@@ -27,6 +27,11 @@ from research.watchlist_expected_return.minute_bar_store import load_bars
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LEDGER = ROOT / "etl" / "db" / "watchlist.sqlite3"
 DEFAULT_MINUTES = ROOT / "etl" / "db" / "minute_bars.duckdb"
+DEFAULT_KRX = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
+STRATEGY_CONFIGS = {
+    "pullback": ROOT / "etl" / "scripts" / "pullback.json",
+    "close_bet": ROOT / "etl" / "scripts" / "close_bet.json",
+}
 DEFAULT_OUTPUT = ROOT / "docs" / "BACKTEST_TRADING_EXIT_TP_SL_1MIN"
 TP_GRID = tuple(i / 100 for i in range(2, 8))
 SL_GRID = tuple(i / 100 for i in range(2, 8))
@@ -74,14 +79,31 @@ def load_entries(ledger: Path) -> list[dict[str, Any]]:
     return out
 
 
-def load_trading_dates(ledger: Path) -> list[str]:
-    con = sqlite3.connect(ledger)
+def load_trading_dates(krx_db: Path, ledger: Path) -> list[str]:
+    """거래일 달력. KRX 원장을 쓰고, 아직 적재 안 된 최근 날짜만 원장에서 잇는다.
+
+    intraday_ranking 단독으로는 못 쓴다 — 배치가 거른 날이 빠지고, 실제로 20260810 이
+    없어서 그 날을 지나는 보유창이 전부 하루씩 밀렸다.
+    krx_ohlcv 단독으로도 못 쓴다 — 장 마감 후 적재라 당일이 없어 최근 진입분이 통째로
+    빠진다. 그래서 krx 마지막 날 이후 구간만 원장 날짜로 채운다.
+    """
+    con = duckdb.connect(str(krx_db), read_only=True)
     try:
-        return [row[0] for row in con.execute(
-            "SELECT DISTINCT date FROM intraday_ranking ORDER BY date"
+        dates = [str(row[0]) for row in con.execute(
+            "SELECT DISTINCT date FROM ohlcv ORDER BY date"
         ).fetchall()]
     finally:
         con.close()
+
+    tail_con = sqlite3.connect(ledger)
+    try:
+        tail = [row[0] for row in tail_con.execute(
+            "SELECT DISTINCT date FROM intraday_ranking WHERE date > ? ORDER BY date",
+            (dates[-1],),
+        ).fetchall()]
+    finally:
+        tail_con.close()
+    return dates + tail
 
 
 def attach_exit_dates(entries: list[dict[str, Any]], trading_dates: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -195,13 +217,30 @@ def analyze(entries: list[dict[str, Any]], bars_by_entry: dict[tuple[str, str], 
                     details[f"tp{tp:.0%}_sl{sl:.0%}"] = outcomes
             combos.sort(key=lambda x: (x.get("mean", -999), x.get("capital_weighted_net_return", -999)), reverse=True)
             grids[cohort_name] = combos
-        current = (0.04, 0.04) if strategy == "pullback" else (0.05, 0.03)
+        # 운영 설정에서 읽는다. 하드코딩하면 config 를 바꾼 순간 리포트가 거짓말을 한다.
+        config = json.loads(STRATEGY_CONFIGS[strategy].read_text(encoding="utf-8"))
         result[strategy] = {
             "sample_counts": {name: len(rows) for name, rows in cohorts.items()},
-            "current": {"tp": current[0], "sl": current[1]},
+            "current": {"tp": config["tp"], "sl": config["sl"]},
             "grids": grids,
         }
     return result
+
+
+def _current_row(block: dict[str, Any], cohort: str) -> dict[str, Any] | None:
+    """운영 중인 TP/SL 조합의 결과. 설정값이 탐색 그리드 밖이면 None."""
+    return next(
+        (row for row in block["grids"][cohort]
+         if row["tp"] == block["current"]["tp"] and row["sl"] == block["current"]["sl"]),
+        None,
+    )
+
+
+def _current_phrase(block: dict[str, Any], row: dict[str, Any] | None) -> str:
+    tp, sl = block["current"]["tp"], block["current"]["sl"]
+    if row is None:
+        return f"현재 {tp:.0%}/{sl:.0%}는 탐색 범위 밖이라 비교 대상이 없다"
+    return f"현재 {tp:.0%}/{sl:.0%}는 {row['mean']:.2%}"
 
 
 def render_markdown(payload: dict[str, Any]) -> str:
@@ -210,10 +249,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
     pb_real_best = pb["grids"]["real_period"][0]
     pb_all_best = pb["grids"]["all"][0]
     cb_real_best = cb["grids"]["real_period"][0]
-    cb_current = next(
-        row for row in cb["grids"]["real_period"]
-        if row["tp"] == cb["current"]["tp"] and row["sl"] == cb["current"]["sl"]
-    )
+    pb_current = _current_row(pb, "real_period")
+    cb_current = _current_row(cb, "real_period")
     lines = [
         "# 눌림목·종가베팅 TP/SL 1분봉 백테스트", "",
         f"- 생성: {payload['generated_at']}",
@@ -223,8 +260,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "- 1분봉 동시 TP/SL 터치는 보수적으로 SL 우선", "",
         "## 결론", "",
         f"- 눌림목 실전기간 1위는 TP {pb_real_best['tp']:.0%}/SL {pb_real_best['sl']:.0%}(평균 순수익률 {pb_real_best['mean']:.2%})지만, 전체 1위는 TP {pb_all_best['tp']:.0%}/SL {pb_all_best['sl']:.0%}(평균 {pb_all_best['mean']:.2%})로 달라 단일 최적값은 안정적이지 않다.",
-        "- 눌림목은 현재 4%/4%도 양수다. 넓은 SL 조합이 좋아 보이나 표본 18건에서 고른 결과이므로 바로 운영값을 바꾸기보다 5%/5% 같은 양 구간 공통 상위 조합을 추가 표본으로 검증하는 편이 안전하다.",
-        f"- 종가베팅은 실전기간 36개 조합 모두 비용 후 음수다. 최상위 TP {cb_real_best['tp']:.0%}/SL {cb_real_best['sl']:.0%}도 {cb_real_best['mean']:.2%}, 현재 5%/3%는 {cb_current['mean']:.2%}다. 청산 숫자 변경만으로는 기대값 문제가 해결되지 않는다.",
+        f"- 눌림목 {_current_phrase(pb, pb_current)}다(실전기간 {pb['sample_counts']['real_period']}건). 표본이 작은 채로 36개 조합을 훑은 결과이므로 1위 값을 바로 쓰기보다 실전·전체 양쪽 상위에 함께 드는 조합을 추가 표본으로 검증하는 편이 안전하다.",
+        f"- 종가베팅은 실전기간 36개 조합 모두 비용 후 음수다. 최상위 TP {cb_real_best['tp']:.0%}/SL {cb_real_best['sl']:.0%}도 {cb_real_best['mean']:.2%}, {_current_phrase(cb, cb_current)}다. 청산 숫자 변경만으로는 기대값 문제가 해결되지 않는다.",
         "", 
     ]
     for strategy, title in (("pullback", "눌림목"), ("close_bet", "종가베팅")):
@@ -232,11 +269,18 @@ def render_markdown(payload: dict[str, Any]) -> str:
         lines += [f"## {title}", ""]
         for cohort, cohort_title in (("real_period", "실전기간"), ("all", "전체 가용")):
             rows = block["grids"][cohort]
-            current = next(row for row in rows if row["tp"] == block["current"]["tp"] and row["sl"] == block["current"]["sl"])
-            rank = rows.index(current) + 1
+            current = _current_row(block, cohort)
+            if current is None:
+                current_line = f"- 현재값 TP {block['current']['tp']:.0%} / SL {block['current']['sl']:.0%}: 탐색 그리드 밖이라 비교 불가"
+            else:
+                current_line = (
+                    f"- 현재값 TP {block['current']['tp']:.0%} / SL {block['current']['sl']:.0%}: "
+                    f"평균 순수익률 {current['mean']:.2%}, 승률 {current['positive_rate']:.1%}, "
+                    f"추정 순손익 {current['net_pnl_won']:,}원, {rows.index(current) + 1}/{len(rows)}위"
+                )
             lines += [
                 f"### {cohort_title} ({block['sample_counts'][cohort]}건)", "",
-                f"- 현재값 TP {block['current']['tp']:.0%} / SL {block['current']['sl']:.0%}: 평균 순수익률 {current['mean']:.2%}, 승률 {current['positive_rate']:.1%}, 추정 순손익 {current['net_pnl_won']:,}원, {rank}/36위",
+                current_line,
                 "- 평균 순수익률 상위 10개:", "",
                 "| 순위 | TP | SL | 표본 | 평균 순수익률 | 중앙값 | 승률 | 자금가중 순수익률 | 추정 순손익 |",
                 "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -261,11 +305,12 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
     parser.add_argument("--minutes", type=Path, default=DEFAULT_MINUTES)
+    parser.add_argument("--krx", type=Path, default=DEFAULT_KRX)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--cost-rate", type=float, default=COST_RATE)
     args = parser.parse_args(argv)
 
-    entries, pre_skipped = attach_exit_dates(load_entries(args.ledger), load_trading_dates(args.ledger))
+    entries, pre_skipped = attach_exit_dates(load_entries(args.ledger), load_trading_dates(args.krx, args.ledger))
     for i, entry in enumerate(entries):
         entry["entry_id"] = f"{i}:{entry['entry_date']}:{entry['ticker']}"
 
