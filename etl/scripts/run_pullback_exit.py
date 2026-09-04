@@ -242,6 +242,18 @@ def run_cycle(db_path: Path, broker_url: str, config: dict[str, Any], today: str
     return ordered
 
 
+def _hms(value: str) -> str:
+    """시각 인자를 HH:MM:SS로 정규화한다(argparse type).
+
+    루프 판정이 문자열 비교라 0이 하나 빠지면 조용히 어긋난다. '9:00:00'은
+    '09:00:00'보다 커서 --window-start에 들어가면 하루 종일 가드가 거짓이 되고
+    TP/SL·만기 청산이 전면 정지한다. strptime은 %H에 1자리도 받아주므로
+    파싱만으로는 못 걸러 zero-pad 형태로 되돌린다. 형식 자체가 틀리면
+    ValueError → argparse가 기동에서 죽인다.
+    """
+    return datetime.strptime(value, "%H:%M:%S").strftime("%H:%M:%S")
+
+
 def is_exit_window_started(now: datetime, start_hms: str) -> bool:
     """정규장이 시작됐나. 장전 예상호가는 TP/SL 판정에 쓸 수 없다.
 
@@ -276,9 +288,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="pullback TP/SL·만기 청산 워커")
     parser.add_argument("--broker-url", default=None)
     parser.add_argument("--poll-sec", type=float, default=5.0)
-    parser.add_argument("--force-exit-time", default="15:19:00")
-    parser.add_argument("--stop-time", default="15:25:00")
-    parser.add_argument("--window-start", default="09:00:00")
+    parser.add_argument("--force-exit-time", default="15:19:00", type=_hms)
+    parser.add_argument("--stop-time", default="15:25:00", type=_hms)
+    parser.add_argument("--window-start", default="09:00:00", type=_hms)
     parser.add_argument("--dry-run", default="true")
     args = parser.parse_args(argv)
     broker_url = args.broker_url or os.getenv("BROKER_API_URL", "http://localhost:8001")
