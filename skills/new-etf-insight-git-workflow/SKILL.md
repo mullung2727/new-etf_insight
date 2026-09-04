@@ -2,8 +2,10 @@
 
 Use this skill when committing, branching, opening a PR, or handling CodeRabbit review comments.
 
-이 저장소는 CodeRabbit 리뷰를 쓴다. CodeRabbit 은 **PR 이벤트로만** 돈다 —
+이 저장소는 CodeRabbit 리뷰를 쓴다. CodeRabbit 은 **PR 에서만** 돈다 —
 `main` 직접 커밋은 리뷰 없이 들어간다.
+
+리뷰는 **자동으로 시작되지 않는다.** 코멘트로 직접 트리거해야 한다 (아래 `## 리뷰 트리거`).
 
 `main` 커밋은 PreToolUse hook(`.claude/hooks/block-main-commit.sh`)이 하드 차단한다.
 차단 메시지가 뜨면 브랜치를 따라는 뜻이다.
@@ -49,16 +51,39 @@ push 만 부탁하고 말없이 PR 을 만들면 사용자는 통보받지 못�
 → push 되면 PR 만들고 리뷰 감시 띄운다
 ```
 
-PR 이 이미 열려 있으면 push 만으로 증분 리뷰가 돈다. 그때는 PR 을 새로 만들지 않는다.
+PR 이 이미 열려 있으면 PR 을 새로 만들지 않는다. push 뒤에 리뷰를 다시 트리거한다.
 
 ```text
 ! git push
-→ PR #<번호> 에 증분 리뷰가 돈다. 감시만 띄운다
+→ PR #<번호> 에 리뷰 트리거하고 감시 띄운다
 ```
+
+## 리뷰 트리거
+
+**PR 을 만들거나 push 한 것만으로는 리뷰가 시작되지 않는다.** 매번 코멘트를 달아야 한다.
+
+```bash
+gh pr comment <num> --body "@coderabbitai review"
+```
+
+이유: 이 저장소는 CodeRabbit OSS 무료 티어를 쓴다. 플랜 기능은 Team(라인별 리뷰 포함)이지만,
+**스타 10개 미만인 공개 저장소는 자동 리뷰 대상에서 빠진다.** 스타가 10개를 넘으면 그때부터
+PR 이벤트로 자동으로 돈다.
+
+### 한도가 있다 — 아껴 쓴다
+
+**시간당 1회.** 소진되면 `Review limit reached. Next included review available in N minutes.`
+가 뜨고 그 리뷰는 아예 돌지 않는다.
+
+- 한 PR 에 트리거는 **한 번만**. 지적을 고쳐 push 한 뒤 재리뷰가 필요할 때 나머지 한도를 쓴다.
+- `@coderabbitai full review` 는 쓰지 않는다. 이미 리뷰한 커밋까지 다시 보느라 한도만 태운다.
+  기본 `review` 가 증분 리뷰다.
+- 한도가 없는데 리뷰가 꼭 필요하면 사용자에게 "N분 뒤 재트리거" 와 "리뷰 없이 머지" 중 고르게 한다.
+  문서·설정만 바뀐 PR 이면 후자를 먼저 권한다.
 
 ## 리뷰 기다리기
 
-PR 을 만든 직후, 그리고 PR 브랜치에 다시 push 한 직후 감시를 띄운다.
+리뷰를 트리거한 직후에 감시를 띄운다. 트리거 없이 띄우면 오지 않는 리뷰를 기다린다.
 사용자가 "리뷰 왔나" 묻지 않아도 도착하는 즉시 알림이 온다.
 
 ```
