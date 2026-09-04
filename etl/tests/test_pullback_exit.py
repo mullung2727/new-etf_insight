@@ -14,6 +14,7 @@ from scripts.run_pullback_exit import (
     advance_holding_day, decide_exit, expire_stale_orders, is_exit_window_started, load_positions,
     mark_missing_positions, mark_sell_ordered, run_loop_step, sell_quantity, settle_sell_orders,
 )
+from scripts.run_pullback_exit import _hms, main
 from scripts.run_pullback_order import create_pullback_orders_table
 from scripts.wl_sqlite import connect_ro, connect_rw
 
@@ -240,3 +241,18 @@ class ExitLoopStepTest(unittest.TestCase):
         self.calls.clear()
         self.assertEqual(self._step("15:19:00", counted=True), ("ran", True))
         self.assertFalse(self.calls[1][2])         # 같은 날 두 번 차감하지 않는다
+
+
+class TimeArgValidationTest(unittest.TestCase):
+    """시각 인자는 HH:MM:SS 고정. 문자열 비교라 0 하나 빠지면 조용히 하루를 날린다."""
+
+    def test_unpadded_hour_is_normalized(self):
+        # '9:00:00' 은 '09:00:00' 보다 커서 그대로 두면 가드가 하루 종일 거짓 → 청산 전면 정지.
+        # strptime 은 %H에 1자리도 받으므로 파싱만으로는 못 걸러낸다.
+        self.assertEqual(_hms("9:00:00"), "09:00:00")
+        self.assertEqual(_hms("09:00:00"), "09:00:00")
+
+    def test_broken_time_dies_at_startup(self):
+        for bad in ("25:00:00", "09:00", "nine"):
+            with self.subTest(bad=bad), self.assertRaises(SystemExit):
+                main(["--window-start", bad])
