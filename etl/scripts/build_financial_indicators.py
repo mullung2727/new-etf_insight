@@ -385,12 +385,16 @@ def _process_source(con, source, universe, year, reprt, limit, force, key, sessi
     print(f"[{source} {year} {reprt}] 대상 {len(targets)} (skip {len(universe) - len(targets)}), chunk {len(chunks)}")
 
     prows = 0
+    answered: dict[str, str | None] = {}  # 이번 호출이 실제로 응답한 corp → stlm_dt
     for ci, chunk in enumerate(chunks, 1):
         rows = fetch_fn(chunk, year, reprt, key, session)
         prows += upsert_fn(con, rows)
+        for r in rows:
+            answered.setdefault(r["corp_code"], r.get("stlm_dt"))
         con.commit()  # chunk 단위 보존 → 중단 시 재실행 이어받기
         print(f"[{source} {year} {reprt}][chunk {ci}/{len(chunks)}] corps={len(chunk)} rows={len(rows)}")
-    return {"source": source, "year": year, "reprt": reprt, "targets": len(targets), "rows": prows}
+    return {"source": source, "year": year, "reprt": reprt, "targets": len(targets),
+            "rows": prows, "answered": answered}
 
 
 def run(
@@ -430,7 +434,7 @@ def run(
         for year, reprt in periods:
             for source in sources:
                 r = _process_source(con, source, universe, year, reprt, limit, force, key, session)
-                stats["runs"].append(r)
+                stats["runs"].append({k: v for k, v in r.items() if k != "answered"})
                 stats["rows"] += r["rows"]
 
     return stats
@@ -486,30 +490,31 @@ def run_from_filings(
         con.commit()
 
         for (year, reprt), corp_codes in sorted(groups.items()):
+            answered = None
             for source in sources:
                 r = _process_source(con, source, corp_codes, year, reprt, None, True, key, session)
-                stats["runs"].append(r)
+                if source == "indicators":
+                    answered = r["answered"]
+                stats["runs"].append({k: v for k, v in r.items() if k != "answered"})
                 stats["rows"] += r["rows"]
-            _report_period_gaps(con, stats, year, reprt, corp_codes, months[(year, reprt)])
+            # 지표를 안 받은 실행(--source accounts)은 대조할 응답이 없다 → 검증 생략.
+            if answered is not None:
+                _report_period_gaps(stats, year, reprt, corp_codes, answered, months[(year, reprt)])
 
     return stats
 
 
-def _report_period_gaps(con, stats, year, reprt, corp_codes, expected_months) -> None:
-    """적재 후 검증: 응답이 없던 회사 + 결산월이 공시와 어긋난 회사를 집계·출력.
+def _report_period_gaps(stats, year, reprt, corp_codes, answered, expected_months) -> None:
+    """적재 후 검증: 이번 호출에 응답이 없던 회사 + 결산월이 공시와 어긋난 회사를 집계·출력.
 
     12월 결산 가정이 틀린 회사가 여기서 드러난다. 잘못된 period로 요청하면 DART가
     무자료를 주거나(무응답), 그 회사의 실제 결산기 데이터를 주기(결산월 불일치) 때문.
+    answered는 이번 지표 호출이 실제로 돌려준 corp→stlm_dt — DB를 조회하면 정정 공시에
+    응답이 비어도 예전 행 때문에 무응답이 가려진다.
     """
     wanted = set(corp_codes)
-    stored = {
-        cc: dt for cc, dt in con.execute(
-            "SELECT DISTINCT corp_code, stlm_dt FROM indicators WHERE bsns_year=? AND reprt_code=?",
-            (year, reprt),
-        ) if cc in wanted
-    }
-    missing = sorted(wanted - set(stored))
-    mismatch = sorted(cc for cc, dt in stored.items() if dt and dt[5:7] not in expected_months)
+    missing = sorted(wanted - set(answered))
+    mismatch = sorted(cc for cc, dt in answered.items() if dt and dt[5:7] not in expected_months)
     label = f"{year}-{reprt}"
     if missing:
         stats["missing"][label] = missing
