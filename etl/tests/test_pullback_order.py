@@ -125,6 +125,7 @@ class BatchCandidateSnapshotTest(unittest.TestCase):
             con.execute("INSERT INTO watchlist VALUES ('20260714','005930')")
         with duckdb.connect(str(self.krx_db)) as con:
             con.execute("CREATE TABLE ohlcv (ticker TEXT,date TEXT,open INTEGER,low INTEGER,close INTEGER)")
+            con.execute("INSERT INTO ohlcv VALUES ('005930','20260101',105,100,104)")
             con.execute("INSERT INTO ohlcv VALUES ('005930','20260714',105,100,104)")
 
     def tearDown(self):

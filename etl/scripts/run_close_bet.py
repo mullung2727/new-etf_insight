@@ -37,6 +37,7 @@ import requests
 from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
+    from scripts.listing_age_guard import is_listing_age_allowed, load_first_trade_dates
     from scripts.notify import send_discord
     from scripts.run_verify import (
         fetch_order_history,
@@ -50,6 +51,7 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
         in_order_window, market_order,
     )
 except ImportError:
+    from listing_age_guard import is_listing_age_allowed, load_first_trade_dates
     from notify import send_discord
     from run_verify import fetch_order_history, mark_confirmed, normalize_order_no
     from wl_sqlite import connect_ro, connect_rw
@@ -522,6 +524,13 @@ def main() -> None:
         sys.exit(1)
 
     pool = load_order_candidates(watchlist_db, date, args.score_threshold)
+    if DEFAULT_KRX_DB.exists() and pool:
+        with duckdb.connect(str(DEFAULT_KRX_DB), read_only=True) as con:
+            first_dates = load_first_trade_dates(con, [c["ticker"] for c in pool], date)
+        excluded = [c for c in pool if not is_listing_age_allowed(first_dates.get(c["ticker"]), date)]
+        pool = [c for c in pool if is_listing_age_allowed(first_dates.get(c["ticker"]), date)]
+        if excluded:
+            print("[close_bet] 신규상장 30일 미만 제외: " + ",".join(c["ticker"] for c in excluded))
     if not pool:
         print(f"[close_bet] 주문 대상 없음")
         send_discord(f"[종가베팅] {date} 주문 대상 없음{dry_tag}\nscore>={args.score_threshold} 종목 0건")

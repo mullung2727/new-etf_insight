@@ -92,7 +92,7 @@ def _seed_caps(caps: dict[str, int]) -> Path:
     con.execute("CREATE TABLE ohlcv (date VARCHAR, ticker VARCHAR, market_cap BIGINT, PRIMARY KEY(date,ticker))")
     con.executemany(
         "INSERT INTO ohlcv (date, ticker, market_cap) VALUES (?,?,?)",
-        [(_DATE, t, c) for t, c in caps.items()],
+        [(date, t, c) for t, c in caps.items() for date in ("20260101", _DATE)],
     )
     con.close()
     return Path(path)
