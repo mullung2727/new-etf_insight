@@ -72,3 +72,6 @@ temp/
 
 # JSON admin 편집기 백업(직전 버전 롤백용)
 *.json.bak
+
+# 검증된 유효전략 — 공개 저장소에 올리지 않는다 (skills/new-etf-insight-git-workflow/SKILL.md)
+research/private/
