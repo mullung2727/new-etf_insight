@@ -9,6 +9,15 @@
 - When backtesting a trading strategy (일봉/분봉 데이터 조회, 청산 시뮬레이션, 표본 확장), first read `research/BACKTEST_DATA.md`.
 - When committing, branching, opening a PR, or handling CodeRabbit review comments, first read `skills/new-etf-insight-git-workflow/SKILL.md`.
 
+## 코드 탐색
+
+- 코드 구조 파악·정의 찾기·참조 추적은 grep 대신 serena MCP를 먼저 쓴다.
+  - `mcp__serena__get_symbols_overview` — 파일 안 열고 클래스/함수 목록만
+  - `mcp__serena__find_symbol` — 정의 위치 + 메서드 트리
+  - `mcp__serena__find_referencing_symbols` — 누가 호출하는지 크로스파일 추적
+- serena 툴은 deferred라 세션 첫 사용 시 `ToolSearch`로 한 번에 로드할 것.
+- grep은 문자열 검색(로그 메시지, 설정값, 주석)에만 쓴다.
+
 이 문서는 `new-etf-insight` 프로젝트에서 에이전트가 항상 따라야 하는 최상위 작업 지침이다.
 코드 수정, 설계, 테스트, 응답 방식은 반드시 이 문서를 우선한다.
 
