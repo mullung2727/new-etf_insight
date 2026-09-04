@@ -288,6 +288,29 @@ class GraphTest(unittest.TestCase):
         names = {x["name"] for x in embedded}
         self.assertEqual(names, {"삼성전자", "없는종목XYZ"})
 
+    def test_discovery_reason_is_not_a_copy_of_analysis(self):
+        """discovery_reason=어떻게 잡혔나, analysis=왜 중요한가. 둘이 같으면 컬럼 하나가 무의미해진다."""
+        _seed(self.con)
+        gen = _mock_gen_factory()
+        with patch(
+            "scripts.youtube_langgraph.youtube_analysis_langgraph.load_discovery_channels",
+            return_value={CH_DISC: {}},
+        ):
+            run_video(
+                channel_id=CH_DISC,
+                video_id=VID,
+                db_path=self.db,
+                generate_fn=gen,
+                name_to_code=NAME_TO_CODE,
+            )
+        reason, analysis = self.con.execute(
+            "SELECT discovery_reason, analysis FROM youtube_stock_insights WHERE ticker=?",
+            ("005930",),
+        ).fetchone()
+        self.assertNotEqual(reason, analysis)
+        self.assertIn(VID, reason)
+        self.assertTrue(analysis)
+
     def test_g6_existing_summary_skip(self):
         _seed(self.con)
         gen = _mock_gen_factory()
