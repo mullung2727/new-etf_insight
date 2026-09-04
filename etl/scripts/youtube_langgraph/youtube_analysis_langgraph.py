@@ -503,7 +503,9 @@ def node_extract_stocks(
         if not name:
             continue
         code = name_to_code.get(name)
-        reason = note or f"유튜브 이슈 요약 언급 ({state['video_id']})"
+        # discovery_reason 은 "어떻게 후보로 잡혔나"(기계적 사실), analysis 는 "왜 중요한가"(LLM 판단).
+        # LLM 은 note 하나만 주므로 note 를 reason 에도 넣으면 두 컬럼이 같은 글이 된다.
+        reason = f"유튜브 이슈 요약 언급 ({state['video_id']})"
         if not code:
             # 마스터 없음(미국·별칭 등): 표시용으로만 남김. insights 티커 시그널은 안 탐.
             warnings.append(f"llm_name_not_in_master:{name}")
