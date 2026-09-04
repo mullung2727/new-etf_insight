@@ -29,20 +29,18 @@ latest_activity() {  # 이 PR 의 가장 최근 CodeRabbit 활동 시각(ISO8601
 }
 
 headline() {  # $1=PR 번호, $2=이번에 감지한 활동 시각. 알림에 붙일 한 줄
-  local pr="$1" ts="$2" review_ts h
-  # 리뷰 객체를 무조건 읽으면, 요약 코멘트 갱신으로 감지된 건인데도 지난 리뷰의
-  # 제목이 딸려 나온다. 지적 0건 리뷰가 "지적 1건"으로 보고되던 원인.
-  review_ts=$(gh api --paginate "repos/$REPO/pulls/$pr/reviews" \
-    --jq '[.[] | select(.user.login=="coderabbitai[bot]") | select(.submitted_at)]
-          | last | .submitted_at' 2>/dev/null | tail -1)
-  if [ "$review_ts" = "$ts" ]; then
-    h=$(gh api --paginate "repos/$REPO/pulls/$pr/reviews" \
-      --jq '[.[] | select(.user.login=="coderabbitai[bot]") | select(.submitted_at)]
-            | last | .body | split("\n")[0]' 2>/dev/null | tail -1)
-    if [ -n "$h" ] && [ "$h" != "null" ]; then
-      printf '%s' "$h"
-      return
-    fi
+  local pr="$1" ts="$2" h
+  # 감지된 시각과 일치하는 리뷰만 고른다. 무조건 최신 리뷰를 읽으면 요약 코멘트
+  # 갱신으로 감지된 건에 지난 리뷰 제목이 딸려 나온다 — 지적 0건이 "지적 1건"이 되던 원인.
+  # 배열로 모아 last 를 쓰지 않는다. --paginate 는 페이지마다 --jq 를 따로 돌려서
+  # last 가 "마지막 페이지의 마지막"이 된다. 항목 단위로 뽑아야 페이지 수와 무관하다.
+  # body 가 없을 수 있으니 split 전에 빈 문자열로 받는다.
+  h=$(gh api --paginate "repos/$REPO/pulls/$pr/reviews" \
+    --jq ".[] | select(.user.login==\"coderabbitai[bot]\") | select(.submitted_at==\"$ts\")
+          | (.body // \"\") | split(\"\n\")[0]" 2>/dev/null | tail -1)
+  if [ -n "$h" ]; then
+    printf '%s' "$h"
+    return
   fi
   # 지적 0건이면 리뷰 객체 자체가 안 생긴다 — 결과가 요약 코멘트에만 적힌다.
   # 여기서 구분해두지 않으면 "지적 없음"과 "조회 실패"가 똑같이 빈 줄로 보인다.
