@@ -307,9 +307,12 @@ class GraphTest(unittest.TestCase):
             "SELECT discovery_reason, analysis FROM youtube_stock_insights WHERE ticker=?",
             ("005930",),
         ).fetchone()
-        self.assertNotEqual(reason, analysis)
+        # LLM note 는 analysis 로만 간다 (mock 의 삼성전자 note).
+        self.assertEqual(analysis, "실적 언급")
+        # note 가 reason 으로 새면 두 컬럼이 다시 같아진다. 문구 전체가 아니라
+        # 이 유출 여부를 검사해야 한글 문구를 바꿔도 테스트가 안 깨진다.
+        self.assertNotIn(analysis, reason)
         self.assertIn(VID, reason)
-        self.assertTrue(analysis)
 
     def test_g6_existing_summary_skip(self):
         _seed(self.con)
