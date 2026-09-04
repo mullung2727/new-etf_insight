@@ -28,14 +28,21 @@ latest_activity() {  # 이 PR 의 가장 최근 CodeRabbit 활동 시각(ISO8601
   } | sort | tail -1
 }
 
-headline() {  # 알림에 붙일 한 줄
-  local pr="$1" h
-  h=$(gh api --paginate "repos/$REPO/pulls/$pr/reviews" \
+headline() {  # $1=PR 번호, $2=이번에 감지한 활동 시각. 알림에 붙일 한 줄
+  local pr="$1" ts="$2" review_ts h
+  # 리뷰 객체를 무조건 읽으면, 요약 코멘트 갱신으로 감지된 건인데도 지난 리뷰의
+  # 제목이 딸려 나온다. 지적 0건 리뷰가 "지적 1건"으로 보고되던 원인.
+  review_ts=$(gh api --paginate "repos/$REPO/pulls/$pr/reviews" \
     --jq '[.[] | select(.user.login=="coderabbitai[bot]") | select(.submitted_at)]
-          | last | .body | split("\n")[0]' 2>/dev/null | tail -1)
-  if [ -n "$h" ] && [ "$h" != "null" ]; then
-    printf '%s' "$h"
-    return
+          | last | .submitted_at' 2>/dev/null | tail -1)
+  if [ "$review_ts" = "$ts" ]; then
+    h=$(gh api --paginate "repos/$REPO/pulls/$pr/reviews" \
+      --jq '[.[] | select(.user.login=="coderabbitai[bot]") | select(.submitted_at)]
+            | last | .body | split("\n")[0]' 2>/dev/null | tail -1)
+    if [ -n "$h" ] && [ "$h" != "null" ]; then
+      printf '%s' "$h"
+      return
+    fi
   fi
   # 지적 0건이면 리뷰 객체 자체가 안 생긴다 — 결과가 요약 코멘트에만 적힌다.
   # 여기서 구분해두지 않으면 "지적 없음"과 "조회 실패"가 똑같이 빈 줄로 보인다.
@@ -69,13 +76,16 @@ while true; do
       --jq '.commits | last | .committedDate' 2>/dev/null)
     latest=$(latest_activity "$pr")
 
-    if [ -n "$latest" ] && [ "$latest" != "${seen[$pr]:-}" ]; then
-      seen[$pr]="$latest"
-      printf 'PR #%s — CodeRabbit 리뷰 도착: %s\n' "$pr" "$(headline "$pr")"
-    fi
     # 활동이 없거나 마지막 커밋보다 이전이면 아직 기다리는 중
     if [ -z "$latest" ] || [ -z "$last_commit" ] || [[ "$latest" < "$last_commit" ]]; then
       pending=$((pending + 1))
+      continue
+    fi
+    # 여기 온 것 = 현재 코드에 대한 리뷰가 끝났다. 알림 조건을 종료 판정과 같게 둬야
+    # 감시를 새로 띄웠을 때 커밋 이전의 지난 리뷰를 새 도착으로 찍지 않는다.
+    if [ "$latest" != "${seen[$pr]:-}" ]; then
+      seen[$pr]="$latest"
+      printf 'PR #%s — CodeRabbit 리뷰 도착: %s\n' "$pr" "$(headline "$pr" "$latest")"
     fi
   done
 
