@@ -64,18 +64,24 @@ def fetch_dart_list(
     return data.get("list") or []
 
 
-def fetch_filing_page(api_key: str, begin: str, end: str, page_no: int, page_count: int) -> dict[str, Any]:
-    response = requests.get(
-        LIST_API_URL,
-        params={
-            "crtfc_key": api_key,
-            "bgn_de": begin,
-            "end_de": end,
-            "page_no": page_no,
-            "page_count": page_count,
-        },
-        timeout=30,
-    )
+def fetch_filing_page(
+    api_key: str,
+    begin: str,
+    end: str,
+    page_no: int,
+    page_count: int,
+    pblntf_ty: str | None = None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "crtfc_key": api_key,
+        "bgn_de": begin,
+        "end_de": end,
+        "page_no": page_no,
+        "page_count": page_count,
+    }
+    if pblntf_ty:
+        params["pblntf_ty"] = pblntf_ty  # A=정기공시. 서버에서 걸러 페이지 수를 반으로 줄인다.
+    response = requests.get(LIST_API_URL, params=params, timeout=30)
     response.raise_for_status()
     return response.json()
 
@@ -86,12 +92,13 @@ def fetch_all_filings(
     end: str,
     page_count: int = 100,
     max_pages: int = 50,
+    pblntf_ty: str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     filings: list[dict[str, Any]] = []
     last_payload: dict[str, Any] = {}
 
     for page_no in range(1, max_pages + 1):
-        payload = fetch_filing_page(api_key, begin, end, page_no, page_count)
+        payload = fetch_filing_page(api_key, begin, end, page_no, page_count, pblntf_ty)
         last_payload = payload
         status = payload.get("status")
         if status == "013":

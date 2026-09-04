@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import argparse
 import io
+import re
 import sys
 import time
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -29,7 +30,7 @@ import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path: etl/·scripts/·
 
 import requests  # noqa: E402
 
-from new_etf_insight.dart_client import fetch_dart_list, get_api_key  # noqa: E402
+from new_etf_insight.dart_client import fetch_all_filings, fetch_dart_list, get_api_key  # noqa: E402
 from wl_sqlite import connect_rw  # noqa: E402
 
 BASE_URL = "https://opendart.fss.or.kr/api"
@@ -313,6 +314,36 @@ def latest_annual_year(key: str, probe_corp: str = "00126380") -> str:
     raise RuntimeError("최신 가용 연간 사업연도를 찾지 못함")
 
 
+# 공시목록(list.json)에서 정기보고서만 뽑기 위한 상수.
+PERIODIC_PBLNTF_TY = "A"          # 정기공시
+LISTED_CORP_CLS = ("Y", "K")      # 유가증권 / 코스닥 (E=기타·N=코넥스 제외)
+# report_nm 이름 → reprt_code. 분기보고서는 1Q/3Q가 동명이라 여기 없음.
+REPORT_NAME_REPRT = {"사업보고서": "11011", "반기보고서": "11012"}
+# 12월 결산 가정: 3월말 결산기 = 1분기, 9월말 = 3분기.
+QUARTER_MONTH_REPRT = {"03": "11013", "09": "11014"}
+_REPORT_NM_RE = re.compile(r"^(?:\[[^\]]*\])?\s*(\S+?)\s*\((\d{4})\.(\d{2})\)\s*$")
+
+
+def parse_report_period(report_nm: str) -> tuple[str, str, str] | None:
+    """공시 report_nm → (사업연도, reprt_code, 결산월). 정기보고서가 아니면 None.
+
+    "[기재정정]반기보고서 (2026.06)" → ("2026", "11012", "06")
+    분기보고서는 이름만으로 1분기·3분기를 못 가르므로 결산월로 판정한다(12월 결산 가정).
+    ponytail: 비12월 결산 법인은 이 가정이 어긋난다. 분기는 결산월이 03/09가 아니면
+    None으로 떨궈 스킵하고, 사업·반기는 그대로 요청한 뒤 결산월 대조·무응답 집계로 드러낸다.
+    """
+    m = _REPORT_NM_RE.match(report_nm)
+    if not m:
+        return None
+    kind, year, month = m.groups()
+    if kind in REPORT_NAME_REPRT:
+        return year, REPORT_NAME_REPRT[kind], month
+    if kind == "분기보고서":
+        reprt = QUARTER_MONTH_REPRT.get(month)
+        return (year, reprt, month) if reprt else None
+    return None
+
+
 def _chunks(seq: list, n: int):
     for i in range(0, len(seq), n):
         yield seq[i:i + n]
@@ -405,6 +436,89 @@ def run(
     return stats
 
 
+def run_from_filings(
+    filed_on: str,
+    db_path: Path = DEFAULT_DB_PATH,
+    sources: list[str] | None = None,
+    key: str | None = None,
+) -> dict:
+    """filed_on(YYYYMMDD)에 접수된 정기보고서 제출사만 적재.
+
+    제출 시기를 달력으로 추측하지 않고, 공시목록이 알려준 (사업연도, 보고서)를 그대로 쓴다.
+    대상이 이미 '그날 낸 곳'으로 좁혀져 있어 force 적재 — 정정·첨부 재공시가 기존 행을 덮는다.
+    제출이 없는 날은 목록 1콜로 끝난다.
+    """
+    key = key or get_api_key()
+    sources = sources or list(SOURCES)
+    filings, _ = fetch_all_filings(key, filed_on, filed_on, pblntf_ty=PERIODIC_PBLNTF_TY)
+
+    groups: dict[tuple[str, str], list[str]] = {}
+    months: dict[tuple[str, str], set[str]] = {}
+    unparsed: list[str] = []
+    for f in filings:
+        if f.get("corp_cls") not in LISTED_CORP_CLS:
+            continue
+        parsed = parse_report_period(str(f.get("report_nm", "")))
+        if parsed is None:
+            unparsed.append(str(f.get("report_nm", "")))
+            continue
+        year, reprt, month = parsed
+        codes = groups.setdefault((year, reprt), [])
+        if f["corp_code"] not in codes:
+            codes.append(f["corp_code"])
+        months.setdefault((year, reprt), set()).add(month)
+
+    targets = sum(len(v) for v in groups.values())
+    print(f"[{filed_on}] 정기공시 {len(filings)} → 상장 제출사 {targets}, period {len(groups)}")
+    if unparsed:
+        print(f"  period 판정 불가 {len(unparsed)}건 스킵: {sorted(set(unparsed))[:5]}")
+
+    stats = {"filed_on": filed_on, "filings": len(filings), "targets": targets,
+             "runs": [], "rows": 0, "missing": {}, "stlm_mismatch": {}}
+    if not groups:
+        return stats
+
+    session = requests.Session()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with connect_rw(db_path) as con:
+        ensure_schema(con)
+        upsert_corps(con, fetch_listed_corps(key))  # 신규 상장사 이름 보강(zip 캐시라 사실상 0콜)
+        con.commit()
+
+        for (year, reprt), corp_codes in sorted(groups.items()):
+            for source in sources:
+                r = _process_source(con, source, corp_codes, year, reprt, None, True, key, session)
+                stats["runs"].append(r)
+                stats["rows"] += r["rows"]
+            _report_period_gaps(con, stats, year, reprt, corp_codes, months[(year, reprt)])
+
+    return stats
+
+
+def _report_period_gaps(con, stats, year, reprt, corp_codes, expected_months) -> None:
+    """적재 후 검증: 응답이 없던 회사 + 결산월이 공시와 어긋난 회사를 집계·출력.
+
+    12월 결산 가정이 틀린 회사가 여기서 드러난다. 잘못된 period로 요청하면 DART가
+    무자료를 주거나(무응답), 그 회사의 실제 결산기 데이터를 주기(결산월 불일치) 때문.
+    """
+    wanted = set(corp_codes)
+    stored = {
+        cc: dt for cc, dt in con.execute(
+            "SELECT DISTINCT corp_code, stlm_dt FROM indicators WHERE bsns_year=? AND reprt_code=?",
+            (year, reprt),
+        ) if cc in wanted
+    }
+    missing = sorted(wanted - set(stored))
+    mismatch = sorted(cc for cc, dt in stored.items() if dt and dt[5:7] not in expected_months)
+    label = f"{year}-{reprt}"
+    if missing:
+        stats["missing"][label] = missing
+        print(f"  [{label}] 무응답 {len(missing)}/{len(wanted)}사: {missing[:5]}")
+    if mismatch:
+        stats["stlm_mismatch"][label] = mismatch
+        print(f"  [{label}] 결산월 불일치 {len(mismatch)}사(공시 {sorted(expected_months)}): {mismatch[:5]}")
+
+
 def _self_check() -> None:
     """1단계 self-check: 삼성·SK하이닉스·현대차 실호출로 core 검증."""
     key = get_api_key()
@@ -454,15 +568,22 @@ def main() -> None:
                    help="indicators(지표) / accounts(금액) / both(기본)")
     p.add_argument("--force", action="store_true", help="skip 무시 전량 재적재")
     p.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
+    p.add_argument("--filings-on", nargs="?", const="", metavar="YYYYMMDD",
+                   help="그날 접수된 정기보고서 제출사만 적재 (값 생략 시 어제). --year/--reprt 무시")
     args = p.parse_args()
 
     if args.self_check:
         _self_check()
         return
 
+    sources_arg = list(SOURCES) if args.source == "both" else [args.source]
+    if args.filings_on is not None:
+        filed_on = args.filings_on or (date.today() - timedelta(days=1)).strftime("%Y%m%d")
+        print("DONE", run_from_filings(filed_on, db_path=args.db, sources=sources_arg))
+        return
+
     periods = [(args.year, args.reprt)] if args.year else None
-    sources = list(SOURCES) if args.source == "both" else [args.source]
-    stats = run(db_path=args.db, periods=periods, sources=sources, limit=args.limit, force=args.force)
+    stats = run(db_path=args.db, periods=periods, sources=sources_arg, limit=args.limit, force=args.force)
     print("DONE", stats)
 
 
