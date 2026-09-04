@@ -20,6 +20,23 @@ def is_listing_age_allowed(
     return (as_of - first).days >= min_age_days
 
 
+def partition_by_listing_age(
+    tickers: Iterable[str],
+    first_trade_dates: dict[str, str],
+    as_of_date: str,
+    min_age_days: int = MIN_LISTING_AGE_DAYS,
+) -> tuple[list[str], list[str]]:
+    """(허용, 제외) 티커를 한 번에 가른다. 제외 목록은 로그용."""
+    allowed: list[str] = []
+    excluded: list[str] = []
+    for ticker in tickers:
+        bucket = allowed if is_listing_age_allowed(
+            first_trade_dates.get(ticker), as_of_date, min_age_days
+        ) else excluded
+        bucket.append(ticker)
+    return allowed, excluded
+
+
 def load_first_trade_dates(con, tickers: Iterable[str], as_of_date: str) -> dict[str, str]:
     """KRX OHLCV에서 기준일 이하 최초 거래일을 조회한다."""
     unique = list(dict.fromkeys(tickers))

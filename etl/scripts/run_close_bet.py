@@ -37,7 +37,9 @@ import requests
 from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
-    from scripts.listing_age_guard import is_listing_age_allowed, load_first_trade_dates
+    from scripts.listing_age_guard import (
+        MIN_LISTING_AGE_DAYS, load_first_trade_dates, partition_by_listing_age,
+    )
     from scripts.notify import send_discord
     from scripts.run_verify import (
         fetch_order_history,
@@ -51,7 +53,9 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
         in_order_window, market_order,
     )
 except ImportError:
-    from listing_age_guard import is_listing_age_allowed, load_first_trade_dates
+    from listing_age_guard import (
+        MIN_LISTING_AGE_DAYS, load_first_trade_dates, partition_by_listing_age,
+    )
     from notify import send_discord
     from run_verify import fetch_order_history, mark_confirmed, normalize_order_no
     from wl_sqlite import connect_ro, connect_rw
@@ -135,6 +139,26 @@ def check_precondition(watchlist_db: Path, date: str) -> int:
         return con.execute(
             "SELECT COUNT(*) FROM llm_scores WHERE date=?", [date]
         ).fetchone()[0]
+
+
+def exclude_recent_listings(
+    pool: list[dict], krx_db: Path, as_of_date: str
+) -> tuple[list[dict], list[str]]:
+    """주문 후보에서 신규상장 종목을 뺀다 → (남은 후보, 제외 티커).
+
+    krx_db가 없으면 상장일을 확인할 방법이 없다. 그때 전량 통과시키면 안전장치가
+    데이터 없을 때만 열리는 꼴이라 FileNotFoundError로 멈춘다 — 호출부가 ABORT한다.
+    """
+    if not krx_db.exists():
+        raise FileNotFoundError(krx_db)
+    if not pool:
+        return pool, []
+    tickers = [c["ticker"] for c in pool]
+    with duckdb.connect(str(krx_db), read_only=True) as con:
+        first_dates = load_first_trade_dates(con, tickers, as_of_date)
+    _, excluded = partition_by_listing_age(tickers, first_dates, as_of_date)
+    dropped = set(excluded)
+    return [c for c in pool if c["ticker"] not in dropped], excluded
 
 
 def load_order_candidates(
@@ -524,13 +548,14 @@ def main() -> None:
         sys.exit(1)
 
     pool = load_order_candidates(watchlist_db, date, args.score_threshold)
-    if DEFAULT_KRX_DB.exists() and pool:
-        with duckdb.connect(str(DEFAULT_KRX_DB), read_only=True) as con:
-            first_dates = load_first_trade_dates(con, [c["ticker"] for c in pool], date)
-        excluded = [c for c in pool if not is_listing_age_allowed(first_dates.get(c["ticker"]), date)]
-        pool = [c for c in pool if is_listing_age_allowed(first_dates.get(c["ticker"]), date)]
-        if excluded:
-            print("[close_bet] 신규상장 30일 미만 제외: " + ",".join(c["ticker"] for c in excluded))
+    try:
+        pool, excluded = exclude_recent_listings(pool, DEFAULT_KRX_DB, date)
+    except FileNotFoundError:
+        print(f"[close_bet] ABORT: {DEFAULT_KRX_DB.name} 없음 — 신규상장 배제를 검증할 수 없음")
+        send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\n{DEFAULT_KRX_DB.name} 없음 — 신규상장 배제 불가")
+        sys.exit(1)
+    if excluded:
+        print(f"[close_bet] 신규상장 {MIN_LISTING_AGE_DAYS}일 미만 제외: " + ",".join(excluded))
     if not pool:
         print(f"[close_bet] 주문 대상 없음")
         send_discord(f"[종가베팅] {date} 주문 대상 없음{dry_tag}\nscore>={args.score_threshold} 종목 0건")
