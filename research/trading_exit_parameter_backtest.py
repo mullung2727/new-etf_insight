@@ -133,6 +133,11 @@ def simulate(bars: list[dict[str, Any]], entry_price: int, exit_dates: list[str]
     for date in exit_dates:
         day = sorted(by_date[date], key=lambda b: b["time"])
         for index, bar in enumerate(day):
+            # 마지막 날 15:19 사이클은 운영에서 TP/SL 을 보지 않고 무조건 시장가로 판다
+            # (run_pullback_exit.py: reason = "forced" if force ... else decide_exit(...)).
+            # 이 봉에서 TP 판정을 먼저 하면 실제보다 좋은 가격에 판 것으로 계산된다.
+            if date == exit_dates[-1] and bar["time"] == FORCE_TIME:
+                return _out(bar["close"], entry_price, "forced", bar)
             if index == 0:
                 if bar["open"] >= tp_price:
                     return _out(bar["open"], entry_price, "gap_tp", bar)
