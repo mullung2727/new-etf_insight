@@ -9,6 +9,12 @@ New-Item -Force -ItemType Directory $logDir | Out-Null
 $target = (Get-Date).ToString("yyyyMMdd")
 $log = Join-Path $logDir ("financial-indicators-" + $target + ".log")
 
+# PC가 꺼져 19:00 트리거를 거르면 그날 제출분이 영영 안 들어온다(다음 실행은 다른 날짜를
+# 받으므로). 최근 며칠을 같이 훑어 다음 성공 실행이 주워담게 한다. 적재는 멱등(upsert)이고
+# 제출 없는 날은 1콜이라 재방문 비용이 거의 없다.
+# ponytail: 3일을 넘겨 꺼져 있었으면 그 날짜로 --filings-on 을 직접 돌려야 한다.
+$lookbackDays = 3
+
 Set-Location $etlDir
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
@@ -25,13 +31,17 @@ function Invoke-Step {
 }
 
 try {
-  $out = Invoke-Step "load DART periodic filings" `
-    ".\.venv\Scripts\python.exe" @("scripts\build_financial_indicators.py", "--filings-on", $target)
+  $out = @()
+  foreach ($offset in ($lookbackDays - 1)..0) {
+    $day = (Get-Date).AddDays(-$offset).ToString("yyyyMMdd")
+    $out += Invoke-Step "load DART periodic filings $day" `
+      ".\.venv\Scripts\python.exe" @("scripts\build_financial_indicators.py", "--filings-on", $day)
+  }
 
   # 제출사 0이면 알리지 않는다 - 대부분의 날이 여기 해당하고, 매일 오는 "0건" 알림은 소음이다.
   $submitters = 0
   foreach ($line in $out) {
-    if ("$line" -match "상장 제출사 (\d+)") { $submitters = [int]$Matches[1]; break }
+    if ("$line" -match "상장 제출사 (\d+)") { $submitters += [int]$Matches[1] }
   }
 
   if ($submitters -gt 0) {
