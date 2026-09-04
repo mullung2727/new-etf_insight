@@ -22,6 +22,7 @@ import requests
 from dotenv import load_dotenv
 
 try:
+    from scripts.listing_age_guard import is_listing_age_allowed, load_first_trade_dates
     from scripts.notify import send_discord
     from scripts.pullback_config import load
     from scripts.trading_batch_common import (
@@ -30,6 +31,7 @@ try:
     )
     from scripts.wl_sqlite import connect_ro, connect_rw
 except ImportError:
+    from listing_age_guard import is_listing_age_allowed, load_first_trade_dates
     from notify import send_discord
     from pullback_config import load
     from trading_batch_common import (
@@ -325,8 +327,11 @@ def load_today_signal_candidates(
 
     prepared: list[dict[str, Any]] = []
     with duckdb.connect(str(krx_db), read_only=True) as con:
+        first_dates = load_first_trade_dates(con, [row[1] for row in watchlist_rows], today)
         for watchlist_date, ticker in watchlist_rows:
             if (watchlist_date, ticker) in terminal or ticker in close_held or ticker in pullback_held:
+                continue
+            if not is_listing_age_allowed(first_dates.get(ticker), today):
                 continue
             base = con.execute(
                 "SELECT date, open, low, close FROM ohlcv WHERE ticker=? AND date=?",
