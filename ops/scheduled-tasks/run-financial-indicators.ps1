@@ -6,7 +6,10 @@ New-Item -Force -ItemType Directory $logDir | Out-Null
 
 # DART 정기보고서 접수 마감은 18:00 → 19:00 실행은 당일치를 그날 받는다.
 # 제출이 없는 날은 공시목록 1콜로 끝나므로 매일 돌려도 비용이 없다.
-$target = (Get-Date).ToString("yyyyMMdd")
+# 실행 시각은 한 번만 읽는다 - 피크일 훑기는 수십 분이라 도중에 자정을 넘길 수 있고,
+# 그때 Get-Date 를 다시 부르면 창이 하루 밀려 정작 받으려던 날을 건너뛴다.
+$runDate = Get-Date
+$target = $runDate.ToString("yyyyMMdd")
 $log = Join-Path $logDir ("financial-indicators-" + $target + ".log")
 
 # PC가 꺼져 19:00 트리거를 거르면 그날 제출분이 영영 안 들어온다(다음 실행은 다른 날짜를
@@ -33,7 +36,7 @@ function Invoke-Step {
 try {
   $out = @()
   foreach ($offset in ($lookbackDays - 1)..0) {
-    $day = (Get-Date).AddDays(-$offset).ToString("yyyyMMdd")
+    $day = $runDate.AddDays(-$offset).ToString("yyyyMMdd")
     $out += Invoke-Step "load DART periodic filings $day" `
       ".\.venv\Scripts\python.exe" @("scripts\build_financial_indicators.py", "--filings-on", $day)
   }
