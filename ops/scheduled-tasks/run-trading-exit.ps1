@@ -9,7 +9,8 @@ $commonArgs = @(
   "--broker-url", "http://localhost:8001",
   "--poll-sec", "5",
   "--force-exit-time", "15:19:00",
-  "--stop-time", "15:25:00"
+  "--stop-time", "15:25:00",
+  "--window-start", "09:00:00"
 )
 
 # -Wait 필수: 없으면 PS 5.1이 종료코드를 못 읽어 $null이 되고, $null -ne 0 이라 항상 rc=1

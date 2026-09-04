@@ -1,16 +1,18 @@
 """pullback TP/SL·거래일 만기 청산 TDD 테스트."""
 from __future__ import annotations
 
+import argparse
 import os
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 from unittest.mock import patch
 
 from scripts.run_pullback_exit import (
-    advance_holding_day, decide_exit, expire_stale_orders, load_positions, mark_missing_positions,
-    mark_sell_ordered, sell_quantity, settle_sell_orders,
+    advance_holding_day, decide_exit, expire_stale_orders, is_exit_window_started, load_positions,
+    mark_missing_positions, mark_sell_ordered, run_loop_step, sell_quantity, settle_sell_orders,
 )
 from scripts.run_pullback_order import create_pullback_orders_table
 from scripts.wl_sqlite import connect_ro, connect_rw
@@ -185,3 +187,56 @@ class ExpireStaleOrdersTest(unittest.TestCase):
     def test_idempotent(self):
         expire_stale_orders(self.db, "20260821")
         self.assertEqual(expire_stale_orders(self.db, "20260821"), 0)
+
+
+def _at(hms: str) -> datetime:
+    return datetime.fromisoformat(f"2026-09-04T{hms}+09:00")
+
+
+class ExitWindowTest(unittest.TestCase):
+    """정규장 시작 경계. 장전 예상호가는 TP/SL 판정에 쓸 수 없다."""
+
+    def test_preopen_is_blocked(self):
+        self.assertFalse(is_exit_window_started(_at("08:50:00"), "09:00:00"))
+        self.assertFalse(is_exit_window_started(_at("08:59:59"), "09:00:00"))
+
+    def test_regular_session_start_is_allowed(self):
+        self.assertTrue(is_exit_window_started(_at("09:00:00"), "09:00:00"))
+        self.assertTrue(is_exit_window_started(_at("15:19:00"), "09:00:00"))
+
+
+class ExitLoopStepTest(unittest.TestCase):
+    """가드가 broker 호출보다 앞에 있는지. 경계값이 아니라 호출 여부를 본다."""
+
+    def setUp(self):
+        self.calls: list[tuple] = []
+        self.args = argparse.Namespace(
+            window_start="09:00:00", force_exit_time="15:19:00", stop_time="15:25:00",
+        )
+
+    def _step(self, hms: str, counted: bool = False):
+        return run_loop_step(
+            _at(hms), self.args, "http://broker", {}, True, counted,
+            settle=lambda *a: self.calls.append(("settle",) + a[2:]),
+            cycle=lambda *a: self.calls.append(("cycle",) + a[3:]),
+        )
+
+    def test_preopen_touches_no_broker_function(self):
+        # 써니전자 매도가 접수된 시각. settle·cycle 어느 쪽도 불려선 안 된다.
+        self.assertEqual(self._step("08:53:14"), ("wait", False))
+        self.assertEqual(self.calls, [])
+
+    def test_regular_session_runs_both(self):
+        self.assertEqual(self._step("09:00:00"), ("ran", False))
+        self.assertEqual([c[0] for c in self.calls], ["settle", "cycle"])
+
+    def test_stop_time_wins_over_window(self):
+        self.assertEqual(self._step("15:25:00"), ("stop", False))
+        self.assertEqual(self.calls, [])
+
+    def test_force_marks_counted_once(self):
+        self.assertEqual(self._step("15:19:00"), ("ran", True))
+        self.assertTrue(self.calls[1][2])          # cycle(force=True)
+        self.calls.clear()
+        self.assertEqual(self._step("15:19:00", counted=True), ("ran", True))
+        self.assertFalse(self.calls[1][2])         # 같은 날 두 번 차감하지 않는다

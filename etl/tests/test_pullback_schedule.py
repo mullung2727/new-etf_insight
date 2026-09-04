@@ -34,6 +34,12 @@ class PullbackScheduleTest(unittest.TestCase):
                     self.assertNotIn(close_bet_script, text)
                 self.assertIn("broker-url", text)
 
+    def test_trading_exit_declares_regular_session_start(self):
+        # Task는 08:50에 시작해 기동 실패를 장전에 드러낸다. 09:00 정책은 Python 기본값에만
+        # 두지 않고 운영 action에도 적어, 인자를 읽는 것만으로 정책이 보이게 한다.
+        text = (OPS / "run-trading-exit.ps1").read_text(encoding="utf-8")
+        self.assertIn('"--window-start", "09:00:00"', text)
+
     def test_trading_exit_starts_one_pullback_worker(self):
         text = (OPS / "run-trading-exit.ps1").read_text(encoding="utf-8")
         self.assertEqual(text.count("Start-Process"), 1)

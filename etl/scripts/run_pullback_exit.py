@@ -242,6 +242,35 @@ def run_cycle(db_path: Path, broker_url: str, config: dict[str, Any], today: str
     return ordered
 
 
+def is_exit_window_started(now: datetime, start_hms: str) -> bool:
+    """정규장이 시작됐나. 장전 예상호가는 TP/SL 판정에 쓸 수 없다.
+
+    2026-09-04 써니전자: 08:53 장전 호가가 TP 기준을 넘겨 시장가 매도가 나갔고,
+    시초 단일가 2,055원에 체결돼 원장은 'tp'인데 실현손익은 +0.02%였다.
+    """
+    return now.strftime("%H:%M:%S") >= start_hms
+
+
+def run_loop_step(now: datetime, args, broker_url: str, config: dict[str, Any], dry_run: bool,
+                  counted: bool, settle=settle_sell_orders, cycle=run_cycle) -> tuple[str, bool]:
+    """루프 1회분 → (동작, 갱신된 counted). 동작은 stop / wait / ran.
+
+    settle·cycle을 인자로 받는 건 '09:00 전에는 둘 다 안 불린다'를 테스트가 단언하기
+    위해서다. 가드가 이 두 호출보다 뒤로 밀리면 그 테스트가 깨진다. 운영 호출부는
+    기본값을 그대로 쓴다.
+    """
+    hms = now.strftime("%H:%M:%S")
+    if hms >= args.stop_time:
+        return "stop", counted
+    if not is_exit_window_started(now, args.window_start):
+        return "wait", counted
+    today = now.strftime("%Y%m%d")
+    settle(DEFAULT_WATCHLIST_DB, broker_url, today)
+    force = not counted and hms >= args.force_exit_time
+    cycle(DEFAULT_WATCHLIST_DB, broker_url, config, today, force, dry_run)
+    return "ran", counted or force
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(ROOT / ".env")
     parser = argparse.ArgumentParser(description="pullback TP/SL·만기 청산 워커")
@@ -249,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-sec", type=float, default=5.0)
     parser.add_argument("--force-exit-time", default="15:19:00")
     parser.add_argument("--stop-time", default="15:25:00")
+    parser.add_argument("--window-start", default="09:00:00")
     parser.add_argument("--dry-run", default="true")
     args = parser.parse_args(argv)
     broker_url = args.broker_url or os.getenv("BROKER_API_URL", "http://localhost:8001")
@@ -259,14 +289,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[pullback-exit] 전일 미체결 {expired}건 expired 처리")
     counted = False
     while True:
-        now = now_seoul()
-        if now.strftime("%H:%M:%S") >= args.stop_time:
+        action, counted = run_loop_step(now_seoul(), args, broker_url, config, dry_run, counted)
+        if action == "stop":
             break
-        today = now.strftime("%Y%m%d")
-        settle_sell_orders(DEFAULT_WATCHLIST_DB, broker_url, today)
-        force = not counted and now.strftime("%H:%M:%S") >= args.force_exit_time
-        run_cycle(DEFAULT_WATCHLIST_DB, broker_url, config, today, force, dry_run)
-        counted = counted or force
         time.sleep(args.poll_sec)
     return 0
 
