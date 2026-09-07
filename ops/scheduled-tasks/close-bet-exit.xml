@@ -6,7 +6,7 @@
 -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>종가베팅 청산 워커 (평일 08:50 기동, +5% 익절/-3% 손절, 15:19 강제청산, 15:25 종료)</Description>
+    <Description>종가베팅 청산 워커 (평일 08:50 기동, 강제청산 시각은 etl/scripts/close_bet.json 의 exit_time, 09:10 종료)</Description>
     <URI>\OpenClaw\close-bet-exit</URI>
   </RegistrationInfo>
   <Triggers>

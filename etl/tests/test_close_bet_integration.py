@@ -49,8 +49,8 @@ def _seed_listing_history(db: Path) -> Path:
     """llm_scores의 종목을 오래된 상장일로 채운 KRX 픽스처.
 
     신규상장 가드가 상장일을 못 읽으면 main()이 ABORT하므로, 그 가드를 다루지 않는
-    테스트에도 최소 이력이 필요하다. market_cap은 NULL — fetch_market_caps가
-    None을 걸러내 caps={}가 되어 시총 동점깸은 기존처럼 생략된다.
+    테스트에도 최소 이력이 필요하다. 시총·거래대금은 전 종목 동일값으로 필터를 통과시켜
+    (거래대금 동률 → 정렬은 score 순 유지) 선정 결과가 기존과 같게 만든다.
     """
     fd, path = tempfile.mkstemp(suffix=".duckdb")
     os.close(fd)
@@ -58,9 +58,10 @@ def _seed_listing_history(db: Path) -> Path:
     with connect_ro(db) as con:
         tickers = [r[0] for r in con.execute("SELECT DISTINCT ticker FROM llm_scores")]
     with duckdb.connect(path) as con:
-        con.execute("CREATE TABLE ohlcv (date VARCHAR, ticker VARCHAR, market_cap BIGINT)")
+        con.execute("CREATE TABLE ohlcv (date VARCHAR, ticker VARCHAR, market_cap BIGINT, "
+                    "close BIGINT, volume BIGINT)")
         if tickers:  # duckdb executemany는 빈 파라미터 목록을 거부한다
-            con.executemany("INSERT INTO ohlcv VALUES (?,?,NULL)",
+            con.executemany("INSERT INTO ohlcv VALUES (?,?,10000000000,5000,1000000)",
                             [("20210802", t) for t in tickers])
     return Path(path)
 
@@ -104,16 +105,22 @@ def _order_qty(db: Path) -> dict[str, int]:
         }
 
 
-def _seed_caps(caps: dict[str, int]) -> Path:
-    """krx_ohlcv.duckdb 임시 생성 — {ticker: market_cap} @ _DATE."""
+def _seed_stats(stats: dict[str, tuple[int, int]]) -> Path:
+    """krx_ohlcv.duckdb 임시 생성 — {ticker: (market_cap, 거래대금)}.
+
+    거래대금은 close=1000 고정에 volume 으로 맞춘다. 진입일(_DATE) 행도 넣어
+    fetch_prev_stats 가 당일을 쓰지 않는지(= 20260101 행을 쓰는지) 같이 검증한다.
+    """
     fd, path = tempfile.mkstemp(suffix=".duckdb")
     os.close(fd)
     os.unlink(path)
     con = duckdb.connect(path)
-    con.execute("CREATE TABLE ohlcv (date VARCHAR, ticker VARCHAR, market_cap BIGINT, PRIMARY KEY(date,ticker))")
+    con.execute("CREATE TABLE ohlcv (date VARCHAR, ticker VARCHAR, market_cap BIGINT, "
+                "close BIGINT, volume BIGINT, PRIMARY KEY(date,ticker))")
     con.executemany(
-        "INSERT INTO ohlcv (date, ticker, market_cap) VALUES (?,?,?)",
-        [(date, t, c) for t, c in caps.items() for date in ("20260101", _DATE)],
+        "INSERT INTO ohlcv (date, ticker, market_cap, close, volume) VALUES (?,?,?,1000,?)",
+        [(date, t, cap, tv // 1000)
+         for t, (cap, tv) in stats.items() for date in ("20260101", _DATE)],
     )
     con.close()
     return Path(path)
@@ -124,6 +131,9 @@ _TEST_CFG = {
     "score_threshold": 50,
     "tp": 0.05,
     "sl": 0.03,
+    # 임의값 — 운영 임계값(close_bet.json, 비공개)과 무관.
+    "cap_max": 77_000_000_000,
+    "turnover_min": 3_000_000_000,
     "budget_by_count": {1: 3_000_000, 2: 2_000_000, 3: 5_000_000 // 3},
 }
 
@@ -395,21 +405,48 @@ class TestBudgetSizing(unittest.TestCase):
 
 # ── 8. 시총 동점깸 (score 동점 4종목 → 시총 큰 3개) ──────────────────────────
 
-class TestMarketCapTiebreak(unittest.TestCase):
+class TestTurnoverRankingAndFilter(unittest.TestCase):
+    """정렬은 전일 거래대금 DESC, 컷 전에 시총·거래대금 필터."""
+
     def setUp(self):
         self.db = _fresh_db()
-        _seed(self.db, [("A", 80), ("B", 80), ("C", 80), ("D", 80)])
-        self.krx = _seed_caps({"A": 100, "B": 400, "C": 300, "D": 200})
 
     def tearDown(self):
         self.db.unlink(missing_ok=True)
         self.krx.unlink(missing_ok=True)
 
-    def test_picks_top_three_by_market_cap(self):
+    def test_picks_top_three_by_turnover_ignoring_score(self):
+        # score 는 A 가 제일 높지만 거래대금 꼴찌라 탈락한다.
+        _seed(self.db, [("A", 95), ("B", 80), ("C", 80), ("D", 80)])
+        self.krx = _seed_stats({
+            "A": (50_000_000_000, 3_000_000_000),
+            "B": (50_000_000_000, 9_000_000_000),
+            "C": (50_000_000_000, 8_000_000_000),
+            "D": (50_000_000_000, 7_000_000_000),
+        })
         _run_main(["--date", _DATE, "--allow-order-outside-close-window"],
                   self.db, krx_db=self.krx)
-        tickers = {r[0] for r in _order_rows(self.db)}
-        self.assertEqual(tickers, {"B", "C", "D"})  # 시총 400/300/200, A(100) 탈락
+        self.assertEqual({r[0] for r in _order_rows(self.db)}, {"B", "C", "D"})
+
+    def test_large_cap_and_illiquid_dropped_before_cut(self):
+        # A(시총 초과)·B(거래대금 미달)가 컷 앞에서 빠져 그 자리를 C·D 가 채운다.
+        _seed(self.db, [("A", 95), ("B", 93), ("C", 80), ("D", 78)])
+        self.krx = _seed_stats({
+            "A": (300_000_000_000, 9_000_000_000),
+            "B": (50_000_000_000, 500_000_000),
+            "C": (50_000_000_000, 8_000_000_000),
+            "D": (50_000_000_000, 7_000_000_000),
+        })
+        _run_main(["--date", _DATE, "--allow-order-outside-close-window"],
+                  self.db, krx_db=self.krx)
+        self.assertEqual({r[0] for r in _order_rows(self.db)}, {"C", "D"})
+
+    def test_no_candidate_passes_filter_means_no_order(self):
+        _seed(self.db, [("A", 95)])
+        self.krx = _seed_stats({"A": (300_000_000_000, 9_000_000_000)})
+        _run_main(["--date", _DATE, "--allow-order-outside-close-window"],
+                  self.db, krx_db=self.krx)
+        self.assertEqual(_order_rows(self.db), [])
 
 
 # ── 6. 마감 시각 루프 중 초과 ─────────────────────────────────────────────────

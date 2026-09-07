@@ -25,13 +25,15 @@ from scripts.run_close_bet import (
     check_precondition,
     confirm_fills,
     create_close_bet_orders_table,
-    fetch_market_caps,
+    fetch_prev_stats,
+    filter_by_size_liquidity,
     load_close_bet_status,
     load_order_candidates,
     normalize_date_key,
     parse_args,
     qty_from_budget,
     rank_and_cut,
+    record_close_bet_notes,
     upsert_order_result,
 )
 from scripts.wl_sqlite import connect_ro, connect_rw
@@ -80,6 +82,52 @@ def _seed_close_bet_orders(con: sqlite3.Connection, rows: list[dict]) -> None:
             [r["date"], r["ticker"], r.get("score", 80), 1,
              "market", r.get("status", "submitted"), r.get("order_no", "0000001"), "", "{}"],
         )
+
+
+class TestRecordCloseBetNotes(unittest.TestCase):
+    """매매노트 payload — 청산 시각 문구와 목표가 유무."""
+
+    _CFG_TPSL_OFF = {"tp": None, "sl": None, "exit_time": "09:01:00"}
+    _CFG_TPSL_ON = {"tp": 0.05, "sl": 0.03, "exit_time": "15:19:00"}
+
+    def setUp(self):
+        self.db = _fresh_db()
+        with connect_rw(self.db) as con:
+            _seed_close_bet_orders(con, [{"date": _DATE, "ticker": "005930", "status": "confirmed"}])
+            con.execute("UPDATE close_bet_orders SET cntr_price=10000 WHERE ticker='005930'")
+
+    def tearDown(self):
+        self.db.unlink(missing_ok=True)
+
+    def _payload(self, cfg: dict) -> dict:
+        seen = {}
+
+        class _Resp:
+            def json(self):
+                return []
+
+            def raise_for_status(self):
+                return None
+
+        with patch("scripts.run_close_bet.requests.get", return_value=_Resp()),              patch("scripts.run_close_bet.requests.post",
+                   side_effect=lambda url, json, timeout: seen.update(json) or _Resp()):
+            failures = record_close_bet_notes(
+                "http://broker", self.db, _DATE, ["005930"], cfg, threshold=0
+            )
+        self.assertEqual(failures, 0)
+        return seen
+
+    def test_no_target_price_when_tp_disabled(self):
+        payload = self._payload(self._CFG_TPSL_OFF)
+        self.assertNotIn("target_price", payload)
+
+    def test_holding_period_follows_exit_time(self):
+        self.assertEqual(self._payload(self._CFG_TPSL_OFF)["holding_period"], "익일 09:01 강제청산")
+        self.assertEqual(self._payload(self._CFG_TPSL_ON)["holding_period"], "익일 15:19 강제청산")
+
+    def test_target_price_kept_when_tp_enabled(self):
+        payload = self._payload(self._CFG_TPSL_ON)
+        self.assertEqual(payload["target_price"], 10500)  # 10000 * 1.05
 
 
 # ── 1. DDL ────────────────────────────────────────────────────────────────────
@@ -459,6 +507,11 @@ class TestQtyFromBudget(unittest.TestCase):
         self.assertEqual(qty_from_budget(2_000_000, 0), 0)
 
 
+def _stats(**kv) -> dict:
+    """{ticker: (cap, turnover)} → fetch_prev_stats 반환형."""
+    return {t: {"cap": c, "turnover": v} for t, (c, v) in kv.items()}
+
+
 class TestRankAndCut(unittest.TestCase):
     def _c(self, ticker, score):
         return {"ticker": ticker, "score": score}
@@ -468,29 +521,57 @@ class TestRankAndCut(unittest.TestCase):
         result = rank_and_cut(cands, {}, n=3)
         self.assertEqual(len(result), 3)
 
-    def test_score_desc_primary(self):
-        cands = [self._c("A", 80), self._c("B", 95), self._c("C", 88)]
-        result = rank_and_cut(cands, {}, n=3)
+    def test_turnover_desc_regardless_of_score(self):
+        # 정렬은 거래대금만 본다 — score 높은 A 가 거래대금 꼴찌면 뒤로 간다
+        cands = [self._c("A", 95), self._c("B", 40), self._c("C", 60)]
+        st = _stats(A=(100, 10), B=(100, 300), C=(100, 200))
+        result = rank_and_cut(cands, st, n=3)
         self.assertEqual([r["ticker"] for r in result], ["B", "C", "A"])
 
-    def test_market_cap_breaks_score_tie(self):
-        # score 동점 4개 → 시총 큰 3개만, 시총 DESC 정렬
-        cands = [self._c("A", 80), self._c("B", 80), self._c("C", 80), self._c("D", 80)]
-        caps = {"A": 100, "B": 400, "C": 300, "D": 200}
-        result = rank_and_cut(cands, caps, n=3)
-        self.assertEqual([r["ticker"] for r in result], ["B", "C", "D"])
-
-    def test_missing_cap_treated_as_zero(self):
-        # 시총 없는 종목은 0 취급 → 동점 시 맨 뒤
+    def test_missing_stats_treated_as_zero(self):
         cands = [self._c("A", 80), self._c("B", 80)]
-        caps = {"A": 500}  # B 없음
-        result = rank_and_cut(cands, caps, n=3)
+        st = _stats(A=(100, 500))  # B 없음
+        result = rank_and_cut(cands, st, n=3)
         self.assertEqual([r["ticker"] for r in result], ["A", "B"])
 
 
-# ── 8. fetch_market_caps (DuckDB, G2) ────────────────────────────────────────
+class TestFilterBySizeLiquidity(unittest.TestCase):
+    # 임의값 — 운영 임계값(close_bet.json, 비공개)과 무관하게 경계 동작만 본다.
+    CAP, TV = 77_000_000_000, 3_000_000_000
 
-class TestFetchMarketCaps(unittest.TestCase):
+    def _c(self, ticker):
+        return {"ticker": ticker, "score": 50}
+
+    def test_keeps_small_cap_liquid(self):
+        st = _stats(A=(50_000_000_000, 5_000_000_000))
+        kept, dropped = filter_by_size_liquidity([self._c("A")], st, self.CAP, self.TV)
+        self.assertEqual([c["ticker"] for c in kept], ["A"])
+        self.assertEqual(dropped, [])
+
+    def test_drops_large_cap(self):
+        st = _stats(A=(77_000_000_000, 5_000_000_000))  # 상한 '미만'이라 동일값도 탈락
+        kept, dropped = filter_by_size_liquidity([self._c("A")], st, self.CAP, self.TV)
+        self.assertEqual(kept, [])
+        self.assertEqual(dropped, ["A"])
+
+    def test_drops_illiquid(self):
+        st = _stats(A=(50_000_000_000, 2_999_999_999))
+        kept, dropped = filter_by_size_liquidity([self._c("A")], st, self.CAP, self.TV)
+        self.assertEqual(dropped, ["A"])
+
+    def test_turnover_floor_is_inclusive(self):
+        st = _stats(A=(50_000_000_000, 3_000_000_000))
+        kept, _ = filter_by_size_liquidity([self._c("A")], st, self.CAP, self.TV)
+        self.assertEqual(len(kept), 1)
+
+    def test_drops_ticker_without_stats(self):
+        kept, dropped = filter_by_size_liquidity([self._c("A")], {}, self.CAP, self.TV)
+        self.assertEqual(dropped, ["A"])
+
+
+# ── 8. fetch_prev_stats (DuckDB) ─────────────────────────────────────────────
+
+class TestFetchPrevStats(unittest.TestCase):
     def setUp(self):
         fd, path = tempfile.mkstemp(suffix=".duckdb")
         os.close(fd)
@@ -500,16 +581,19 @@ class TestFetchMarketCaps(unittest.TestCase):
         con.execute("""
             CREATE TABLE ohlcv (
                 date VARCHAR, ticker VARCHAR, market_cap BIGINT,
+                close BIGINT, volume BIGINT,
                 PRIMARY KEY (date, ticker)
             )
         """)
         con.executemany(
-            "INSERT INTO ohlcv (date, ticker, market_cap) VALUES (?,?,?)",
+            "INSERT INTO ohlcv (date, ticker, market_cap, close, volume) VALUES (?,?,?,?,?)",
             [
-                ("20260612", "005930", 100),
-                ("20260615", "005930", 500),   # 대상일 — 최신
-                ("20260616", "005930", 999),    # 대상일 이후 — 무시
-                ("20260613", "000660", 300),    # 대상일 이전 최신
+                ("20260612", "005930", 100, 10, 5),
+                ("20260613", "005930", 400, 20, 30),  # 전일 — 이게 쓰여야 함
+                ("20260615", "005930", 500, 30, 10),  # 당일 — 무시
+                ("20260616", "005930", 999, 40, 10),  # 이후 — 무시
+                ("20260612", "000660", 300, 50, 4),   # 000660 의 최신 거래일
+                ("20260613", "000660", 300, 50, 0),   # 거래정지(volume=0) — 건너뜀
             ],
         )
         con.close()
@@ -517,17 +601,21 @@ class TestFetchMarketCaps(unittest.TestCase):
     def tearDown(self):
         self.krx.unlink(missing_ok=True)
 
-    def test_returns_latest_on_or_before_date(self):
-        caps = fetch_market_caps(self.krx, ["005930", "000660"], "20260615")
-        self.assertEqual(caps["005930"], 500)   # 20260616(999) 무시
-        self.assertEqual(caps["000660"], 300)   # 20260613 최신
+    def test_returns_previous_trading_day_only(self):
+        st = fetch_prev_stats(self.krx, ["005930"], "20260615")
+        self.assertEqual(st["005930"]["cap"], 400)       # 당일(500)·이후(999) 무시
+        self.assertEqual(st["005930"]["turnover"], 600)  # 20 * 30
+
+    def test_skips_halted_day(self):
+        st = fetch_prev_stats(self.krx, ["000660"], "20260615")
+        self.assertEqual(st["000660"]["turnover"], 200)  # 20260613 volume=0 건너뛰고 50*4
 
     def test_missing_ticker_absent(self):
-        caps = fetch_market_caps(self.krx, ["005930", "999999"], "20260615")
-        self.assertNotIn("999999", caps)
+        st = fetch_prev_stats(self.krx, ["005930", "999999"], "20260615")
+        self.assertNotIn("999999", st)
 
     def test_empty_tickers(self):
-        self.assertEqual(fetch_market_caps(self.krx, [], "20260615"), {})
+        self.assertEqual(fetch_prev_stats(self.krx, [], "20260615"), {})
 
 
 if __name__ == "__main__":

@@ -1,7 +1,8 @@
-"""종가베팅 청산 백스톱 배치 — 워커 크래시 대비 (15:19:30 평일 1회).
+"""종가베팅 청산 백스톱 배치 — 워커 크래시 대비 (평일 1회).
 
 장중 청산 워커(run_close_bet_exit.py)가 죽어 강제청산을 누락했을 때의 최종 방어선.
-워커 강제청산(15:19:00) 직후 15:19:30에 독립 시계로 1회 실행한다.
+워커 강제청산 시각(close_bet.json 의 exit_time, 현재 09:01:00) 직후 30초에 독립 시계로 1회 실행한다.
+실행 시각 자체는 이 스크립트가 아니라 ops/scheduled-tasks/close-bet-force-exit.xml 이 정한다.
 
 3중 대조로 멱등 보장 — 워커가 정상이면 무동작:
   잔고(kt00018 매도가능) AND ka10075 미체결(매도) AND DB sell_status
@@ -64,7 +65,7 @@ def select_residual(positions: list[dict], balance: dict, unfilled: set[str]) ->
 
 def main() -> None:
     load_dotenv(ENV_PATH)
-    parser = argparse.ArgumentParser(description="종가베팅 청산 백스톱 (15:19:30 1회)")
+    parser = argparse.ArgumentParser(description="종가베팅 청산 백스톱 (강제청산 직후 1회)")
     parser.add_argument("--broker-url", default=None)
     parser.add_argument("--dry-run", default="true")
     args = parser.parse_args()

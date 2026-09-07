@@ -78,6 +78,36 @@ class TestValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             load(_write({"budget_by_count": {"1": 3000000, "2": 2000000}}))
 
+    def test_cap_max_and_turnover_min_must_be_positive_int(self):
+        for bad in ({"cap_max": 0}, {"cap_max": -1}, {"cap_max": 1.5},
+                    {"turnover_min": 0}, {"turnover_min": "1e9"}):
+            with self.assertRaises(ValueError):
+                load(_write(bad))
+
+    def test_cap_max_and_turnover_min_loaded(self):
+        cfg = load(_write({"cap_max": 100_000_000_000, "turnover_min": 2_000_000_000}))
+        self.assertEqual(cfg["cap_max"], 100_000_000_000)
+        self.assertEqual(cfg["turnover_min"], 2_000_000_000)
+
+    def test_exit_time_must_be_hms(self):
+        for bad in ("9:1", "25:00:00", "09:60:00", "090100", 90100, None):
+            with self.assertRaises(ValueError):
+                load(_write({"exit_time": bad}))
+
+    def test_exit_time_loaded(self):
+        self.assertEqual(load(_write({"exit_time": "09:01:00"}))["exit_time"], "09:01:00")
+
+    def test_exit_time_defaults_to_previous_behavior(self):
+        """config 없으면 도입 전 동작(15:19 강제청산) 유지."""
+        cfg = load(Path(tempfile.gettempdir()) / "no_such_close_bet_cfg.json")
+        self.assertEqual(cfg["exit_time"], "15:19:00")
+
+    def test_null_tp_sl_means_disabled(self):
+        """tp/sl null = 장중 TP/SL 판정 끔. 09:01 강제청산만 남는다."""
+        cfg = load(_write({"tp": None, "sl": None}))
+        self.assertIsNone(cfg["tp"])
+        self.assertIsNone(cfg["sl"])
+
 
 if __name__ == "__main__":
     unittest.main()

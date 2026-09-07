@@ -1,8 +1,11 @@
 """종가배팅 주문 배치 (15:19 실행).
 
-llm_scores에서 score >= score_threshold 종목을 score 1순위·시총(krx_ohlcv) 2순위로
-상위 3개 선별해, 총 500만원을 종목 수별 예산(1→300만/2→200만/3→167만)으로 나눠
+llm_scores에서 score >= score_threshold 종목을 뽑아 시총 상한·전일 거래대금 하한
+(close_bet.json)으로 거른 뒤, 남은 후보를 전일 거래대금 DESC로 상위 3개 선별해
+총 500만원을 종목 수별 예산(1→300만/2→200만/3→167만)으로 나눠
 broker REST API 시장가 매수(qty = 예산 // 현재가)하고 결과를 기록한다.
+
+필터·정렬 근거는 research/private/close_bet_overnight 백테스트.
 
 핵심 사상: Kiwoom API는 무조건 broker를 통해서만 호출한다.
 
@@ -326,31 +329,57 @@ def qty_from_budget(budget: int, price: int) -> int:
     return budget // price
 
 
-def fetch_market_caps(krx_db: Path, tickers: list[str], date: str) -> dict[str, int]:
-    """각 ticker의 date 이하 최신 거래일 market_cap. 없는 ticker는 키 부재."""
+def fetch_prev_stats(krx_db: Path, tickers: list[str], date: str) -> dict[str, dict]:
+    """각 ticker의 전일까지 최신 거래일 시총·거래대금(close*volume). 없는 ticker는 키 부재.
+
+    당일 행은 쓰지 않는다 — 15:19 시점엔 당일 일봉이 아직 적재 전이고, 백테스트도 전일
+    기준으로 쟀다. 거래정지일(volume=0)은 건너뛰고 직전 거래일을 잡는다.
+    """
     if not tickers:
         return {}
     placeholders = ",".join(["?"] * len(tickers))
     with duckdb.connect(str(krx_db), read_only=True) as con:
         rows = con.execute(
             f"""
-            SELECT ticker, market_cap
+            SELECT ticker, market_cap, close * volume AS turnover
             FROM ohlcv
-            WHERE date = (
-                SELECT MAX(date) FROM ohlcv o2
-                WHERE o2.ticker = ohlcv.ticker AND o2.date <= ?
-            ) AND ticker IN ({placeholders})
+            WHERE ticker IN ({placeholders}) AND date < ? AND volume > 0 AND close > 0
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) = 1
             """,
-            [date, *tickers],
+            [*tickers, date],
         ).fetchall()
-    return {r[0]: r[1] for r in rows if r[1] is not None}
+    return {r[0]: {"cap": r[1], "turnover": r[2]} for r in rows if r[1] is not None}
 
 
-def rank_and_cut(candidates: list[dict], caps: dict[str, int], n: int = 3) -> list[dict]:
-    """(score DESC, market_cap DESC)로 정렬해 상위 n개. 시총 없는 종목은 0 취급."""
+def filter_by_size_liquidity(
+    pool: list[dict], stats: dict[str, dict], cap_max: int, turnover_min: int
+) -> tuple[list[dict], list[str]]:
+    """시총 상한(미만)·전일 거래대금 하한(이상) 필터 → (남은 후보, 제외 티커).
+
+    백테스트(research/private/close_bet_overnight) 결과 시총 상한을 넘으면 성과가 꺾이고,
+    거래대금 하한이 청산 슬리피지를 막는다. 임계값은 close_bet.json 에 있다(비공개).
+    상위 N cut '앞'에서 걸러야 거른 자리를 다음 후보가 채운다.
+    전일 통계가 없는 종목은 판단 불가라 제외한다.
+    """
+    kept, dropped = [], []
+    for c in pool:
+        s = stats.get(c["ticker"])
+        if s and s["cap"] < cap_max and s["turnover"] >= turnover_min:
+            kept.append(c)
+        else:
+            dropped.append(c["ticker"])
+    return kept, dropped
+
+
+def rank_and_cut(candidates: list[dict], stats: dict[str, dict], n: int = 3) -> list[dict]:
+    """전일 거래대금 DESC로 정렬해 상위 n개. 통계 없는 종목은 0 취급.
+
+    score 는 컷(score_threshold) 용도로만 쓴다 — 백테스트에서 score 와 수익의 상관이
+    Pearson -0.09 로 예측력이 없었다. 정렬은 체결 안정성이 높은 쪽(거래대금)을 먼저.
+    """
     return sorted(
         candidates,
-        key=lambda c: (c["score"], caps.get(c["ticker"], 0)),
+        key=lambda c: stats.get(c["ticker"], {}).get("turnover", 0),
         reverse=True,
     )[:n]
 
@@ -468,12 +497,13 @@ def record_close_bet_notes(
     failures = 0
     for ticker, score, qty, cntr_price, order_no in rows:
         payload = {
-            "holding_period": "익일 15:19 강제청산",
+            "holding_period": f"익일 {cfg['exit_time'][:5]} 강제청산",
             "buy_reason": f"[close_bet] LLM 점수 {score} (기준 {threshold}) · 종가 시장가 매수",
             "memo": (f"date={date}; score={score}; threshold={threshold}; qty={qty}; "
                      f"cntr_price={cntr_price}; order_no={order_no}"),
         }
-        if cntr_price:  # 체결가 미확정(16:00 대조 대기)이면 목표가는 비워 둔다
+        # 체결가 미확정(16:00 대조 대기)이거나 익절을 끈 운용(tp=null)이면 목표가는 비워 둔다.
+        if cntr_price and cfg["tp"] is not None:
             payload["target_price"] = int(cntr_price * (1 + cfg["tp"]))
         try:
             listed = requests.get(
@@ -561,9 +591,20 @@ def main() -> None:
         send_discord(f"[종가베팅] {date} 주문 대상 없음{dry_tag}\nscore>={args.score_threshold} 종목 0건")
         return
 
-    # score 1순위·시총 2순위로 상위 N개. 시총은 krx_ohlcv(별 DuckDB) → Python에서 동점깸.
-    caps = fetch_market_caps(DEFAULT_KRX_DB, [c["ticker"] for c in pool], date) if DEFAULT_KRX_DB.exists() else {}
-    candidates = rank_and_cut(pool, caps, n=_TOP_N)
+    # 시총·거래대금 필터를 상위 N cut 앞에 걸고, 남은 후보를 거래대금 DESC로 자른다.
+    # 전일 통계는 krx_ohlcv(별 DuckDB)에서 조회.
+    stats = fetch_prev_stats(DEFAULT_KRX_DB, [c["ticker"] for c in pool], date)
+    pool, filtered_out = filter_by_size_liquidity(
+        pool, stats, cfg["cap_max"], cfg["turnover_min"]
+    )
+    if filtered_out:
+        print(f"[close_bet] 시총 {cfg['cap_max'] / 1e8:,.0f}억 이상 또는 "
+              f"거래대금 {cfg['turnover_min'] / 1e8:,.0f}억 미만 제외: " + ",".join(filtered_out))
+    if not pool:
+        print(f"[close_bet] 주문 대상 없음 (시총·거래대금 필터 통과 0건)")
+        send_discord(f"[종가베팅] {date} 주문 대상 없음{dry_tag}\n시총·거래대금 필터 통과 0건")
+        return
+    candidates = rank_and_cut(pool, stats, n=_TOP_N)
     n_sel = len(candidates)
     if n_sel == 0:
         print(f"[close_bet] 주문 대상 없음 (선정 0건)")

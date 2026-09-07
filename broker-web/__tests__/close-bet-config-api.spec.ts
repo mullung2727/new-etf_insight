@@ -17,17 +17,24 @@ const VALID = {
   score_threshold: 60,
   tp: 0.07,
   sl: 0.04,
+  // 임의값 — 운영 임계값(close_bet.json, gitignore)과 무관하게 왕복만 본다.
+  cap_max: 77_000_000_000,
+  turnover_min: 3_000_000_000,
+  exit_time: "09:01:00",
   budget_by_count: { "1": 3000000, "2": 2000000, "3": 1666666 },
 };
 
 test.describe.serial("종가베팅 config", () => {
-  test("GET → 4개 키 구조", async ({ request }) => {
+  test("GET → 키 구조 (tp/sl 은 숫자 또는 null)", async ({ request }) => {
     const res = await request.get("/api/close-bet-config");
     expect(res.status()).toBe(200);
     const b = await res.json();
     expect(typeof b.score_threshold).toBe("number");
-    expect(typeof b.tp).toBe("number");
-    expect(typeof b.sl).toBe("number");
+    expect(b.tp === null || typeof b.tp === "number").toBe(true);
+    expect(b.sl === null || typeof b.sl === "number").toBe(true);
+    expect(typeof b.cap_max).toBe("number");
+    expect(typeof b.turnover_min).toBe("number");
+    expect(b.exit_time).toMatch(/^\d{2}:\d{2}:\d{2}$/);
     expect(b.budget_by_count).toHaveProperty("1");
   });
 
@@ -38,6 +45,40 @@ test.describe.serial("종가베팅 config", () => {
     });
     expect(res.status()).toBe(400);
     expect(await fs.readFile(PATH(), "utf-8")).toBe(raw); // 저장 안 됨
+  });
+
+  test("PUT 거래대금 하한 0 → 400", async ({ request }) => {
+    const res = await request.put("/api/close-bet-config", {
+      data: { ...VALID, turnover_min: 0 },
+    });
+    expect(res.status()).toBe(400);
+  });
+
+  test("PUT 잘못된 청산 시각 → 400·파일 불변", async ({ request }) => {
+    const raw = await fs.readFile(PATH(), "utf-8");
+    const res = await request.put("/api/close-bet-config", {
+      data: { ...VALID, exit_time: "9:1" },
+    });
+    expect(res.status()).toBe(400);
+    expect(await fs.readFile(PATH(), "utf-8")).toBe(raw);
+  });
+
+  test("PUT 청산 시각 변경 → 200·재로드 반영", async ({ request }) => {
+    const res = await request.put("/api/close-bet-config", {
+      data: { ...VALID, exit_time: "10:30:00" },
+    });
+    expect(res.status()).toBe(200);
+    expect((await res.json()).exit_time).toBe("10:30:00");
+  });
+
+  test("PUT tp/sl null → 200·null 로 저장(장중 익절·손절 끔)", async ({ request }) => {
+    const res = await request.put("/api/close-bet-config", {
+      data: { ...VALID, tp: null, sl: null },
+    });
+    expect(res.status()).toBe(200);
+    const b = await res.json();
+    expect(b.tp).toBeNull();
+    expect(b.sl).toBeNull();
   });
 
   test("PUT 음수 예산 → 400", async ({ request }) => {
