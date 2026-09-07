@@ -75,3 +75,8 @@ temp/
 
 # 검증된 유효전략 — 공개 저장소에 올리지 않는다 (skills/new-etf-insight-git-workflow/SKILL.md)
 research/private/
+
+# 종가베팅 운영 파라미터 — 검증된 전략값이라 공개 저장소에 올리지 않는다.
+# 템플릿: etl/scripts/close_bet.example.json
+etl/scripts/close_bet.json
+etl/scripts/close_bet.json.bak

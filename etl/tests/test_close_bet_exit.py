@@ -69,6 +69,19 @@ class TestDecideExit(unittest.TestCase):
         self.assertIsNone(decide_exit(None, 100, 0.05, 0.03))
         self.assertIsNone(decide_exit(105, None, 0.05, 0.03))
 
+    def test_none_tp_sl_disables_intraday_judgement(self):
+        """tp/sl null(=close_bet.json 에서 끔) → 익절·손절 폭을 넘어도 판정하지 않는다.
+
+        이때 청산은 강제청산 시각(exit_time)에만 일어난다.
+        """
+        self.assertIsNone(decide_exit(200, 100, None, None))   # +100%
+        self.assertIsNone(decide_exit(50, 100, None, None))    # -50%
+
+    def test_one_sided_disable_is_treated_as_full_disable(self):
+        # 익절만/손절만 쓰는 조합은 지원하지 않는다 — 하나라도 None 이면 둘 다 끔.
+        self.assertIsNone(decide_exit(200, 100, 0.05, None))
+        self.assertIsNone(decide_exit(50, 100, None, 0.03))
+
 
 class TestTimeGates(unittest.TestCase):
     def test_trading_window(self):

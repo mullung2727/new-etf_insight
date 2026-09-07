@@ -9,8 +9,11 @@ import fs from "node:fs/promises";
 export type BudgetByCount = Record<"1" | "2" | "3", number>;
 export type CloseBetConfig = {
   score_threshold: number;
-  tp: number;
-  sl: number;
+  tp: number | null; // null = 장중 TP/SL 판정 끔(익일 강제청산만)
+  sl: number | null;
+  cap_max: number; // 원. 시총 상한(미만)
+  turnover_min: number; // 원. 전일 거래대금 하한(이상)
+  exit_time: string; // "HH:MM:SS". 청산 워커의 강제청산 시각(단일 소스)
   budget_by_count: BudgetByCount;
 };
 
@@ -19,6 +22,10 @@ export const DEFAULTS: CloseBetConfig = {
   score_threshold: 70,
   tp: 0.05,
   sl: 0.03,
+  // 자리표시자. 실제 운영값은 close_bet.json(gitignore) — py 로더 DEFAULTS 와 같은 규칙.
+  cap_max: 10_000_000_000_000,
+  turnover_min: 1,
+  exit_time: "15:19:00",
   budget_by_count: { "1": 3_000_000, "2": 2_000_000, "3": Math.floor(5_000_000 / 3) },
 };
 
@@ -29,6 +36,13 @@ function repoRoot() {
 }
 export const PATH = () => path.join(repoRoot(), "etl", "scripts", "close_bet.json");
 
+// "HH:MM:SS" 이고 실재하는 시각인지 (py 로더 _is_hms 와 같은 도메인).
+export function isHms(v: unknown): boolean {
+  if (typeof v !== "string" || !/^\d{2}:\d{2}:\d{2}$/.test(v)) return false;
+  const [h, m, s] = v.split(":").map(Number);
+  return h <= 23 && m <= 59 && s <= 59;
+}
+
 export function validate(cfg: CloseBetConfig): void {
   const st = cfg.score_threshold;
   if (!Number.isInteger(st) || st < 0 || st > 100) {
@@ -36,9 +50,19 @@ export function validate(cfg: CloseBetConfig): void {
   }
   for (const [k, label] of [["tp", "익절"], ["sl", "손절"]] as const) {
     const v = cfg[k];
+    if (v === null) continue; // 빈칸 = 사용 안 함
     if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1) {
-      throw new Error(`${label}은 0~100% 사이 값이어야 합니다`);
+      throw new Error(`${label}은 0~100% 사이 값이거나 비어 있어야 합니다`);
     }
+  }
+  for (const [k, label] of [["cap_max", "시가총액 상한"], ["turnover_min", "거래대금 하한"]] as const) {
+    const v = cfg[k];
+    if (!Number.isInteger(v) || v <= 0) {
+      throw new Error(`${label}은 0보다 큰 금액이어야 합니다`);
+    }
+  }
+  if (!isHms(cfg.exit_time)) {
+    throw new Error("청산 시각은 HH:MM:SS 형식이어야 합니다 (예: 09:01:00)");
   }
   const budget = cfg.budget_by_count;
   if (!budget || typeof budget !== "object") {
@@ -62,8 +86,12 @@ export async function read(): Promise<CloseBetConfig> {
   }
   const cfg: CloseBetConfig = {
     score_threshold: raw.score_threshold ?? DEFAULTS.score_threshold,
-    tp: raw.tp ?? DEFAULTS.tp,
-    sl: raw.sl ?? DEFAULTS.sl,
+    // null 은 "끔"이라 ?? 로 기본값을 덮으면 안 된다 — 키 존재 여부로 판단한다.
+    tp: "tp" in raw ? (raw.tp as number | null) : DEFAULTS.tp,
+    sl: "sl" in raw ? (raw.sl as number | null) : DEFAULTS.sl,
+    cap_max: raw.cap_max ?? DEFAULTS.cap_max,
+    turnover_min: raw.turnover_min ?? DEFAULTS.turnover_min,
+    exit_time: raw.exit_time ?? DEFAULTS.exit_time,
     budget_by_count: raw.budget_by_count
       ? (raw.budget_by_count as BudgetByCount)
       : { ...DEFAULTS.budget_by_count },

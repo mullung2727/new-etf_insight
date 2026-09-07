@@ -1,0 +1,14 @@
+{
+  "_comment": "close_bet.json 템플릿. 실제 운영값 파일은 gitignore 다 (저장소 공개 — 검증된 파라미터를 커밋하지 않는다). 이 파일을 close_bet.json 으로 복사한 뒤 값을 채운다. 웹 /admin/settings 에서도 편집된다.",
+  "score_threshold": 0,
+  "tp": null,
+  "sl": null,
+  "cap_max": 10000000000000,
+  "turnover_min": 1,
+  "exit_time": "09:01:00",
+  "budget_by_count": {
+    "1": 50000,
+    "2": 50000,
+    "3": 50000
+  }
+}

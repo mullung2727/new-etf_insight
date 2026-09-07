@@ -3,6 +3,10 @@
 T일 15:19 매수한 오버나이트 보유를 T+1 장중 broker `/quotes`(ka10095) 3초 폴링으로
 감시해 buy_bid 기준 +tp 익절 / -sl 손절, 미발동분은 force-exit-time 강제청산한다.
 
+강제청산 시각은 close_bet.json 의 `exit_time`(기본 운용값 09:01:00)에서 읽는다 — ps1 인자가
+아니라 config 가 단일 소스라 값만 바꾸면 다음 기동부터 반영된다.
+tp·sl 이 null 이면 장중 판정 없이 그 시각에 전량 매도한다(백테스트 채택 운용).
+
 핵심 사상: Kiwoom API는 무조건 broker를 통해서만 호출한다. 워커는 100% REST(WS 미구독),
 인메모리 영속 상태 0 — 매 기동 DB+잔고에서 watch set 재부팅.
 
@@ -58,12 +62,16 @@ DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.s
 # ── 순수 판정함수 (부작용 0, 단위테스트 핵심) ──────────────────────────────────
 
 def decide_exit(
-    buy_bid: int | None, cntr_price: int | None, tp: float, sl: float
+    buy_bid: int | None, cntr_price: int | None, tp: float | None, sl: float | None
 ) -> str | None:
     """buy_bid(시장가 매도 실현가) 기준 TP/SL 판정. 'tp'/'sl'/None.
 
+    tp·sl 중 하나라도 None(=close_bet.json 에서 끔)이면 장중 판정을 아예 안 한다 —
+    강제청산 시각에 전량 매도하는 운용이 되고, 익절만/손절만 쓰는 조합은 지원하지 않는다.
     호가공백(buy_bid 없음/0)·체결가 없음 → None(skip).
     """
+    if tp is None or sl is None:
+        return None
     if not buy_bid or not cntr_price:
         return None
     chg = buy_bid / cntr_price - 1
@@ -496,7 +504,8 @@ def main() -> None:
                         help="미지정 시 close_bet.json 의 tp 사용")
     parser.add_argument("--sl", type=float, default=None,
                         help="미지정 시 close_bet.json 의 sl 사용")
-    parser.add_argument("--force-exit-time", default="15:19:00")
+    parser.add_argument("--force-exit-time", default=None,
+                        help="미지정 시 close_bet.json 의 exit_time 사용")
     parser.add_argument("--stop-time", default="15:25:00")
     parser.add_argument("--window-start", default="09:00:00")
     parser.add_argument("--window-end", default="15:20:00")
@@ -510,6 +519,8 @@ def main() -> None:
         args.tp = cfg["tp"]
     if args.sl is None:
         args.sl = cfg["sl"]
+    if args.force_exit_time is None:
+        args.force_exit_time = cfg["exit_time"]
 
     args.dry_run = args.dry_run.lower() not in ("false", "0", "no")
     if not args.dry_run and args.watch_codes:
