@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["has_change", "changes"],
+  "properties": {
+    "has_change": {"type": "boolean"},
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entity_name", "entity_code", "fact_type", "change_type",
+                     "direction", "claim", "quote", "metrics",
+                     "confirmation_condition", "expected_end"],
+        "properties": {
+          "entity_name": {"type": "string"},
+          "entity_code": {"type": "string"},
+          "fact_type": {"type": "string",
+            "enum": ["observed_fact", "analyst_estimate", "company_guidance", "rumor"]},
+          "change_type": {"type": "string",
+            "enum": ["new", "upgraded", "downgraded", "confirmed", "delayed", "cancelled", "repeated"]},
+          "direction": {"type": "string",
+            "enum": ["positive", "negative", "mixed", "neutral"]},
+          "claim": {"type": "string"},
+          "quote": {"type": "string"},
+          "confirmation_condition": {"type": "string"},
+          "expected_end": {"type": "string"},
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "period", "basis", "before", "after", "unit"],
+              "properties": {
+                "name": {"type": "string"},
+                "period": {"type": "string"},
+                "basis": {"type": "string"},
+                "before": {"type": ["number", "null"]},
+                "after": {"type": ["number", "null"]},
+                "unit": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
