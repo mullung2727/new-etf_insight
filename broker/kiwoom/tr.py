@@ -50,3 +50,4 @@ WS_REMOVE = "REMOVE"  # 실시간 해제
 
 # --- Realtime channel ids (실시간 항목 type) ---
 RT_FILL = "00"        # 주문체결
+RT_ORDERBOOK = "0D"   # 주식호가잔량 (10단)

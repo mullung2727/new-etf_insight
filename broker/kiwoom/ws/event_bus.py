@@ -21,6 +21,8 @@ class EventBus:
         # 나중에 붙은 SSE 구독자가 놓치면 영영 "끊김"으로 오표시 → 마지막 상태를 기억해
         # 구독 즉시 재생한다. (system만 상태성; 체결/틱 등은 transient라 재생 안 함.)
         self._last_system: dict | None = None
+        # 큐 포화로 버린 이벤트 수(채널별). 0D 는 초당 수십 건이라 느린 구독자가 있으면 샌다.
+        self.dropped: dict[str, int] = {}
 
     def subscribe(self, channel: str, queue: asyncio.Queue) -> None:
         """Register ``queue`` to receive events for ``channel`` (or "*" for all).
@@ -46,8 +48,8 @@ class EventBus:
         """Fan ``payload`` out to ``channel`` subscribers and all "*" subscribers.
 
         Wraps as ``{"channel": ..., "payload": ...}`` so SSE clients can tell
-        channels apart. Uses ``put_nowait``; a full queue drops the event with a
-        warning rather than blocking the publisher.
+        channels apart. Uses ``put_nowait``; a full queue drops the event and
+        counts it in ``dropped`` rather than blocking the publisher.
         """
         event = {"channel":channel, "payload": payload}
         if channel == "system":
@@ -57,6 +59,13 @@ class EventBus:
             try:
                 queue.put_nowait(event)
             except asyncio.QueueFull:
-                logger.warning(f"event bus queue full, dropping {channel} event")
+                lost = channel
+                if channel == "system":
+                    # 연결상태는 버리지 않는다(구독 중인 연결엔 sticky 재생이 없다) — 가장 오래된 것을 버린다.
+                    lost = queue.get_nowait()["channel"]
+                    queue.put_nowait(event)
+                n = self.dropped[lost] = self.dropped.get(lost, 0) + 1
+                if n == 1 or n % 1000 == 0:  # ponytail: 유실마다 찍으면 0D 폭주 시 로그가 샌다
+                    logger.warning(f"event bus queue full, dropped {lost} events: {n}")
 
 bus = EventBus()

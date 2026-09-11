@@ -23,5 +23,6 @@ def parse_message(raw:dict) -> list[tuple[str, dict]]:
         channel = entry.get("type")
         values = entry.get("values")
         if channel and isinstance(values, dict):
-            out.append((channel, values))
+            # 0D 는 한 프레임에 여러 종목이 온다 — 종목 식별자 item 을 payload 에 싣는다.
+            out.append((channel, {**values, "item": entry.get("item", "")}))
     return out
