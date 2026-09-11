@@ -98,7 +98,10 @@ Use exact raw fields:
 - `sources`
 
 Verify every today watchlist row has a joined `llm_scores` row. If a row is
-missing a score, report it explicitly as a defect.
+missing a score, report it explicitly as a defect — except tickers the scorer
+excluded on purpose: previous-day market cap below the bottom `cap_min_pct` of
+all stocks (`etl/scripts/close_bet.json`). Those appear as
+`cap_min_pct_excluded:<ticker>` in the scorer output `warnings` and are not defects.
 
 ## Discord Report
 

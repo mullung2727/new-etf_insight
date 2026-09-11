@@ -13,6 +13,7 @@ config 없이도 배치가 그대로 돈다. 값이 범위를 벗어나면 Value
     budget = cfg["budget_by_count"][n]  # int, n∈{1,2,3}
     cap_max = cfg["cap_max"]            # int, 원. 시총 상한(미만)
     tv_min = cfg["turnover_min"]        # int, 원. 전일 거래대금 하한(이상)
+    cap_min_pct = cfg["cap_min_pct"]    # float 0~1. 전일 전 종목 시총 하위 비율 제외(15시 스코어링 단계)
 """
 from __future__ import annotations
 
@@ -31,6 +32,9 @@ DEFAULTS: dict = {
     # 파일이 없으면 이 값으로 폴백하는데 필터가 사실상 안 걸리므로, load() 가 경고를 낸다.
     "cap_max": 10_000_000_000_000,   # 10조 = 사실상 상한 없음
     "turnover_min": 1,               # 1원 = 사실상 하한 없음
+    # 전일 전 종목 시총 하위 이 비율 미만은 15시 스코어링(watchlist_probability_langgraph)
+    # 에서 빼 점수를 안 매긴다. 금액이 아니라 비율이라 시장 규모가 변해도 따라간다. 0 = 끔.
+    "cap_min_pct": 0,
     # 청산 워커(run_close_bet_exit)의 강제청산 시각. ps1 인자가 아니라 여기가 단일 소스라
     # 값만 바꾸면 다음 기동부터 반영된다.
     # ⚠ 백스톱 배치 시각(ops/scheduled-tasks/close-bet-force-exit.xml 의 StartBoundary)은
@@ -76,6 +80,9 @@ def _validate(cfg: dict) -> None:
         v = cfg[k]
         if not _is_int(v) or v <= 0:
             raise ValueError(f"{k} must be positive int (원), got {v!r}")
+    pct = cfg["cap_min_pct"]
+    if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not (0 <= pct < 1):
+        raise ValueError(f"cap_min_pct must be number 0~1 (1 미만), got {pct!r}")
     if not _is_hms(cfg["exit_time"]):
         raise ValueError(f"exit_time must be 'HH:MM:SS', got {cfg['exit_time']!r}")
     budget = cfg["budget_by_count"]
@@ -110,6 +117,7 @@ def load(path: Path | None = None) -> dict:
         "sl": raw.get("sl", DEFAULTS["sl"]),
         "cap_max": raw.get("cap_max", DEFAULTS["cap_max"]),
         "turnover_min": raw.get("turnover_min", DEFAULTS["turnover_min"]),
+        "cap_min_pct": raw.get("cap_min_pct", DEFAULTS["cap_min_pct"]),
         "exit_time": raw.get("exit_time", DEFAULTS["exit_time"]),
     }
     if "budget_by_count" in raw:
@@ -144,7 +152,7 @@ if __name__ == "__main__":  # 셀프체크
 
     # 범위 초과
     for bad in ({"score_threshold": 101}, {"tp": 2}, {"sl": -1}, {"cap_max": 0},
-                {"turnover_min": -1}, {"exit_time": "9:1"}, {"exit_time": "25:00:00"},
+                {"turnover_min": -1}, {"cap_min_pct": 1}, {"exit_time": "9:1"}, {"exit_time": "25:00:00"},
                 {"budget_by_count": {"1": 1, "2": 0, "3": 1}}):
         try:
             load(_tmp(bad))

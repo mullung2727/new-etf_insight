@@ -134,6 +134,7 @@ _TEST_CFG = {
     # 임의값 — 운영 임계값(close_bet.json, 비공개)과 무관.
     "cap_max": 77_000_000_000,
     "turnover_min": 3_000_000_000,
+    "cap_min_pct": 0.05,
     "budget_by_count": {1: 3_000_000, 2: 2_000_000, 3: 5_000_000 // 3},
 }
 
@@ -204,6 +205,13 @@ class TestPreconditionAbort(unittest.TestCase):
         _seed(self.db, [])
         code = _run_main(["--date", _DATE, "--allow-order-outside-close-window"], self.db)
         self.assertEqual(code, 1)
+        self.assertEqual(_order_rows(self.db), [])
+
+    def test_no_scores_because_all_below_cap_min_is_no_target_not_abort(self):
+        _seed(self.db, [])
+        with patch("scripts.run_close_bet.all_below_cap_min", return_value=True):
+            code = _run_main(["--date", _DATE, "--allow-order-outside-close-window"], self.db)
+        self.assertEqual(code, 0)
         self.assertEqual(_order_rows(self.db), [])
 
     def test_proceeds_when_scores_exist(self):

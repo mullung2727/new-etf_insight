@@ -19,6 +19,7 @@ type Form = {
   tp: string; // %, 빈칸 = 사용 안 함
   sl: string; // %, 빈칸 = 사용 안 함
   cap: string; // 억
+  cap_min: string; // %, 빈칸 = 사용 안 함(0)
   tv: string; // 억
   exit_time: string; // HH:MM:SS
   b1: string; // 원
@@ -27,7 +28,7 @@ type Form = {
 };
 
 const EMPTY: Form = {
-  score_threshold: "", tp: "", sl: "", cap: "", tv: "", exit_time: "", b1: "", b2: "", b3: "",
+  score_threshold: "", tp: "", sl: "", cap: "", cap_min: "", tv: "", exit_time: "", b1: "", b2: "", b3: "",
 };
 const EOK = 100_000_000;
 
@@ -50,6 +51,10 @@ function clientError(f: Form): string | null {
   for (const [v, label] of [[f.cap, "시가총액 상한"], [f.tv, "거래대금 하한"]] as const) {
     const amt = digits(v);
     if (!Number.isInteger(amt) || amt <= 0) return `${label}은 0보다 큰 금액이어야 합니다`;
+  }
+  if (f.cap_min.trim() !== "") {
+    const p = Number(f.cap_min);
+    if (!Number.isFinite(p) || p < 0 || p >= 100) return "시가총액 하한(하위 %)은 0 이상 100 미만이어야 합니다";
   }
   if (!isHms(f.exit_time)) return "청산 시각은 HH:MM:SS 형식이어야 합니다 (예: 09:01:00)";
   for (const [v, n] of [[f.b1, "1"], [f.b2, "2"], [f.b3, "3"]] as const) {
@@ -74,6 +79,7 @@ export function CloseBetPanel() {
         tp: c.tp === null ? "" : String(Math.round(c.tp * 100 * 100) / 100), // 0.05 → 5
         sl: c.sl === null ? "" : String(Math.round(c.sl * 100 * 100) / 100),
         cap: comma(String(Math.round(c.cap_max / EOK))), // 원 → 억
+        cap_min: c.cap_min_pct ? String(Math.round(c.cap_min_pct * 100 * 100) / 100) : "", // 0.05 → 5
         tv: comma(String(Math.round(c.turnover_min / EOK))),
         exit_time: c.exit_time,
         b1: comma(String(c.budget_by_count["1"])),
@@ -102,6 +108,7 @@ export function CloseBetPanel() {
       tp: form.tp.trim() === "" ? null : Number(form.tp) / 100,
       sl: form.sl.trim() === "" ? null : Number(form.sl) / 100,
       cap_max: digits(form.cap) * EOK,
+      cap_min_pct: form.cap_min.trim() === "" ? 0 : Number(form.cap_min) / 100,
       turnover_min: digits(form.tv) * EOK,
       exit_time: form.exit_time.trim(),
       budget_by_count: { "1": digits(form.b1), "2": digits(form.b2), "3": digits(form.b3) },
@@ -164,6 +171,21 @@ export function CloseBetPanel() {
             value={form.cap}
             onChange={(e) => set("cap", comma(e.target.value))}
             className="h-8 w-32 text-right"
+          />
+        </Suffixed>
+      </Field>
+
+      <Field
+        label="시가총액 하한 (전 종목 하위 %)"
+        help="전일 전 종목 시가총액 하위 이 비율에 드는 종목은 15시 점수 매기기에서 제외합니다. 금액이 아니라 비율이라 시장 규모를 따라갑니다. 비우면 쓰지 않습니다."
+      >
+        <Suffixed suffix="% 제외">
+          <Input
+            type="number"
+            value={form.cap_min}
+            onChange={(e) => set("cap_min", e.target.value)}
+            placeholder="사용 안 함"
+            className="h-8 w-32"
           />
         </Suffixed>
       </Field>

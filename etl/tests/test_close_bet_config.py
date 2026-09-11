@@ -102,6 +102,16 @@ class TestValidation(unittest.TestCase):
         cfg = load(Path(tempfile.gettempdir()) / "no_such_close_bet_cfg.json")
         self.assertEqual(cfg["exit_time"], "15:19:00")
 
+    def test_cap_min_pct_must_be_fraction_below_one(self):
+        for bad in (-0.01, 1, 1.5, "0.3", None, True):
+            with self.assertRaises(ValueError):
+                load(_write({"cap_min_pct": bad}))
+
+    def test_cap_min_pct_loaded_and_defaults_off(self):
+        self.assertEqual(load(_write({"cap_min_pct": 0.25}))["cap_min_pct"], 0.25)
+        cfg = load(Path(tempfile.gettempdir()) / "no_such_close_bet_cfg.json")
+        self.assertEqual(cfg["cap_min_pct"], 0)
+
     def test_null_tp_sl_means_disabled(self):
         """tp/sl null = 장중 TP/SL 판정 끔. 09:01 강제청산만 남는다."""
         cfg = load(_write({"tp": None, "sl": None}))
