@@ -209,3 +209,59 @@ class CapacityGateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThroughputRecoveryTest(unittest.TestCase):
+    """보고서가 실제와 다른 숫자를 내면 안 된다 — 저장값이 비면 사실로 다시 센다."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.db = Path(self.tmp.name) / "es.sqlite3"
+        storage.ensure_schema(self.db)
+        with storage.connect_rw(self.db) as con:
+            storage.start_run(con, run_id="r1", mode="live", cutoff_at="2026-07-01T06:40:00+00:00",
+                              policy_version="p", identity_version="i", code_version="c")
+            for index in range(3):
+                sv = f"sv{index}"
+                con.execute(
+                    "INSERT INTO source_versions (source_version_id, source_type, source_key,"
+                    " content_hash, origin_group_id, independence, first_observed_at,"
+                    " available_at, extracted_text) VALUES (?,?,?,?,?,'known',?,?,?)",
+                    (sv, "telegram", f"c/{index}", f"h{index}", "g1",
+                     "2026-06-30T00:00:00+00:00", "2026-06-30T00:00:00+00:00", "본문"))
+                con.execute("INSERT INTO manifest_entries VALUES (?,?)", ("r1", sv))
+                storage.record_processing(
+                    con, stage="extract_changes", input_hash=sv, policy_version="x",
+                    prompt_version="p", model_identity="m", code_version="c", status="done")
+            con.execute(
+                "INSERT INTO events (event_id, source_version_id, event_fingerprint, change_key,"
+                " extract_version, entity_ids_json, anchor_locators_json, change_json,"
+                " first_detected_at) VALUES ('e1','sv0','f1','k','ex1','[\"005930\"]','[]','{}',?)",
+                ("2026-06-30T00:00:00+00:00",))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_null_throughput_is_recomputed_from_stored_facts(self):
+        with storage.connect_rw(self.db) as con:
+            storage.finish_run(con, "r1", status="assessed")      # throughput 없이 마감
+        with storage.connect_ro(self.db) as con:
+            throughput = storage.load_throughput(con, "r1")
+        self.assertTrue(throughput["recomputed"])
+        self.assertEqual(throughput["manifest_sources"], 3)
+        self.assertEqual(throughput["processed"], 3)
+        self.assertEqual(throughput["events"], 1)
+        self.assertEqual(throughput["backlog"], 0)
+
+    def test_counts_come_from_facts_not_last_batch(self):
+        """extract 를 나눠 돌리면 저장값은 마지막 배치뿐이다 — 건수는 사실에서 센다."""
+        with storage.connect_rw(self.db) as con:
+            storage.finish_run(con, "r1", status="extracted",
+                               throughput={"processed": 1, "backlog": 39544,
+                                           "sec_per_source": 15.6})
+        with storage.connect_ro(self.db) as con:
+            throughput = storage.load_throughput(con, "r1")
+        self.assertEqual(throughput["processed"], 3)          # 실제 처리한 3건
+        self.assertEqual(throughput["backlog"], 0)
+        self.assertEqual(throughput["last_batch"]["processed"], 1)
+        self.assertEqual(throughput["last_batch"]["sec_per_source"], 15.6)

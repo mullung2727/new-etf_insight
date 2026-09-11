@@ -177,8 +177,11 @@ def render_artifact(payload: dict[str, Any], out_dir: Path = EXPORT_DIR) -> Path
         f" (대기 {payload['backlog']:,}건)",
         f"- 결과 상태: **{payload['result_status']}**", "",
         "## 1. 처리 범위와 누락", "",
-        f"- 이 실행은 전체 범위를 처리하지 못했다. 대기 {payload['backlog']:,}건이 남아 있어"
-        f" 전체 시장에 대한 결론이 아니다.",
+        (f"- 이 실행은 전체 범위를 처리하지 못했다. 대기 {payload['backlog']:,}건이 남아 있어"
+         f" 전체 시장에 대한 결론이 아니다."
+         if payload["backlog"] else
+         "- manifest 의 원문을 모두 처리했다. 다만 manifest 자체가 예산 안에서 뽑은"
+         " 표본이면 전체 시장에 대한 결론이 아니다."),
         f"- 추출 이벤트 {payload['events']:,}건 · 변화 있는 원문 {payload['with_events']:,}건"
         f" · 인용 검증 탈락 {payload['rejected']:,}건",
         f"- 종목 연결 완료 {feasibility['entities']:,}개",
@@ -218,11 +221,23 @@ def render_artifact(payload: dict[str, Any], out_dir: Path = EXPORT_DIR) -> Path
             f"| {item['subject_id']} | {item['event_count']} | {item['origin_groups']} | "
             f"{grades['evidence']} | {grades['timing']} | {grades['price']} | {item['action']} |")
 
-    lines.extend(["", "## 7. 해석 제한", "",
-                  "- historical_exploration 모드다. 지금 확보한 과거 자료로 재현했으므로"
-                  " 실시간 포착 성과가 아니다(§4.3).",
-                  "- 예산 한도로 표본만 처리했다. 미처리분을 no_candidates 로 숨기지 않는다(§12.3).",
-                  "- 가격 시나리오 입력을 아직 구현하지 않아 price 축은 전부 unknown 이다.",
-                  f"- 생성 {datetime.now().astimezone().isoformat(timespec='seconds')}"])
+    methods = feasibility.get("price_methods", {})
+    priced = sum(count for method, count in methods.items() if method != "unavailable")
+    notes = ["## 7. 해석 제한", ""]
+    if payload["mode"] != "live":
+        notes.append(f"- {payload['mode']} 모드다. 지금 확보한 과거 자료로 재현했으므로"
+                     " 실시간 포착 성과가 아니다(§4.3).")
+    notes.append("- 예산 한도로 표본만 처리했다. 미처리분을 no_candidates 로 숨기지 않는다(§12.3).")
+    notes.append(
+        f"- 가격 시나리오가 선 종목은 {priced}개다"
+        f" ({', '.join(f'{k} {v}' for k, v in sorted(methods.items())) or '집계 없음'})."
+        " 나머지는 목표가를 낸 증권사가 2곳 미만이거나 EPS·배수 근거가 없어 unknown 이다."
+        if methods else
+        "- 가격 시나리오 집계가 없다.")
+    notes.append("- 처리 건수는 manifest 와 저장된 이벤트에서 다시 센 값이다."
+                 " extract 를 여러 번 나눠 돌린 경우 저장된 throughput 은 마지막 배치만"
+                 " 담고 있어 그대로 쓰면 실제보다 적게 보인다.")
+    notes.append(f"- 생성 {datetime.now().astimezone().isoformat(timespec='seconds')}")
+    lines.extend(notes)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
