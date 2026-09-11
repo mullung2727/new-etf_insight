@@ -21,15 +21,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from kiwoom.ws.event_bus import bus
-from kiwoom.ws.manager import KiwoomWSManager
+from kiwoom.ws.manager import ws_manager as _ws_manager
 from notes import alert, autolink
 from routers import events as events_router
+from routers import realtime as realtime_router
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-_ws_manager = KiwoomWSManager()
 
 # 한국은 DST가 없으므로 고정 오프셋(notes/trades.py와 동일 패턴).
 _KST = timezone(timedelta(hours=9))
@@ -141,6 +141,7 @@ app.include_router(conditions_router.router)
 app.include_router(notes_router.router)
 app.include_router(settings_router.router)
 app.include_router(events_router.router)
+app.include_router(realtime_router.router)
 
 mcp = FastApiMCP(
     app,
