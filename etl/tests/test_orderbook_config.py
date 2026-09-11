@@ -70,6 +70,7 @@ class ConfigTest(unittest.TestCase):
 
     def test_broker_url_must_be_local(self):
         self.assert_rejects({"broker_url": "http://192.168.0.5:8001"}, "broker_url")
+        self.assert_rejects({"broker_url": "http://localhost:not-a-port"}, "broker_url")
         self.assertEqual(self.load_with({"broker_url": "http://localhost:8001"})["broker_url"],
                          "http://localhost:8001")
 

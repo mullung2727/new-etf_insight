@@ -112,7 +112,7 @@ def write_round(con: sqlite3.Connection, run_id: int, rows: list[dict[str, Any]]
         con.executemany(_INSERT, rows)
         _run_update(con, run_id, fields)
         con.commit()
-    except sqlite3.Error:
+    except Exception:          # SQL 밖 실패(note 직렬화 등)도 넣다 만 행을 다음 커밋에 남기지 않는다
         con.rollback()
         raise
     return total
