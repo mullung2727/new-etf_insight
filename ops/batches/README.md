@@ -36,6 +36,8 @@ reader before composing the Discord report.
   - Purpose: fetch previous-day KRX full-market OHLCV only.
 - `daily-etf-watchlist-intraday-kiwoom.md`
   - Purpose: build same-day Kiwoom candidates and write D+1 open-rise probability scores to `llm_scores` (feeds the 15:19 close-bet order window).
+- `daily-minute-bars-backfill.md`
+  - Purpose: backfill all-symbol KRX one-minute bars recent-first with validation and resume state.
 - `daily-new-etf-insight-batch.md`
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
 - `daily-close-bet-order.md`
@@ -93,6 +95,8 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
   `ops/scheduled-tasks/run-close-bet-order-report.ps1`.
 - `\new-etf_insight\daily-trading-result` — Mon-Fri 16:20,
   `ops/scheduled-tasks/run-daily-trading-result.ps1` (눌림목·종가베팅 실제 매도 통합 보고).
+- `\new-etf_insight\daily-minute-bars-backfill` — daily 20:00,
+  `ops/scheduled-tasks/run-minute-bars-backfill.ps1`.
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).
 - `\OpenClaw\close-bet-verify` — Mon-Fri 16:00, `etl/scripts/run_verify.py`
