@@ -145,7 +145,8 @@ def compute_price_context(
     prior_mean = statistics.fmean(prior) if prior else 0
     context["turnover_ratio"] = (
         round(statistics.fmean(recent) / prior_mean, 4) if recent and prior_mean else None)
-    context["turnover_20d"] = round(statistics.fmean(prior + recent), 0) if (prior or recent) else None
+    last20 = [daily[d].get("trading_value") or 0 for d in window[-20:] if d in daily]
+    context["turnover_20d"] = round(statistics.fmean(last20), 0) if last20 else None
     context["close"] = closes[last]
     context["market_cap"] = daily[last].get("market_cap")
 
@@ -214,11 +215,11 @@ def grade_timing(events: list[dict[str, Any]], cutoff_date: str) -> tuple[str, l
                 continue
     if not dated:
         return "unknown", ["no_expected_date"]
-    within = [d for d, e in dated if d <= limit]
+    within = [e for d, e in dated if d <= limit]
     if not within:
         return "low", ["expected_beyond_84d"]
     has_condition = any((e["change"].get("confirmation_condition") or "").strip()
-                        for _, e in dated)
+                        for e in within)
     return ("high", []) if has_condition else ("medium", ["no_confirmation_condition"])
 
 

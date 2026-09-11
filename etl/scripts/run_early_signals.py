@@ -106,7 +106,8 @@ def run_extract(args) -> int:
                     policy_version=storage.EXTRACT_CACHE_POLICY,
                     prompt_version=analysis.PROMPT_VERSION,
                     model_identity=args.model or "codex_default", code_version=CODE_VERSION,
-                    status="done", output={"events": events},
+                    # 청크 하나라도 실패하면 done 으로 캐시하지 않는다. 다음 실행이 다시 추출한다.
+                    status="failed" if result["errors"] else "done", output={"events": events},
                     elapsed_sec=result["elapsed_sec"], char_count=result["chars"])
         if events:
             for event in events:
