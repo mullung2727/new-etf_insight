@@ -64,7 +64,7 @@
 | etl/scripts/telegram_analysis_watermark.py | 채널별 마지막 분석 post_id | 공유하지 않음. 수정 글·backfill을 처리할 별도 상태 필요 |
 | etl/db/krx_ohlcv.duckdb:ohlcv,stock_names | 일봉·거래대금·종목 식별 | 완료된 거래일 기준 가격 문맥 |
 | etl/src/new_etf_insight/llm/__init__.py:generate_json | 기존 Codex 제공자와 JSON 생성·재시도 | 모든 LLM 호출의 공통 경로로 재사용 |
-| docs/PLAN_CATALYST_SURVIVAL_ANALYSIS.md | 당일 재료 생존성 분석 | 기간·목적이 다르므로 점수·저장·성과를 섞지 않음 |
+| docs/done/PLAN_CATALYST_SURVIVAL_ANALYSIS.md | 당일 재료 생존성 분석 | 기간·목적이 다르므로 점수·저장·성과를 섞지 않음 |
 
 확인한 제약:
 
