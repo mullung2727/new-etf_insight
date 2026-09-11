@@ -318,6 +318,15 @@ class MorningRunTest(WorkerBase):
         self.assertEqual(len(self.broker.posts()), 1 + 3)
         self.assertEqual(self.runs()[0]["note"]["stats"]["skipped_grids"], 0)
 
+    def test_broker_error_on_startup_cleanup_is_controlled(self):
+        def down(timeout):
+            self.broker.calls.append(("GET",))
+            raise rec.BrokerError(0, "GET /realtime/orderbook: connection refused")
+        self.broker.get_orderbook = down
+        self.assertEqual(self.run_at("09:59:30"), 1)            # traceback 아닌 통제된 종료 코드
+        self.assertEqual(self.runs()[0]["note"]["reason"], "broker_error")
+        self.assertEqual(self.broker.posts(), [])
+
     def test_window_end_during_first_registration_retry_stops(self):
         """09:59:59 첫 등록 실패 → 재시도 대기 중 10:00 → 등록 못 한 채 끝나야 한다(무한 루프 금지)."""
         self.broker.fail_post = 99

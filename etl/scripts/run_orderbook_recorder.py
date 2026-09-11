@@ -656,6 +656,9 @@ def run(cfg: dict, *, clock: Any = None, broker: Any = None, sse_factory: Callab
             except RegFailed as exc:
                 log.error("0D 등록 재시도 소진: %s", exc)
                 code, reason = 1, "reg_failed"
+            except BrokerError as exc:          # 시작 시 GET/DELETE 정리 실패 등
+                log.error("broker 오류: %s", exc)
+                code, reason = 1, "broker_error"
             except sqlite3.Error as exc:
                 log.error("DB 오류: %s", exc)
                 con.rollback()

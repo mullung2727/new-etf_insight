@@ -93,7 +93,7 @@ SPEC 원문은 수정하지 않는다. 단계가 진행되면 이 문서에 이�
 | 복구 POST 계기 | `system connected` 를 받을 때만 복구 POST. SSE 스트림이 새로 열린 것만으로는 보내지 않는다 | §7-12 "connected/새 SSE 연결 후 POST … 중복 실행되지 않도록 합친다". 새 SSE 에는 broker 가 sticky connected 를 바로 재생하므로 둘이 한 계기로 합쳐진다. broker 재시작 직후처럼 키움 연결 전이면 connected 가 올 때까지 기다려 503 재시도를 태우지 않는다 |
 | 15:30 이후 기동 | 실행기록 행 없이 종료 코드 0 | §7-4 는 구간을 고른 뒤 행을 만든다. 고를 구간이 없고 `mode` 가 NOT NULL 이다 |
 | broker 가 구간 내내 미연결 | 사유 `broker_not_connected`, 종료 코드 1 | §7-15 에 없는 경우. 수집 실패를 스케줄러 결과로 드러내려고 등록 실패(1)와 같게 둔다 |
-| 종료 사유 코드 | `window_end`, `holiday`, `empty`, `candidate_not_ready`, `reg_failed`, `db_error`, `broker_not_connected`, `error`(예상 밖 예외) | §7·§10 이 예시한 값에 빈 경우를 채웠다. 휴장이면 note 에 `holiday` 사유 문구도 남긴다 |
+| 종료 사유 코드 | `window_end`, `holiday`, `empty`, `candidate_not_ready`, `reg_failed`, `db_error`, `broker_not_connected`, `broker_error`(시작 시 GET/DELETE 정리 실패 등, 코드 1), `error`(예상 밖 예외) | §7·§10 이 예시한 값에 빈 경우를 채웠다. 휴장이면 note 에 `holiday` 사유 문구도 남긴다. `broker_error` 는 CodeRabbit 리뷰 반영 |
 | 오후 빈 목록 | 0건 완료만 보고 끝나면 `empty`, 끝까지 준비 안 되면 `candidate_not_ready` | §4.3 / §4.1 |
 | 재시도 범위 | 최초 등록·재접속 복구·구간 중 추가 모두 "최초 + reg_retry 회, 2초 간격". 소진하면 구간 전체를 끝내고 코드 1. 최초 등록을 못 한 채 구간이 끝나도 `reg_failed`·코드 1 | §7-9 를 모든 POST 에 적용. 구간 중 추가 실패로 기존 종목 수집까지 멈추는 점은 실측 후 다시 볼 대상. 최초 등록 미완 종료는 리뷰 P1(무한 루프) 반영 |
 | 복구·추가 등록 스레드 | 최초 등록은 메인 스레드에서 동기(격자 시작 전이라 잃는 격자 없음). 복구·추가 등록 POST 는 전용 단일 작업 스레드에서 수행한다. 메인 루프는 매 회차 결과만 확인하고, `grid.activate/forget`·note·DB 변경은 메인 스레드에서만 한다. 등록 요청은 한 번에 하나, 재시도 간격 2초·`reg_retry` 정책은 그대로. 대기 중 새로 붙은 코드는 앞 POST 가 끝난 뒤 이어서 보낸다. 종료 때는 진행 중 POST 가 끝난 뒤 DELETE | 리뷰 P2(재리뷰) 반영: 1초 수집 중 POST 가 메인 루프를 최대 15초 막으면 안 된다. HTTP 세션은 스레드별로 따로 쓴다 |

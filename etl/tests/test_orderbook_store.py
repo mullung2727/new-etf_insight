@@ -93,6 +93,15 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(rows_written, 1)
         self.assertEqual(note, "{}")
 
+    def test_non_sql_failure_also_rolls_back_the_round(self):
+        with connect_rw(self.db) as con:
+            run_id = store.start_run(con, date="20260911", started_at="s", mode="morning", note={})
+            with self.assertRaises(TypeError):
+                store.write_round(con, run_id, [row("09:00:01")], rows_written=0, note={"bad": object()})
+            con.commit()                                          # 뒤이은 커밋이 반쯤 넣은 행을 남기면 안 됨
+            snaps = con.execute("SELECT count(*) FROM orderbook_snapshot").fetchone()[0]
+        self.assertEqual(snaps, 0)
+
     def test_update_run_writes_note_as_json(self):
         with connect_rw(self.db) as con:
             run_id = store.start_run(con, date="20260911", started_at="s", mode="afternoon", note={})

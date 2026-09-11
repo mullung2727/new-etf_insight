@@ -71,6 +71,10 @@ def _validate(cfg: dict) -> None:
     url = urlparse(cfg["broker_url"]) if isinstance(cfg["broker_url"], str) else None
     if not url or url.scheme != "http" or url.hostname not in ("127.0.0.1", "localhost"):
         raise ConfigError("broker_url", "must be a local http address (127.0.0.1/localhost)")
+    try:
+        url.port                                   # 숫자 아닌 포트면 여기서 ValueError
+    except ValueError:
+        raise ConfigError("broker_url", "port must be a number") from None
     for name in ("morning", "afternoon"):
         win = cfg["windows"][name]
         for edge in ("start", "end"):
