@@ -22,6 +22,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.log
+# 배치 러너 로그 폴더. *.log 만으로는 minute-backfill-*.json 실행 보고가 샌다
+etl/logs/
 artifacts/
 downloads/
 
