@@ -11,7 +11,7 @@
 - Python 수집기: `etl/scripts/backfill_minute_bars.py`.
 - PowerShell 러너: `ops/scheduled-tasks/run-minute-bars-backfill.ps1`.
 - 기본 범위: 최근 12개월, 현재 월 우선 보충 후 최근 미완료 과거 월 하나.
-- 실행 제한: 270분, API 호출 최소 간격 0.5초, 단일 프로세스·BelowNormal 우선순위.
+- 실행 제한: 240분(작업 제한 4시간30분 안에 보고·알림 여유 30분), API 호출 최소 간격 0.5초, 단일 프로세스·BelowNormal 우선순위.
 
 ## Completion and recovery
 
