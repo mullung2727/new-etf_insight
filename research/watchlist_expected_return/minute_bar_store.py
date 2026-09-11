@@ -14,7 +14,10 @@ Usage (repo root):
 from __future__ import annotations
 
 import argparse
+import os
+import time
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -30,6 +33,7 @@ DEFAULT_DB_PATH = ROOT / "etl" / "db" / "minute_bars.duckdb"
 DEFAULT_SCOPE = "1"
 SESSION_OPEN, SESSION_CLOSE = "090000", "153000"
 MAX_PAGES = 5
+WINDOW_DAYS = 5
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS minute_bars (
@@ -40,6 +44,7 @@ CREATE TABLE IF NOT EXISTS minute_bars (
 );
 CREATE TABLE IF NOT EXISTS minute_fetched (
   ticker VARCHAR, scope VARCHAR, date VARCHAR,
+  status VARCHAR DEFAULT 'complete',
   PRIMARY KEY (ticker, scope, date)
 );
 """
@@ -48,13 +53,60 @@ _COLUMNS = ("ticker", "scope", "timestamp", "date", "time",
             "open", "high", "low", "close", "volume")
 
 
+class MinuteFetchIncomplete(RuntimeError):
+    """요청 범위의 장 시작까지 도달하지 못한 분봉 조회."""
+
+
+def _ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
+    con.execute(_SCHEMA)
+    columns = {row[1] for row in con.execute("PRAGMA table_info('minute_fetched')").fetchall()}
+    if "status" not in columns:
+        con.execute("ALTER TABLE minute_fetched ADD COLUMN status VARCHAR DEFAULT 'complete'")
+        con.execute(
+            """
+            UPDATE minute_fetched AS fetched
+            SET status = 'empty'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM minute_bars AS bars
+                WHERE bars.ticker = fetched.ticker
+                  AND bars.scope = fetched.scope
+                  AND bars.date = fetched.date
+            )
+            """
+        )
+
+
 @contextmanager
-def connect(db_path: Path = DEFAULT_DB_PATH, read_only: bool = False) -> Iterator[duckdb.DuckDBPyConnection]:
+def connect(
+    db_path: Path = DEFAULT_DB_PATH, read_only: bool = False, *, lock_timeout: float = 30.0
+) -> Iterator[duckdb.DuckDBPyConnection]:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(db_path), read_only=read_only)
+    deadline = time.monotonic() + lock_timeout
+    while True:
+        try:
+            con = duckdb.connect(str(db_path), read_only=read_only)
+            threads = os.getenv("MINUTE_DB_THREADS")
+            memory_limit = os.getenv("MINUTE_DB_MEMORY_LIMIT")
+            if threads:
+                con.execute(f"SET threads={int(threads)}")
+            if memory_limit:
+                con.execute("SET memory_limit=?", [memory_limit])
+            break
+        except duckdb.IOException as exc:
+            message = str(exc).lower()
+            locked = any(s in message for s in (
+                "could not set lock", "conflicting lock", "used by another process",
+                "being used", "다른 프로세스",
+            ))
+            if not locked:
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"분봉 DB 사용 중: {db_path} ({lock_timeout}초 대기)") from exc
+            time.sleep(min(1.0, remaining))
     try:
         if not read_only:
-            con.execute(_SCHEMA)
+            _ensure_schema(con)
         yield con
     finally:
         con.close()
@@ -66,15 +118,22 @@ def _insert_bars(con: duckdb.DuckDBPyConnection, rows: list[tuple]) -> int:
         return 0
     con.execute("CREATE OR REPLACE TEMP TABLE _staging AS SELECT * FROM minute_bars LIMIT 0")
     con.executemany(f"INSERT INTO _staging VALUES ({', '.join('?' * len(_COLUMNS))})", rows)
-    before = con.execute("SELECT count(*) FROM minute_bars").fetchone()[0]
-    con.execute("INSERT INTO minute_bars SELECT * FROM _staging ON CONFLICT DO NOTHING")
-    return con.execute("SELECT count(*) FROM minute_bars").fetchone()[0] - before
+    return len(con.execute(
+        "INSERT INTO minute_bars SELECT DISTINCT * FROM _staging "
+        "ON CONFLICT DO NOTHING RETURNING timestamp"
+    ).fetchall())
 
 
-def _mark_fetched(con: duckdb.DuckDBPyConnection, ticker: str, scope: str, dates: list[str]) -> None:
+def _mark_fetched(
+    con: duckdb.DuckDBPyConnection,
+    ticker: str,
+    scope: str,
+    dates: list[str],
+    empty_dates: set[str],
+) -> None:
     con.executemany(
-        "INSERT INTO minute_fetched VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-        [(ticker, scope, date) for date in dates],
+        "INSERT INTO minute_fetched (ticker, scope, date, status) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+        [(ticker, scope, date, "empty" if date in empty_dates else "complete") for date in dates],
     )
 
 
@@ -104,9 +163,21 @@ def fetch_into_store(
     max_pages: int = MAX_PAGES,
 ) -> int:
     """dates 중 미조회 구간만 키움에서 받아 적재한다. 적재한 봉 수를 반환."""
-    pending = missing_dates(con, ticker, dates, scope)
+    pending = sorted(set(missing_dates(con, ticker, dates, scope)), reverse=True)
     if not pending:
         return 0
+    # 희소한 요청 날짜도 달력 기준으로 분할하여 긴 중간 구간을 조회하지 않는다.
+    windows: list[list[str]] = []
+    for date in pending:
+        if not windows or (
+            datetime.strptime(windows[-1][0], "%Y%m%d") - datetime.strptime(date, "%Y%m%d")
+        ).days >= WINDOW_DAYS:
+            windows.append([])
+        windows[-1].append(date)
+    if len(windows) > 1:
+        return sum(fetch_into_store(
+            con, ticker, window, scope=scope, fetch_page=fetch_page, max_pages=max_pages
+        ) for window in windows)
     if fetch_page is None:
         from broker.kiwoom.quotes import get_minute_chart
 
@@ -115,6 +186,7 @@ def fetch_into_store(
     base_dt, earliest_dt = max(pending), min(pending)
     bars_by_time: dict[str, dict[str, Any]] = {}
     cont_yn, next_key = "N", ""
+    exhausted_history = False
     for _ in range(max_pages):
         result = fetch_page(ticker, scope, base_dt, cont_yn=cont_yn, next_key=next_key)
         for raw in result["bars"]:
@@ -125,17 +197,27 @@ def fetch_into_store(
             break
         cont_yn, next_key = result["cont_yn"], result["next_key"]
         if cont_yn != "Y" or not next_key:
+            exhausted_history = True
             break
 
-    covered = [bar for bar in bars_by_time.values() if earliest_dt <= bar["date"] <= base_dt]
+    covered = [bar for bar in bars_by_time.values() if bar["date"] in pending]
     inserted = _insert_bars(con, [
         (ticker, scope, bar["timestamp"], bar["date"], bar["time"],
          bar["open"], bar["high"], bar["low"], bar["close"], bar["volume"])
         for bar in covered
     ])
-    if _reached_session_start(bars_by_time.values(), earliest_dt):
+    # 정상 응답이 continuation 없이 끝났다면 해당 기준일 이전의 가용 이력을 모두 본 것이다.
+    # 봉이 전혀 없거나 첫 요청일만 무거래여도 완료로 기록해야 같은 날짜를 실패로 재시도하지 않는다.
+    complete = _reached_session_start(bars_by_time.values(), earliest_dt) or exhausted_history
+    if complete:
         # earliest_dt 장 시작까지 닿았으면 그 사이 날짜는 봉이 0개여도 조회 완료다(거래정지 등).
-        _mark_fetched(con, ticker, scope, [d for d in pending if earliest_dt <= d <= base_dt])
+        fetched_dates = [d for d in pending if earliest_dt <= d <= base_dt]
+        bar_dates = {bar["date"] for bar in covered}
+        _mark_fetched(con, ticker, scope, fetched_dates, empty_dates=set(fetched_dates) - bar_dates)
+    else:
+        raise MinuteFetchIncomplete(
+            f"{ticker} {earliest_dt}~{base_dt}: {max_pages}페이지 안에 장 시작까지 도달하지 못함"
+        )
     return inserted
 
 
@@ -145,8 +227,8 @@ def _reached_session_start(bars: Any, earliest_dt: str) -> bool:
         (bar for bar in bars if bar["date"] == earliest_dt), key=lambda item: item["time"]
     )
     return bool(
-        earliest_day
-        and (earliest_day[0]["time"] <= SESSION_OPEN or any(bar["date"] < earliest_dt for bar in bars))
+        any(bar["date"] < earliest_dt for bar in bars)
+        or (earliest_day and earliest_day[0]["time"] <= SESSION_OPEN)
     )
 
 
@@ -159,6 +241,8 @@ def load_bars(
     fetch_page: Callable[..., dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """dates 의 정규장 1분봉. 미조회 날짜는 받아서 적재한 뒤 함께 반환한다."""
+    if not dates:
+        return []
     fetch_into_store(con, ticker, dates, scope=scope, fetch_page=fetch_page)
     placeholders = ", ".join("?" * len(dates))
     rows = con.execute(
@@ -194,10 +278,11 @@ def migrate_json_cache(
     inserted = con.execute("SELECT count(*) FROM minute_bars").fetchone()[0] - before
     con.execute(
         """
-        INSERT INTO minute_fetched
-        SELECT DISTINCT symbol, ?, b.date
+        INSERT INTO minute_fetched (ticker, scope, date, status)
+        SELECT DISTINCT symbol, ?, b.date, 'complete'
         FROM _cache, UNNEST(bars) AS u(b)
-        WHERE b.date BETWEEN _cache.earliest_requested_dt AND _cache.base_dt
+        WHERE _cache.complete = true
+          AND b.date BETWEEN _cache.earliest_requested_dt AND _cache.base_dt
         ON CONFLICT DO NOTHING
         """,
         [scope],
