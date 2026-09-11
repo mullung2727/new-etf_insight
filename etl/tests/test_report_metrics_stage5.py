@@ -26,6 +26,13 @@ class BuildInputs(unittest.TestCase):
         self.assertEqual(inputs.years, [2026, 2027])
         self.assertEqual(len(inputs.warnings), 2)
 
+    def test_middle_gap_stops_the_series(self):
+        """2027 이 비면 2028 을 2026 자본에 붙여 계산하면 안 된다(B_{t-1} 연쇄가 끊김)."""
+        est = BASIC[:2] + [_est(2027, True, 130.0, None), _est(2028, True, 140.0, 12.0)]
+        inputs = build_rim_inputs(est)
+        self.assertEqual(inputs.years, [2026])
+        self.assertEqual(len(inputs.warnings), 2)
+
     def test_no_forecast_years_returns_none(self):
         self.assertIsNone(build_rim_inputs([_est(2024, False, 90.0, 9.0), _est(2025, False, 100.0, 10.0)]))
         self.assertIsNone(rim_value(None))
