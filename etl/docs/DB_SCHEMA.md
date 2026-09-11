@@ -99,6 +99,83 @@ CREATE TABLE indicators (
 )
 ```
 
+## `orderbook.sqlite3`
+
+테이블 2개: `orderbook_run`, `orderbook_snapshot`
+
+```sql
+CREATE TABLE orderbook_run (
+  run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  mode TEXT NOT NULL,
+  source_date TEXT,
+  venue TEXT,
+  symbols TEXT NOT NULL,
+  rows_written INTEGER,
+  note TEXT
+)
+```
+
+```sql
+CREATE TABLE orderbook_snapshot (
+  date TEXT NOT NULL,
+  ticker TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  ts TEXT NOT NULL,
+  recv_ts TEXT NOT NULL,
+  quote_tm TEXT,
+  ask1_px INTEGER,
+  ask2_px INTEGER,
+  ask3_px INTEGER,
+  ask4_px INTEGER,
+  ask5_px INTEGER,
+  ask6_px INTEGER,
+  ask7_px INTEGER,
+  ask8_px INTEGER,
+  ask9_px INTEGER,
+  ask10_px INTEGER,
+  ask1_qty INTEGER,
+  ask2_qty INTEGER,
+  ask3_qty INTEGER,
+  ask4_qty INTEGER,
+  ask5_qty INTEGER,
+  ask6_qty INTEGER,
+  ask7_qty INTEGER,
+  ask8_qty INTEGER,
+  ask9_qty INTEGER,
+  ask10_qty INTEGER,
+  bid1_px INTEGER,
+  bid2_px INTEGER,
+  bid3_px INTEGER,
+  bid4_px INTEGER,
+  bid5_px INTEGER,
+  bid6_px INTEGER,
+  bid7_px INTEGER,
+  bid8_px INTEGER,
+  bid9_px INTEGER,
+  bid10_px INTEGER,
+  bid1_qty INTEGER,
+  bid2_qty INTEGER,
+  bid3_qty INTEGER,
+  bid4_qty INTEGER,
+  bid5_qty INTEGER,
+  bid6_qty INTEGER,
+  bid7_qty INTEGER,
+  bid8_qty INTEGER,
+  bid9_qty INTEGER,
+  bid10_qty INTEGER,
+  ask_total_qty INTEGER,
+  bid_total_qty INTEGER,
+  exp_px INTEGER,
+  exp_qty INTEGER,
+  exp_px_ca INTEGER,
+  exp_qty_ca INTEGER,
+  PRIMARY KEY (date, ticker, venue, ts)
+)
+```
+
 ## `telegram_public.sqlite3`
 
 테이블 4개: `telegram_analysis_watermark`, `telegram_channels`, `telegram_posts`, `telegram_stock_insights`

@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<!-- Windows 작업 스케줄러 정의 — 호가 스냅샷 수집기 (docs/SPEC_ORDERBOOK_SNAPSHOT_RECORDER.md §11)
+     평일 08:44 오전 구간(08:45~10:00), 14:59 오후 구간(15:00~15:30). 구간은 스크립트가 현재 시각으로 고른다.
+     실행 제한 1시간 30분: 오전 구간이 10:00 까지라 08:44 기동이면 약 76분 걸린다(SPEC 1시간에서 변경, deviations.md 1.3).
+     등록 (검증 후):
+       Register-ScheduledTask -Xml (Get-Content -Path orderbook-recorder.xml -Raw -Encoding UTF8) -TaskName "orderbook-recorder" -TaskPath "\OpenClaw\" -Force
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>호가 스냅샷 수집기 (평일 08:44 오전 08:45~10:00, 14:59 오후 15:00~15:30, KRX 0D 1초 격자)</Description>
+    <URI>\OpenClaw\orderbook-recorder</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-09-14T08:44:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday />
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+    <CalendarTrigger>
+      <StartBoundary>2026-09-14T14:59:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday />
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT1H30M</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-orderbook-recorder.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
