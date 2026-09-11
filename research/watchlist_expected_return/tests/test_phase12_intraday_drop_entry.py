@@ -59,6 +59,17 @@ class ScanDayTest(unittest.TestCase):
         self.assertEqual(signal["reference_price"], 1200)
         self.assertEqual(signal["entry_price"], 1100)
 
+    def test_running_high_breakout_uses_prior_high(self):
+        # 상승 돌파는 직전까지의 고점(1000) 대비 +5%(1050) 를 종가가 넘을 때 — 현재 봉 고가를
+        # 기준에 넣으면 종가가 그 위로 갈 수 없어 영원히 불발이다
+        bars = [bar(D1, "090000", 1000, 1000, 1000, 1000),
+                bar(D1, "090100", 1000, 1060, 1000, 1060),
+                bar(D1, "090200", 1061, 1070, 1055, 1065)]
+        signal = scan_day(bars, 1000, 1000, "running_high", 0.05, direction="up")
+        self.assertEqual(signal["signal_time"], "090100")
+        self.assertEqual(signal["reference_price"], 1000)
+        self.assertEqual(signal["entry_price"], 1061)
+
     def test_gap_down_at_first_bar_counts(self):
         bars = [bar(D1, "090000", 900, 900, 890, 890), bar(D1, "090100", 895, 895, 880, 885)]
         signal = scan_day(bars, 900, 1000, "prev_close", 0.05)

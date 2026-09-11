@@ -156,12 +156,15 @@ def scan_day(
     """완료 1분봉 종가가 기준가 대비 하락(down)·상승(up)률을 처음 만족하면 다음 봉 시가로 매수."""
     running_high = day_open
     for index, bar in enumerate(bars):
+        prior_high = running_high
         running_high = max(running_high, bar["high"])
         if bar["time"] > LAST_BUY_TIME:
             return None
+        # 상승 돌파는 직전까지의 고점을 기준으로 한다. 현재 봉 고가를 넣으면 종가가
+        # 그 위로 갈 수 없어 running_high 돌파는 영원히 불발이다. 하락은 완료봉 고가를 써도 된다.
         base = {"watchlist_high": watchlist_high, "watchlist_close": watchlist_close,
                 "prev_close": prev_close, "day_open": day_open,
-                "running_high": running_high}[reference]
+                "running_high": running_high if direction == "down" else prior_high}[reference]
         if not base or base <= 0:
             continue
         trigger = base * (1 - rate) if direction == "down" else base * (1 + rate)
