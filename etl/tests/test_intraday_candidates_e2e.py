@@ -32,7 +32,7 @@ from scripts.build_intraday_ranking import (
     run,
     run_candidates,
 )
-from scripts.build_watchlist import compute_watchlist
+from scripts.build_watchlist import compute_watchlist, upsert_watchlist
 from scripts.wl_sqlite import connect_ro, connect_rw
 
 ETL_DIR = Path(__file__).resolve().parents[1]
@@ -87,6 +87,13 @@ class TestDropBottomCaps(unittest.TestCase):
 
     def test_off_when_pct_zero(self):
         self.assertEqual(drop_bottom_caps(self.con, "20260615", ["000001"], 0), (["000001"], []))
+
+    def test_watchlist_upsert_removes_previously_stored_dropped_rows(self):
+        with connect_rw(Path(self._tmp.name) / "wl.sqlite3") as con:
+            upsert_watchlist(con, {"20260615": ["000001", "000010"]})     # 컷 도입 전 저장분
+            upsert_watchlist(con, {"20260615": ["000010"]}, dropped={"20260615": ["000001"]})
+            rows = con.execute("SELECT stock_code FROM watchlist ORDER BY 1").fetchall()
+        self.assertEqual(rows, [("000010",)])
 
 
 class TestEquivalenceWithBuildWatchlist(unittest.TestCase):

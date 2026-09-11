@@ -144,8 +144,14 @@ def compute_watchlist(con: duckdb.DuckDBPyConnection, from_date: str, to_date: s
     return result
 
 
-def upsert_watchlist(con: sqlite3.Connection, watchlist: dict[str, list[str]]) -> int:
+def upsert_watchlist(
+    con: sqlite3.Connection, watchlist: dict[str, list[str]], dropped: dict[str, list[str]] | None = None
+) -> int:
     con.execute(_CREATE_WATCHLIST)
+    # 시총 컷에 걸린 종목이 이전 실행분으로 남아 있으면 지운다. 안 지우면 눌림목이 그 행을 산다.
+    gone = [(d, code) for d, codes in (dropped or {}).items() for code in codes]
+    if gone:
+        con.executemany("DELETE FROM watchlist WHERE date = ? AND stock_code = ?", gone)
     rows = [(d, code) for d, codes in watchlist.items() for code in codes]
     if rows:
         con.executemany("INSERT OR REPLACE INTO watchlist VALUES (?, ?)", rows)
@@ -258,15 +264,16 @@ def main() -> None:
         #     여기서 다시 upsert 해 눌림목이 D+1~ 에 산다. compute_watchlist 는 백테스트 소급
         #     모집단에도 쓰이므로 건드리지 않고 저장 직전에만 건다.
         cap_min_pct = load_close_bet_config()["cap_min_pct"]
+        dropped = {}
         for d in watchlist:
-            watchlist[d], _ = drop_bottom_caps(krx_con, d, watchlist[d], cap_min_pct)
+            watchlist[d], dropped[d] = drop_bottom_caps(krx_con, d, watchlist[d], cap_min_pct)
     finally:
         krx_con.close()
 
     # 3) watchlist + llm_scores upsert (watchlist.sqlite3 write)
     score_rows = load_llm_scores(reports_dir)
     with connect_rw(wl_db) as wl_con:
-        n_wl = upsert_watchlist(wl_con, watchlist)
+        n_wl = upsert_watchlist(wl_con, watchlist, dropped)
         n_sc = upsert_llm_scores(wl_con, score_rows)
 
     dates = sorted(watchlist)
