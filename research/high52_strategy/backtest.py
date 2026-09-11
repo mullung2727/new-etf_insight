@@ -41,6 +41,7 @@ HOLD = 120              # 최대 보유 거래일
 TVAL_MIN = 10.0         # 최소 거래대금(억)
 DEPTH_MAX = 2.28        # 베이스 깊이 상한 (52주 고가/저가). 저·중변동 3분위 경계
 DEBT_MIN = 150.0        # 최소 부채비율(%)
+LIMIT_UP = 0.29         # 진입가가 기준가 대비 이 이상이면 상한가로 보고 매수 불가 처리
 SPLIT_LO, SPLIT_HI = 0.67, 1.5                   # 이 밖이면 분할/병합으로 보고 보정
 CAP_EDGES = [0, 1000, 3000, 10000, 50000, 1e12]  # 억
 CAP_LABELS = ["<1천억", "1~3천억", "3천~1조", "1~5조", "5조+"]
@@ -172,6 +173,7 @@ def run(db_path: Path = KRX_DB, *, stop: float = STOP, hold: int = HOLD,
            f.ms mms, f.open*{_ADJ} o, f.high*{_ADJ} h, f.low*{_ADJ} l, f.close*{_ADJ} c
     FROM ev e JOIN b f ON f.ticker=e.ticker AND f.ms>e.ms AND f.ms<=e.ms+{hold}
     WHERE e.ms + {hold} <= (SELECT max(ms) FROM b) {where}
+      AND coalesce(e.chg, 0) < {LIMIT_UP}      -- 상한가 마감일 종가는 매수 불가
     ORDER BY e.ticker, e.ms, f.ms
     """).df()
     con.close()
