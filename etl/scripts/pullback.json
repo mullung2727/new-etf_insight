@@ -1,6 +1,6 @@
 {
   "budget_per_stock": 100000,
-  "max_new_positions": 3,
+  "max_new_positions": 1,
   "tp": 0.05,
   "sl": 0.05,
   "max_wait_days": 5,
