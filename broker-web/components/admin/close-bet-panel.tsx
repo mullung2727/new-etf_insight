@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { isHms } from "@/lib/close-bet-config";
+
+// lib/close-bet-config 의 isHms 와 같은 도메인. 그 모듈은 node:fs 를 import 해서
+// 클라이언트 번들에 넣으면 빌드가 깨지므로 여기 따로 둔다.
+function isHms(v: string): boolean {
+  if (!/^\d{2}:\d{2}:\d{2}$/.test(v)) return false;
+  const [h, m, s] = v.split(":").map(Number);
+  return h <= 23 && m <= 59 && s <= 59;
+}
 
 // 저장 포맷은 소수(tp/sl 0~1)·원(cap_max/turnover_min). 화면은 %·억으로 입력/표시하고
 // 저장 직전 변환한다. tp/sl 빈칸은 null(장중 익절·손절 안 씀)로 저장된다.
