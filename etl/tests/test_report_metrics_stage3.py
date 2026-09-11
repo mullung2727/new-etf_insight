@@ -58,6 +58,27 @@ class FindPrevious(unittest.TestCase):
             self.assertIsNone(
                 storage.find_previous_report(con, "095570", "신한투자증권", "2026-08-18"))
 
+    def test_failed_parse_is_skipped_for_previous(self):
+        """파싱 실패·이미지 PDF 는 목표가를 모를 뿐이라 그 앞의 정상 리포트를 직전으로 본다."""
+        self._seed(
+            _facts("ok", report_date="2026-06-01", target=5000),
+            _facts("err", report_date="2026-07-01", parse_status="parse_error"),
+            _facts("img", report_date="2026-07-15", parse_status="unsupported_image_pdf"),
+        )
+        with storage.connect_ro(self.db) as con:
+            prev = storage.find_previous_report(con, "095570", "신한투자증권", "2026-08-18")
+        self.assertEqual(prev["pdf_key"], "ok")
+
+    def test_not_rated_stays_previous(self):
+        """직전이 NOT RATED(no_target)면 그대로 잡혀 new_target 으로 분류돼야 한다."""
+        self._seed(
+            _facts("ok", report_date="2026-06-01", target=5000),
+            _facts("nr", report_date="2026-07-01", parse_status="no_target"),
+        )
+        with storage.connect_ro(self.db) as con:
+            prev = storage.find_previous_report(con, "095570", "신한투자증권", "2026-08-18")
+        self.assertEqual(prev["pdf_key"], "nr")
+
     def test_upsert_is_idempotent(self):
         f = _facts("a", target=5000)
         self._seed(f, f)

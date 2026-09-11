@@ -46,10 +46,17 @@ def build_rim_inputs(
         warnings.append(f"{base_year}: 기준자본 없음 → {forecasts[0].fiscal_year} 자본-순이익으로 근사")
 
     inputs = RimInputs(base_equity=b0, base_year=base_year, r=r, omega=omega, warnings=warnings)
+    gap = False
     for e in forecasts:
         b = _equity(e)
         if b is None:
             warnings.append(f"{e.fiscal_year}: ROE 또는 순이익 없음 → 제외")
+            gap = True
+            continue
+        if gap:
+            # 결손 연도 뒤는 쓰지 않는다 — rim_value 가 RI_t 에 B_{t-1} 을 쓰므로 중간이 비면
+            # 앞 연도 자본에 붙여 계산하게 돼 값이 틀린다.
+            warnings.append(f"{e.fiscal_year}: 앞 연도 결손 → 제외")
             continue
         inputs.years.append(e.fiscal_year)
         inputs.roes.append(e.roe)

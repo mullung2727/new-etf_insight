@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
-from .models import ReportFacts, YearEstimate
+from .models import STATUS_IMAGE_PDF, STATUS_PARSE_ERROR, ReportFacts, YearEstimate
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = ROOT / "db" / "report_metrics.sqlite3"
@@ -137,12 +137,16 @@ def find_previous_report(
 
     report_date 가 **엄격히 작은** 것만 본다 — 같은 날 같은 증권사 리포트는 상·하향 판단
     근거가 안 되므로 이전으로 잡지 않는다(PLAN §2.2).
+    파싱 실패·이미지 PDF 는 목표가를 모를 뿐 목표가가 없는 게 아니므로 건너뛴다. 그걸 직전으로
+    잡으면 앞의 정상 리포트 대비 상·하향이 new_target 으로 묻힌다. NOT RATED(no_target)는
+    실제로 목표가가 없던 것이라 그대로 직전이 된다.
     """
     cur = con.execute(
         "SELECT * FROM report_facts "
         "WHERE stock_code = ? AND broker = ? AND report_date < ? "
+        "AND parse_status NOT IN (?, ?) "
         "ORDER BY report_date DESC, pdf_key DESC LIMIT 1",
-        (stock_code, broker, report_date),
+        (stock_code, broker, report_date, STATUS_PARSE_ERROR, STATUS_IMAGE_PDF),
     )
     return cur.fetchone()
 
