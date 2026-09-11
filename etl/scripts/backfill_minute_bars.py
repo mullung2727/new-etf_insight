@@ -178,7 +178,7 @@ def process_month(
             completed += 1
         except Exception as exc:
             failed += 1
-            if "429" in str(exc):
+            if "HTTP 429" in str(exc):  # broker.kiwoom.client.KiwoomError 형식
                 stop_reason = "api_rate_limit"
                 break
             with connect(minute_db) as con:
@@ -281,7 +281,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--scope", default=DEFAULT_SCOPE)
     parser.add_argument("--months-back", type=int, default=12)
     parser.add_argument("--month", help="수동 대상월 YYYYMM")
-    parser.add_argument("--max-runtime-min", type=float, default=270)
+    parser.add_argument("--max-runtime-min", type=float, default=240)
     parser.add_argument("--api-interval", type=float, default=0.5)
     parser.add_argument("--max-attempts", type=int, default=3)
     parser.add_argument("--max-failures", type=int, default=20)

@@ -73,6 +73,22 @@ class MinuteBackfillTest(unittest.TestCase):
                 count = con.execute("SELECT count(*) FROM minute_backfill_failures").fetchone()[0]
             self.assertEqual(count, 0)
 
+    def test_429_inside_ticker_or_date_is_ordinary_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "minute.duckdb"
+            plan = {"042900": ["20260429"]}
+
+            def fail(*_args, **_kwargs):
+                raise RuntimeError("042900 20260429~20260429: 장 시작까지 도달하지 못함")
+
+            result = process_month(db, "202604", plan, scope="1", deadline=10**20,
+                                   max_attempts=3, max_failures=2, max_tickers=None,
+                                   retry_blocked=False, fetch_page=fail)
+            self.assertNotEqual(result["stop_reason"], "api_rate_limit")
+            with duckdb.connect(str(db), read_only=True) as con:
+                count = con.execute("SELECT count(*) FROM minute_backfill_failures").fetchone()[0]
+            self.assertEqual(count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
