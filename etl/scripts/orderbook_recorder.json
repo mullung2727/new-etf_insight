@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "broker_url": "http://127.0.0.1:8001",
+  "windows": {
+    "morning": {"start": "08:45:00", "end": "10:00:00"},
+    "afternoon": {"start": "15:00:00", "end": "15:30:00"}
+  },
+  "snapshot_sec": 1,
+  "max_stale_sec": 30,
+  "venue": "KRX",
+  "reg_timeout_sec": 5,
+  "reg_retry": 3,
+  "symbols": {
+    "static": [],
+    "max": 20,
+    "max_lookback_days": 5
+  },
+  "scoring_result_path": "../../reports/recent_3day_probability_scores.json"
+}
