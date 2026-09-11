@@ -28,6 +28,7 @@ from scripts.build_intraday_ranking import (
     PENNY_MAX,
     fetch_past_top_union,
     compute_candidates,
+    drop_bottom_caps,
     run,
     run_candidates,
 )
@@ -60,6 +61,32 @@ class TestCandidateDeduplication(unittest.TestCase):
         self.assertEqual(first_day.count("439090"), 1)
         self.assertEqual(next_day, ["257720"])
         self.assertEqual(next_day.count("439090"), 0)
+
+
+class TestDropBottomCaps(unittest.TestCase):
+    """전일 전 종목 시총 하위 비율 미만 후보 제외 (15시·08시 공통)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.con = duckdb.connect(str(Path(self._tmp.name) / "krx.duckdb"))
+        self.con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR, market_cap BIGINT,"
+                         " close INTEGER, volume BIGINT)")
+        # 전일(20260612) 시총 1M(000001)~10M(000010) → 하위 20% 컷 2.8M (임의 비율)
+        for i in range(1, 11):
+            self.con.execute("INSERT INTO ohlcv VALUES ('20260612', ?, ?, 100, 1000)",
+                             [f"{i:06d}", i * 1_000_000])
+
+    def tearDown(self):
+        self.con.close()
+        self._tmp.cleanup()
+
+    def test_drops_below_cut_keeps_above_and_unknown(self):
+        kept, dropped = drop_bottom_caps(self.con, "20260615", ["000001", "000010", "999999"], 0.20)
+        self.assertEqual(kept, ["000010", "999999"])   # 999999 = 전일 시총 모름 → 판단 불가라 남김
+        self.assertEqual(dropped, ["000001"])
+
+    def test_off_when_pct_zero(self):
+        self.assertEqual(drop_bottom_caps(self.con, "20260615", ["000001"], 0), (["000001"], []))
 
 
 class TestEquivalenceWithBuildWatchlist(unittest.TestCase):

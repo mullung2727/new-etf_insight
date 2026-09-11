@@ -13,7 +13,7 @@ export type CloseBetConfig = {
   sl: number | null;
   cap_max: number; // 원. 시총 상한(미만)
   turnover_min: number; // 원. 전일 거래대금 하한(이상)
-  cap_min_pct: number; // 0~1(1 미만). 전일 전 종목 시총 하위 이 비율은 15시 스코어링에서 제외. 0 = 끔
+  cap_min_pct: number; // 0~1(1 미만). 전일 전 종목 시총 하위 이 비율은 후보 목록에서 제외(종가베팅·눌림목 공통). 0 = 끔
   exit_time: string; // "HH:MM:SS". 청산 워커의 강제청산 시각(단일 소스)
   budget_by_count: BudgetByCount;
 };

@@ -34,7 +34,6 @@ from research.watchlist_expected_return.watchlist_probability_langgraph import (
     collect_news,
     evaluate_available_outcomes,
     ensure_complete_scores,
-    load_candidates,
     load_telegram,
     make_prompt,
     persist_scoring_results,
@@ -161,24 +160,6 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
             [row["post_refs"] for row in result["telegram_by_ticker"]["000001"]],
             [["ch/1"]],
         )
-
-    def test_load_candidates_drops_market_bottom_cap_pct(self) -> None:
-        # 전일(20260710) 전 종목 시총 1M(000001)~10M → 하위 20% 컷 2.8M (임의 비율)
-        with duckdb.connect(str(self.krx_db)) as con:
-            for i in range(2, 11):
-                con.execute("INSERT INTO ohlcv VALUES ('20260710',?,?,100,95,1000)",
-                            [f"1000{i:02d}", i * 1_000_000])
-        with closing(sqlite3.connect(self.watchlist_db)) as con, con:
-            con.execute("INSERT INTO watchlist VALUES ('20260713','100010')")
-        state = {"date": "20260713", "watchlist_db": str(self.watchlist_db),
-                 "krx_db": str(self.krx_db), "warnings": []}
-
-        kept = load_candidates({**state, "cap_min_pct": 0.20})
-        self.assertEqual([c["ticker"] for c in kept["candidates"]], ["100010"])
-        self.assertIn("cap_min_pct_excluded:000001", kept["warnings"])
-
-        off = load_candidates({**state, "cap_min_pct": 0})
-        self.assertEqual([c["ticker"] for c in off["candidates"]], ["000001", "100010"])
 
     def test_graph_scores_without_changing_existing_db(self) -> None:
         calls = []

@@ -4,7 +4,8 @@
   1. 대상 거래일 D 결정 (기본: 최신 거래일).
   2. D-60거래일 ~ D 구간 ohlcv 누락분을 build_krx_ohlcv.ensure_ohlcv 로 자기치유 갭필.
   3. compute_watchlist: krx_ohlcv 에서 DuckDB SQL 집계로 급등 필터.
-  4. 통합 거래량 상위 30 → 60거래일 신규진입 → 종가 ≤ 500 제외 → watchlist 테이블 upsert.
+  4. 통합 거래량 상위 30 → 60거래일 신규진입 → 종가 ≤ 500 제외
+     → 전일 전 종목 시총 하위 cap_min_pct 제외 → watchlist 테이블 upsert.
   5. REPORTS_DIR/volume_spike_*.notion.json 스캔 → llm_scores 테이블 upsert.
 
 데이터 출처: STEP1 참조. ohlcv 본체는 KRX OpenAPI(data-dbg.krx.co.kr) 단일.
@@ -34,8 +35,12 @@ import duckdb
 from build_krx_ohlcv import ensure_ohlcv, get_trading_calendar, load_api_key
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
+    from scripts.build_intraday_ranking import drop_bottom_caps
+    from scripts.close_bet_config import load as load_close_bet_config
     from scripts.wl_sqlite import connect_rw
 except ImportError:
+    from build_intraday_ranking import drop_bottom_caps
+    from close_bet_config import load as load_close_bet_config
     from wl_sqlite import connect_rw
 
 ROOT = Path(__file__).resolve().parents[2]                       # new-etf_insight/
@@ -249,6 +254,12 @@ def main() -> None:
         )
         # 2) 급등 필터
         watchlist = compute_watchlist(krx_con, gapfill_from, to_date)
+        # 2b) 시총 하한 — 15시 build_intraday_ranking 과 같은 컷. 안 걸면 15시에 뺀 종목을
+        #     여기서 다시 upsert 해 눌림목이 D+1~ 에 산다. compute_watchlist 는 백테스트 소급
+        #     모집단에도 쓰이므로 건드리지 않고 저장 직전에만 건다.
+        cap_min_pct = load_close_bet_config()["cap_min_pct"]
+        for d in watchlist:
+            watchlist[d], _ = drop_bottom_caps(krx_con, d, watchlist[d], cap_min_pct)
     finally:
         krx_con.close()
 

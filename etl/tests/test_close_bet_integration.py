@@ -207,9 +207,9 @@ class TestPreconditionAbort(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(_order_rows(self.db), [])
 
-    def test_no_scores_because_all_below_cap_min_is_no_target_not_abort(self):
+    def test_no_scores_because_no_candidates_is_no_target_not_abort(self):
         _seed(self.db, [])
-        with patch("scripts.run_close_bet.all_below_cap_min", return_value=True):
+        with patch("scripts.run_close_bet.candidate_batch_found_none", return_value=True):
             code = _run_main(["--date", _DATE, "--allow-order-outside-close-window"], self.db)
         self.assertEqual(code, 0)
         self.assertEqual(_order_rows(self.db), [])
