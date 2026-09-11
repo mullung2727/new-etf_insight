@@ -13,6 +13,7 @@ export type CloseBetConfig = {
   sl: number | null;
   cap_max: number; // 원. 시총 상한(미만)
   turnover_min: number; // 원. 전일 거래대금 하한(이상)
+  cap_min_pct: number; // 0~1(1 미만). 전일 전 종목 시총 하위 이 비율은 15시 스코어링에서 제외. 0 = 끔
   exit_time: string; // "HH:MM:SS". 청산 워커의 강제청산 시각(단일 소스)
   budget_by_count: BudgetByCount;
 };
@@ -25,6 +26,7 @@ export const DEFAULTS: CloseBetConfig = {
   // 자리표시자. 실제 운영값은 close_bet.json(gitignore) — py 로더 DEFAULTS 와 같은 규칙.
   cap_max: 10_000_000_000_000,
   turnover_min: 1,
+  cap_min_pct: 0,
   exit_time: "15:19:00",
   budget_by_count: { "1": 3_000_000, "2": 2_000_000, "3": Math.floor(5_000_000 / 3) },
 };
@@ -61,6 +63,10 @@ export function validate(cfg: CloseBetConfig): void {
       throw new Error(`${label}은 0보다 큰 금액이어야 합니다`);
     }
   }
+  const pct = cfg.cap_min_pct;
+  if (typeof pct !== "number" || !Number.isFinite(pct) || pct < 0 || pct >= 1) {
+    throw new Error("시가총액 하한(하위 %)은 0 이상 100 미만이어야 합니다");
+  }
   if (!isHms(cfg.exit_time)) {
     throw new Error("청산 시각은 HH:MM:SS 형식이어야 합니다 (예: 09:01:00)");
   }
@@ -91,6 +97,7 @@ export async function read(): Promise<CloseBetConfig> {
     sl: "sl" in raw ? (raw.sl as number | null) : DEFAULTS.sl,
     cap_max: raw.cap_max ?? DEFAULTS.cap_max,
     turnover_min: raw.turnover_min ?? DEFAULTS.turnover_min,
+    cap_min_pct: raw.cap_min_pct ?? DEFAULTS.cap_min_pct,
     exit_time: raw.exit_time ?? DEFAULTS.exit_time,
     budget_by_count: raw.budget_by_count
       ? (raw.budget_by_count as BudgetByCount)

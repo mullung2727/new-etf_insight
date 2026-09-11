@@ -73,6 +73,7 @@ class State(TypedDict):
     watchlist_db: str
     telegram_db: str
     krx_db: str
+    cap_min_pct: float
     candidates: list[dict]
     news_by_ticker: dict[str, list[dict]]
     telegram_by_ticker: dict[str, list[dict]]
@@ -129,6 +130,7 @@ def load_candidates(state: State) -> State:
     previous_caps = {}
     previous_avg5_volumes = {}
     previous_5d_closes = {}
+    cap_cut = None
     if rows:
         tickers = [row["ticker"] for row in rows]
         marks = ",".join("?" for _ in tickers)
@@ -142,6 +144,14 @@ def load_candidates(state: State) -> State:
                 ) latest ON latest.ticker=o.ticker AND latest.date=o.date
             """, [state["date"], *tickers]).fetchall()
             previous_caps = {ticker: cap for ticker, cap in caps}
+            # 종가베팅 시총 하한: 전일 전 종목 시총 하위 cap_min_pct 컷(close_bet.json).
+            # 금액이 아니라 비율이라 시장 규모가 변해도 따라간다. 컷 아래는 점수를 안 매긴다.
+            if state.get("cap_min_pct"):
+                cap_cut = con.execute(f"""
+                    SELECT quantile_cont(market_cap, {float(state["cap_min_pct"])}) FROM ohlcv
+                    WHERE date = (SELECT MAX(date) FROM ohlcv WHERE date < ?)
+                      AND volume > 0 AND close > 0 AND market_cap > 0
+                """, [state["date"]]).fetchone()[0]
             averages = con.execute(f"""
                 SELECT ticker, AVG(volume), MAX(CASE WHEN rn=5 THEN close END)
                 FROM (
@@ -157,9 +167,14 @@ def load_candidates(state: State) -> State:
             previous_5d_closes = {ticker: close for ticker, _, close in averages}
 
     candidates = []
+    excluded = []
     for row in rows:
         item = dict(row)
-        item["market_cap_previous_day"] = previous_caps.get(item["ticker"])
+        cap = previous_caps.get(item["ticker"])
+        if cap_cut is not None and cap is not None and cap < cap_cut:
+            excluded.append(item["ticker"])
+            continue
+        item["market_cap_previous_day"] = cap
         item["previous_5d_close"] = previous_5d_closes.get(item["ticker"])
         item["avg5_volume"] = previous_avg5_volumes.get(item["ticker"]) or item.get("avg5_volume")
         item["today_volume"] = item.get("snapshot_volume") or item.get("today_volume")
@@ -169,7 +184,8 @@ def load_candidates(state: State) -> State:
         if item.get("today_volume") and item.get("close"):
             item["trading_value"] = item["today_volume"] * item["close"]
         candidates.append(item)
-    return {**state, "candidates": candidates}
+    warnings = state.get("warnings", []) + [f"cap_min_pct_excluded:{t}" for t in excluded]
+    return {**state, "candidates": candidates, "warnings": warnings}
 
 
 def fetch_historical_news(name: str, ticker: str, as_of: dt.datetime, limit: int = 8) -> list[dict]:
@@ -818,12 +834,14 @@ def run_date(
     score_fn: ScoreFn | None = None,
     escalate_fn: ScoreFn | None = None,
     escalation_model: str | None = None,
+    cap_min_pct: float = 0,
 ) -> dict:
     initial: State = {
         "date": date,
         "watchlist_db": str(watchlist_db),
         "telegram_db": str(telegram_db),
         "krx_db": str(krx_db),
+        "cap_min_pct": cap_min_pct,
         "candidates": [],
         "news_by_ticker": {},
         "telegram_by_ticker": {},
@@ -1308,10 +1326,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--reports-dir", type=Path, default=DEFAULT_REPORTS_DIR)
     args = parser.parse_args(argv)
     dates = args.dates or latest_watchlist_dates(args.watchlist_db)
+    # 종가베팅 시총 하한 비율의 단일 소스는 close_bet.json(웹 /admin/settings 편집).
+    sys.path.append(str(ETL_DIR / "scripts"))
+    from close_bet_config import load as load_close_bet_config
+    cap_min_pct = load_close_bet_config()["cap_min_pct"]
     results = [
         run_date(
             date, args.watchlist_db, args.telegram_db, args.krx_db,
-            escalation_model=args.escalation_model,
+            escalation_model=args.escalation_model, cap_min_pct=cap_min_pct,
         )
         for date in dates
     ]

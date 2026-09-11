@@ -144,6 +144,42 @@ def check_precondition(watchlist_db: Path, date: str) -> int:
         ).fetchone()[0]
 
 
+def all_below_cap_min(watchlist_db: Path, krx_db: Path, date: str, cap_min_pct: float) -> bool:
+    """오늘 후보가 있고 전부 시총 하한(전일 전 종목 하위 cap_min_pct) 아래인지.
+
+    15시 스코어링(watchlist_probability_langgraph.load_candidates)이 이 컷 아래 후보를
+    점수 없이 빼므로, 그때 llm_scores 0건은 '스코어링 미실행'이 아니라 '대상 없음'이다.
+    컷 SQL 은 그쪽과 같아야 한다. 전일 시총을 모르는 후보가 있으면 스코어러가 점수를
+    매겼어야 하므로 False(= 미실행으로 본다).
+    """
+    if not cap_min_pct or not krx_db.exists():
+        return False
+    with connect_ro(watchlist_db) as con:
+        if not con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='watchlist'"
+        ).fetchone():
+            return False     # 판단 불가 → 기존대로 미실행 ABORT(디스코드 알림은 나가야 한다)
+        tickers = [r[0] for r in con.execute(
+            "SELECT stock_code FROM watchlist WHERE date=?", [date]
+        ).fetchall()]
+    if not tickers:
+        return False
+    marks = ",".join("?" * len(tickers))
+    with duckdb.connect(str(krx_db), read_only=True) as con:
+        cut = con.execute(f"""
+            SELECT quantile_cont(market_cap, {float(cap_min_pct)}) FROM ohlcv
+            WHERE date = (SELECT MAX(date) FROM ohlcv WHERE date < ?)
+              AND volume > 0 AND close > 0 AND market_cap > 0
+        """, [date]).fetchone()[0]
+        caps = dict(con.execute(f"""
+            SELECT o.ticker, o.market_cap FROM ohlcv o
+            JOIN (SELECT ticker, MAX(date) AS date FROM ohlcv
+                  WHERE date < ? AND ticker IN ({marks}) GROUP BY ticker) latest
+              ON latest.ticker=o.ticker AND latest.date=o.date
+        """, [date, *tickers]).fetchall())
+    return cut is not None and all(caps.get(t) is not None and caps[t] < cut for t in tickers)
+
+
 def exclude_recent_listings(
     pool: list[dict], krx_db: Path, as_of_date: str
 ) -> tuple[list[dict], list[str]]:
@@ -565,6 +601,11 @@ def main() -> None:
     # precondition
     cnt = check_precondition(watchlist_db, date)
     if cnt == 0:
+        if all_below_cap_min(watchlist_db, DEFAULT_KRX_DB, date, cfg["cap_min_pct"]):
+            reason = f"후보 전부 시총 하한(전 종목 하위 {cfg['cap_min_pct']:.0%}) 미만 — 스코어링 제외"
+            print(f"[close_bet] 주문 대상 없음 — {reason}")
+            send_discord(f"[종가베팅] {date} 주문 대상 없음{dry_tag}\n{reason}")
+            return
         print(f"[close_bet] ABORT: {date} llm_scores 없음 — scoring 배치 미실행")
         send_discord(f"[종가베팅] {date} 주문 ABORT{dry_tag}\nllm_scores 없음 (15:00 scoring 배치 미실행)")
         sys.exit(1)

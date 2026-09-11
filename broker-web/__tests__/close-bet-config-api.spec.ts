@@ -20,6 +20,7 @@ const VALID = {
   // 임의값 — 운영 임계값(close_bet.json, gitignore)과 무관하게 왕복만 본다.
   cap_max: 77_000_000_000,
   turnover_min: 3_000_000_000,
+  cap_min_pct: 0.05,
   exit_time: "09:01:00",
   budget_by_count: { "1": 3000000, "2": 2000000, "3": 1666666 },
 };
@@ -79,6 +80,19 @@ test.describe.serial("종가베팅 config", () => {
     const b = await res.json();
     expect(b.tp).toBeNull();
     expect(b.sl).toBeNull();
+  });
+
+  test("PUT 시총 하한 비율 1(100%) → 400", async ({ request }) => {
+    const res = await request.put("/api/close-bet-config", {
+      data: { ...VALID, cap_min_pct: 1 },
+    });
+    expect(res.status()).toBe(400);
+  });
+
+  test("PUT 시총 하한 비율 → 200·재로드 반영", async ({ request }) => {
+    const res = await request.put("/api/close-bet-config", { data: VALID });
+    expect(res.status()).toBe(200);
+    expect((await res.json()).cap_min_pct).toBe(0.05);
   });
 
   test("PUT 음수 예산 → 400", async ({ request }) => {

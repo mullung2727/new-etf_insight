@@ -21,6 +21,7 @@ import duckdb
 
 from scripts.run_close_bet import (
     _is_in_order_window,
+    all_below_cap_min,
     budget_for,
     check_precondition,
     confirm_fills,
@@ -193,6 +194,51 @@ class TestCheckPrecondition(unittest.TestCase):
                 {"date": "20260614", "ticker": "000660", "score": 90},
             ])
         self.assertEqual(check_precondition(self.db, _DATE), 1)
+
+
+class TestAllBelowCapMin(unittest.TestCase):
+    """점수 0건일 때 '후보 전부 시총 하한 제외'(대상 없음)와 '스코어링 미실행'(ABORT) 구분."""
+
+    def setUp(self):
+        self.db = _fresh_db()
+        fd, path = tempfile.mkstemp(suffix=".duckdb")
+        os.close(fd)
+        os.unlink(path)
+        self.krx = Path(path)
+        # 전일(20260612) 전 종목 시총 1M(000001)~10M → 하위 20% 컷 2.8M (임의 비율)
+        with duckdb.connect(str(self.krx)) as con:
+            con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR, market_cap BIGINT,"
+                        " close INTEGER, volume BIGINT)")
+            for i in range(1, 11):
+                con.execute("INSERT INTO ohlcv VALUES ('20260612', ?, ?, 100, 1000)",
+                            [f"{i:06d}", i * 1_000_000])
+
+    def tearDown(self):
+        self.db.unlink(missing_ok=True)
+        self.krx.unlink(missing_ok=True)
+
+    def _watchlist(self, tickers):
+        with connect_rw(self.db) as con:
+            con.execute("CREATE TABLE watchlist(date TEXT, stock_code TEXT)")
+            con.executemany("INSERT INTO watchlist VALUES (?, ?)", [(_DATE, t) for t in tickers])
+
+    def test_true_when_every_candidate_below_cut(self):
+        self._watchlist(["000001"])
+        self.assertTrue(all_below_cap_min(self.db, self.krx, _DATE, 0.20))
+
+    def test_false_when_any_candidate_above_cut_or_unknown(self):
+        self._watchlist(["000001", "000010"])
+        self.assertFalse(all_below_cap_min(self.db, self.krx, _DATE, 0.20))
+        self.db.unlink()
+        self._watchlist(["000001", "999999"])   # 전일 시총 모름 → 스코어러가 점수 매겼어야 함
+        self.assertFalse(all_below_cap_min(self.db, self.krx, _DATE, 0.20))
+
+    def test_false_when_no_candidates_or_filter_off(self):
+        self._watchlist([])
+        self.assertFalse(all_below_cap_min(self.db, self.krx, _DATE, 0.20))
+        self.db.unlink()
+        self._watchlist(["000001"])
+        self.assertFalse(all_below_cap_min(self.db, self.krx, _DATE, 0))
 
 
 class TestDateKey(unittest.TestCase):

@@ -5,6 +5,7 @@
   "sl": null,
   "cap_max": 10000000000000,
   "turnover_min": 1,
+  "cap_min_pct": 0,
   "exit_time": "09:01:00",
   "budget_by_count": {
     "1": 50000,
