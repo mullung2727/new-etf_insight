@@ -13,7 +13,9 @@ KRX OpenAPI는 전일까지만 제공하므로 당일(D) 거래량 상위는 키
 
 후보 산출 (STEP 2, build_watchlist.find_new_top 와 동치):
   - 당일 top30 − 직전 LOOKBACK(60)거래일 일별 top30 합집합(krx_ohlcv)
-  - 동전주(close <= PENNY_MAX) 제외 → watchlist 테이블 upsert
+  - 동전주(close <= PENNY_MAX) 제외
+  - 전일 전 종목 시총 하위 cap_min_pct(close_bet.json) 제외 → watchlist 테이블 upsert
+    (종가베팅·눌림목 공통. 08:00 build_watchlist 도 같은 컷을 건다)
 
 토큰: broker 와 동일한 키움 앱키(루트 .env)로 발급하고, broker 가 쓰는
 캐시 파일(broker/.token_cache.json)을 공유한다 — 중복 발급으로 기존 토큰이
@@ -45,9 +47,11 @@ from dotenv import load_dotenv
 
 try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
     from scripts.check_krx_trading_day import trading_day_status
+    from scripts.close_bet_config import load as load_close_bet_config
     from scripts.wl_sqlite import connect_rw
 except ImportError:
     from check_krx_trading_day import trading_day_status
+    from close_bet_config import load as load_close_bet_config
     from wl_sqlite import connect_rw
 
 ROOT = Path(__file__).resolve().parents[2]                        # new-etf_insight/
@@ -351,6 +355,35 @@ def compute_candidates(
     )
 
 
+def drop_bottom_caps(
+    krx_con: duckdb.DuckDBPyConnection, date: str, tickers: list[str], cap_min_pct: float
+) -> tuple[list[str], list[str]]:
+    """전일 전 종목 시총 하위 cap_min_pct 미만 후보 제외 → (남은 후보, 제외 후보).
+
+    종가베팅·눌림목 공통 시총 하한(close_bet.json cap_min_pct, 0 = 끔). 금액이 아니라
+    비율이라 시장 규모가 변해도 따라간다. 08:00 확정 배치(build_watchlist)도 이 함수를
+    써야 다음 날 재upsert 로 되살아나지 않는다. 전일 시총을 모르는 후보는 판단 불가라 남긴다.
+    """
+    if not cap_min_pct or not tickers:
+        return list(tickers), []
+    cut = krx_con.execute(f"""
+        SELECT quantile_cont(market_cap, {float(cap_min_pct)}) FROM ohlcv
+        WHERE date = (SELECT MAX(date) FROM ohlcv WHERE date < ?)
+          AND volume > 0 AND close > 0 AND market_cap > 0
+    """, [date]).fetchone()[0]
+    if cut is None:
+        return list(tickers), []
+    marks = ",".join("?" * len(tickers))
+    caps = dict(krx_con.execute(f"""
+        SELECT o.ticker, o.market_cap FROM ohlcv o
+        JOIN (SELECT ticker, MAX(date) AS date FROM ohlcv
+              WHERE date < ? AND ticker IN ({marks}) GROUP BY ticker) latest
+          ON latest.ticker = o.ticker AND latest.date = o.date
+    """, [date, *tickers]).fetchall())
+    dropped = [t for t in tickers if caps.get(t) is not None and caps[t] < cut]
+    return [t for t in tickers if t not in dropped], dropped
+
+
 def upsert_watchlist(con: sqlite3.Connection, date: str, tickers: list[str]) -> int:
     """해당 날짜 행 전체 삭제 후 재삽입 (재실행 시 구성 변동 잔재 방지)."""
     con.execute(_CREATE_WATCHLIST)
@@ -362,27 +395,32 @@ def upsert_watchlist(con: sqlite3.Connection, date: str, tickers: list[str]) -> 
     return len(tickers)
 
 
-def run_candidates(wl_db_path: Path | str, krx_db_path: Path | str, date: str) -> list[str]:
-    """intraday_ranking(date) 스냅샷 → 신규진입 후보 → watchlist upsert.
+def run_candidates(
+    wl_db_path: Path | str, krx_db_path: Path | str, date: str, cap_min_pct: float = 0
+) -> list[str]:
+    """intraday_ranking(date) 스냅샷 → 신규진입 후보 → 시총 하한 컷 → watchlist upsert.
 
-    반환: 후보 ticker 정렬 리스트 (0건이면 빈 리스트 — 그날 신규진입 없음).
+    반환: 후보 ticker 정렬 리스트 (0건이면 빈 리스트 — 신규진입 없음 또는 전부 시총 하한 제외).
     """
     krx_con = duckdb.connect(str(krx_db_path), read_only=True)
     try:
         past_union = fetch_past_top_union(krx_con, date)
+        with connect_rw(Path(wl_db_path)) as con:
+            today_rows = con.execute(
+                "SELECT rank, ticker, name, volume, close FROM intraday_ranking "
+                "WHERE date = ? ORDER BY rank",
+                [date],
+            ).fetchall()
+            if not today_rows:
+                raise RuntimeError(f"intraday_ranking 에 {date} 스냅샷 없음 — run() 먼저 실행")
+            candidates, dropped = drop_bottom_caps(
+                krx_con, date, compute_candidates(today_rows, past_union), cap_min_pct
+            )
+            upsert_watchlist(con, date, candidates)
     finally:
         krx_con.close()
-
-    with connect_rw(Path(wl_db_path)) as con:
-        today_rows = con.execute(
-            "SELECT rank, ticker, name, volume, close FROM intraday_ranking "
-            "WHERE date = ? ORDER BY rank",
-            [date],
-        ).fetchall()
-        if not today_rows:
-            raise RuntimeError(f"intraday_ranking 에 {date} 스냅샷 없음 — run() 먼저 실행")
-        candidates = compute_candidates(today_rows, past_union)
-        upsert_watchlist(con, date, candidates)
+    if dropped:
+        print(f"[candidates] 시총 하위 {cap_min_pct:.0%} 제외: {dropped}")
     print(f"[candidates] date={date} new={len(candidates)} {candidates}")
     return candidates
 
@@ -408,7 +446,7 @@ def main() -> None:
         print("[candidates] 휴장일 — 후보 산출 생략")
         return
     if not args.no_candidates:
-        run_candidates(db_path, krx_db_path, date)
+        run_candidates(db_path, krx_db_path, date, load_close_bet_config()["cap_min_pct"])
 
 
 if __name__ == "__main__":

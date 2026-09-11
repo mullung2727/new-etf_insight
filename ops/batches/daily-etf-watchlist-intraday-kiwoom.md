@@ -98,10 +98,12 @@ Use exact raw fields:
 - `sources`
 
 Verify every today watchlist row has a joined `llm_scores` row. If a row is
-missing a score, report it explicitly as a defect — except tickers the scorer
-excluded on purpose: previous-day market cap below the bottom `cap_min_pct` of
-all stocks (`etl/scripts/close_bet.json`). Those appear as
-`cap_min_pct_excluded:<ticker>` in the scorer output `warnings` and are not defects.
+missing a score, report it explicitly as a defect.
+
+`build_intraday_ranking.py` leaves out candidates whose previous-day market cap
+is below the bottom `cap_min_pct` of all stocks (`etl/scripts/close_bet.json`)
+before writing `watchlist`, so they never reach scoring and are not defects.
+It prints them as `[candidates] 시총 하위 N% 제외: [...]`.
 
 ## Discord Report
 

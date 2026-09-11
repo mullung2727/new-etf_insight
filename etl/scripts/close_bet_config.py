@@ -13,7 +13,7 @@ config 없이도 배치가 그대로 돈다. 값이 범위를 벗어나면 Value
     budget = cfg["budget_by_count"][n]  # int, n∈{1,2,3}
     cap_max = cfg["cap_max"]            # int, 원. 시총 상한(미만)
     tv_min = cfg["turnover_min"]        # int, 원. 전일 거래대금 하한(이상)
-    cap_min_pct = cfg["cap_min_pct"]    # float 0~1. 전일 전 종목 시총 하위 비율 제외(15시 스코어링 단계)
+    cap_min_pct = cfg["cap_min_pct"]    # float 0~1. 전일 전 종목 시총 하위 비율 제외(후보 목록 단계)
 """
 from __future__ import annotations
 
@@ -32,8 +32,9 @@ DEFAULTS: dict = {
     # 파일이 없으면 이 값으로 폴백하는데 필터가 사실상 안 걸리므로, load() 가 경고를 낸다.
     "cap_max": 10_000_000_000_000,   # 10조 = 사실상 상한 없음
     "turnover_min": 1,               # 1원 = 사실상 하한 없음
-    # 전일 전 종목 시총 하위 이 비율 미만은 15시 스코어링(watchlist_probability_langgraph)
-    # 에서 빼 점수를 안 매긴다. 금액이 아니라 비율이라 시장 규모가 변해도 따라간다. 0 = 끔.
+    # 전일 전 종목 시총 하위 이 비율 미만은 후보 목록(watchlist)에서 뺀다 — 15시
+    # build_intraday_ranking·08시 build_watchlist 공통이라 종가베팅·눌림목 둘 다 안 산다.
+    # 금액이 아니라 비율이라 시장 규모가 변해도 따라간다. 0 = 끔.
     "cap_min_pct": 0,
     # 청산 워커(run_close_bet_exit)의 강제청산 시각. ps1 인자가 아니라 여기가 단일 소스라
     # 값만 바꾸면 다음 기동부터 반영된다.
