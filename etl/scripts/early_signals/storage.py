@@ -483,3 +483,49 @@ def load_assessments(
             item[field] = json.loads(item[field]) if item[field] else None
         out.append(item)
     return out
+
+
+def recompute_throughput(con: sqlite3.Connection, run_id: str) -> dict[str, Any]:
+    """throughput 이 비어 있으면 저장된 사실로 다시 센다.
+
+    보고서가 "0건 추출" 처럼 실제와 다른 숫자를 내지 않게 한다. 앞선 버그로 뒤 단계가
+    앞 단계의 실측치를 지운 run 이 남아 있어, 읽는 쪽에서도 복구할 수 있어야 한다.
+    """
+    sources = con.execute(
+        "SELECT count(*) FROM manifest_entries WHERE manifest_id=?", (run_id,)).fetchone()[0]
+    processed = con.execute(
+        "SELECT count(DISTINCT p.input_hash) FROM processing_results p"
+        " JOIN manifest_entries m ON m.source_version_id = p.input_hash"
+        " WHERE m.manifest_id=? AND p.stage='extract_changes' AND p.status='done'",
+        (run_id,)).fetchone()[0]
+    events = con.execute(
+        "SELECT count(*) FROM events e JOIN manifest_entries m"
+        " ON m.source_version_id = e.source_version_id WHERE m.manifest_id=?",
+        (run_id,)).fetchone()[0]
+    with_events = con.execute(
+        "SELECT count(DISTINCT e.source_version_id) FROM events e JOIN manifest_entries m"
+        " ON m.source_version_id = e.source_version_id WHERE m.manifest_id=?",
+        (run_id,)).fetchone()[0]
+    return {"manifest_sources": sources, "processed": processed, "events": events,
+            "with_events": with_events, "backlog": max(sources - processed, 0),
+            "rejected": None, "recomputed": True}
+
+
+# 저장된 throughput 은 **마지막 실행분**이다. extract 를 여러 번 나눠 돌리면 누적이 아니라
+# 마지막 배치의 숫자만 남으므로, 건수는 항상 manifest 기준으로 다시 세고 속도·시간만 저장값을 쓴다.
+_RATE_FIELDS = ("elapsed_sec", "sec_per_source", "sample_order", "llm_calls", "cached",
+                "errors", "unresolved_entities", "runs_to_clear_backlog",
+                "hours_to_clear_backlog")
+
+
+def load_throughput(con: sqlite3.Connection, run_id: str) -> dict[str, Any]:
+    """보고서용 처리량. 건수는 저장된 사실에서 세고, 속도 지표는 마지막 실행값을 붙인다."""
+    row = con.execute("SELECT throughput_json FROM runs WHERE run_id=?", (run_id,)).fetchone()
+    stored = json.loads(row[0]) if row and row[0] else {}
+    counted = recompute_throughput(con, run_id)
+    counted["last_batch"] = {k: stored[k] for k in _RATE_FIELDS if k in stored}
+    if stored.get("processed") and stored["processed"] != counted["processed"]:
+        counted["last_batch"]["processed"] = stored["processed"]
+    if "rejected" in stored:
+        counted["rejected"] = stored["rejected"]
+    return counted

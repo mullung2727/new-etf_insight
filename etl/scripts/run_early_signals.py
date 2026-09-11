@@ -152,7 +152,7 @@ def run_assess(args) -> int:
         by_entity = report.load_events_by_entity(con, run_id)
         row = con.execute("SELECT throughput_json, mode FROM runs WHERE run_id=?",
                           (run_id,)).fetchone()
-    throughput = json.loads(row[0] or "{}")
+        throughput = storage.load_throughput(con, run_id)
     assessments, feasibility = report.assess_entities(by_entity, cutoff_date)
     selected = policy.select_candidates(assessments)
 
@@ -165,7 +165,8 @@ def run_assess(args) -> int:
         "backlog": throughput.get("backlog", 0),
         "events": throughput.get("events", 0),
         "with_events": throughput.get("with_events", 0),
-        "rejected": throughput.get("rejected", 0),
+        "rejected": throughput.get("rejected") or 0,
+        "throughput_recomputed": bool(throughput.get("recomputed")),
         "result_status": "partial" if throughput.get("backlog") else (
             "no_candidates" if not selected else "candidates"),
         "assessments": assessments, "feasibility": feasibility, "selected": selected,
