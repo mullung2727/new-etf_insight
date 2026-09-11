@@ -227,7 +227,8 @@ def render_artifact(payload: dict[str, Any], out_dir: Path = EXPORT_DIR) -> Path
     if payload["mode"] != "live":
         notes.append(f"- {payload['mode']} 모드다. 지금 확보한 과거 자료로 재현했으므로"
                      " 실시간 포착 성과가 아니다(§4.3).")
-    notes.append("- 예산 한도로 표본만 처리했다. 미처리분을 no_candidates 로 숨기지 않는다(§12.3).")
+    if payload["backlog"]:
+        notes.append("- 예산 한도로 표본만 처리했다. 미처리분을 no_candidates 로 숨기지 않는다(§12.3).")
     notes.append(
         f"- 가격 시나리오가 선 종목은 {priced}개다"
         f" ({', '.join(f'{k} {v}' for k, v in sorted(methods.items())) or '집계 없음'})."

@@ -92,6 +92,15 @@ class ArtifactRecoveryTest(unittest.TestCase):
             self.assertEqual(first, again)
             self.assertIn("2026-07-01", again.read_text(encoding="utf-8"))
 
+    def test_budget_caveat_only_when_backlog_remains(self):
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            partial = report.render_artifact(self._payload(out), out_dir=out).read_text(encoding="utf-8")
+            done = dict(self._payload(out), run_id="r2", processed=100, backlog=0)
+            complete = report.render_artifact(done, out_dir=out).read_text(encoding="utf-8")
+        self.assertIn("예산 한도로", partial)
+        self.assertNotIn("예산 한도로", complete)
+
 
 class ResultStatusTest(unittest.TestCase):
     """T34 — 정상 무변화와 수집 실패를 다르게 표시한다."""
@@ -265,3 +274,25 @@ class ThroughputRecoveryTest(unittest.TestCase):
         self.assertEqual(throughput["backlog"], 0)
         self.assertEqual(throughput["last_batch"]["processed"], 1)
         self.assertEqual(throughput["last_batch"]["sec_per_source"], 15.6)
+
+    def test_episode_age_counts_from_its_first_run(self):
+        """매주 다시 뽑혀도 시작 run 부터 84일이 지나면 episode 를 닫는다."""
+        cutoffs = {"e0": "2026-01-01T06:40:00+00:00", "e49": "2026-02-19T06:40:00+00:00"}
+        with storage.connect_rw(self.db) as con:
+            for run_id, cutoff in cutoffs.items():
+                storage.start_run(con, run_id=run_id, mode="live", cutoff_at=cutoff,
+                                  policy_version="p", identity_version="i", code_version="c")
+                storage.persist_assessment(con, run_id, {
+                    "subject_type": "stock", "subject_id": "005930", "episode_id": "ep1",
+                    "grades": {}, "action": "watch", "reason_codes": []})
+            within = storage.find_open_episode(con, "005930", "2026-03-20T06:40:00+00:00")
+            expired = storage.find_open_episode(con, "005930", "2026-04-09T06:40:00+00:00")
+        self.assertEqual(within, ("ep1", cutoffs["e0"]))     # 78일
+        self.assertIsNone(expired)                            # 시작 98일, 최근 run 49일
+
+    def test_zero_last_batch_count_is_kept(self):
+        with storage.connect_rw(self.db) as con:
+            storage.finish_run(con, "r1", status="extracted", throughput={"processed": 0})
+        with storage.connect_ro(self.db) as con:
+            throughput = storage.load_throughput(con, "r1")
+        self.assertEqual(throughput["last_batch"]["processed"], 0)

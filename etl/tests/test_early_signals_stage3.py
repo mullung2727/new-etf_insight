@@ -73,6 +73,13 @@ class PriceHistoryTest(unittest.TestCase):
         self.assertIn("insufficient_120d", context["reason_codes"])
         self.assertTrue(context["history_ok"])      # 보조 결측은 승격을 막지 않는다
 
+    def test_turnover_20d_averages_last_20_sessions_only(self):
+        daily = bars(SESSIONS[:61], turnover=1_000)
+        for date in SESSIONS[41:61]:
+            daily[date]["trading_value"] = 3_000      # 최근 20일만 3,000
+        context = policy.compute_price_context("A", SESSIONS[:61], daily)
+        self.assertEqual(context["turnover_20d"], 3_000)
+
 
 class PriceStateTest(unittest.TestCase):
     def test_t38_extended_wins_when_both_match(self):
@@ -125,6 +132,11 @@ class GradeTest(unittest.TestCase):
         self.assertEqual(policy.grade_timing(within, "2026-07-01")[0], "high")
         without = [event(expected_end="2026-08-15")]
         self.assertEqual(policy.grade_timing(without, "2026-07-01")[0], "medium")
+
+    def test_condition_outside_84_days_does_not_raise_timing(self):
+        events = [event(expected_end="2026-08-15"),
+                  event(expected_end="2027-06-30", condition="내년 양산 공시")]
+        self.assertEqual(policy.grade_timing(events, "2026-07-01")[0], "medium")
 
     def test_no_date_is_unknown(self):
         self.assertEqual(policy.grade_timing([event()], "2026-07-01")[0], "unknown")

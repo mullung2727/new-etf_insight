@@ -453,12 +453,16 @@ def find_open_episode(
 
     같은 종목이 매주 다시 뽑혀도 새 episode 를 만들지 않는다 — 84일이 지나야 새로 연다.
     """
-    row = con.execute(
-        "SELECT a.episode_id, r.cutoff_at FROM assessments a JOIN runs r ON r.run_id = a.run_id"
+    latest = con.execute(
+        "SELECT a.episode_id FROM assessments a JOIN runs r ON r.run_id = a.run_id"
         " WHERE a.subject_id = ? AND a.episode_id IS NOT NULL AND r.cutoff_at <= ?"
         " ORDER BY r.cutoff_at DESC LIMIT 1", (subject_id, cutoff_at)).fetchone()
-    if not row:
+    if not latest:
         return None
+    # 나이는 최근 run 이 아니라 episode 시작 run 부터 잰다. 안 그러면 매주 뽑히는 종목이 안 닫힌다.
+    row = con.execute(
+        "SELECT a.episode_id, MIN(r.cutoff_at) FROM assessments a JOIN runs r ON r.run_id = a.run_id"
+        " WHERE a.episode_id = ?", (latest[0],)).fetchone()
     started = datetime.fromisoformat(row[1])
     if (datetime.fromisoformat(cutoff_at) - started).days > max_age_days:
         return None
@@ -524,7 +528,7 @@ def load_throughput(con: sqlite3.Connection, run_id: str) -> dict[str, Any]:
     stored = json.loads(row[0]) if row and row[0] else {}
     counted = recompute_throughput(con, run_id)
     counted["last_batch"] = {k: stored[k] for k in _RATE_FIELDS if k in stored}
-    if stored.get("processed") and stored["processed"] != counted["processed"]:
+    if "processed" in stored and stored["processed"] != counted["processed"]:
         counted["last_batch"]["processed"] = stored["processed"]
     if "rejected" in stored:
         counted["rejected"] = stored["rejected"]
