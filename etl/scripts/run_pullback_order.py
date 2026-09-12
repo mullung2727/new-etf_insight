@@ -210,6 +210,10 @@ def batch_quote_snapshots(broker_url: str, tickers: list[str]) -> dict[str, dict
             "open": _abs_int(raw.get("open_pric")),
             "low": _abs_int(raw.get("low_pric")),
             "upper_limit": _abs_int(row.get("upl_pric")),
+            "high": _abs_int(raw.get("high_pric")),
+            # 키움 trde_prica 단위는 백만원 → 원으로 환산
+            "trading_value": _abs_int(raw.get("trde_prica")) * 1_000_000,
+            "change_rate": float(row.get("flu_rt") or 0.0),
         }
     return snapshots
 
