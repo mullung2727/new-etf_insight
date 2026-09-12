@@ -222,8 +222,9 @@ class PullbackCandidateGuardTest(unittest.TestCase):
     def test_batch_quote_snapshots_uses_one_request(self, get):
         get.return_value = Mock(
             json=Mock(return_value=[{
-                "stk_cd": "005930", "cur_prc": 16_360, "upl_pric": 21_250,
-                "raw": {"stk_nm": "삼성전자", "open_pric": "+16000", "low_pric": "-15800"},
+                "stk_cd": "005930", "cur_prc": 16_360, "upl_pric": 21_250, "flu_rt": -1.25,
+                "raw": {"stk_nm": "삼성전자", "open_pric": "+16000", "low_pric": "-15800",
+                        "high_pric": "+16500", "trde_prica": "14889"},
             }])
         )
         snapshots = target.batch_quote_snapshots("http://broker", ["005930", "005930"])
@@ -233,7 +234,9 @@ class PullbackCandidateGuardTest(unittest.TestCase):
         self.assertEqual(
             snapshots["005930"],
             {"name": "삼성전자", "current_price": 16_360, "open": 16_000,
-             "low": 15_800, "upper_limit": 21_250},
+             "low": 15_800, "upper_limit": 21_250,
+             # 키움 trde_prica 는 백만원 단위 → 원으로 환산
+             "high": 16_500, "trading_value": 14_889_000_000, "change_rate": -1.25},
         )
 
     @patch("scripts.run_pullback_order.requests.post")
