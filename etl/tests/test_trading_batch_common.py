@@ -15,6 +15,7 @@ from scripts.trading_batch_common import (
     market_order,
     quote_snapshot,
     quantity_for_budget,
+    require_profile,
 )
 
 
@@ -113,6 +114,37 @@ class HeldQuantitiesTest(unittest.TestCase):
         self.assertIsNone(held_quantities({}))
         self.assertIsNone(held_quantities({"return_code": 3, "return_msg": "오류"}))
         self.assertIsNone(held_quantities({"acnt_evlt_remn_indv_tot": None}))
+
+
+class RequireProfileTest(unittest.TestCase):
+    """러너가 다른 계좌 broker 에 주문하지 않도록 /health profile 을 확인한다."""
+
+    @staticmethod
+    def _health(body):
+        response = Mock(json=lambda: body)
+        response.raise_for_status = Mock()
+        return response
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_matching_profile(self, get: Mock):
+        get.return_value = self._health({"status": "ok", "profile": "HIGH52"})
+        self.assertTrue(require_profile("http://broker", "HIGH52"))
+        self.assertEqual(get.call_args.args[0], "http://broker/health")
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_main_account_broker_is_refused(self, get: Mock):
+        get.return_value = self._health({"status": "ok", "profile": ""})
+        self.assertFalse(require_profile("http://broker", "HIGH52"))
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_old_broker_without_profile_field_is_refused(self, get: Mock):
+        get.return_value = self._health({"status": "ok"})
+        self.assertFalse(require_profile("http://broker", "HIGH52"))
+
+    @patch("scripts.trading_batch_common.requests.get", side_effect=RuntimeError("down"))
+    def test_lookup_failure_is_refused(self, _get: Mock):
+        """어느 계좌인지 모르면 주문하지 않는다."""
+        self.assertFalse(require_profile("http://broker", "HIGH52"))
 
 
 class ClosedSellStatusesTest(unittest.TestCase):

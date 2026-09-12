@@ -54,6 +54,21 @@ def quote_snapshot(broker_url: str, ticker: str) -> dict[str, int] | None:
         return None
 
 
+def require_profile(broker_url: str, expected: str) -> bool:
+    """broker ``/health`` 의 계좌 구분(profile)이 expected 인가.
+
+    계좌마다 broker 를 따로 띄우므로, 러너가 다른 계좌 broker 에 주문하지 않게 주문 전에 확인한다.
+    조회 실패도 False — 어느 계좌인지 모르면 주문하지 않는다.
+    """
+    try:
+        response = requests.get(f"{broker_url}/health", timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        return response.json().get("profile") == expected
+    except Exception as error:
+        print(f"[profile] /health 조회 실패: {error}")
+        return False
+
+
 def available_cash(broker_url: str) -> int | None:
     try:
         response = requests.get(f"{broker_url}/account/deposit", timeout=REQUEST_TIMEOUT)
