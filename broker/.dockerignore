@@ -4,8 +4,8 @@ __pycache__
 *.pyc
 
 # 상태파일 — bind mount로 주입, 이미지에 굽지 않음
-notes.db
-.token_cache.json
+notes*.db
+.token_cache*.json
 
 # 로그/덤프
 *.log

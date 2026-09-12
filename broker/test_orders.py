@@ -163,6 +163,57 @@ class TestOrderRoutePolicy(_OrdersTestBase):
         self.assertTrue(submit.call_args.kwargs["enforce_amount_cap"])
 
 
+class TestStrategySourceAllowlist(_OrdersTestBase):
+    """계좌별 broker 는 ALLOWED_ORDER_SOURCES 밖 전략 주문을 키움에 보내기 전에 거부한다."""
+
+    def _post(self, route: str, source: str):
+        fake = OrderResult(accepted=True, order_no="0000903", message="", raw={})
+        with patch("routers.orders.orders.place_order", return_value=fake) as submit:
+            resp = self.client.post(route, json={
+                "symbol": "005930", "side": "buy", "qty": 1,
+                "order_type": "market", "source": source,
+            })
+        return resp, submit
+
+    def test_other_strategy_source_rejected_before_wire(self):
+        with patch.dict(os.environ, {"ALLOWED_ORDER_SOURCES": "high52_order,high52_exit"}):
+            for source in ("close_bet", "pullback_order", "manual"):
+                resp, submit = self._post("/orders/strategy", source)
+                self.assertEqual(resp.status_code, 422, source)
+                submit.assert_not_called()
+        self.assertEqual(_trade_rows(self.db), [])
+
+    def test_allowed_source_passes(self):
+        with patch.dict(os.environ, {"ALLOWED_ORDER_SOURCES": "high52_order, high52_exit"}):
+            resp, submit = self._post("/orders/strategy", "high52_exit")
+        self.assertEqual(resp.status_code, 200)
+        submit.assert_called_once()
+
+    def test_unset_allows_every_source(self):
+        """기존 :8001 은 설정이 없으므로 지금처럼 모든 전략 주문을 받는다."""
+        with patch.dict(os.environ, {"ALLOWED_ORDER_SOURCES": ""}):
+            resp, _ = self._post("/orders/strategy", "close_bet")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_manual_route_not_restricted(self):
+        """수동 주문은 사용자가 직접 개입하는 경로라 막지 않는다."""
+        with patch.dict(os.environ, {"ALLOWED_ORDER_SOURCES": "high52_order"}):
+            resp, _ = self._post("/orders", "manual")
+        self.assertEqual(resp.status_code, 200)
+
+
+class TestHealthProfile(unittest.TestCase):
+    def test_health_reports_profile(self):
+        from types import SimpleNamespace
+
+        import main
+
+        cfg = SimpleNamespace(env="real", account_no="5555", profile="HIGH52")
+        with patch("main.load_config", return_value=cfg):
+            body = TestClient(main.app).get("/health").json()
+        self.assertEqual(body["profile"], "HIGH52")
+
+
 class TestFriendlyOrderError(unittest.TestCase):
     """_friendly_order_error — 키움 원문에서 사람 메시지를 뽑고, '모의투자 장종료'류만
     장중 안내로 바꾼다. '모의투자' 글자만으로 다른 에러(매도가능수량 부족 등)를
@@ -800,6 +851,8 @@ class TestEnvScopedCredentials(unittest.TestCase):
         "KIWOOM_APPKEY", "KIWOOM_SECRETKEY", "KIWOOM_ACCOUNT_NO",
         "KIWOON_MOCK_TR_APP_KEY", "KIWOON_MOCK_TR_APP_SECRET",
         "KIWOON_MOCK_TR_ACCOUNT_NO",
+        "KIWOOM_PROFILE",
+        "KIWOOM_HIGH52_REAL_APPKEY", "KIWOOM_HIGH52_REAL_SECRETKEY", "KIWOOM_HIGH52_REAL_ACCOUNT_NO",
     )
 
     def _load(self, **env):
@@ -866,6 +919,47 @@ class TestEnvScopedCredentials(unittest.TestCase):
             KIWOON_MOCK_TR_ACCOUNT_NO="2222",
         )
         self.assertEqual(cfg.account_no, "")
+
+    def test_no_profile_keeps_existing_names(self):
+        cfg = self._load(
+            KIWOOM_ENV="real",
+            KIWOOM_REAL_APPKEY="rk", KIWOOM_REAL_SECRETKEY="rs", KIWOOM_REAL_ACCOUNT_NO="9999",
+        )
+        self.assertEqual(cfg.profile, "")
+        self.assertEqual(cfg.appkey, "rk")
+
+    def test_profile_picks_profile_credentials(self):
+        cfg = self._load(
+            KIWOOM_ENV="real", KIWOOM_PROFILE="high52",
+            KIWOOM_REAL_APPKEY="rk", KIWOOM_REAL_SECRETKEY="rs", KIWOOM_REAL_ACCOUNT_NO="9999",
+            KIWOOM_HIGH52_REAL_APPKEY="hk", KIWOOM_HIGH52_REAL_SECRETKEY="hs",
+            KIWOOM_HIGH52_REAL_ACCOUNT_NO="5555",
+        )
+        self.assertEqual(cfg.profile, "HIGH52")
+        self.assertEqual((cfg.appkey, cfg.secretkey, cfg.account_no), ("hk", "hs", "5555"))
+
+    def test_profile_refuses_main_account_fallback(self):
+        """profile 키가 비면 기존 계좌 키로 떨어지지 않고 기동이 실패해야 한다 (계좌 섞임 방지)."""
+        with self.assertRaises(RuntimeError):
+            self._load(
+                KIWOOM_ENV="real", KIWOOM_PROFILE="HIGH52",
+                KIWOOM_REAL_APPKEY="rk", KIWOOM_REAL_SECRETKEY="rs", KIWOOM_REAL_ACCOUNT_NO="9999",
+            )
+
+    def test_profile_ignores_main_account_no(self):
+        cfg = self._load(
+            KIWOOM_ENV="real", KIWOOM_PROFILE="HIGH52",
+            KIWOOM_REAL_ACCOUNT_NO="9999",
+            KIWOOM_HIGH52_REAL_APPKEY="hk", KIWOOM_HIGH52_REAL_SECRETKEY="hs",
+        )
+        self.assertEqual(cfg.account_no, "")
+
+    def test_profile_paper_refuses_legacy_fallback(self):
+        with self.assertRaises(RuntimeError):
+            self._load(
+                KIWOOM_ENV="paper", KIWOOM_PROFILE="HIGH52",
+                KIWOOM_APPKEY="old", KIWOOM_SECRETKEY="olds",
+            )
 
 
 if __name__ == "__main__":

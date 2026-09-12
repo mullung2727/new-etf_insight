@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -125,7 +126,17 @@ def place_order(req: OrderRequest) -> OrderResult:
     response_model=OrderResult,
 )
 def place_strategy_order(req: OrderRequest) -> OrderResult:
-    """종가베팅·눌림목 전용 내부 주문. 전략용 금액 상한을 항상 적용한다."""
+    """전략 전용 내부 주문. 전략용 금액 상한을 항상 적용한다.
+
+    ALLOWED_ORDER_SOURCES(쉼표 구분)가 있으면 그 밖의 source 는 키움에 보내기 전에 422.
+    계좌별 broker 에서 다른 계좌 전략의 주문이 잘못 들어오는 것을 막는다. 없으면 제한 없음.
+    """
+    allowed = {s.strip() for s in os.getenv("ALLOWED_ORDER_SOURCES", "").split(",") if s.strip()}
+    if allowed and req.source not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail=f"source {req.source!r} 는 이 계좌 broker 에서 허용되지 않음 (허용: {', '.join(sorted(allowed))})",
+        )
     return _submit_order(req, enforce_amount_cap=True)
 
 

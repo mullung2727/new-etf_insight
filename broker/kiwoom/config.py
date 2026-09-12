@@ -62,6 +62,7 @@ class Config:
     account_no: str
     max_order_amount: int
     token_cache_path: Path
+    profile: str = ""  # 계좌 구분. 빈 값 = 기존 계좌(:8001)
 
     @property
     def is_paper(self) -> bool:
@@ -90,10 +91,16 @@ def load_config() -> Config:
     # 접두사 없는 이름과 KIWOON_MOCK_TR_* 는 기존 .env 호환용 폴백이지만 paper 에서만 쓴다.
     # real 에서 폴백을 허용하면 KIWOOM_REAL_APPKEY 오타 하나로 실전 주소에 모의 키가 실려
     # 나가 이 분리가 막으려던 상태로 그대로 되돌아간다. real 은 전용 이름만 받는다.
-    prefix = f"KIWOOM_{env.upper()}_"
-    legacy_appkey = ("KIWOOM_APPKEY", "KIWOON_MOCK_TR_APP_KEY") if env == "paper" else ()
-    legacy_secret = ("KIWOOM_SECRETKEY", "KIWOON_MOCK_TR_APP_SECRET") if env == "paper" else ()
-    legacy_account = ("KIWOOM_ACCOUNT_NO", "KIWOON_MOCK_TR_ACCOUNT_NO") if env == "paper" else ()
+    #
+    # KIWOOM_PROFILE 은 계좌 구분이다(계좌마다 broker 를 포트 달리해 하나씩 띄운다).
+    # 설정되면 KIWOOM_<PROFILE>_<ENV>_* 만 읽고 어떤 폴백도 없다 — 키가 비었을 때 기존 계좌
+    # 키로 떨어지면 다른 전략의 계좌로 주문이 나간다.
+    profile = os.getenv("KIWOOM_PROFILE", "").strip().upper()
+    prefix = f"KIWOOM_{profile}_{env.upper()}_" if profile else f"KIWOOM_{env.upper()}_"
+    legacy = env == "paper" and not profile
+    legacy_appkey = ("KIWOOM_APPKEY", "KIWOON_MOCK_TR_APP_KEY") if legacy else ()
+    legacy_secret = ("KIWOOM_SECRETKEY", "KIWOON_MOCK_TR_APP_SECRET") if legacy else ()
+    legacy_account = ("KIWOOM_ACCOUNT_NO", "KIWOON_MOCK_TR_ACCOUNT_NO") if legacy else ()
     return Config(
         appkey=_require_first(f"{prefix}APPKEY", *legacy_appkey),
         secretkey=_require_first(f"{prefix}SECRETKEY", *legacy_secret),
@@ -103,4 +110,5 @@ def load_config() -> Config:
         account_no=_get_first(f"{prefix}ACCOUNT_NO", *legacy_account),
         max_order_amount=int(os.getenv("MAX_ORDER_AMOUNT", "1000000")),
         token_cache_path=cache_path,
+        profile=profile,
     )
