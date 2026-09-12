@@ -40,6 +40,7 @@
 ## 코드 수정 규칙
 
 - 코드 수정 전 `README.md`(구성·포트·데이터 흐름·보안 경계)를 참고할 것
+- broker 를 수정·재기동하기 전 `broker/README.md` 의 "왜 broker 를 거치나 · 왜 계좌마다 포트가 따로인가" 절을 읽을 것 (계좌별 broker :8001/:8002 는 같은 코드, 재기동은 `restart_all_servers.ps1` 로 전부 같이)
 - 사용하는 라이브러리, 프레임워크, API의 버전에 주의하여 수정안을 제시할 것
 
 ## 1. Think Before Coding
