@@ -153,9 +153,11 @@ mcp.mount()
 
 @app.get("/health", operation_id="health_check", summary="broker 상태 확인")
 def health() -> dict:
-    """broker 생존·환경(paper/real)·계좌번호 확인. 응답이 오면 주문 가능 상태.
+    """broker 생존·환경(paper/real)·계좌번호·계좌 구분(profile) 확인. 응답이 오면 주문 가능 상태.
 
     주문 전 상태 점검은 이 도구 하나로 끝낸다(포트·프로세스 탐색 불요).
+    profile 빈 값 = 기존 계좌. 전략 러너는 이 값으로 자기 계좌 broker 인지 확인한다.
     """
     cfg = load_config()
-    return {"status": "ok", "env": cfg.env, "account": cfg.account_no or "<unset>"}
+    return {"status": "ok", "env": cfg.env, "account": cfg.account_no or "<unset>",
+            "profile": cfg.profile}
