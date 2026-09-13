@@ -946,13 +946,17 @@ class TestEnvScopedCredentials(unittest.TestCase):
                 KIWOOM_REAL_APPKEY="rk", KIWOOM_REAL_SECRETKEY="rs", KIWOOM_REAL_ACCOUNT_NO="9999",
             )
 
-    def test_profile_ignores_main_account_no(self):
-        cfg = self._load(
-            KIWOOM_ENV="real", KIWOOM_PROFILE="HIGH52",
-            KIWOOM_REAL_ACCOUNT_NO="9999",
-            KIWOOM_HIGH52_REAL_APPKEY="hk", KIWOOM_HIGH52_REAL_SECRETKEY="hs",
-        )
-        self.assertEqual(cfg.account_no, "")
+    def test_profile_requires_own_account_no(self):
+        """계좌번호는 잔고·예수금 조회에 실린다. 비면 15:19 에야 터지므로 기동에서 막는다.
+
+        기존 계좌 번호(KIWOOM_REAL_ACCOUNT_NO)로 떨어지지도 않아야 한다.
+        """
+        with self.assertRaises(RuntimeError):
+            self._load(
+                KIWOOM_ENV="real", KIWOOM_PROFILE="HIGH52",
+                KIWOOM_REAL_ACCOUNT_NO="9999",
+                KIWOOM_HIGH52_REAL_APPKEY="hk", KIWOOM_HIGH52_REAL_SECRETKEY="hs",
+            )
 
     def test_profile_paper_refuses_legacy_fallback(self):
         with self.assertRaises(RuntimeError):

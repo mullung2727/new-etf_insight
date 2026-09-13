@@ -107,7 +107,9 @@ def load_config() -> Config:
         env=env,
         rest_host=_HOSTS[env],
         ws_host=_WS_HOSTS[env],
-        account_no=_get_first(f"{prefix}ACCOUNT_NO", *legacy_account),
+        # 계좌번호는 잔고·예수금 조회에 실린다. profile broker 는 전략 전용이라 비면 기동에서 막는다.
+        # (기존 계좌는 지금처럼 선택값으로 둔다.)
+        account_no=(_require_first if profile else _get_first)(f"{prefix}ACCOUNT_NO", *legacy_account),
         max_order_amount=int(os.getenv("MAX_ORDER_AMOUNT", "1000000")),
         token_cache_path=cache_path,
         profile=profile,
