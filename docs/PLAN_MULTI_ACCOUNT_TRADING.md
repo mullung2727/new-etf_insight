@@ -76,7 +76,7 @@ E. (D4) 기존 미등록 10개 작업을 registry 에 편입
 | 인스턴스 | 포트 | `KIWOOM_PROFILE` | `TOKEN_CACHE_PATH` | `NOTES_DB_PATH` | `ALLOWED_ORDER_SOURCES` | `MAX_ORDER_AMOUNT` |
 |---|---|---|---|---|---|---|
 | main (기존) | 8001 | 없음 | `.token_cache.json` | `notes.db` | 없음 (제한 없음, 기존 동작) | `.env` 값 |
-| high52 | 8002 | `HIGH52` | `.token_cache.high52.json` | `notes.high52.db` | `high52_order,high52_exit` | 비공개 config 의 1건 주문 금액 기준 |
+| high52 | 8002 | `HIGH52` | `.token_cache.high52.json` | `notes.high52.db` | `high52_order,high52_exit` | `.env` 값 (:8001 과 공유) |
 
 - 비밀값(앱키·시크릿·계좌번호)은 루트 `.env` 에만 둔다. 사용자가 직접 입력하고, 에이전트는 값을 읽거나 출력하지 않는다
 - 기동 스크립트는 비밀이 아닌 값(위 표)만 프로세스 env 로 주입한다
