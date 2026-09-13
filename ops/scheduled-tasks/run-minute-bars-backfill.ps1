@@ -1,6 +1,6 @@
 ﻿param(
   [ValidateRange(1, 240)]
-  [int]$MaxRuntimeMin = 240
+  [int]$MaxRuntimeMin = 210
 )
 
 $ErrorActionPreference = "Stop"
