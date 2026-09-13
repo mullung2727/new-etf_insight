@@ -28,8 +28,8 @@ must not be copied into this repository.
 
 ## Guardrails
 
-- The runner passes `--dry-run true`. Switching to `false` needs explicit user
-  approval.
+- The runner places live orders (`--dry-run false`, user-approved 2026-09-14).
+  Set it back to `true` to stop live orders.
 - Do not rerun the batch to "retry" orders. A second run on the same day is
   refused by the `high52_runs` marker on purpose (no duplicate orders).
 - Do not modify `high52_positions`, `high52_runs`, or `high52_screen` manually.
