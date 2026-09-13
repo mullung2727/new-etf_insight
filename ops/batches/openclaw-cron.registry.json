@@ -338,15 +338,15 @@
     {
       "id": "6b8d01bf-2c67-4b48-9a56-bd81ce86df06",
       "name": "daily-minute-bars-backfill",
-      "description": "Daily 20:00 KST recent-first KRX all-symbol one-minute-bar backfill with validation and resume",
+      "description": "Daily 02:00-05:30 KST recent-first KRX all-symbol one-minute-bar backfill with validation and resume",
       "enabled": false,
       "schedule": {
         "kind": "cron",
-        "expr": "0 20 * * *",
+        "expr": "0 2 * * *",
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/daily-minute-bars-backfill.md",
-      "timeoutSeconds": 16200,
+      "timeoutSeconds": 13200,
       "windowsTask": {
         "enabled": true,
         "taskPath": "\\new-etf_insight\\",

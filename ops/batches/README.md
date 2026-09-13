@@ -95,7 +95,7 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
   `ops/scheduled-tasks/run-close-bet-order-report.ps1`.
 - `\new-etf_insight\daily-trading-result` — Mon-Fri 16:20,
   `ops/scheduled-tasks/run-daily-trading-result.ps1` (눌림목·종가베팅 실제 매도 통합 보고).
-- `\new-etf_insight\daily-minute-bars-backfill` — daily 20:00,
+- `\new-etf_insight\daily-minute-bars-backfill` — daily 02:00–05:30,
   `ops/scheduled-tasks/run-minute-bars-backfill.ps1`.
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).
