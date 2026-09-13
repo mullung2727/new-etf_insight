@@ -453,6 +453,36 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "c47e1a92-5f3b-4d68-8b2c-9e0a7d4f6b15",
+      "name": "high52-exit",
+      "description": "Mon-Fri 08:50 start; high52 private-strategy intraday stop/target worker 09:00-15:18:30 on the HIGH52 account broker :8002",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "50 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/high52-exit.md",
+      "timeoutSeconds": 25200,
+      "runNote": "Windows Task Scheduler is authoritative. Long-running worker; one instance per day. Posts one Discord line per sell.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "high52-exit",
+        "xmlFile": "ops/scheduled-tasks/high52-exit.xml",
+        "runnerScript": "ops/scheduled-tasks/run-high52-exit.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }
