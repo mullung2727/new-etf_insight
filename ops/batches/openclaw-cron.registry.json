@@ -393,6 +393,36 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "3f9c2a71-6d4e-4b8a-9e15-7c0d2b6a4e93",
+      "name": "high52-order",
+      "description": "Mon-Fri 15:10 start; high52 private-strategy orders at 15:19:10 on the HIGH52 account broker :8002 (dry-run until approved)",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10 15 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/high52-order.md",
+      "timeoutSeconds": 1200,
+      "runNote": "Windows Task Scheduler is authoritative. The batch itself posts its Discord summary. Never rerun to retry orders; the same-day run marker refuses it.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "high52-order",
+        "xmlFile": "ops/scheduled-tasks/high52-order.xml",
+        "runnerScript": "ops/scheduled-tasks/run-high52-order.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }
