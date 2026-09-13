@@ -423,6 +423,36 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "8d2e4f60-1b3a-4c7d-a5e9-2f6b0c8d1e47",
+      "name": "high52-verify",
+      "description": "Mon-Fri 16:00 high52 private-strategy fill confirmation and ledger update on the HIGH52 account broker :8002 (no orders)",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/high52-verify.md",
+      "timeoutSeconds": 600,
+      "runNote": "Windows Task Scheduler is authoritative. No orders; safe to rerun. Posts its own Discord summary.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "high52-verify",
+        "xmlFile": "ops/scheduled-tasks/high52-verify.xml",
+        "runnerScript": "ops/scheduled-tasks/run-high52-verify.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }

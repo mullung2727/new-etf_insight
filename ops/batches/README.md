@@ -46,6 +46,8 @@ reader before composing the Discord report.
   - Purpose: report both strategies' actual filled sells, fees, tax, and broker net realized P/L after the exit workers stop.
 - `high52-order.md`
   - Purpose: run the high52 (private strategy) order batch on its own account broker (:8002); orders at 15:19:10.
+- `high52-verify.md`
+  - Purpose: confirm high52 fills at 16:00 and update its ledger (no orders).
 
 See `openclaw-cron.registry.json` for the active schedules, Windows task
 bindings, and Discord webhook env key. Do not duplicate schedules in this README.
@@ -101,6 +103,8 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
   `ops/scheduled-tasks/run-minute-bars-backfill.ps1`.
 - `\new-etf_insight\high52-order` — Mon-Fri 15:10 start (orders 15:19:10),
   `ops/scheduled-tasks/run-high52-order.ps1`.
+- `\new-etf_insight\high52-verify` — Mon-Fri 16:00,
+  `ops/scheduled-tasks/run-high52-verify.ps1`.
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).
 - `\OpenClaw\close-bet-verify` — Mon-Fri 16:00, `etl/scripts/run_verify.py`
@@ -143,11 +147,12 @@ The 15:21 report task is report-only and must not place or retry orders.
 | 단계 | Windows 작업 | 시각 | 실행 파일 |
 | --- | --- | --- | --- |
 | 매수·교체·만기 매도 | `\new-etf_insight\high52-order` | 평일 15:10 기동, 주문 15:19:10 | `run-high52-order.ps1` |
+| 체결 확인·원장 갱신 | `\new-etf_insight\high52-verify` | 평일 16:00 | `run-high52-verify.ps1` |
 
 - 계좌가 다르다. 주문은 HIGH52 계좌 broker(:8002)로만 가고, 눌림목·종가베팅(:8001)과 현금·포지션을 공유하지 않는다 (`broker/README.md`).
-- 러너는 `--dry-run true` 로 돈다. 실주문 전환은 사용자 승인 후.
+- 2026-09-14부터 실주문(`--dry-run false`, 사용자 승인). 멈추려면 러너를 `--dry-run true` 로 되돌린다.
 - 전략 규칙·파라미터는 비공개(`research/private/`)라 이 문서에 적지 않는다.
-- 청산 감시·체결 검증 작업은 아직 없다 (실주문 전환 전에 추가).
+- 장중 청산 감시(손절·목표) 작업은 아직 없다 (추가 예정).
 
 ### 기대 상태와 실제 등록 상태 구분
 
