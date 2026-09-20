@@ -42,7 +42,9 @@ try {
     -WorkingDirectory $etlDir -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $log -RedirectStandardError $errorLog
   try { $process.PriorityClass = "BelowNormal" } catch {}
-  $process.WaitForExit()
+  # PS 5.1에서 리디렉션한 Start-Process 객체는 .WaitForExit() 뒤 ExitCode가 $null일 수 있다.
+  # Wait-Process는 우선순위를 먼저 낮춘 채 기다리면서 실제 종료코드를 보존한다.
+  Wait-Process -InputObject $process
   if ($process.ExitCode -ne 0) {
     throw "minute backfill failed with exit code $($process.ExitCode)"
   }

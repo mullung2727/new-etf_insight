@@ -14,6 +14,13 @@ def raw(date: str, time: str) -> dict:
 
 
 class MinuteBackfillTest(unittest.TestCase):
+    def test_runner_waits_with_wait_process_before_reading_exit_code(self):
+        runner = (Path(__file__).resolve().parents[2]
+                  / "ops" / "scheduled-tasks" / "run-minute-bars-backfill.ps1")
+        text = runner.read_text(encoding="utf-8-sig")
+        self.assertIn("Wait-Process -InputObject $process", text)
+        self.assertNotIn("$process.WaitForExit()", text)
+
     def test_recent_months_crosses_year(self):
         self.assertEqual(recent_months("202601", 3), ["202601", "202512", "202511"])
 
