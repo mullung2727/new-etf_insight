@@ -37,12 +37,19 @@ class TestSelectResidual(unittest.TestCase):
         self.assertEqual([w["ticker"] for w in out], ["005930"])
         self.assertEqual(out[0]["qty_eff"], 5)
 
+    def test_split_legs_each_residual(self):
+        """워커가 분할 후 주문 전에 죽었으면 auction·chase 두 줄 각각 잔존 (T12)."""
+        pos = [{"ticker": "005930", "leg": "auction", "cntr_price": 1000, "qty": 5},
+               {"ticker": "005930", "leg": "chase", "cntr_price": 1000, "qty": 4}]
+        out = select_residual(pos, _bal(("005930", 9)), set())
+        self.assertEqual([(w["leg"], w["qty_eff"]) for w in out], [("auction", 5), ("chase", 4)])
+
 
 class TestBackstopMainIdempotent(unittest.TestCase):
     def _run(self, residual):
         with patch.object(bs, "load_unsold_positions", return_value=[{"ticker": "X"}]), \
              patch.object(bs, "fetch_balance", return_value={}), \
-             patch.object(bs, "fetch_unfilled_tickers", return_value=set()), \
+             patch.object(bs, "fetch_unfilled_orders", return_value={}), \
              patch.object(bs, "connect_rw"), \
              patch.object(bs, "send_discord"), \
              patch.object(bs, "select_residual", return_value=residual), \

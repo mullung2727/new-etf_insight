@@ -53,7 +53,7 @@ def place_order(
 
     api_id = tr.TR_ORDER_BUY if req.side == Side.buy else tr.TR_ORDER_SELL
     body = {
-        "dmst_stex_tp": "SOR",
+        "dmst_stex_tp": req.exchange,
         "stk_cd": req.symbol,
         "ord_qty": str(req.qty),
         "ord_uv": "" if market else str(req.price),
@@ -154,10 +154,15 @@ def get_realized_by_date(symbol: str, date: str) -> list[dict[str, Any]]:
     return rows
 
 
-def modify_order(order_no: str, symbol: str, price: int, qty: int = 0) -> OrderResult:
-    """kt10002 — 미체결 주문 정정. qty=0이면 잔량 전부 정정. price=정정단가."""
+def modify_order(
+    order_no: str, symbol: str, price: int, qty: int = 0, exchange: str = "SOR"
+) -> OrderResult:
+    """kt10002 — 미체결 주문 정정. qty=0이면 잔량 전부 정정. price=정정단가.
+
+    exchange: 원주문 거래소. 스펙상 원주문과 달라도 되는지 문서에 없어 그대로 넘긴다.
+    """
     body = {
-        "dmst_stex_tp": "SOR",
+        "dmst_stex_tp": exchange,
         "orig_ord_no": str(order_no),
         "stk_cd": symbol,
         "mdfy_qty": str(qty) if qty else "0",
@@ -173,10 +178,13 @@ def modify_order(order_no: str, symbol: str, price: int, qty: int = 0) -> OrderR
     )
 
 
-def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
-    """Cancel a resting order. qty=0 cancels the full remaining quantity."""
+def cancel_order(order_no: str, symbol: str, qty: int = 0, exchange: str = "SOR") -> OrderResult:
+    """Cancel a resting order. qty=0 cancels the full remaining quantity.
+
+    exchange: 원주문 거래소 (동시호가 KRX 주문 취소는 KRX).
+    """
     body = {
-        "dmst_stex_tp": "SOR",
+        "dmst_stex_tp": exchange,
         "orig_ord_no": str(order_no),
         "stk_cd": symbol,
         "cncl_qty": str(qty) if qty else "0",

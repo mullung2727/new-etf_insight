@@ -27,7 +27,8 @@ CREATE TABLE close_bet_orders (
     sell_order_no TEXT, sell_status TEXT, sell_price INTEGER, sell_qty INTEGER,
     sold_at TEXT, exit_reason TEXT, pnl_pct REAL,
     sell_cmsn INTEGER, sell_tax INTEGER, sell_pl_won INTEGER,
-    PRIMARY KEY (date, ticker)
+    leg TEXT NOT NULL DEFAULT 'single',
+    PRIMARY KEY (date, ticker, leg)
 )
 """
 
@@ -125,6 +126,20 @@ class TestPositions(_Base):
         tickers = [r["ticker"] for r in self._get()["watching"]]
         self.assertNotIn("AAA", tickers)
         self.assertNotIn("CCC", tickers)
+
+    def test_split_legs_both_listed_with_leg(self):
+        """반반 분할 — 같은 종목 auction/chase 두 줄이 leg 와 함께 나온다 (T14)."""
+        con = sqlite3.connect(str(self.db))
+        con.execute("UPDATE close_bet_orders SET leg='auction' WHERE ticker='BBB'")
+        con.execute("INSERT INTO close_bet_orders (date,ticker,leg,score,qty,status,cntr_price,created_at) "
+                    "VALUES ('20260101','BBB','chase',75,1,'confirmed',2000,'2026-01-01 06:19:00')")
+        con.commit()
+        con.close()
+        data = self._get()
+        self.assertEqual([(r["ticker"], r["leg"]) for r in data["buys"] if r["ticker"] == "BBB"],
+                         [("BBB", "auction"), ("BBB", "chase")])
+        self.assertEqual([(r["ticker"], r["leg"]) for r in data["watching"]],
+                         [("BBB", "auction"), ("BBB", "chase")])
 
 
 class TestEmpty(unittest.TestCase):

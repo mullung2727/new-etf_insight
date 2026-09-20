@@ -1,7 +1,7 @@
 """종가베팅 청산 백스톱 배치 — 워커 크래시 대비 (평일 1회).
 
 장중 청산 워커(run_close_bet_exit.py)가 죽어 강제청산을 누락했을 때의 최종 방어선.
-워커 강제청산 시각(close_bet.json 의 exit_time, 현재 09:01:00) 직후 30초에 독립 시계로 1회 실행한다.
+워커 강제청산 시각(close_bet.json 의 exit_time, 08:55:00 동시호가) 뒤 09:01 에 독립 시계로 1회 실행한다. 스케줄러가 분 단위라 러너 ps1 이 5초 대기 — 09:01:00 추격 종료 시장가와 경합 회피.
 실행 시각 자체는 이 스크립트가 아니라 ops/scheduled-tasks/close-bet-force-exit.xml 이 정한다.
 
 3중 대조로 멱등 보장 — 워커가 정상이면 무동작:
@@ -34,7 +34,7 @@ try:  # 직접 실행 / 패키지 import 양쪽 지원
         connect_rw,
         execute_sell,
         fetch_balance,
-        fetch_unfilled_tickers,
+        fetch_unfilled_orders,
         load_unsold_positions,
         reconcile_balance,
         send_discord,
@@ -47,7 +47,7 @@ except ImportError:
         connect_rw,
         execute_sell,
         fetch_balance,
-        fetch_unfilled_tickers,
+        fetch_unfilled_orders,
         load_unsold_positions,
         reconcile_balance,
         send_discord,
@@ -78,7 +78,7 @@ def main() -> None:
     with connect_rw(db_path) as con:
         positions = load_unsold_positions(con, today)
     balance = fetch_balance(broker_url)
-    unfilled = fetch_unfilled_tickers(broker_url)
+    unfilled = {o["ticker"] for o in fetch_unfilled_orders(broker_url).values()}
     residual = select_residual(positions, balance, unfilled)
 
     print(f"[backstop] 미청산 {len(positions)}건 → 3중대조 후 잔존 {len(residual)}건")

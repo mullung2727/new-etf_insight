@@ -6,6 +6,7 @@ import {
   brokerClient,
   type CloseBetPositions,
   type CloseBetBuy,
+  type CloseBetLeg,
 } from "@/lib/broker-client";
 import {
   Table,
@@ -37,6 +38,14 @@ function TickerLink({ ticker, date }: { ticker: string; date: string }) {
       </Badge>
     </Link>
   );
+}
+
+const _LEG_LABEL: Partial<Record<CloseBetLeg, string>> = { auction: "동시호가", chase: "추격" };
+
+function LegBadge({ leg }: { leg: CloseBetLeg }) {
+  // 반반 분할 청산 줄 구분 — 미분할(single)은 표시 안 함
+  const label = _LEG_LABEL[leg];
+  return label ? <Badge variant="outline" className="ml-1 font-mono text-xs">{label}</Badge> : null;
 }
 
 const _EXIT_LABEL: Record<string, string> = { tp: "익절", sl: "손절", forced: "강제" };
@@ -126,10 +135,10 @@ export default function CloseBetPage() {
                   </TableHeader>
                   <TableBody>
                     {data.buys.map((r) => (
-                      <TableRow key={`${r.date}-${r.ticker}`}>
+                      <TableRow key={`${r.date}-${r.ticker}-${r.leg}`}>
                         <TableCell className="text-right font-mono text-sm">{fmtDate(r.date)}</TableCell>
                         <TableCell className="text-right font-mono text-sm">{fmtTime(r.created_at)}</TableCell>
-                        <TableCell><TickerLink ticker={r.ticker} date={r.date} /></TableCell>
+                        <TableCell><TickerLink ticker={r.ticker} date={r.date} /><LegBadge leg={r.leg} /></TableCell>
                         <TableCell className="text-right font-mono">{r.score ?? "-"}</TableCell>
                         <TableCell className="text-right font-mono">{won(r.cntr_price)}</TableCell>
                         <TableCell><StatusCell r={r} /></TableCell>
@@ -175,8 +184,8 @@ export default function CloseBetPage() {
                   </TableHeader>
                   <TableBody>
                     {data.watching.map((r) => (
-                      <TableRow key={`${r.date}-${r.ticker}`}>
-                        <TableCell><TickerLink ticker={r.ticker} date={r.date} /></TableCell>
+                      <TableRow key={`${r.date}-${r.ticker}-${r.leg}`}>
+                        <TableCell><TickerLink ticker={r.ticker} date={r.date} /><LegBadge leg={r.leg} /></TableCell>
                         <TableCell className="text-right font-mono text-sm">{fmtDate(r.date)}</TableCell>
                         <TableCell className="text-right font-mono">{r.score ?? "-"}</TableCell>
                         <TableCell className="text-right font-mono">{won(r.cntr_price)}</TableCell>

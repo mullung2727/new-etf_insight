@@ -61,17 +61,17 @@ def get_close_bet_positions() -> dict[str, list[dict[str, Any]]]:
     try:
         # 매수 현황: 전체 매수 원장 + 청산결과(net 손익·수수료·세금). created_at=주문시각(UTC).
         buys = [dict(r) for r in con.execute(
-            "SELECT date, ticker, score, cntr_price, status, order_no, created_at, "
+            "SELECT date, ticker, leg, score, cntr_price, status, order_no, created_at, "
             "sell_status, sell_price, sell_qty, sold_at, exit_reason, "
             "pnl_pct, sell_cmsn, sell_tax, sell_pl_won "
             "FROM close_bet_orders "
-            "ORDER BY date DESC, created_at DESC, ticker",
+            "ORDER BY date DESC, created_at DESC, ticker, leg",
         )]
         watching = [dict(r) for r in con.execute(
-            "SELECT date, ticker, score, cntr_price, qty "
+            "SELECT date, ticker, leg, score, cntr_price, qty "
             "FROM close_bet_orders "
             "WHERE date < ? AND status = 'confirmed' AND sell_status IS NULL "
-            "ORDER BY date DESC, ticker",
+            "ORDER BY date DESC, ticker, leg",
             [today],
         )]
     finally:

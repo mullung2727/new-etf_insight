@@ -320,6 +320,39 @@ class TestOrderHistoryWrapper(unittest.TestCase):
         self.assertEqual(calls[1]["sell_tp"], "1")
 
 
+class TestPlaceOrderExchange(unittest.TestCase):
+    """kiwoom.orders.place_order — 신규 주문 body dmst_stex_tp 는 exchange 필드(기본 SOR)."""
+
+    def _body(self, **extra) -> dict:
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+        from kiwoom.models import OrderRequest
+
+        calls: list[dict] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            calls.append(dict(body))
+            return TrResult(data={"ord_no": "0000001"}, cont_yn="N", next_key="")
+
+        req = OrderRequest(symbol="005930", side="sell", qty=1, order_type="market", **extra)
+        with patch("kiwoom.orders._config"), patch("kiwoom.orders.check_order"), \
+                patch("kiwoom.orders.request", side_effect=fake):
+            korders.place_order(req, enforce_amount_cap=True)
+        return calls[0]
+
+    def test_default_exchange_is_sor(self):
+        self.assertEqual(self._body()["dmst_stex_tp"], "SOR")
+
+    def test_krx_exchange_passed_to_body(self):
+        self.assertEqual(self._body(exchange="KRX")["dmst_stex_tp"], "KRX")
+
+    def test_unknown_exchange_rejected(self):
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            self._body(exchange="NYSE")
+
+
 class TestUnfilledWrapper(unittest.TestCase):
     """kiwoom.orders.get_unfilled — ka10075 body + 연속조회 병합."""
 
@@ -464,6 +497,18 @@ class TestModifyWrapper(unittest.TestCase):
             korders.modify_order("0000070", "005930", 71000)
         self.assertEqual(seen, ["0"])
 
+    def test_exchange_passthrough(self):
+        """원주문 거래소를 넘긴다 — 동시호가(KRX) 주문 정정 대비. 기본 SOR."""
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        seen: list[str] = []
+        with patch("kiwoom.orders.request",
+                   side_effect=lambda *a, **k: seen.append(a[2]["dmst_stex_tp"]) or
+                   TrResult(data={"ord_no": "1"}, cont_yn="N", next_key="")):
+            korders.modify_order("0000070", "005930", 71000, exchange="KRX")
+        self.assertEqual(seen, ["KRX"])
+
 
 class TestCancelWrapper(unittest.TestCase):
     """kiwoom.orders.cancel_order — SOR 거래소를 유지한다."""
@@ -486,6 +531,18 @@ class TestCancelWrapper(unittest.TestCase):
         self.assertEqual(calls[0]["body"]["dmst_stex_tp"], "SOR")
         self.assertEqual(calls[0]["body"]["cncl_qty"], "5")
 
+    def test_exchange_passthrough(self):
+        """동시호가(KRX)로 낸 주문 취소는 KRX 로 보낸다."""
+        from kiwoom import orders as korders
+        from kiwoom.client import TrResult
+
+        seen: list[str] = []
+        with patch("kiwoom.orders.request",
+                   side_effect=lambda *a, **k: seen.append(a[2]["dmst_stex_tp"]) or
+                   TrResult(data={"ord_no": "1"}, cont_yn="N", next_key="")):
+            korders.cancel_order("0000070", "005930", exchange="KRX")
+        self.assertEqual(seen, ["KRX"])
+
 
 class TestModifyRoute(_OrdersTestBase):
     """PATCH /orders/{order_no} — modify_order 위임 + 친화 에러."""
@@ -494,12 +551,25 @@ class TestModifyRoute(_OrdersTestBase):
         fake = OrderResult(accepted=True, order_no="0000099", message="", raw={})
         seen: list[tuple] = []
         with patch("routers.orders.orders.modify_order",
-                   side_effect=lambda *a: seen.append(a) or fake):
+                   side_effect=lambda *a, **k: seen.append((a, k)) or fake):
             resp = self.client.patch("/orders/0000070",
                                      json={"symbol": "005930", "price": 71000, "qty": 5})
+            self.client.patch("/orders/0000070",
+                              json={"symbol": "005930", "price": 71000, "exchange": "KRX"})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["order_no"], "0000099")
-        self.assertEqual(seen[0], ("0000070", "005930", 71000, 5))
+        self.assertEqual(seen[0], (("0000070", "005930", 71000, 5), {"exchange": "SOR"}))
+        self.assertEqual(seen[1][1], {"exchange": "KRX"})
+
+    def test_cancel_route_exchange(self):
+        """DELETE /orders/{no}?exchange=KRX → cancel_order 에 전달. 미지정 SOR."""
+        fake = OrderResult(accepted=True, order_no="0000099", message="", raw={})
+        seen: list[dict] = []
+        with patch("routers.orders.orders.cancel_order",
+                   side_effect=lambda *a, **k: seen.append(k) or fake):
+            self.client.delete("/orders/0000070", params={"symbol": "005930"})
+            self.client.delete("/orders/0000070", params={"symbol": "005930", "exchange": "KRX"})
+        self.assertEqual(seen, [{"exchange": "SOR"}, {"exchange": "KRX"}])
 
     def test_kiwoom_error_422(self):
         from kiwoom.client import KiwoomError
