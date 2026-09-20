@@ -22,6 +22,7 @@ TR_ORDERBOOK = "ka10004"    # 주식호가요청 → EP_MRKCOND
 TR_DAILY_CHART = "ka10081"  # 주식일봉차트조회요청 → EP_CHART
 TR_MINUTE_CHART = "ka10080"  # 주식분봉차트조회요청 → EP_CHART
 TR_WATCHLIST_QUOTE = "ka10095"  # 관심종목정보요청 (복수종목 일괄시세, 등록 불요·stateless) → EP_STKINFO
+TR_STOCK_STATUS = "ka10100"  # 종목정보 조회 (감리구분·투자유의·종목상태·상장일) → EP_STKINFO
 
 # --- Account (계좌) ---
 TR_BALANCE = "kt00018"      # 계좌평가잔고내역요청 → EP_ACNT

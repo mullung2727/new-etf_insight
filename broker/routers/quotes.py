@@ -52,6 +52,16 @@ def get_quote(symbol: str) -> Any:
 
 
 @router.get(
+    "/{symbol}/status",
+    operation_id="get_stock_status",
+    summary="종목 상태 조회 (감리구분·투자유의)",
+)
+def get_stock_status(symbol: str) -> Any:
+    """ka10100. audit_info(정상/관리종목/거래정지/단기과열/투자주의/투자경고) · order_warning(2=정리매매) · state."""
+    return quotes.get_stock_status(symbol)
+
+
+@router.get(
     "/{symbol}/orderbook",
     operation_id="get_orderbook",
     summary="주식 호가 조회",

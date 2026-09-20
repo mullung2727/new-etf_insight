@@ -91,6 +91,22 @@ def get_watchlist_quotes(codes: list[str]) -> list[dict[str, Any]]:
     return out
 
 
+def get_stock_status(symbol: str) -> dict[str, Any]:
+    """ka10100 종목정보 — 감리구분(정상/관리종목/거래정지/…)·투자유의(2=정리매매)·종목상태·상장일.
+    판단(제외 여부)은 호출하는 전략이 한다. 여기선 필드 정리만."""
+    d = request(tr.TR_STOCK_STATUS, tr.EP_STKINFO, {"stk_cd": symbol}).data
+    return {
+        "code": _strip_code(str(d.get("code") or symbol)),
+        "name": d.get("name"),
+        "audit_info": str(d.get("auditInfo") or "").strip(),
+        "order_warning": str(d.get("orderWarning") or "").strip(),
+        "state": str(d.get("state") or "").strip(),
+        "reg_day": d.get("regDay"),
+        "market_name": d.get("marketName"),
+        "last_price": _abs_int(d.get("lastPrice")),
+    }
+
+
 def get_orderbook(symbol: str) -> dict[str, Any]:
     """Return raw 호가 (bid/ask ladder) for a symbol."""
     res = request(tr.TR_ORDERBOOK, tr.EP_MRKCOND, {"stk_cd": symbol})
