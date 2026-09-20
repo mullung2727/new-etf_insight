@@ -49,13 +49,13 @@ def ready_manager(codes=()) -> tuple[KiwoomWSManager, FakeWS]:
 
 
 class TestFrames(unittest.IsolatedAsyncioTestCase):
-    async def test_t04_reg_uses_group_2_refresh_1(self):
+    async def test_t04_reg_uses_plain_six_digit_codes(self):
         m, ws = ready_manager()
         task = asyncio.create_task(m.add_orderbook(["005930", "000660"]))
         await ack_nth(m, ws, 1, OK)
         status = await task
         self.assertEqual(ws.sent, [{"trnm": "REG", "grp_no": "2", "refresh": "1", "data": [
-            {"item": ["KRX:000660", "KRX:005930"], "type": ["0D"]}]}])
+            {"item": ["000660", "005930"], "type": ["0D"]}]}])
         self.assertEqual(status, {"connected": True, "venue": "KRX", "codes": ["000660", "005930"]})
 
     async def test_t04_post_is_additive_and_idempotent(self):
@@ -65,7 +65,7 @@ class TestFrames(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(m.add_orderbook(["005930", "0197V0"]))
         await ack_nth(m, ws, 1, OK)
         self.assertEqual((await task)["codes"], ["005930", "0197V0"])
-        self.assertEqual(ws.sent[0]["data"][0]["item"], ["KRX:0197V0"])   # 신규만
+        self.assertEqual(ws.sent[0]["data"][0]["item"], ["0197V0"])   # 신규만
 
     async def test_t04_remove_lists_all_codes_without_refresh(self):
         m, ws = ready_manager(["005930", "000660"])
@@ -73,7 +73,7 @@ class TestFrames(unittest.IsolatedAsyncioTestCase):
         await ack_nth(m, ws, 1, {"trnm": "REMOVE", "return_code": "0"})
         self.assertEqual((await task)["codes"], [])
         self.assertEqual(ws.sent, [{"trnm": "REMOVE", "grp_no": "2", "data": [
-            {"item": ["KRX:000660", "KRX:005930"], "type": ["0D"]}]}])
+            {"item": ["000660", "005930"], "type": ["0D"]}]}])
 
     async def test_remove_with_empty_list_sends_nothing(self):
         m, ws = ready_manager()
@@ -141,7 +141,7 @@ class TestReconnect(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ws.sent, [
             {"trnm": "REG", "grp_no": "1", "refresh": "1", "data": [{"item": [""], "type": ["00"]}]},
             {"trnm": "REG", "grp_no": "2", "refresh": "1", "data": [
-                {"item": ["KRX:000660", "KRX:005930"], "type": ["0D"]}]},
+                {"item": ["000660", "005930"], "type": ["0D"]}]},
         ])
         self.assertEqual(published, [("system", {"type": "connected"})])
         self.assertTrue(m.orderbook_status()["connected"])

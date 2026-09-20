@@ -1,6 +1,6 @@
 """호가 수집기용 0D 실시간 구독 제어 (SPEC_ORDERBOOK_SNAPSHOT_RECORDER §5).
 
-종목 입력은 접두사 없는 6자리 영숫자 코드. broker 가 KRX: 를 붙여 group 2 로 등록한다.
+종목 입력은 접두사 없는 6자리 영숫자 코드. 그대로 group 2 로 등록한다.
 POST 는 추가(멱등), DELETE 는 group 2 의 0D 전부 해제. 체결통보 00(group 1)은 건드리지 않는다.
 """
 from __future__ import annotations
