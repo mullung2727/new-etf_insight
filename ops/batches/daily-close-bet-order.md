@@ -59,7 +59,8 @@ Check the report script output for:
 2. Today's log file, if present: `logs\close-bet-YYYYMMDD.log`.
 3. Today's DB rows in `db\watchlist.sqlite3`:
    - `llm_scores` count for today.
-   - `llm_scores` rows with `score >= 70`.
+   - `llm_scores` rows with `score >= score_threshold` (`etl/scripts/close_bet.json`;
+     currently 0, i.e. no score cut).
    - `close_bet_orders` rows for today.
 
 Use the compact date key `YYYYMMDD` for DB queries and log filenames. The
@@ -84,7 +85,7 @@ Include:
 - Target date.
 - Windows task last run time and result code.
 - Whether the log file exists.
-- Candidate count with `score >= 70`.
+- Candidate count with `score >= score_threshold` (as printed by the report script).
 - `close_bet_orders` count and each row's ticker, score, status, order number,
   and message.
 - Final judgment: completed, no targets, failed before order, or blocked.

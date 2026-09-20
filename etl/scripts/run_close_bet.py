@@ -1,9 +1,10 @@
 """종가배팅 주문 배치 (15:19 실행).
 
-llm_scores에서 score >= score_threshold 종목을 뽑아 시총 상한·전일 거래대금 하한
-(close_bet.json)으로 거른 뒤, 남은 후보를 전일 거래대금 DESC로 상위 3개 선별해
-총 500만원을 종목 수별 예산(1→300만/2→200만/3→167만)으로 나눠
-broker REST API 시장가 매수(qty = 예산 // 현재가)하고 결과를 기록한다.
+llm_scores(=15:00 거래량 신규진입 후보)에서 score >= score_threshold 종목을 뽑아
+(운영값 0 = 점수 컷 없음) 신규상장 제외 → 시총 상한·전일 거래대금 하한(close_bet.json)으로
+거른 뒤, 남은 후보를 전일 거래대금 DESC로 상위 3개 선별해 종목 수별 예산
+(close_bet.json budget_by_count)으로 broker REST API 시장가 매수(qty = 예산 // 현재가)하고
+결과를 기록한다. 상한가(매수불가) 종목은 거르지 않는다.
 
 필터·정렬 근거는 research/private/close_bet_overnight 백테스트.
 
@@ -105,7 +106,26 @@ def create_close_bet_orders_table(con: sqlite3.Connection) -> None:
             cntr_price  INTEGER,
             cntr_qty    INTEGER,
             verified_at TEXT,
-            PRIMARY KEY (date, ticker)
+            leg         TEXT NOT NULL DEFAULT 'single',  -- single / auction / chase (청산 반반 분할)
+            PRIMARY KEY (date, ticker, leg)
+        )
+    """)
+
+
+def create_close_bet_sell_fills_table(con: sqlite3.Connection) -> None:
+    """체결된 매도만 1건 1줄. 체결 안 된 주문(정정 전·취소)은 기록하지 않는다."""
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS close_bet_sell_fills (
+            date        TEXT NOT NULL,     -- close_bet_orders.date (매수일)
+            ticker      TEXT NOT NULL,
+            leg         TEXT NOT NULL,
+            order_no    TEXT NOT NULL,
+            kind        TEXT NOT NULL,     -- auction / chase / market_0901 / backstop
+            round       INTEGER,           -- chase 회차 1~3
+            price       INTEGER NOT NULL,
+            qty         INTEGER NOT NULL,
+            recorded_at TEXT NOT NULL,
+            PRIMARY KEY (date, ticker, leg, order_no)
         )
     """)
 
@@ -125,13 +145,42 @@ _EXIT_COLUMNS = [
 ]
 
 
-def ensure_exit_columns(con: sqlite3.Connection) -> None:
-    """close_bet_orders에 청산용 컬럼을 멱등 추가. 두 번 호출해도 무동작."""
-    create_close_bet_orders_table(con)
+def _add_exit_columns(con: sqlite3.Connection) -> None:
     existing = {r[1] for r in con.execute("PRAGMA table_info(close_bet_orders)")}
     for col, col_type in _EXIT_COLUMNS:
         if col not in existing:
             con.execute(f"ALTER TABLE close_bet_orders ADD COLUMN {col} {col_type}")
+
+
+def _rebuild_with_leg_pk(con: sqlite3.Connection) -> None:
+    """PK (date,ticker) → (date,ticker,leg). SQLite 는 PK 변경이 안 돼 재생성한다.
+
+    기존 행은 leg='single'. 중간 실패 시 SAVEPOINT 로 원상복구.
+    """
+    info = con.execute("PRAGMA table_info(close_bet_orders)").fetchall()
+    if any(r[1] == "leg" and r[5] for r in info):
+        return
+    old_cols = ", ".join(r[1] for r in info)
+    con.execute("SAVEPOINT close_bet_leg_pk")
+    try:
+        con.execute("ALTER TABLE close_bet_orders RENAME TO close_bet_orders_old")
+        create_close_bet_orders_table(con)
+        _add_exit_columns(con)
+        con.execute(f"INSERT INTO close_bet_orders ({old_cols}) SELECT {old_cols} FROM close_bet_orders_old")
+        con.execute("DROP TABLE close_bet_orders_old")
+    except Exception:
+        con.execute("ROLLBACK TO close_bet_leg_pk")
+        con.execute("RELEASE close_bet_leg_pk")
+        raise
+    con.execute("RELEASE close_bet_leg_pk")
+
+
+def ensure_exit_columns(con: sqlite3.Connection) -> None:
+    """close_bet_orders 청산용 컬럼·leg PK·close_bet_sell_fills 를 멱등 보장. 두 번 호출해도 무동작."""
+    create_close_bet_orders_table(con)
+    _add_exit_columns(con)
+    _rebuild_with_leg_pk(con)
+    create_close_bet_sell_fills_table(con)
 
 
 # ── DB 조회/저장 ──────────────────────────────────────────────────────────────

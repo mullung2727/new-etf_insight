@@ -219,9 +219,13 @@ export interface EventCreate {
 // --- Close-bet types ---
 
 // 매수 원장 + 청산결과 통합 행. 미청산은 sell_* = null.
+// 청산 반반 분할 구분 — single=미분할, auction=동시호가분, chase=추격분
+export type CloseBetLeg = "single" | "auction" | "chase";
+
 export interface CloseBetBuy {
   date: string;
   ticker: string;
+  leg: CloseBetLeg;
   score: number | null;
   cntr_price: number | null;
   status: string;
@@ -242,6 +246,7 @@ export interface CloseBetBuy {
 export interface CloseBetWatch {
   date: string;
   ticker: string;
+  leg: CloseBetLeg;
   score: number | null;
   cntr_price: number | null;
   qty: number;

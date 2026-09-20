@@ -8,7 +8,7 @@ contract the MCP tools expose to the model.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,6 +40,10 @@ class OrderRequest(_Base):
             "종가베팅='close_bet', 눌림목='pullback_order'. "
             "금액상한 정책은 source가 아니라 서버 라우트가 결정"
         ),
+    )
+    exchange: Literal["KRX", "NXT", "SOR"] = Field(
+        default="SOR",
+        description="국내거래소구분(dmst_stex_tp). 종가베팅 동시호가 청산은 KRX",
     )
 
 

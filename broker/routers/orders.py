@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 logger = logging.getLogger(__name__)
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -238,15 +238,18 @@ def get_today_realized(ticker: str, date: str | None = None) -> dict[str, Any]:
     summary="미체결 주문 취소",
     response_model=OrderResult,
 )
-def cancel_order(order_no: str, symbol: str, qty: int = 0) -> OrderResult:
-    """미체결 주문을 취소한다. qty=0이면 잔량 전부 취소."""
-    return orders.cancel_order(order_no, symbol, qty)
+def cancel_order(
+    order_no: str, symbol: str, qty: int = 0, exchange: Literal["KRX", "NXT", "SOR"] = "SOR"
+) -> OrderResult:
+    """미체결 주문을 취소한다. qty=0이면 잔량 전부 취소. exchange=원주문 거래소."""
+    return orders.cancel_order(order_no, symbol, qty, exchange=exchange)
 
 
 class ModifyRequest(BaseModel):
     symbol: str
     price: int
     qty: int = 0  # 0=잔량 전부
+    exchange: Literal["KRX", "NXT", "SOR"] = "SOR"  # 원주문 거래소
 
 
 @router.patch(
@@ -258,7 +261,7 @@ class ModifyRequest(BaseModel):
 def modify_order(order_no: str, req: ModifyRequest) -> OrderResult:
     """미체결 주문 가격을 정정한다. qty=0이면 잔량 전부."""
     try:
-        return orders.modify_order(order_no, req.symbol, req.price, req.qty)
+        return orders.modify_order(order_no, req.symbol, req.price, req.qty, exchange=req.exchange)
     except KiwoomError as exc:
         logger.warning("modify error raw: %s", exc)
         raise HTTPException(status_code=422, detail=_friendly_order_error(exc)) from exc
