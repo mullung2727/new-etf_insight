@@ -217,11 +217,28 @@ class TestSplitPositions(unittest.TestCase):
         ])
         self.assertEqual(self._rows("CCC"), [("auction", 1, 1, 3470, 55, "confirmed", "0001234", None)])
 
-    def test_base_is_balance_limited_qty(self):
+    def test_ledger_keeps_bought_qty_when_balance_is_short(self):
+        """잔고 매도가능이 기록보다 적어도 원장은 매수 수량대로 쪼갠다 — 차액이 사라지면 안 됨."""
         pos = self._seed("AAA", 10)
-        pos["qty_eff"] = 7          # 잔고 매도가능 7
+        pos["qty_eff"] = 7          # 미체결 매도 등으로 매도가능 7
         out = split_positions(self.db, [pos])
-        self.assertEqual(sorted((p["leg"], p["qty"]) for p in out), [("auction", 4), ("chase", 3)])
+        self.assertEqual(sorted((p["leg"], p["qty"], p["qty_eff"]) for p in out),
+                         [("auction", 5, 5), ("chase", 5, 2)])   # 주문은 7주까지만
+        self.assertEqual([(r[0], r[1], r[2]) for r in self._rows("AAA")],
+                         [("auction", 5, 5), ("chase", 5, 5)])   # 원장 합 = 10
+
+    def test_partial_buy_fill_splits_each_column(self):
+        """qty(주문)와 cntr_qty(체결)가 다르면 각자 쪼갠다."""
+        with connect_rw(self.db) as con:
+            ensure_exit_columns(con)
+            con.execute(
+                "INSERT INTO close_bet_orders (date,ticker,score,status,qty,cntr_price,cntr_qty,order_no) "
+                "VALUES ('20260916','DDD',55,'confirmed',10,3470,7,'0001234')")
+        pos = {"date": "20260916", "ticker": "DDD", "leg": "single",
+               "cntr_price": 3470, "qty": 10, "qty_eff": 7}
+        split_positions(self.db, [pos])
+        self.assertEqual([(r[0], r[1], r[2]) for r in self._rows("DDD")],
+                         [("auction", 5, 4), ("chase", 5, 3)])
 
     def test_already_split_rows_untouched(self):
         """재기동 — leg 가 이미 auction/chase 면 재분할 안 함."""

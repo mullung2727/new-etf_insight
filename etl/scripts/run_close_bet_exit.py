@@ -182,8 +182,12 @@ def load_unsold_positions(con, today: str) -> list[dict]:
 def split_positions(db_path, positions: list[dict]) -> list[dict]:
     """leg='single' 포지션을 auction(ceil)/chase(floor) 두 줄로 쪼갠다. 이미 쪼갠 줄은 그대로.
 
-    기준 수량 = qty_eff(잔고대조 후). 1주면 auction 만. 원래 줄이 auction 이 되고 chase 줄은
-    매수 컬럼을 복사해 새로 넣는다 — 두 줄 qty·cntr_qty 합 = 기준 수량. 한 트랜잭션.
+    원장 기준 = 기록된 qty·cntr_qty(매수 수량). 1주면 auction 만. 원래 줄이 auction 이 되고
+    chase 줄은 매수 컬럼을 복사해 새로 넣는다 — 두 줄 합 = 원래 값. 한 트랜잭션.
+
+    잔고 매도가능(qty_eff)은 원장에 쓰지 않는다. 미체결 매도가 물량을 묶고 있으면 보유분보다
+    작게 잡히는데, 그 값을 원장에 덮으면 차액이 매수 기록에서 사라져 영영 청산 대상에서 빠진다.
+    이번 실행에서 몇 주까지 주문할지만 qty_eff 로 자른다.
     """
     out: list[dict] = []
     with connect_rw(db_path) as con:
@@ -194,22 +198,27 @@ def split_positions(db_path, positions: list[dict]) -> list[dict]:
             if p["leg"] != "single":
                 out.append(p)
                 continue
-            base = int(p["qty_eff"])
+            base = int(p["qty"] or 0)
             auction, chase = base - base // 2, base // 2
             key = (p["date"], p["ticker"])
             if chase:
+                # qty·cntr_qty 를 각자 쪼갠다 — 부분체결이면 둘 값이 다르다.
                 con.execute(
                     f"INSERT INTO close_bet_orders ({col_list}, leg, qty, cntr_qty) "
-                    f"SELECT {col_list}, 'chase', ?, ? FROM close_bet_orders "
+                    f"SELECT {col_list}, 'chase', qty/2, cntr_qty/2 FROM close_bet_orders "
                     "WHERE date=? AND ticker=? AND leg='single'",
-                    [chase, chase, *key])
+                    [*key])
             con.execute(
-                "UPDATE close_bet_orders SET leg='auction', qty=?, cntr_qty=? "
+                "UPDATE close_bet_orders SET leg='auction', qty=qty-qty/2, cntr_qty=cntr_qty-cntr_qty/2 "
                 "WHERE date=? AND ticker=? AND leg='single'",
-                [auction, auction, *key])
-            out.append({**p, "leg": "auction", "qty": auction, "qty_eff": auction})
-            if chase:
-                out.append({**p, "leg": "chase", "qty": chase, "qty_eff": chase})
+                [*key])
+            eff = int(p["qty_eff"])
+            eff_auction = min(auction, eff)
+            eff_chase = min(chase, max(eff - eff_auction, 0))
+            if eff_auction:
+                out.append({**p, "leg": "auction", "qty": auction, "qty_eff": eff_auction})
+            if chase and eff_chase:
+                out.append({**p, "leg": "chase", "qty": chase, "qty_eff": eff_chase})
     return out
 
 

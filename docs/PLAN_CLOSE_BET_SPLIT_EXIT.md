@@ -70,9 +70,13 @@
 ### 2-3. 분할 규칙 (`split_positions`, `run_close_bet_exit.py` 신규 함수)
 
 - 대상: `status='confirmed' AND sell_status IS NULL AND leg='single' AND date < today`
-- 기준 수량 `base = qty_eff` (= min(기록 qty, 잔고 매도가능)) — 기존 `reconcile_balance` 결과
+- 원장 기준 수량 `base = 기록 qty` (매수 수량). 잔고 매도가능(`qty_eff`)은 원장에 쓰지 않는다 —
+  미체결 매도가 물량을 묶으면 보유분보다 작게 잡히는데, 그 값을 원장에 덮으면 차액이 매수 기록에서
+  사라져 다음 실행이 존재를 모른 채 영영 청산 대상에서 빠진다
 - `auction = ceil(base/2)`, `chase = floor(base/2)`
-- 원래 줄: `leg='auction'`, `qty=cntr_qty=auction`. 새 줄: 매수 컬럼 복사, `leg='chase'`, `qty=cntr_qty=chase`
+- 원래 줄: `leg='auction'`, `qty`·`cntr_qty` 각자 ceil 분할. 새 줄: 매수 컬럼 복사, `leg='chase'`,
+  각자 floor 분할 (부분체결이면 `qty != cntr_qty` 라 같은 값으로 쓰면 안 된다)
+- 이번 실행에 낼 주문 수량만 `qty_eff` 로 자른다 (auction 부터 채우고 남은 만큼 chase)
 - `chase == 0` (1주): 원래 줄 `leg='auction'` 만, 새 줄 없음
 - 한 트랜잭션. 재기동 시 `leg='single'` 이 없으므로 재분할 안 됨
 
