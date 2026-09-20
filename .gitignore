@@ -82,3 +82,6 @@ research/private/
 # 템플릿: etl/scripts/close_bet.example.json
 etl/scripts/close_bet.json
 etl/scripts/close_bet.json.bak
+
+# 키움 제공 REST API 스펙 덤프 (2.5MB) — 재배포 안 함
+kiwoom-rest-api-spec.json
