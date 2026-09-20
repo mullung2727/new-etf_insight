@@ -13,6 +13,9 @@ dependencies = [
     "yt-dlp>=2024.1.0",
     "youtube-transcript-api>=1.2.0,<2",
     "holidays>=0.100",
+    "yfinance>=1.7.0,<2",
+    "scipy>=1.18.1",
+    "scikit-learn>=1.9.1",
 ]
 
 [build-system]
