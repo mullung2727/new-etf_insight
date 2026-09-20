@@ -44,7 +44,7 @@ def _orderbook_frame(trnm: str, codes: list[str]) -> dict:
     frame = {"trnm": trnm, "grp_no": _ORDERBOOK_GROUP}
     if trnm == tr.WS_REG:
         frame["refresh"] = "1"  # 1 = 기존 등록 유지. REMOVE 에는 넣지 않는다.
-    frame["data"] = [{"item": [f"KRX:{c}" for c in sorted(codes)], "type": [tr.RT_ORDERBOOK]}]
+    frame["data"] = [{"item": sorted(codes), "type": [tr.RT_ORDERBOOK]}]
     return frame
 
 

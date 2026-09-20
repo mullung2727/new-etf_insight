@@ -164,7 +164,7 @@ SELECT DISTINCT ticker FROM llm_scores WHERE date = ? ORDER BY ticker;
 ## 5. broker 구독 제어 API
 
 신규 라우터: `broker/routers/realtime.py`.
-종목 입력은 접두사 없는 6자리 코드이며, broker가 KRX 접두사를 붙인다.
+종목 입력은 접두사 없는 6자리 코드이며, broker도 키움 0D 등록에 그대로 사용한다.
 모든 제어 요청은 하나의 lock으로 직렬화한다. HTTP 처리 중 ws.recv()를 직접 호출하지 않는다.
 
 | 메서드/경로 | 요청 | 성공 응답 |
@@ -198,7 +198,7 @@ REG:
   "trnm": "REG",
   "grp_no": "2",
   "refresh": "1",
-  "data": [{"item": ["KRX:005930"], "type": ["0D"]}]
+  "data": [{"item": ["005930"], "type": ["0D"]}]
 }
 ```
 
@@ -208,7 +208,7 @@ REMOVE:
 {
   "trnm": "REMOVE",
   "grp_no": "2",
-  "data": [{"item": ["KRX:005930"], "type": ["0D"]}]
+  "data": [{"item": ["005930"], "type": ["0D"]}]
 }
 ```
 
@@ -233,7 +233,7 @@ manager는 REAL 프레임을 받는 즉시 KST millisecond ISO 시각을 생성�
 {
   "channel": "0D",
   "payload": {
-    "item": "KRX:005930",
+    "item": "005930",
     "_recv_ts": "2026-09-11T09:01:00.123+09:00",
     "21": "090100",
     "41": "+70000",
@@ -322,8 +322,8 @@ flush:
 
 ## 9. 종목·FID 정규화
 
-- 등록은 KRX:6자리. REAL item이 KRX:6자리이면 접두사를 제거한다.
-- REAL item이 6자리이면 해당 세션에서 ACK된 KRX 등록 목록과 대조한다.
+- 등록은 접두사 없는 6자리. REAL item이 KRX:6자리로 되돌아오면 접두사를 제거한다.
+- REAL item이 6자리이면 해당 세션에서 ACK된 등록 목록과 대조한다.
 - A+6자리는 A 제거 후 목록과 대조한다. NXT/SOR 또는 _NX/_AL 응답은 KRX로 재라벨링하지 않는다.
 - 가격은 abs(int(value)), 수량은 int(value). 정상 0은 0으로 보존한다.
 - 누락·빈 문자열은 NULL. 숫자 파싱 실패는 해당 필드를 NULL로 저장하고 카운트한다.
