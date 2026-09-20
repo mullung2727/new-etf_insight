@@ -38,6 +38,8 @@ reader before composing the Discord report.
   - Purpose: build same-day Kiwoom candidates and write D+1 open-rise probability scores to `llm_scores` (feeds the 15:19 close-bet order window).
 - `daily-minute-bars-backfill.md`
   - Purpose: backfill all-symbol KRX one-minute bars recent-first with validation and resume state.
+- `orderbook-recorder` (`docs/SPEC_ORDERBOOK_SNAPSHOT_RECORDER.md`)
+  - Purpose: record KRX 10-level orderbook snapshots on a one-second grid during the morning and closing windows.
 - `daily-new-etf-insight-batch.md`
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
 - `daily-close-bet-order.md`
@@ -50,6 +52,12 @@ reader before composing the Discord report.
   - Purpose: confirm high52 fills at 16:00 and update its ledger (no orders).
 - `high52-exit.md`
   - Purpose: high52 intraday stop/target worker 09:00-15:18:30 (market sells).
+- `rebound-order.md`
+  - Purpose: run the rebound (private strategy) buy batch on the existing account broker (:8001); limit buys at 09:01.
+- `rebound-exit.md`
+  - Purpose: rebound target-sell worker 09:00-15:31 (market close at 15:19:20, auction retry 15:20:10).
+- `rebound-verify.md`
+  - Purpose: confirm rebound fills at 16:00, record realized P/L, and warn at -20% (no orders).
 
 See `openclaw-cron.registry.json` for the active schedules, Windows task
 bindings, and Discord webhook env key. Do not duplicate schedules in this README.
@@ -103,12 +111,20 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
   `ops/scheduled-tasks/run-daily-trading-result.ps1` (눌림목·종가베팅 실제 매도 통합 보고).
 - `\new-etf_insight\daily-minute-bars-backfill` — daily 02:00–05:30,
   `ops/scheduled-tasks/run-minute-bars-backfill.ps1`.
+- `\OpenClaw\orderbook-recorder` — Mon-Fri 08:44 and 14:59,
+  `ops/scheduled-tasks/run-orderbook-recorder.ps1`.
 - `\new-etf_insight\high52-order` — Mon-Fri 15:10 start (orders 15:19:10),
   `ops/scheduled-tasks/run-high52-order.ps1`.
 - `\new-etf_insight\high52-verify` — Mon-Fri 16:00,
   `ops/scheduled-tasks/run-high52-verify.ps1`.
 - `\new-etf_insight\high52-exit` — Mon-Fri 08:50 start (09:00-15:18:30),
   `ops/scheduled-tasks/run-high52-exit.ps1`.
+- `\new-etf_insight\rebound-order` — Mon-Fri 08:40 start (limit buys 09:01),
+  `ops/scheduled-tasks/run-rebound-order.ps1`.
+- `\new-etf_insight\rebound-exit` — Mon-Fri 09:00 start (09:00-15:31),
+  `ops/scheduled-tasks/run-rebound-exit.ps1`.
+- `\new-etf_insight\rebound-verify` — Mon-Fri 16:00,
+  `ops/scheduled-tasks/run-rebound-verify.ps1`.
 - `\OpenClaw\close-bet-order` — Mon-Fri 15:19, `etl/scripts/run_close_bet.py`
   (defined in `ops/scheduled-tasks/close-bet-order.xml`).
 - `\OpenClaw\close-bet-verify` — Mon-Fri 16:00, `etl/scripts/run_verify.py`
@@ -158,6 +174,19 @@ The 15:21 report task is report-only and must not place or retry orders.
 - 2026-09-14부터 실주문(`--dry-run false`, 사용자 승인). 멈추려면 러너를 `--dry-run true` 로 되돌린다.
 - 전략 규칙·파라미터는 비공개(`research/private/`)라 이 문서에 적지 않는다.
 - 15:18:30에 청산 워커가 멈추고 주문 배치가 계좌 주문을 넘겨받는다.
+
+### 당일 되돌림 (`rebound`, 비공개 전략, 기존 계좌)
+
+| 단계 | Windows 작업 | 시각 | 실행 파일 |
+| --- | --- | --- | --- |
+| 매수 | `\new-etf_insight\rebound-order` | 평일 08:40 기동, 주문 09:01 | `run-rebound-order.ps1` |
+| 청산 감시 (목표가·종가) | `\new-etf_insight\rebound-exit` | 평일 09:00 기동, 09:00~15:31 | `run-rebound-exit.ps1` |
+| 체결 확인·실현손익 | `\new-etf_insight\rebound-verify` | 평일 16:00 | `run-rebound-verify.ps1` |
+
+- 계좌는 눌림목·종가베팅과 **같은 :8001** 이다. 종목당 금액 = 그날 주문가능금액 ÷ 3 이라 다른 전략이 쓰는 현금에 따라 줄어든다.
+- 자기 원장(`rebound_positions`)의 주문번호만 건드린다. 다른 전략 보유분은 팔지 않고, 계좌가 이미 들고 있는 종목은 사지 않는다.
+- 2026-09-20 결정으로 처음부터 실주문(`--dry-run false`). 멈추려면 러너를 `--dry-run true` 로 바꾸거나 비공개 config 의 `enabled` 를 false 로 한다.
+- 전략 규칙·파라미터는 비공개(`research/private/`)라 이 문서에 적지 않는다.
 
 ### 기대 상태와 실제 등록 상태 구분
 

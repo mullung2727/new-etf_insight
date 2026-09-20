@@ -483,6 +483,96 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "3cbec369-3a41-414c-9549-2bb709e21dcf",
+      "name": "rebound-order",
+      "description": "Mon-Fri 08:40 start; rebound private-strategy buy batch on the existing account broker :8001 (limit buys 09:01, cutoff 09:05)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "40 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rebound-order.md",
+      "timeoutSeconds": 3600,
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-09-20).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rebound-order",
+        "xmlFile": "ops/scheduled-tasks/rebound-order.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rebound-order.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "c7a41d50-bc7b-4e76-a0dc-196e851356b7",
+      "name": "rebound-exit",
+      "description": "Mon-Fri 09:00 start; rebound private-strategy exit worker 09:00-15:31 on the existing account broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rebound-exit.md",
+      "timeoutSeconds": 25200,
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-09-20).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rebound-exit",
+        "xmlFile": "ops/scheduled-tasks/rebound-exit.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rebound-exit.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "5facfd98-dc75-4ccf-b485-39c14d882477",
+      "name": "rebound-verify",
+      "description": "Mon-Fri 16:00; rebound private-strategy fill check, realized P/L and summary (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rebound-verify.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-09-20).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rebound-verify",
+        "xmlFile": "ops/scheduled-tasks/rebound-verify.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rebound-verify.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }
