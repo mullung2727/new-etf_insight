@@ -38,7 +38,9 @@ NEW_YORK = ZoneInfo("America/New_York")
 _EXCLUDED_NAME = re.compile(
     r"\b(?:Warrants?|Units?|Rights?|Preferred|Depositary)\b", re.IGNORECASE
 )
-_EXCLUDED_SYMBOL = re.compile(r"[$.^=]")
+_EXCLUDED_SYMBOL = re.compile(r"[$^=]")
+# 클래스주만 점을 허용한다 (BRK.B). 워런트·유닛·우선주는 _EXCLUDED_NAME 이 이미 뺀다.
+_CLASS_SHARE = re.compile(r"^[A-Z]+\.[A-Z]$")
 _MARKETS = {
     "Q": "NASDAQ",
     "N": "NYSE",
@@ -76,6 +78,13 @@ class UniverseItem:
     market: str
 
 
+def _yahoo_symbol(ticker: str) -> str | None:
+    """나스닥 심볼 → 야후 심볼. 클래스주 BRK.B 는 BRK-B, 그 밖의 점 포함 심볼은 제외."""
+    if "." not in ticker:
+        return ticker
+    return ticker.replace(".", "-") if _CLASS_SHARE.match(ticker) else None
+
+
 def _default_text_fetch(url: str) -> str:
     with urllib.request.urlopen(url, timeout=30) as response:
         return response.read().decode("utf-8")
@@ -103,8 +112,11 @@ def load_universe(
             or _EXCLUDED_SYMBOL.search(ticker)
         ):
             continue
+        symbol = _yahoo_symbol(ticker)
+        if symbol is None:
+            continue
         market = _MARKETS.get(str(row.get("Listing Exchange") or "").strip(), "UNKNOWN")
-        out[ticker] = UniverseItem(ticker, name, market)
+        out[symbol] = UniverseItem(symbol, name, market)
     for ticker in BENCHMARKS:
         out.setdefault(ticker, UniverseItem(ticker, ticker, "ARCA"))
     return [out[ticker] for ticker in sorted(out)]
@@ -235,6 +247,15 @@ def _replace_split_history(
     """Atomically replace one ticker after a split-triggered full refetch."""
     con.execute("BEGIN TRANSACTION")
     try:
+        stored_first = con.execute(
+            "SELECT min(date) FROM ohlcv WHERE ticker=?", [ticker]
+        ).fetchone()[0]
+        first = min((row[0] for row in rows), default=None)
+        # 잘린 재조회(응답이 비어있지만 않으면 통과)로 과거 구간을 통째로 날리는 걸 막는다.
+        if stored_first is not None and (first is None or first > stored_first):
+            raise RuntimeError(
+                f"{ticker} 재조회가 기존 구간을 못 덮는다 (저장 {stored_first} < 응답 {first})"
+            )
         con.execute("DELETE FROM ohlcv WHERE ticker=?", [ticker])
         con.execute("DELETE FROM splits WHERE ticker=?", [ticker])
         _insert_rows(con, rows)
@@ -351,7 +372,11 @@ def carry_forward_shares(con: duckdb.DuckDBPyConnection) -> int:
             FROM ohlcv
         )
         UPDATE ohlcv AS o
-        SET list_shrs=f.shares, market_cap=o.close*f.shares
+        SET list_shrs=f.shares,
+            -- apply_share_history 와 같은 식: 분할 반영 종가 × 이후 분할비 × 당시 주식수
+            market_cap=o.close*f.shares*COALESCE(
+                (SELECT product(s.ratio) FROM splits s
+                 WHERE s.ticker=o.ticker AND s.date > o.date), 1)
         FROM filled AS f
         WHERE o.date=f.date AND o.ticker=f.ticker
           AND o.list_shrs IS NULL AND f.shares IS NOT NULL

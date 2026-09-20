@@ -35,17 +35,32 @@
 ```sql
 WITH d AS (
   SELECT date, COUNT(*) n,
-         SUM(CASE WHEN market_cap IS NULL OR market_cap = 0 THEN 1 ELSE 0 END) cap_missing
+         SUM(CASE WHEN market_cap IS NULL OR market_cap = 0 THEN 1 ELSE 0 END) cap_missing,
+         SUM(CASE WHEN list_shrs IS NULL OR list_shrs = 0 THEN 1 ELSE 0 END) shrs_missing
   FROM ohlcv GROUP BY 1
 ), w AS (
   SELECT *, MEDIAN(n) OVER (ORDER BY date ROWS BETWEEN 10 PRECEDING AND 10 FOLLOWING) n_med FROM d
 )
 SELECT * FROM w
-WHERE cap_missing > 0 OR n < 0.9 * n_med     -- 종목수는 연도별로 다르다(2018 ≈2,160 / 2021 ≈2,390 / 2026 ≈2,770)
+WHERE cap_missing > 0 OR shrs_missing > 0     -- 시총만 보면 list_shrs 만 빈 날을 놓친다
+   OR n < 0.9 * n_med                         -- 종목수는 연도별로 다르다(2018 ≈2,160 / 2021 ≈2,390 / 2026 ≈2,770)
 ORDER BY date
 ```
 
 고정 하한(예: 2,400행)을 쓰면 과거 정상일이 전부 걸린다 — 앞뒤 거래일 중앙값 대비로 볼 것.
+
+**이 쿼리는 통째로 빠진 날짜를 못 잡는다.** `ohlcv` 에 있는 날짜만 집계하므로 0행인 거래일은
+행 자체가 없어 `n < 0.9 * n_med` 에 걸리지 않는다. 날짜 구멍은 따로 본다 — 앞 거래일 대비
+간격이 벌어진 지점을 찾고, 연휴가 아닌데 비었으면 그 날짜를 재적재한다.
+
+```sql
+WITH d AS (SELECT DISTINCT date FROM ohlcv),
+d2 AS (SELECT date, LAG(date) OVER (ORDER BY date) prev FROM d)
+SELECT prev, date FROM d2
+WHERE prev IS NOT NULL
+  AND DATE_DIFF('day', STRPTIME(prev, '%Y%m%d'), STRPTIME(date, '%Y%m%d')) > 4   -- 주말+공휴일 여유
+ORDER BY date
+```
 
 결과가 있으면 해당 날짜를 `build_krx_ohlcv.py --date YYYYMMDD --force` 로 재적재한다(날짜당 약 19초).
 
