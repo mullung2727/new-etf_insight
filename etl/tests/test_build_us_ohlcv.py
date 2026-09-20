@@ -10,6 +10,7 @@ from scripts.build_us_ohlcv import (
     _replace_split_history,
     apply_share_history,
     audit_gaps,
+    carry_forward_shares,
     ensure_ohlcv,
     ensure_schema,
     ensure_shares,
@@ -61,11 +62,14 @@ Y|RIGHT|Example Rights|Q|N|N
 Y|PREF|Example Preferred Stock|N|N|N
 Y|DEP|Example Depositary Shares|N|N|N
 Y|BAD$|Bad Symbol|N|N|N
+Y|BRK.B|Berkshire Hathaway Inc Class B Common Stock|N|N|N
+Y|ODD.XY|Odd Suffix|N|N|N
 File Creation Time: 20260912|||||
 """
         items = load_universe(lambda _url: text)
         tickers = {item.ticker for item in items}
-        self.assertEqual(tickers, {"AAA", "SPAC", "SPY", "QQQ", "IWM"})
+        # 클래스주는 야후 표기(BRK-B)로 살린다. 두 글자 이상 접미사는 아직 제외.
+        self.assertEqual(tickers, {"AAA", "SPAC", "BRK-B", "SPY", "QQQ", "IWM"})
         self.assertEqual(next(item.market for item in items if item.ticker == "AAA"), "NASDAQ")
 
 
@@ -114,6 +118,19 @@ class TestSchemaAndConversion(unittest.TestCase):
             refresh_all=True,
         )
         self.assertEqual(stats["updated_rows"], 2)
+
+    def test_t17_carried_shares_keep_split_adjusted_market_cap(self):
+        """주식수를 앞날에서 끌어온 행도 이후 분할비를 반영한다 (apply_share_history 와 같은 식)."""
+        _insert_rows(self.con, [_row("20240102", "AAA", 100), _row("20240103", "AAA", 100)])
+        self.con.execute("INSERT INTO splits VALUES ('AAA','20240610',4)")
+        self.con.execute(
+            "UPDATE ohlcv SET list_shrs=1000, market_cap=400000 "
+            "WHERE ticker='AAA' AND date='20240102'"
+        )
+        self.assertEqual(carry_forward_shares(self.con), 1)
+        self.assertEqual(self.con.execute(
+            "SELECT market_cap FROM ohlcv WHERE ticker='AAA' AND date='20240103'"
+        ).fetchone()[0], 400000)
 
 
 class TestFetchAndEnsure(unittest.TestCase):
@@ -207,6 +224,17 @@ class TestFetchAndEnsure(unittest.TestCase):
             "SELECT close FROM ohlcv WHERE ticker='AAA'"
         ).fetchone()[0], 400)
         self.assertEqual(self.con.execute("SELECT ratio FROM splits WHERE ticker='AAA'").fetchone()[0], 2)
+
+    def test_t16_truncated_refetch_keeps_stored_history(self):
+        """잘린 재조회(앞 구간 누락)는 기존 이력을 지우지 않고 실패한다."""
+        _insert_rows(self.con, [_row("20240102", "AAA", 400), _row("20240610", "AAA", 100)])
+        with self.assertRaises(RuntimeError):
+            _replace_split_history(
+                self.con, "AAA", [_row("20240610", "AAA", 25)], [("AAA", "20240610", 4)],
+            )
+        self.assertEqual(self.con.execute(
+            "SELECT count(*) FROM ohlcv WHERE ticker='AAA'"
+        ).fetchone()[0], 2)
 
 
 class TestGapAudit(unittest.TestCase):
