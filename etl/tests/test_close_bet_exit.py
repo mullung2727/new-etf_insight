@@ -371,8 +371,8 @@ class TestBrokerSellHelpers(unittest.TestCase):
             rq.get.return_value = _resp([{"ticker": "005930", "order_no": "0000007", "oso_qty": 3, "ord_price": 1000},
                                          {"ticker": "000660", "order_no": "0000008", "oso_qty": 1, "ord_price": 0}])
             out = fetch_unfilled_orders("http://b")
-        self.assertEqual(out, {"7": {"ticker": "005930", "oso_qty": 3, "ord_price": 1000},
-                               "8": {"ticker": "000660", "oso_qty": 1, "ord_price": 0}})
+        self.assertEqual(out, {"7": {"ticker": "005930", "oso_qty": 3, "ord_price": 1000, "order_no": "0000007"},
+                               "8": {"ticker": "000660", "oso_qty": 1, "ord_price": 0, "order_no": "0000008"}})
 
     # fetch_realized 단위테스트는 공용 모듈로 이동 → tests/test_trading_batch_common.py
 

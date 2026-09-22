@@ -340,21 +340,25 @@ def fetch_balance(broker_url: str) -> dict:
         return {}
 
 
-def fetch_unfilled_orders(broker_url: str) -> dict[str, dict]:
-    """GET /orders/unfilled?side=sell → {정규화 주문번호: {ticker, oso_qty}}. 실패 시 {}."""
+def fetch_unfilled_orders(broker_url: str, side: str = "sell", *, strict: bool = False) -> dict[str, dict] | None:
+    """GET /orders/unfilled?side= → {정규화 주문번호: {ticker, oso_qty, ord_price}}. 실패 시 {}.
+
+    strict=True 면 실패를 None 으로 돌려준다 — "주문 없음"과 구분해야 하는 호출부(엔벌로프 만기 등).
+    """
     try:
         resp = requests.get(
-            f"{broker_url}/orders/unfilled", params={"side": "sell"},
+            f"{broker_url}/orders/unfilled", params={"side": side},
             timeout=REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
         return {normalize_order_no(row["order_no"]): {"ticker": row["ticker"],
                                                       "oso_qty": int(row.get("oso_qty") or 0),
-                                                      "ord_price": int(row.get("ord_price") or 0)}
+                                                      "ord_price": int(row.get("ord_price") or 0),
+                                                      "order_no": str(row["order_no"])}   # 취소엔 원문 번호
                 for row in resp.json()}
     except Exception as exc:
         print(f"[exit] /orders/unfilled 조회 실패: {exc}")
-        return {}
+        return None if strict else {}
 
 
 def fetch_unfilled_tickers(broker_url: str) -> set[str]:
@@ -363,10 +367,11 @@ def fetch_unfilled_tickers(broker_url: str) -> set[str]:
     return {v["ticker"] for v in fetch_unfilled_orders(broker_url).values()}
 
 
-def fetch_sell_fills(broker_url: str, date: str) -> dict[str, dict]:
+def fetch_sell_fills(broker_url: str, date: str, *, strict: bool = False) -> dict[str, dict] | None:
     """GET /orders/history?side=sell → {normalize_order_no: {cntr_uv, cntr_qty}}.
 
     부분체결 대비 동일 order_no의 cntr_qty 합산, 단가는 첫 유효값.
+    strict=True 면 조회 실패를 None 으로 — "체결 없음"과 구분 (엔벌로프 만기 수량).
     """
     try:
         resp = requests.get(
@@ -376,7 +381,7 @@ def fetch_sell_fills(broker_url: str, date: str) -> dict[str, dict]:
         resp.raise_for_status()
     except Exception as exc:
         print(f"[exit] /orders/history(sell) 조회 실패: {exc}")
-        return {}
+        return None if strict else {}
     by_no: dict[str, dict] = {}
     for item in resp.json():
         key = normalize_order_no(item.get("order_no"))
@@ -390,15 +395,17 @@ def fetch_sell_fills(broker_url: str, date: str) -> dict[str, dict]:
 
 
 def place_sell_via_broker(
-    broker_url: str, ticker: str, qty: int, exchange: str = "SOR", price: int | None = None
+    broker_url: str, ticker: str, qty: int, exchange: str = "SOR", price: int | None = None,
+    source: str = "close_bet_exit",
 ) -> dict:
     """POST /orders/strategy 매도 — price 없으면 시장가, 있으면 지정가. {order_no, status, message}.
     거부/실패 시 order_no=''.
 
     exchange: 개장 동시호가 주문만 KRX — SOR 은 장 시작 전 라우팅 규칙이 문서에 없어 NXT 로 샐 수 있다.
+    source: broker 거래원장 이름표. 엔벌로프는 "envelope".
     """
     body = {"symbol": ticker, "side": "sell", "qty": qty, "order_type": "market",
-            "source": "close_bet_exit", "exchange": exchange}
+            "source": source, "exchange": exchange}
     if price:
         body.update(order_type="limit", price=price)
     try:

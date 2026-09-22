@@ -232,9 +232,16 @@ def pullback_limit_price(current_price: int, upper_limit: int) -> int:
 
 def pullback_limit_order(
     broker_url: str, ticker: str, qty: int, price: int, source: str, dry_run: bool,
-    *, now: Any | None = None,
+    *, now: Any | None = None, exchange: str | None = None,
 ) -> dict[str, Any]:
-    """눌림목 프로세스 전용 지정가 주문. 공용 주문 helper의 동작은 변경하지 않는다."""
+    """눌림목 프로세스 전용 지정가 주문. 공용 주문 helper의 동작은 변경하지 않는다.
+
+    exchange: 안 넘기면 body 에 넣지 않는다(broker 기본 SOR). 엔벌로프 장전 동시호가는 "KRX".
+    """
+    body = {"symbol": ticker, "side": "buy", "qty": qty, "price": price,
+            "order_type": "limit", "source": source}
+    if exchange:
+        body["exchange"] = exchange
     if dry_run:
         timestamp = (now or now_seoul()).strftime("%Y%m%d%H%M%S")
         return {"order_no": f"DRY_{ticker}_{timestamp}", "status": "dry_run",
@@ -242,8 +249,7 @@ def pullback_limit_order(
     try:
         response = requests.post(
             f"{broker_url}/orders/strategy",
-            json={"symbol": ticker, "side": "buy", "qty": qty, "price": price,
-                  "order_type": "limit", "source": source},
+            json=body,
             timeout=REQUEST_TIMEOUT,
         )
         if response.status_code == 422:
