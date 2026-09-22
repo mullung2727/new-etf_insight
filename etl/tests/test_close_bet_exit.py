@@ -385,6 +385,13 @@ class TestBrokerSellHelpers(unittest.TestCase):
             fills = fetch_sell_fills("http://b", "20260618")
         self.assertEqual(fills["70"], {"cntr_uv": 1050, "cntr_qty": 5})
 
+    def test_fetch_sell_fills_malformed_response(self):
+        """성공 응답인데 내용이 깨짐 → 예외 대신 조회 실패 값 (워커 폴링이 멈추지 않게)."""
+        with patch.object(ex, "requests") as rq:
+            rq.get.return_value = _resp({"detail": "not a list"})
+            self.assertEqual(fetch_sell_fills("http://b", "20260618"), {})
+            self.assertIsNone(fetch_sell_fills("http://b", "20260618", strict=True))
+
 
 class TestExecuteSell(unittest.TestCase):
     def setUp(self):
