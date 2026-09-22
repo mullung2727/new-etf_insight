@@ -379,19 +379,19 @@ def fetch_sell_fills(broker_url: str, date: str, *, strict: bool = False) -> dic
             params={"date": date, "side": "sell"}, timeout=REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
+        by_no: dict[str, dict] = {}
+        for item in resp.json():               # 깨진 응답도 조회 실패로 — 워커가 예외로 멈추지 않게
+            key = normalize_order_no(item.get("order_no"))
+            if not key:
+                continue
+            agg = by_no.setdefault(key, {"cntr_uv": 0, "cntr_qty": 0})
+            agg["cntr_qty"] += int(item.get("cntr_qty") or 0)
+            if not agg["cntr_uv"]:
+                agg["cntr_uv"] = int(item.get("cntr_uv") or 0)
+        return by_no
     except Exception as exc:
         print(f"[exit] /orders/history(sell) 조회 실패: {exc}")
         return None if strict else {}
-    by_no: dict[str, dict] = {}
-    for item in resp.json():
-        key = normalize_order_no(item.get("order_no"))
-        if not key:
-            continue
-        agg = by_no.setdefault(key, {"cntr_uv": 0, "cntr_qty": 0})
-        agg["cntr_qty"] += int(item.get("cntr_qty") or 0)
-        if not agg["cntr_uv"]:
-            agg["cntr_uv"] = int(item.get("cntr_uv") or 0)
-    return by_no
 
 
 def place_sell_via_broker(
