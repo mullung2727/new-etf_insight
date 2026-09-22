@@ -573,6 +573,96 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "5c79240a-60e4-4c0a-9b71-45b0ea103828",
+      "name": "envelope-order",
+      "description": "Mon-Fri 08:20 start; envelope private-strategy order batch on the existing account broker :8001 (08:50 TP sells + open limit buys, 09:00:10 cancel unfilled buys)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/envelope-order.md",
+      "timeoutSeconds": 3600,
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-09-22).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "envelope-order",
+        "xmlFile": "ops/scheduled-tasks/envelope-order.xml",
+        "runnerScript": "ops/scheduled-tasks/run-envelope-order.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "4e295a96-5f92-4a39-bb4d-9f8ef47bf699",
+      "name": "envelope-expire",
+      "description": "Mon-Fri 15:19; envelope private-strategy expiry: cancel TP, 15:20:30 closing-auction market sells on :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "19 15 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/envelope-expire.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-09-22).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "envelope-expire",
+        "xmlFile": "ops/scheduled-tasks/envelope-expire.xml",
+        "runnerScript": "ops/scheduled-tasks/run-envelope-expire.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "9fd96fc5-c908-4d8c-8938-78490ab86df3",
+      "name": "envelope-verify",
+      "description": "Mon-Fri 16:00; envelope private-strategy fill verify on :8001 (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/envelope-verify.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative. No orders.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "envelope-verify",
+        "xmlFile": "ops/scheduled-tasks/envelope-verify.xml",
+        "runnerScript": "ops/scheduled-tasks/run-envelope-verify.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }
