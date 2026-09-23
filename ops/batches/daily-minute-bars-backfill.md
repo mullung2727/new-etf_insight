@@ -12,6 +12,9 @@
 - PowerShell 러너: `ops/scheduled-tasks/run-minute-bars-backfill.ps1`.
 - 기본 범위: 최근 12개월, 현재 월 우선 보충 후 최근 미완료 과거 월 하나.
 - 수집 제한: 210분(02:00~05:30), 작업 제한 220분(결과 저장·보고 여유 10분), API 호출 최소 간격 0.5초, 단일 프로세스·BelowNormal 우선순위.
+- NXT 패스: ka10099(KOSPI "0"·KOSDAQ "10", nxtEnable=="Y") 유니버스로 먼저 30분 수집한다. 티커는 "{종목}_NX"로 조회·기록해 KRX 행과 섞지 않는다.
+- 시간대: ka10080 KRX 봉은 15:35까지, NXT 세션("{종목}_NX")이 시간외 15:40~20:00을 커버한다.
+- NXT 실패는 로그만 남기고 KRX 패스(나머지 예산)를 계속한다. 리포트·로그는 "-nxt" 파일로 분리된다.
 
 ## Completion and recovery
 
