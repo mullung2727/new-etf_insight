@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import duckdb
 
-from scripts.backfill_minute_bars import month_progress, process_month, recent_months
+from scripts import backfill_minute_bars as bb
+from scripts.backfill_minute_bars import month_progress, nxt_universe, parse_args, process_month, recent_months, run
 
 
 def raw(date: str, time: str) -> dict:
@@ -95,6 +96,86 @@ class MinuteBackfillTest(unittest.TestCase):
             with duckdb.connect(str(db), read_only=True) as con:
                 count = con.execute("SELECT count(*) FROM minute_backfill_failures").fetchone()[0]
             self.assertEqual(count, 1)
+
+
+def _make_krx_db(path: Path, rows: list[tuple]) -> None:
+    con = duckdb.connect(str(path))
+    con.execute("CREATE TABLE ohlcv(ticker VARCHAR, date VARCHAR)")
+    con.executemany("INSERT INTO ohlcv VALUES (?, ?)", rows)
+    con.close()
+
+
+def _covering_fetch(seen: list):
+    def fetch(symbol, scope, base_dt, **_kwargs):
+        seen.append(symbol)
+        return {"bars": [raw("20260601", "090000"), raw("20260602", "090000")],
+                "cont_yn": "N", "next_key": ""}
+    return fetch
+
+
+class NxtBackfillTest(unittest.TestCase):
+    def test_nxt_universe_returns_only_enabled_from_both_markets(self):
+        calls = []
+
+        def fake_fetch(mrkt_tp):
+            calls.append(mrkt_tp)
+            if mrkt_tp == "0":
+                return [
+                    {"code": "005930", "name": "삼성전자", "nxtEnable": "Y"},
+                    {"code": "000001", "name": "비NXT", "nxtEnable": "N"},
+                ]
+            return [
+                {"code": "123456", "name": "코스닥NXT", "nxtEnable": "Y"},
+                {"code": "654321", "name": "코스닥제외", "nxtEnable": ""},
+            ]
+
+        self.assertEqual(nxt_universe(fetch=fake_fetch), {"005930", "123456"})
+        self.assertEqual(sorted(calls), ["0", "10"])
+
+    def test_nxt_market_plan_uses_suffixed_keys_and_drops_non_nxt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            krx_db = Path(tmp) / "krx.duckdb"
+            minute_db = Path(tmp) / "minute.duckdb"
+            _make_krx_db(krx_db, [
+                ("005930", "20260601"), ("005930", "20260602"),
+                ("000001", "20260601"), ("000001", "20260602"),
+            ])
+            seen: list = []
+            args = parse_args(["--minute-db", str(minute_db), "--krx-db", str(krx_db),
+                               "--month", "202606", "--max-runtime-min", "10",
+                               "--market", "nxt"])
+            original = bb.nxt_universe
+            bb.nxt_universe = lambda: {"005930"}  # noqa: E731
+            try:
+                payload = run(args, fetch_page=_covering_fetch(seen))
+            finally:
+                bb.nxt_universe = original
+            self.assertEqual(seen, ["005930_NX"])
+            self.assertEqual(payload["market"], "nxt")
+            self.assertEqual(payload["results"][0]["expected_tickers"], 1)
+            with duckdb.connect(str(minute_db), read_only=True) as con:
+                tickers = {row[0] for row in con.execute(
+                    "SELECT DISTINCT ticker FROM minute_fetched").fetchall()}
+            self.assertEqual(tickers, {"005930_NX"})
+
+    def test_krx_market_plan_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            krx_db = Path(tmp) / "krx.duckdb"
+            minute_db = Path(tmp) / "minute.duckdb"
+            _make_krx_db(krx_db, [
+                ("005930", "20260601"), ("005930", "20260602"),
+                ("000001", "20260601"), ("000001", "20260602"),
+            ])
+            seen: list = []
+            args = parse_args(["--minute-db", str(minute_db), "--krx-db", str(krx_db),
+                               "--month", "202606", "--max-runtime-min", "10"])
+            payload = run(args, fetch_page=_covering_fetch(seen))
+            self.assertEqual(sorted(seen), ["000001", "005930"])
+            self.assertEqual(payload["market"], "krx")
+            with duckdb.connect(str(minute_db), read_only=True) as con:
+                tickers = {row[0] for row in con.execute(
+                    "SELECT DISTINCT ticker FROM minute_fetched").fetchall()}
+            self.assertEqual(tickers, {"000001", "005930"})
 
 
 if __name__ == "__main__":

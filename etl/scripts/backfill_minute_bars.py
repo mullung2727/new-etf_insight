@@ -45,6 +45,37 @@ CREATE TABLE IF NOT EXISTS minute_backfill_failures (
 """
 
 
+NXT_SUFFIX = "_NX"
+NXT_TR = "ka10099"  # NXT 가능 종목 조회. broker.kiwoom.tr.EP_STKINFO로 요청
+NXT_MARKETS = ("0", "10")  # KOSPI, KOSDAQ
+
+_NXT_UNIVERSE_CACHE: set[str] | None = None
+
+
+def _default_nxt_fetch(mrkt_tp: str) -> list[dict[str, Any]]:
+    from broker.kiwoom import tr as kiwoom_tr
+    from broker.kiwoom.client import request
+
+    return request(NXT_TR, kiwoom_tr.EP_STKINFO, {"mrkt_tp": mrkt_tp}).data["list"]
+
+
+def nxt_universe(
+    fetch: Callable[[str], list[dict[str, Any]]] | None = None,
+) -> set[str]:
+    """NXT 거래 가능 종목 코드 집합. ka10099를 시장별(0/10)로 1회씩 조회한다.
+
+    fetch는 테스트 주입용 (mrkt_tp) -> 행 목록. 생략 시 실제 API를 호출하고
+    프로세스 실행 중 결과를 캐시한다. API 실패는 그대로 raise한다.
+    """
+    global _NXT_UNIVERSE_CACHE
+    if fetch is not None:
+        rows = [row for mrkt_tp in NXT_MARKETS for row in fetch(mrkt_tp)]
+        return {str(row["code"]) for row in rows if row.get("nxtEnable") == "Y"}
+    if _NXT_UNIVERSE_CACHE is None:
+        _NXT_UNIVERSE_CACHE = nxt_universe(fetch=_default_nxt_fetch)
+    return set(_NXT_UNIVERSE_CACHE)
+
+
 def recent_months(latest_month: str, count: int) -> list[str]:
     year, month = int(latest_month[:4]), int(latest_month[4:])
     out = []
@@ -218,6 +249,13 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
     deadline = time.monotonic() + args.max_runtime_min * 60
 
     plans = {month: load_month_plan(args.krx_db, month) for month in months}
+    if args.market == "nxt":
+        universe = nxt_universe()
+        plans = {
+            month: {f"{ticker}{NXT_SUFFIX}": dates for ticker, dates in plan.items()
+                    if ticker in universe}
+            for month, plan in plans.items()
+        }
     selected: list[str] = []
     if args.month:
         selected = months
@@ -236,7 +274,8 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
 
     if args.dry_run:
         return {
-            "dry_run": True, "latest_date": latest_date, "selected_months": selected,
+            "dry_run": True, "market": args.market,
+            "latest_date": latest_date, "selected_months": selected,
             "plans": [
                 {"month": month, "tickers": len(plans[month]),
                  "ticker_days": sum(map(len, plans[month].values()))}
@@ -262,6 +301,7 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
 
     payload = {
         "dry_run": False,
+        "market": args.market,
         "started_at": args.started_at,
         "finished_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "latest_krx_date": latest_date,
@@ -279,6 +319,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--minute-db", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument("--krx-db", type=Path, default=KRX_DB)
     parser.add_argument("--scope", default=DEFAULT_SCOPE)
+    parser.add_argument("--market", choices=("krx", "nxt"), default="krx")
     parser.add_argument("--months-back", type=int, default=12)
     parser.add_argument("--month", help="수동 대상월 YYYYMM")
     parser.add_argument("--max-runtime-min", type=float, default=240)
