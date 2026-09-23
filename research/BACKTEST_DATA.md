@@ -183,6 +183,16 @@ f.close * CASE WHEN e.list_shrs>0 AND f.list_shrs>0
 **ka10080 은 약 13개월치만 준다. 실측 하한 20250801.** 그 이전 날짜는 조회 자체가 불가하므로
 과거 구간 백테스트는 일봉으로만 가능하다(§4 참조).
 
+### 시간외는 NXT 코드로만 온다
+
+KRX 코드로 부르면 **15:35 까지**다. 종목코드에 `_NX` 를 붙이면(`005930_NX`) NXT 세션이 오고
+프리마켓 08:00~08:50 · 애프터마켓 15:40~20:00 이 포함된다. `_AL` 은 SOR 통합.
+
+- NXT 미상장 종목은 빈 봉 1개만 돌아온다. 대상 종목은 `ka10099` 의 `nxtEnable=="Y"` — 601/4,306 (2026-09 실측)
+- 저장은 티커를 `{종목}_NX` 로 넣어 KRX 행과 분리한다. `minute_bar_store` 는 그대로 쓴다
+- 수집은 `daily-minute-bars-backfill` 배치의 NXT 패스(`--market nxt`, 선행 30분)가 맡는다
+- KRX 시간외 단일가(16:00~18:00)는 `ka10087` 이 **현재 시점만** 주고 과거 이력이 없다. 백테스트 불가
+
 ### 쓰는 법
 
 ```python
@@ -195,7 +205,7 @@ with connect() as con:                       # etl/db/minute_bars.duckdb
 - **날짜 단위**로 저장하므로 보유일수(horizon)를 바꿔도 이미 받은 날은 재조회하지 않는다
 - `minute_fetched` 가 따로 있는 이유: 거래정지로 봉이 0개인 날과 아직 안 받은 날을 구분하기 위함
 - 조회 비용을 미리 알고 싶으면 `missing_dates(con, ticker, dates)` 로 확인 (건당 2~5초)
-- 반환은 정규장(09:00~15:30)만
+- 반환은 전 시간대(정규장 + 장전/시간외 포함)
 
 구버전 JSON 파일 캐시(`research/watchlist_pullback_strategy/minute_cache/`, 952파일 290MB)는
 `minute_bar_store --migrate` 로 이미 DB에 흡수됐다. 신규 코드는 DB만 쓸 것.

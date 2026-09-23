@@ -85,3 +85,7 @@ etl/scripts/close_bet.json.bak
 
 # 키움 제공 REST API 스펙 덤프 (2.5MB) — 재배포 안 함
 kiwoom-rest-api-spec.json
+
+# 백테스트 산출물 (재생성 가능, 수 MB)
+research/cluster_closebet/results/
+research/close_bet_afterhours/results_ah.json
