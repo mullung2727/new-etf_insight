@@ -73,7 +73,8 @@ def load_bench(krx_con: duckdb.DuckDBPyConnection, pairs: list[tuple[str, str]])
     clip(close/open-1, ±0.3). E일 거래·스팩(스팩/기업인수목적) 제외.
     동일가중 평균은 bench_means() 가 낸다.
     """
-    krx_con.execute("CREATE OR REPLACE TEMP TABLE _pairs(entry_day VARCHAR, bucket_day VARCHAR)")
+    # pairs=(신호일 D, 진입일 E) — INSERT 순서 그대로 bucket_day=D, entry_day=E
+    krx_con.execute("CREATE OR REPLACE TEMP TABLE _pairs(bucket_day VARCHAR, entry_day VARCHAR)")
     krx_con.executemany("INSERT INTO _pairs VALUES (?, ?)", pairs)
     return krx_con.execute(f"""
     SELECT p.entry_day AS eday, e.ticker AS ticker,

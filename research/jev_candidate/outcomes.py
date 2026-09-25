@@ -111,6 +111,11 @@ def _daily_map(
     }
 
 
+def is_stale_outcome(row: dict | None) -> bool:
+    """재계산 필요 — D+1 확정 전 캐시 (d1_open/d1_0930 NULL)."""
+    return row is None or row.get("d1_open") is None or row.get("d1_0930") is None
+
+
 def build_outcomes(
     dates: list[str],
     tickers_by_date: dict[str, list[str]],
@@ -125,6 +130,8 @@ def build_outcomes(
     for day in dates:
         later = [d for d in trading if d > day]
         d1_date = later[0] if later else None
+        if d1_date is None:
+            continue  # D+1 미확정 — no_trade 캐시 금지, 다음에 재계산
         tickers = tickers_by_date.get(day, [])
         d0_map = _daily_map(krx_con, day, tickers)
         d1_map = _daily_map(krx_con, d1_date, tickers)
@@ -171,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_id = f"backtest-open-{day}-{QUESTION_SET_VER}"
                 tickers = sorted({s["ticker"] for s in store.load_states(con, run_id)})
                 have = store.load_outcomes(con, [day])
-                todo = [t for t in tickers if (day, t) not in have]
+                todo = [t for t in tickers if is_stale_outcome(have.get((day, t)))]
                 rows = build_outcomes([day], {day: todo}, krx_con, minute_con)
                 store.save_outcomes(con, rows)
                 reasons = Counter(r["excluded_open"] for r in rows if r["excluded_open"])
