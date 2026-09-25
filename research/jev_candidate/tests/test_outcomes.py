@@ -8,6 +8,9 @@ from __future__ import annotations
 import re
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import duckdb
 
 from research.jev_candidate import outcomes
 from research.jev_candidate.outcomes import compute_open
@@ -73,6 +76,46 @@ class TestComputeOpen(unittest.TestCase):
         for name in ("arms.py", "questions.py", "state.py"):
             text = (base / name).read_text(encoding="utf-8")
             self.assertIsNone(pat.search(text), name)
+
+
+class TestStaleRecompute(unittest.TestCase):
+    def _krx(self, days: list[str]):
+        """합성 일봉 — A 1종목."""
+        con = duckdb.connect(":memory:")
+        con.execute(
+            "CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR, open DOUBLE,"
+            " high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT)"
+        )
+        for d in days:
+            con.execute(
+                "INSERT INTO ohlcv VALUES (?, 'A', 100, 110, 90, 105, 1000)", [d]
+            )
+        return con
+
+    def test_D1없으면캐시금지(self):
+        rows = outcomes.build_outcomes(
+            ["20260409"], {"20260409": ["A"]}, self._krx(["20260409"]), None
+        )
+        self.assertEqual(rows, [])
+
+    def test_stale판정(self):
+        self.assertTrue(outcomes.is_stale_outcome(None))
+        self.assertTrue(outcomes.is_stale_outcome({"d1_open": None, "d1_0930": 1}))
+        self.assertTrue(outcomes.is_stale_outcome({"d1_open": 1, "d1_0930": None}))
+        self.assertFalse(outcomes.is_stale_outcome({"d1_open": 1, "d1_0930": 1}))
+
+    def test_분봉실패행은재계산대상(self):
+        with patch.object(
+            outcomes.minute_bar_store, "load_bars", side_effect=RuntimeError("x")
+        ):
+            rows = outcomes.build_outcomes(
+                ["20260409"], {"20260409": ["A"]},
+                self._krx(["20260409", "20260410"]), None,
+            )
+        self.assertEqual(len(rows), 1)
+        self.assertIsNotNone(rows[0]["d1_open"])
+        self.assertIsNone(rows[0]["d1_0930"])
+        self.assertTrue(outcomes.is_stale_outcome(rows[0]))
 
 
 if __name__ == "__main__":

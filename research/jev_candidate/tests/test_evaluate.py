@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import unittest
 
+import duckdb
 import pandas as pd
 
 from research.jev_candidate import evaluate, store
@@ -106,6 +107,36 @@ class TestBenchFrame(unittest.TestCase):
         self.assertAlmostEqual(bench[("E", "<1천억")], 0.03)
         self.assertEqual(tick[("E", "c")], "5조+")
         self.assertAlmostEqual(overall["E"], 0.05 / 3)
+
+
+class TestLoadBenchDay(unittest.TestCase):
+    def test_r은E_bucket은D(self):
+        # D 시총→버킷, E 시가→종가→r (clip ±0.3)
+        d, e = "20260409", "20260410"
+        con = duckdb.connect(":memory:")
+        con.execute(
+            "CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR, open DOUBLE,"
+            " high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT, market_cap DOUBLE)"
+        )
+        con.execute("CREATE TABLE stock_names(code VARCHAR, name VARCHAR)")
+        con.execute("INSERT INTO stock_names VALUES ('A', '에이'), ('B', '비')")
+        rows = [  # (date, ticker, open, close, volume, market_cap)
+            (d, "A", 100, 200, 1000, 500 * 1e8),  # D: r decoy 1.0, 500억
+            (e, "A", 100, 110, 1000, 20000 * 1e8),  # E: r 0.1, 2조(decoy)
+            (d, "B", 100, 100, 1000, 2000 * 1e8),  # D: r decoy 0, 2000억
+            (e, "B", 100, 200, 1000, 500 * 1e8),  # E: r 1.0→clip 0.3
+        ]
+        con.executemany(
+            "INSERT INTO ohlcv VALUES (?,?,?,NULL,NULL,?,?,?)",
+            [(dt, t, o, c, v, m) for dt, t, o, c, v, m in rows],
+        )
+        df = evaluate.load_bench(con, [(d, e)])
+        got = {(r.eday, r.ticker): (r.bucket, r.r) for r in df.itertuples()}
+        self.assertEqual(got[(e, "A")][0], "<1천억")  # D 버킷
+        self.assertAlmostEqual(got[(e, "A")][1], 0.1)  # E 수익률
+        self.assertEqual(got[(e, "B")][0], "1~3천억")
+        self.assertAlmostEqual(got[(e, "B")][1], 0.3)  # clip
+        self.assertTrue((df["eday"] == e).all())
 
 
 if __name__ == "__main__":

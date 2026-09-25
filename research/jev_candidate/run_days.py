@@ -48,6 +48,15 @@ def _dashed(yyyymmdd: str) -> str:
     return f"{yyyymmdd[:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}"
 
 
+def _has_answers(con: sqlite3.Connection, run_id: str, ticker: str) -> bool:
+    """답 존재 여부 — ask 실패 후 state만 남은 건 재시도한다."""
+    row = con.execute(
+        "SELECT 1 FROM jev_answers WHERE run_id = ? AND ticker = ? LIMIT 1",
+        (run_id, ticker),
+    ).fetchone()
+    return row is not None
+
+
 def _top30(duck_con: object, date: str) -> list[dict]:
     """당일 거래대금 Top60 → 이름 매핑 → 스팩 제외 → 30개.
 
@@ -252,7 +261,7 @@ def _run_day(
         for ticker, rows in zip(work, ex.map(_filter, work)):
             filtered[ticker] = rows
 
-    # state → 질문 → 저장 (순차) — state 있으면 ask만 건너뜀
+    # state → 질문 → 저장 (순차) — state+답 둘 다 있어야 건너뜀
     n_cand = n_pass = n_err = 0
     billed = 0
     acache = _AnswerCache(con, JEV_MODEL)
@@ -270,7 +279,7 @@ def _run_day(
         pct_by[ticker] = pct
         passed_by[ticker] = passed
         counts_by[ticker] = (len(rows), sum(1 for r in rows if r.get("ambiguous")))
-        if store.has_state(con, run_id, ticker):
+        if store.has_state(con, run_id, ticker) and _has_answers(con, run_id, ticker):
             continue
         by_label = {lb: [] for lb, _, _ in sections}
         for r in passed:
@@ -326,7 +335,7 @@ def _run_day(
     assign, unswapped = state.shuffle_posts(groups, bucket_by, seed=int(day))
     n_i = n_i_err = 0
     for dst in work:
-        if store.has_state(con, run_id_i, dst):
+        if store.has_state(con, run_id_i, dst) and _has_answers(con, run_id_i, dst):
             continue
         src = assign[dst]
         src_by_section = {lb: [] for lb in labels}
@@ -376,7 +385,9 @@ def _report(con: sqlite3.Connection, days: list[str]) -> None:
     """문항별 분포 + n_included==0 비중."""
     holders = ", ".join("?" for _ in days)
     ans = con.execute(
-        f"SELECT qid, type, value FROM jev_answers WHERE date IN ({holders})", days
+        f"SELECT qid, type, value FROM jev_answers"
+        f" WHERE date IN ({holders}) AND run_id NOT LIKE '%-I'",
+        days,
     ).fetchall()
     by_qid: dict[str, list[str]] = {}
     qtype: dict[str, str] = {}
@@ -422,7 +433,7 @@ def _report(con: sqlite3.Connection, days: list[str]) -> None:
             )
     st = con.execute(
         f"SELECT COUNT(*), SUM(CASE WHEN n_included = 0 THEN 1 ELSE 0 END)"
-        f" FROM states WHERE date IN ({holders})",
+        f" FROM states WHERE date IN ({holders}) AND run_id NOT LIKE '%-I'",
         days,
     ).fetchone()
     total, zeros = st[0] or 0, st[1] or 0
