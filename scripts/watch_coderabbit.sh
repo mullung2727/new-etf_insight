@@ -21,10 +21,12 @@ latest_activity() {  # 이 PR 의 가장 최근 CodeRabbit 활동 시각(ISO8601
     # 밀려 최신 활동으로 뽑히고, 리뷰가 오기도 전에 도착으로 오판한다.
     gh api --paginate "repos/$REPO/pulls/$pr/reviews" \
       --jq '.[] | select(.user.login=="coderabbitai[bot]") | select(.submitted_at) | .submitted_at' 2>/dev/null
-    # 처리 중 안내는 아직 리뷰가 아니다
+    # 처리 중 안내는 아직 리뷰가 아니다. `@coderabbitai review` 에 대한 접수 답글
+    # ("Review triggered")도 마찬가지 — 이 답글은 트리거 직후 달려서 커밋보다 늦으므로,
+    # 거르지 않으면 리뷰 전에 도착으로 오판한다. 끝나면 같은 답글이 "Review finished"로 수정된다.
     gh api --paginate "repos/$REPO/issues/$pr/comments" \
       --jq '.[] | select(.user.login=="coderabbitai[bot]")
-            | select(.body | test("Currently processing") | not) | .updated_at' 2>/dev/null
+            | select(.body | test("Currently processing|Review triggered") | not) | .updated_at' 2>/dev/null
   } | sort | tail -1
 }
 
