@@ -22,6 +22,7 @@ import re
 import sys
 import time
 import urllib.request
+from contextlib import nullcontext
 from pathlib import Path
 from urllib.parse import quote
 
@@ -138,6 +139,15 @@ def sanitize(name: str) -> str:
     return _ILLEGAL_CHARS_RE.sub("_", (name or "").strip())
 
 
+def _load_storage():
+    """report_metrics.storage 지연 로드. facts_db 없을 땐 import조차 안 한다."""
+    try:
+        from scripts.report_metrics import storage
+    except ImportError:
+        from report_metrics import storage
+    return storage
+
+
 def list_reports(date_kst, fetch_fn=_urlopen, page_size=100, max_pages=20) -> list[dict]:
     """대상일(YYYY-MM-DD) 종목분석 리포트 메타 목록. 날짜 desc 페이지네이션, 이전날 만나면 중단."""
     out: list[dict] = []
@@ -203,23 +213,47 @@ def download_pdf(url: str, dest: Path, fetch_fn=_urlopen) -> bool:
 
 
 def run(date_kst, out_dir=DEFAULT_EXPORT_BASE, *, list_fetch=_urlopen, detail_fetch=_urlopen,
-        pdf_fetch=_urlopen, sleep_fn=time.sleep) -> dict:
+        pdf_fetch=_urlopen, sleep_fn=time.sleep, facts_db=None) -> dict:
     reports = list_reports(date_kst, fetch_fn=list_fetch)
-    stats = {"listed": len(reports), "downloaded": 0, "skipped_exists": 0, "no_pdf": 0}
-    for r in reports:
-        # 안정 키(pdf_key)는 attachUrl 에서만 나오므로 상세를 먼저 받는다.
-        detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch)
-        url = str(detail.get("attachUrl", "") or "")
-        if not url:
-            stats["no_pdf"] += 1
-            continue
-        dest = dest_path(out_dir, r["itemName"], r["itemCode"], date_kst, r["brokerName"], pdf_key(url))
-        if dest.exists():
-            stats["skipped_exists"] += 1
-            continue
-        ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
-        stats["downloaded" if ok else "no_pdf"] += 1
-        sleep_fn(REQUEST_SLEEP)
+    stats = {"listed": len(reports), "downloaded": 0, "skipped_exists": 0, "no_pdf": 0,
+             "facts_saved": 0}
+    storage = _load_storage() if facts_db is not None else None
+    if storage is not None:
+        storage.init_db(facts_db)
+        con_cm = storage.connect_rw(facts_db)
+    else:
+        con_cm = nullcontext(None)
+    with con_cm as con:
+        for r in reports:
+            # 안정 키(pdf_key)는 attachUrl 에서만 나오므로 상세를 먼저 받는다.
+            detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch)
+            url = str(detail.get("attachUrl", "") or "")
+            if not url:
+                stats["no_pdf"] += 1
+                continue
+            if con is not None:
+                # PDF 존재·다운로드 성공과 무관하게 목표가 저장 → dest 검사보다 먼저.
+                storage.upsert_api_fact(con, {
+                    "pdf_key": pdf_key(url),
+                    "research_id": str(r["researchId"]),
+                    "stock_code": r["itemCode"],
+                    "stock_name": r["itemName"],
+                    "broker": sanitize(r["brokerName"]),
+                    "report_date": date_kst,
+                    "title": r["title"],
+                    "opinion": detail.get("opinion"),
+                    "goal_price": storage.parse_price(detail.get("goalPrice")),
+                    "price_at_write": storage.parse_price(detail.get("priceAtWriteDate")),
+                    "content_html": detail.get("content"),
+                })
+                stats["facts_saved"] += 1
+            dest = dest_path(out_dir, r["itemName"], r["itemCode"], date_kst, r["brokerName"], pdf_key(url))
+            if dest.exists():
+                stats["skipped_exists"] += 1
+                continue
+            ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
+            stats["downloaded" if ok else "no_pdf"] += 1
+            sleep_fn(REQUEST_SLEEP)
     return stats
 
 
@@ -259,9 +293,11 @@ def main() -> None:
               f"listed={stats['listed']} downloaded={stats['downloaded']} "
               f"skipped={stats['skipped_exists']} no_pdf={stats['no_pdf']}")
     elif args.date:
-        stats = run(args.date, out_dir=out)
+        storage = _load_storage()
+        stats = run(args.date, out_dir=out, facts_db=storage.DEFAULT_DB)
         print(f"[naver_research] {args.date} listed={stats['listed']} "
-              f"downloaded={stats['downloaded']} skipped={stats['skipped_exists']} no_pdf={stats['no_pdf']}")
+              f"downloaded={stats['downloaded']} skipped={stats['skipped_exists']} no_pdf={stats['no_pdf']} "
+              f"facts_saved={stats['facts_saved']}")
     else:
         parser.error("--date 또는 --stock 중 하나 필요")
 
