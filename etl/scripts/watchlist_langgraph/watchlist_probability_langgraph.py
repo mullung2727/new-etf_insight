@@ -21,7 +21,7 @@ import requests
 from langgraph.graph import END, StateGraph
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 ETL_DIR = ROOT / "etl"
 SRC_DIR = ETL_DIR / "src"
 if str(SRC_DIR) not in sys.path:
@@ -33,7 +33,7 @@ from new_etf_insight.llm import generate_json  # noqa: E402
 DEFAULT_WATCHLIST_DB = ETL_DIR / "db" / "watchlist.sqlite3"
 DEFAULT_TELEGRAM_DB = ETL_DIR / "db" / "telegram_public.sqlite3"
 DEFAULT_KRX_DB = ETL_DIR / "db" / "krx_ohlcv.duckdb"
-DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "results" / "shadow_probability"
+DEFAULT_OUTPUT_DIR = ROOT / "research" / "watchlist_expected_return" / "results" / "shadow_probability"
 DEFAULT_REPORTS_DIR = ROOT.parents[1] / "reports"
 SCHEMA_PATH = Path(__file__).resolve().with_name("watchlist_scoring_schema.json")
 THEME_DICT_PATH = Path(__file__).resolve().with_name("theme_dictionary.json")

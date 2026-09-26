@@ -14,18 +14,18 @@ from zoneinfo import ZoneInfo
 
 import duckdb
 
-from research.watchlist_expected_return.watchlist_probability_langgraph import (
+ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = ROOT / "etl" / "src"
+for _p in (SRC_DIR, ROOT / "etl"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+from scripts.watchlist_langgraph.watchlist_probability_langgraph import (  # noqa: E402
     DEFAULT_KRX_DB,
     DEFAULT_TELEGRAM_DB,
     DEFAULT_WATCHLIST_DB,
     fetch_historical_news,
 )
-
-
-ROOT = Path(__file__).resolve().parents[2]
-SRC_DIR = ROOT / "etl" / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
 
 from new_etf_insight.llm import generate_json  # noqa: E402
 

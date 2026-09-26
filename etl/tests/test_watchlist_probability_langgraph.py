@@ -11,7 +11,7 @@ from unittest.mock import patch
 import duckdb
 
 
-from research.watchlist_expected_return.watchlist_probability_langgraph import (
+from scripts.watchlist_langgraph.watchlist_probability_langgraph import (
     _ranking_auc,
     apply_priced_in_policy,
     build_market_snapshot,
@@ -137,7 +137,7 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
             "warnings": [],
         }
         with patch(
-            "research.watchlist_expected_return.watchlist_probability_langgraph.fetch_historical_news"
+            "scripts.watchlist_langgraph.watchlist_probability_langgraph.fetch_historical_news"
         ) as fetch:
             result = collect_news(state)
         fetch.assert_not_called()
@@ -180,7 +180,7 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
                 **catalyst_fields(),
             }, ensure_ascii=False)
         with patch(
-            "research.watchlist_expected_return.watchlist_probability_langgraph.fetch_historical_news",
+            "scripts.watchlist_langgraph.watchlist_probability_langgraph.fetch_historical_news",
             return_value=[],
         ):
             result = run_date("20260713", self.watchlist_db, self.telegram_db, self.krx_db, fake_score)
@@ -207,7 +207,7 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
             }, ensure_ascii=False)
 
         with patch(
-            "research.watchlist_expected_return.watchlist_probability_langgraph.fetch_historical_news",
+            "scripts.watchlist_langgraph.watchlist_probability_langgraph.fetch_historical_news",
             return_value=[],
         ):
             result = run_date("20260713", self.watchlist_db, self.telegram_db, self.krx_db, fake_score)
@@ -230,7 +230,7 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
         payload["primary_catalyst"]["evidence_refs"] = ["https://hallucinated.example"]
 
         with patch(
-            "research.watchlist_expected_return.watchlist_probability_langgraph.fetch_historical_news",
+            "scripts.watchlist_langgraph.watchlist_probability_langgraph.fetch_historical_news",
             return_value=[],
         ):
             result = run_date(
@@ -363,7 +363,7 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
         self.assertNotIn(
             "enum",
             json.loads(Path(
-                "research/watchlist_expected_return/watchlist_scoring_schema.json"
+                "scripts/watchlist_langgraph/watchlist_scoring_schema.json"
             ).read_text(encoding="utf-8"))["$defs"]["theme_score"]["properties"]["name"],
         )
 
@@ -648,7 +648,7 @@ class WatchlistProbabilityLangGraphTest(unittest.TestCase):
             }, ensure_ascii=False)
 
         with patch(
-            "research.watchlist_expected_return.watchlist_probability_langgraph.fetch_historical_news",
+            "scripts.watchlist_langgraph.watchlist_probability_langgraph.fetch_historical_news",
             return_value=[],
         ):
             result = run_date("20260714", self.watchlist_db, self.telegram_db, self.krx_db, fake_score)

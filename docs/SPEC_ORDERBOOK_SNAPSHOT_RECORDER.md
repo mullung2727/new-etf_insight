@@ -128,7 +128,7 @@ SELECT DISTINCT ticker FROM llm_scores WHERE date = ? ORDER BY ticker;
 ### 4.3 오후 완료 산출물
 
 기존 생산자:
-`research/watchlist_expected_return/watchlist_probability_langgraph.py`.
+`etl/scripts/watchlist_langgraph/watchlist_probability_langgraph.py`.
 
 생산 순서:
 `ensure_complete_scores → persist_scoring_results/commit → operational report → recent_3day_probability_scores.json`.
