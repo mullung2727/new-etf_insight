@@ -40,6 +40,24 @@ CREATE TABLE IF NOT EXISTS report_facts (
 CREATE INDEX IF NOT EXISTS idx_facts_stock_broker_date
   ON report_facts(stock_code, broker, report_date);
 
+CREATE TABLE IF NOT EXISTS report_api_facts (
+  pdf_key TEXT PRIMARY KEY,
+  research_id TEXT NOT NULL,
+  stock_code TEXT NOT NULL,
+  stock_name TEXT,
+  broker TEXT NOT NULL,
+  report_date TEXT NOT NULL,
+  title TEXT,
+  opinion TEXT,
+  goal_price INTEGER,
+  price_at_write INTEGER,
+  content_html TEXT,
+  fetched_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_api_facts_stock_broker_date
+  ON report_api_facts(stock_code, broker, report_date);
+CREATE INDEX IF NOT EXISTS idx_api_facts_date ON report_api_facts(report_date);
+
 CREATE TABLE IF NOT EXISTS report_estimates (
   pdf_key TEXT NOT NULL REFERENCES report_facts(pdf_key) ON DELETE CASCADE,
   fiscal_year INTEGER NOT NULL,
@@ -57,6 +75,12 @@ CREATE TABLE IF NOT EXISTS report_estimates (
 """
 
 _FACT_COLUMNS = [f.name for f in fields(ReportFacts)]
+
+_API_FACT_COLUMNS = [
+    "pdf_key", "research_id", "stock_code", "stock_name", "broker",
+    "report_date", "title", "opinion", "goal_price", "price_at_write",
+    "content_html", "fetched_at",
+]
 
 
 @contextmanager
@@ -149,6 +173,102 @@ def find_previous_report(
         (stock_code, broker, report_date, STATUS_PARSE_ERROR, STATUS_IMAGE_PDF),
     )
     return cur.fetchone()
+
+
+def parse_price(value: str | int | None) -> Optional[int]:
+    """목표가/주가 파싱. 쉼표·공백 제거 후 전부 숫자이고 > 0 이면 int, 아니면 None."""
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str):
+        s = "".join(value.replace(",", "").split())
+        if s.isdigit():
+            v = int(s)
+            return v if v > 0 else None
+    return None
+
+
+def upsert_api_fact(con: sqlite3.Connection, row: dict) -> None:
+    """pdf_key 기준 덮어쓰기. fetched_at 은 여기서 채운다."""
+    full = dict(row)
+    full["fetched_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    values = [full.get(name) for name in _API_FACT_COLUMNS]
+    placeholders = ", ".join("?" for _ in _API_FACT_COLUMNS)
+    con.execute(
+        f"INSERT OR REPLACE INTO report_api_facts ({', '.join(_API_FACT_COLUMNS)}) "
+        f"VALUES ({placeholders})",
+        values,
+    )
+
+
+def find_previous_target(
+    con: sqlite3.Connection, stock_code: str, broker: str, report_date: str
+) -> tuple[bool, Optional[int]]:
+    """같은 종목·같은 증권사의 직전 목표가. api/PDF 두 테이블 중 더 최근 쪽.
+
+    같은 날이면 api 쪽. 없으면 (False, None).
+    """
+    api_row = con.execute(
+        "SELECT report_date, goal_price FROM report_api_facts "
+        "WHERE stock_code = ? AND broker = ? AND report_date < ? "
+        "ORDER BY report_date DESC, pdf_key DESC LIMIT 1",
+        (stock_code, broker, report_date),
+    ).fetchone()
+    facts_row = find_previous_report(con, stock_code, broker, report_date)
+    if api_row is not None and facts_row is not None:
+        if api_row["report_date"] >= facts_row["report_date"]:
+            return True, api_row["goal_price"]
+        return True, facts_row["target_price"]
+    if api_row is not None:
+        return True, api_row["goal_price"]
+    if facts_row is not None:
+        return True, facts_row["target_price"]
+    return False, None
+
+
+def classify_report(
+    goal_price: Optional[int], prev_found: bool, prev_target: Optional[int]
+) -> str:
+    """목표가 등락 판정. 직전 NR(None)도 커버 재개로 new."""
+    if goal_price is None:
+        return "no_target"
+    if not prev_found:
+        return "new"
+    if prev_target is None:
+        return "new"
+    if goal_price > prev_target:
+        return "up"
+    if goal_price == prev_target:
+        return "flat"
+    return "down"
+
+
+def report_candidates(con: sqlite3.Connection, start_exclusive: str, end_inclusive: str) -> list[dict]:
+    """기간(start 제외, end 포함) 내 up·new 리포트만. 날짜·종목·증권사·키 순 정렬."""
+    rows = con.execute(
+        "SELECT * FROM report_api_facts "
+        "WHERE report_date > ? AND report_date <= ? "
+        "ORDER BY report_date, stock_code, broker, pdf_key",
+        (start_exclusive, end_inclusive),
+    ).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        found, prev = find_previous_target(con, r["stock_code"], r["broker"], r["report_date"])
+        status = classify_report(r["goal_price"], found, prev)
+        if status not in ("up", "new"):
+            continue
+        out.append({
+            "stock_code": r["stock_code"],
+            "stock_name": r["stock_name"],
+            "broker": r["broker"],
+            "report_date": r["report_date"],
+            "title": r["title"],
+            "opinion": r["opinion"],
+            "goal_price": r["goal_price"],
+            "prev_target": prev,
+            "status": status,
+            "pdf_key": r["pdf_key"],
+        })
+    return out
 
 
 def load_estimates(con: sqlite3.Connection, pdf_key: str) -> list[YearEstimate]:
