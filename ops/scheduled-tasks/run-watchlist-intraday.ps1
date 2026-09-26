@@ -62,7 +62,7 @@ try {
   # 매 거래일 배치가 그 위를 덮어써 작업 트리를 더럽혔다. 이 덤프는 읽는 코드가 없으니
   # 다른 산출물과 같이 저장소 밖 reports 로 보낸다.
   Invoke-Step "D+1 open probability scoring" ".\.venv\Scripts\python.exe" @(
-    "..\research\watchlist_expected_return\watchlist_probability_langgraph.py",
+    "scripts\watchlist_langgraph\watchlist_probability_langgraph.py",
     "--dates", $todayCompact,
     "--write-db",
     "--reports-dir", $reportsDir,

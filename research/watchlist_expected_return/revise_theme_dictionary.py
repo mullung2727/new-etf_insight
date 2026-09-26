@@ -21,12 +21,13 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT / "etl" / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+for _p in (SRC_DIR, ROOT / "etl"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from new_etf_insight.llm import generate_json  # noqa: E402
 
-from research.watchlist_expected_return.watchlist_probability_langgraph import (  # noqa: E402
+from scripts.watchlist_langgraph.watchlist_probability_langgraph import (  # noqa: E402
     DEFAULT_WATCHLIST_DB,
     THEME_DICT_PATH,
     THEME_NOT_IN_DICT,
