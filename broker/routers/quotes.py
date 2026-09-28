@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from kiwoom import quotes
 
@@ -59,6 +59,26 @@ def get_quote(symbol: str) -> Any:
 def get_stock_status(symbol: str) -> Any:
     """ka10100. audit_info(정상/관리종목/거래정지/단기과열/투자주의/투자경고) · order_warning(2=정리매매) · state."""
     return quotes.get_stock_status(symbol)
+
+
+@router.get(
+    "/{symbol}/investor-sum",
+    operation_id="get_investor_sum",
+    summary="종목별 투자자·기관 순매수 합계 (ka10061)",
+)
+def get_investor_sum(symbol: str, start: str, end: str) -> Any:
+    """ka10061. 기간 내 투자자·기관별 순매수 합계. start/end는 YYYYMMDD."""
+    return quotes.get_investor_sum(symbol, start, end)
+
+
+@router.get(
+    "/{symbol}/themes",
+    operation_id="get_stock_themes",
+    summary="종목 소속 테마와 테마 기간수익률 (ka90001)",
+)
+def get_stock_themes(symbol: str, days: int = Query(5, ge=1, le=99)) -> Any:
+    """ka90001. 종목이 속한 테마 목록과 테마 기간수익률. days는 1~99."""
+    return quotes.get_stock_themes(symbol, days)
 
 
 @router.get(
