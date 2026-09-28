@@ -575,7 +575,7 @@ def format_message(state: State) -> str:
             lines.append(f"   → {item.get('thesis')}")
             risks = item.get("risks") or []
             if risks:
-                lines.append(f"   ⚠ {', '.join(risks)}")
+                lines.append(f"   ⚠ {' / '.join(risks)}")
     if isinstance(summary, dict) and summary.get("overview"):
         lines.append(str(summary["overview"]))
     if warnings:
