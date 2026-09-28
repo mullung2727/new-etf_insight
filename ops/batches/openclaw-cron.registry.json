@@ -664,5 +664,34 @@
         "to": "1513799139715190854"
       }
     }
+    ,{
+      "id": "7e3a1f52-9c4d-4b6e-a8f2-5d0c7e1b9a33",
+      "name": "daily-swing-pick",
+      "description": "Weekdays 19:00 KST swing candidate top-3 (telegram/youtube/report/high52 → Jev + code checklist), report to Discord batch channel",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 19 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-swing-pick.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-swing-pick",
+        "xmlFile": "ops/scheduled-tasks/swing-pick.xml",
+        "runnerScript": "ops/scheduled-tasks/run-swing-pick.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_BATCH_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    }
   ]
 }
