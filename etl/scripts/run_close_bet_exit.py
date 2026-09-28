@@ -60,7 +60,7 @@ ROOT =Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
 DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
 
-# 반반 분할 청산 (docs/PLAN_CLOSE_BET_SPLIT_EXIT.md) — auction 은 exit_time 동시호가, chase 는 아래 시각
+# 반반 분할 청산 (docs/done/PLAN_CLOSE_BET_SPLIT_EXIT.md) — auction 은 exit_time 동시호가, chase 는 아래 시각
 SPLIT_LEGS = ("auction", "chase")
 CHASE_ROUNDS = ("09:00:30", "09:00:40", "09:00:50")   # 매도1호가 − 1틱 지정가 신규/정정
 CHASE_END = "09:01:00"                                # 남은 지정가 취소 → 잔량 시장가
@@ -464,7 +464,7 @@ def build_watch_set(args, broker_url: str, today: str) -> dict[str, dict]:
     balance = fetch_balance(broker_url)
     mark_missing_positions(DEFAULT_WATCHLIST_DB, positions, balance)
     watch = reconcile_balance(positions, balance)
-    if not args.dry_run:  # 반반 분할 청산 (docs/PLAN_CLOSE_BET_SPLIT_EXIT.md). 분할은 DB 를 쓴다 — 실모드만
+    if not args.dry_run:  # 반반 분할 청산 (docs/done/PLAN_CLOSE_BET_SPLIT_EXIT.md). 분할은 DB 를 쓴다 — 실모드만
         watch = split_positions(DEFAULT_WATCHLIST_DB, watch)
     print(f"[exit] 포지션 {len(positions)}건 → 잔고대조 후 감시 {len(watch)}건")
     return {(w["ticker"], w["leg"]): w for w in watch}
