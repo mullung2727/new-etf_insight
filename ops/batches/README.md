@@ -38,7 +38,7 @@ reader before composing the Discord report.
   - Purpose: build same-day Kiwoom candidates and write D+1 open-rise probability scores to `llm_scores` (feeds the 15:19 close-bet order window).
 - `daily-minute-bars-backfill.md`
   - Purpose: backfill all-symbol KRX one-minute bars recent-first with validation and resume state.
-- `orderbook-recorder` (`docs/SPEC_ORDERBOOK_SNAPSHOT_RECORDER.md`)
+- `orderbook-recorder` (`docs/done/SPEC_ORDERBOOK_SNAPSHOT_RECORDER.md`)
   - Purpose: record KRX 10-level orderbook snapshots on a one-second grid during the morning and closing windows.
 - `daily-new-etf-insight-batch.md`
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
