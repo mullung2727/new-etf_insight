@@ -47,6 +47,24 @@ class TestSendDiscord(unittest.TestCase):
             send_discord("x")
         self.assertEqual(post.call_args[0][0], "https://env/hook")
 
+    def test_prefers_batch_webhook_over_default(self):
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        env = {"DISCORD_BATCH_WEBHOOK_URL": "https://batch/hook",
+               "DISCORD_WEBHOOK_URL": "https://env/hook"}
+        with patch.dict("os.environ", env, clear=True), \
+             patch("scripts.notify.requests.post", return_value=resp) as post:
+            send_discord("x")
+        self.assertEqual(post.call_args[0][0], "https://batch/hook")
+
+    def test_uses_batch_webhook_when_default_unset(self):
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        with patch.dict("os.environ", {"DISCORD_BATCH_WEBHOOK_URL": "https://batch/hook"}, clear=True), \
+             patch("scripts.notify.requests.post", return_value=resp) as post:
+            self.assertTrue(send_discord("x"))
+        self.assertEqual(post.call_args[0][0], "https://batch/hook")
+
     def test_truncates_long_message(self):
         resp = MagicMock()
         resp.raise_for_status.return_value = None
