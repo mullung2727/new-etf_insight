@@ -511,7 +511,7 @@ class TestFormatMessage(unittest.TestCase):
                       "[재료2 실적2 수급1 차트2] 소스: 리포트·텔레그램", msg)
         self.assertIn("PER 11.1 · 테마: 반도체(+5.2%)", msg)
         self.assertIn("→ 수주 테제", msg)
-        self.assertIn("⚠ 리스크a, 리스크b", msg)
+        self.assertIn("⚠ 리스크a / 리스크b", msg)
         self.assertIn("PER 적자 · 테마: 없음", msg)
         self.assertIn("전체 한 줄", msg)
         self.assertIn("경고:\n- w1", msg)
