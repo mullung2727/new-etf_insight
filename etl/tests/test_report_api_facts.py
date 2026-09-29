@@ -251,6 +251,23 @@ class TestRunFactsDb(unittest.TestCase):
             for key, value in got.items():  # prevGoalPrice는 어디에도 안 씀
                 self.assertNotIn("999999", str(value), key)
 
+    def test_keeps_saved_facts_when_later_fetch_fails(self):
+        details = {"11": {"attachUrl": "http://x/a.pdf", "goalPrice": "500000"},
+                   "12": {"attachUrl": "http://x/b.pdf", "goalPrice": "90000"}}
+        list_fetch, detail_fetch = self._fetches(details)
+        def pdf_fetch(url):  # 첫 PDF 다운로드에서 네트워크 오류
+            raise TimeoutError(url)
+        with TemporaryDirectory() as d:
+            tmp = Path(d)
+            db = tmp / "facts.sqlite3"
+            with self.assertRaises(TimeoutError):
+                run("2026-09-23", out_dir=tmp / "out", list_fetch=list_fetch,
+                    detail_fetch=detail_fetch, pdf_fetch=pdf_fetch,
+                    sleep_fn=lambda s: None, facts_db=db)
+            with storage.connect_ro(db) as con:
+                keys = [r["pdf_key"] for r in con.execute("SELECT pdf_key FROM report_api_facts")]
+            self.assertEqual(keys, ["a"])  # 실패 전에 저장한 목표가는 남는다
+
     def test_no_db_without_facts_db(self):
         list_fetch, detail_fetch = self._fetches(
             {"11": {"attachUrl": "http://x/a.pdf", "goalPrice": "500000"}})
