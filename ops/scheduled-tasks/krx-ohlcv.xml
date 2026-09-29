@@ -7,9 +7,53 @@
     <Description>new_etf_insight previous-day KRX OHLCV fetch-only batch and Discord webhook report</Description>
     <URI>\new-etf_insight\daily-etf-watchlist-krx-ohlcv</URI>
   </RegistrationInfo>
+  <!-- 2026-09-29: 단일 08:00 → 당일 22:00 + 다음날 07:00/08:00/08:30 (KRX 점검·지연 대비, 매 실행 최근 7일 누락분만 받음).
+       22:00 에 당일분이 공시되는지는 미확인 — 빈 응답이면 휴장으로 굳지 않고 다음 시도로 넘어간다. -->
   <Triggers>
     <CalendarTrigger>
+      <StartBoundary>2026-09-29T22:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday />
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+    <CalendarTrigger>
+      <StartBoundary>2026-09-30T07:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+          <Saturday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+    <CalendarTrigger>
       <StartBoundary>2026-07-02T08:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Tuesday />
+          <Wednesday />
+          <Thursday />
+          <Friday />
+          <Saturday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+    <CalendarTrigger>
+      <StartBoundary>2026-09-30T08:30:00</StartBoundary>
       <Enabled>true</Enabled>
       <ScheduleByWeek>
         <WeeksInterval>1</WeeksInterval>

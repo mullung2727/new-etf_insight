@@ -40,6 +40,24 @@ KRX_BASE = "https://data-dbg.krx.co.kr/svc/apis/sto/"
 MARKET_ENDPOINTS = {"KOSPI": "stk_bydd_trd", "KOSDAQ": "ksq_bydd_trd"}
 REQUEST_SLEEP = 0.1               # KRX rate-limit 완충 (콜 사이)
 REQUEST_TIMEOUT = 30
+RETRY_ATTEMPTS = 3                # 순간 지연 대비 (2026-09-29 08:00 단발 read timeout 사고)
+RETRY_WAIT = 30                   # 초. 길게 막히는 점검은 스케줄 재시도(22:00/07:00/08:00/08:30)가 맡는다
+
+
+def _get_with_retry(http, url: str, **kwargs):
+    """시간초과·연결오류·5xx 만 재시도. 4xx(인증 등)는 바로 올린다."""
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            resp = http.get(url, **kwargs)
+            if resp.status_code < 500:
+                return resp
+            err: Exception = requests.HTTPError(f"HTTP {resp.status_code}", response=resp)
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            err = exc
+        if attempt == RETRY_ATTEMPTS:
+            raise err
+        print(f"  retry {attempt}/{RETRY_ATTEMPTS - 1} after {RETRY_WAIT}s: {err}")
+        time.sleep(RETRY_WAIT)
 
 _CREATE_OHLCV = """
 CREATE TABLE IF NOT EXISTS ohlcv (
@@ -140,7 +158,8 @@ def fetch_day(
     rows: list[tuple] = []
     headers = {"AUTH_KEY": key}
     for market, endpoint in MARKET_ENDPOINTS.items():
-        resp = http.get(
+        resp = _get_with_retry(
+            http,
             KRX_BASE + endpoint,
             headers=headers,
             params={"basDd": date},
