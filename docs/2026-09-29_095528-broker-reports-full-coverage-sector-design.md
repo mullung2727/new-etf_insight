@@ -56,6 +56,7 @@
 
 - `report_documents`: 내부 `document_id`, `document_type`(company/sector/industry/market(시황·전략·경제, §8-1)/unknown), 제목, 증권사, 발행일, PDF 상대경로, 내용 해시, 원본 저장/열람 상태, 파싱 상태, **`pdf_key`(nullable, UNIQUE)**. `unknown`도 버리지 말고 검토 대상으로 둔다.
   - **기존 테이블과의 연결:** 네이버 출처 문서는 `pdf_key`를 채우고, 기존 `report_facts`/`report_api_facts`/`report_estimates`는 `pdf_key`로 조인한다(1:1). 기존 테이블에 `document_id` 컬럼을 추가하지 않는다. 네이버 섹터·시황 문서도 `pdf_key`는 채우지만(§6-1) `document_type != company`이므로 기존 테이블에 행을 만들지 않는다. 기존 테이블 적재 여부는 `pdf_key` 유무가 아니라 `document_type`으로 가른다.
+  - **1:1 예외 (2026-09-29 실측):** 네이버가 같은 PDF 바이트를 다른 날짜·다른 `pdf_key`로 재게시한 사례 14건(기존 2,392파일 중). 해시 기준으로 문서는 1개로 합쳐지고 `report_documents.pdf_key`에는 첫 키만 남는다. 따라서 **`pdf_key` → 문서 조회는 `report_documents.pdf_key` 다음에 `report_sources`(URL/경로에 키 포함)까지 본다.** 조회 코드 작성 시(§6-6) 적용.
 - `report_sources`: `(source, source_report_id)` 유일 키 + `document_id` 외래키, 외부 URL들, 발견 시각/상태. 여러 출처가 같은 PDF에 연결돼도 **원본 문서는 하나**만 둔다. 기존 네이버 `researchId`와 증권사 자체 ID는 전역 유일 키로 혼용하지 않는다.
 - `report_document_stocks`: `(document_id, stock_code)` 관계 + `relation_type`(주요 분석/단순 언급/미확인, 판정 규칙 §8-6), 근거 페이지 범위, 식별 방법, 검토 상태. 종목코드가 PDF 본문에 나타나도 **그 종목에 대한 투자 의견이 제시된다는 의미는 아니다**.
 - `report_collection_runs`: 수집원/기간/시작·완료 시각, API 페이지 수와 원천 항목 수, 발견/중복/다운로드/실패/미첨부, 종료 사유와 마지막 성공 페이지. 누락 의심·소스 변경 알림의 근거로 쓴다.
