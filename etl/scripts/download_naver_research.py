@@ -164,6 +164,15 @@ def _load_catalog():
     return catalog
 
 
+def _load_sector_link():
+    """report_metrics.sector_link 지연 로드. sector 수집에서만 쓴다."""
+    try:
+        from scripts.report_metrics import sector_link
+    except ImportError:
+        from report_metrics import sector_link
+    return sector_link
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -266,6 +275,180 @@ def download_pdf(url: str, dest: Path, fetch_fn=_urlopen) -> bool:
     return True
 
 
+def _insert_run_row(con, category, date_from, date_to) -> int:
+    cur = con.execute(
+        "INSERT INTO report_collection_runs "
+        "(source, category, date_from, date_to, started_at, status) "
+        "VALUES ('naver_mobile', ?, ?, ?, ?, 'running')",
+        (category, date_from, date_to, _utcnow()),
+    )
+    con.commit()
+    return cur.lastrowid
+
+
+def _fail_run_row(con, run_id, exc) -> None:
+    con.execute(
+        "UPDATE report_collection_runs SET finished_at = ?, status = 'error', "
+        "stop_reason = ? WHERE run_id = ?",
+        (_utcnow(), str(exc)[:200], run_id),
+    )
+    con.commit()
+
+
+def _finish_run_row(con, run_id, listing, stats) -> None:
+    con.execute(
+        "UPDATE report_collection_runs SET finished_at = ?, status = ?, "
+        "pages_fetched = ?, rows_listed = ?, new_docs = ?, dup_docs = ?, "
+        "downloaded = ?, failed = ?, no_pdf = ?, stop_reason = ?, last_page = ? "
+        "WHERE run_id = ?",
+        (_utcnow(),
+         "partial" if listing["stop_reason"] == "max_pages" else "completed",
+         listing["pages_fetched"], listing["rows_listed"],
+         stats["catalog_new"], stats["catalog_dup"], stats["downloaded"],
+         stats["failed"], stats["no_pdf"], listing["stop_reason"],
+         listing["last_page"], run_id),
+    )
+    con.commit()
+
+
+def _skip_if_known_saved(con, catalog, sid, run_id, stats) -> bool:
+    """이미 저장 완료된 문서면 last_seen 갱신·통계 후 True(호출부는 continue)."""
+    known = con.execute(
+        "SELECT document_id FROM report_sources "
+        "WHERE source = 'naver_mobile' AND source_report_id = ?",
+        (sid,),
+    ).fetchone()
+    if known is None:
+        return False
+    frow = con.execute(
+        "SELECT file_status FROM report_documents WHERE document_id = ?",
+        (known[0],),
+    ).fetchone()
+    if frow is None or frow[0] != "saved":
+        return False
+    catalog.upsert_source(
+        con, source="naver_mobile", source_report_id=sid,
+        document_id=known[0], run_id=run_id)
+    stats["skipped_known"] += 1
+    con.commit()
+    return True
+
+
+def _download_status(dest, url, pdf_fetch, sleep_fn, stats) -> str:
+    """다운로드 시도 → file_status. stats 직접 갱신."""
+    if dest.exists():
+        stats["skipped_exists"] += 1
+        return "saved"
+    try:
+        ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
+    except Exception:
+        stats["failed"] += 1
+        status = "failed"
+    else:
+        if ok:
+            stats["downloaded"] += 1
+            status = "saved"
+        else:
+            # download_pdf False = 응답이 %PDF 아님
+            stats["not_pdf"] += 1
+            status = "not_pdf"
+    sleep_fn(REQUEST_SLEEP)
+    return status
+
+
+def _promote_saved(con, doc_id, pdf_rel, sha) -> None:
+    """기존 문서가 not_pdf/failed였으면 upsert가 file_status를 안 바꾸므로 직접 승격."""
+    try:
+        con.execute(
+            "UPDATE report_documents SET file_status = 'saved', "
+            "pdf_path = ?, sha256 = ? "
+            "WHERE document_id = ? AND file_status <> 'saved'",
+            (pdf_rel, sha, doc_id),
+        )
+    except sqlite3.IntegrityError:
+        print(f"[naver_research] sha256 충돌로 file_status 승격 생략: doc={doc_id}")
+
+
+def _collect_loop(reports, category, out_dir, *, detail_fetch, pdf_fetch, sleep_fn,
+                  con, storage, catalog, run_id, stats, is_company,
+                  link_mod=None, names=None) -> None:
+    """company/sector 공용 수집 루프. stats 직접 갱신.
+
+    company 전용: upsert_api_fact, dest_path 규칙, document_stock primary.
+    sector 전용: sector dest 규칙, sector_link 연결 판정(link_mod/names).
+    con None이면 DB 없이 파일만(종목 일일 배치 facts_db 미지정 경로).
+    """
+    for r in reports:
+        sid = f"{category}:{r['researchId']}"
+        if con is not None and _skip_if_known_saved(con, catalog, sid, run_id, stats):
+            continue
+        # 안정 키(pdf_key)는 attachUrl 에서만 나오므로 상세를 먼저 받는다.
+        detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch, category=category)
+        url = str(detail.get("attachUrl", "") or "")
+        if not url:
+            stats["no_pdf"] += 1
+            continue
+        pkey = pdf_key(url)
+        if is_company and con is not None:
+            # PDF 존재·다운로드 성공과 무관하게 목표가 저장 → dest 검사보다 먼저.
+            storage.upsert_api_fact(con, {
+                "pdf_key": pkey,
+                "research_id": str(r["researchId"]),
+                "stock_code": r["itemCode"],
+                "stock_name": r["itemName"],
+                "broker": sanitize(r["brokerName"]),
+                "report_date": r["writeDate"],
+                "title": r["title"],
+                "opinion": detail.get("opinion"),
+                "goal_price": storage.parse_price(detail.get("goalPrice")),
+                "price_at_write": storage.parse_price(detail.get("priceAtWriteDate")),
+                "content_html": detail.get("content"),
+            })
+            con.commit()  # 뒤 리포트의 상세·PDF 네트워크 오류가 앞서 저장한 목표가까지 롤백하지 않게
+            stats["facts_saved"] += 1
+        if is_company:
+            dest = dest_path(out_dir, r["itemName"], r["itemCode"], r["writeDate"], r["brokerName"], pkey)
+        else:
+            dest = out_dir / category / f"{r['writeDate']}_{sanitize(r['brokerName'])}_{pkey}.pdf"
+        file_status = _download_status(dest, url, pdf_fetch, sleep_fn, stats)
+        if con is None:
+            continue
+        sha = catalog.sha256_file(dest) if file_status == "saved" else None
+        if is_company:
+            pdf_rel = f"stock_reports/{dest.parent.name}/{dest.name}" if file_status == "saved" else None
+            list_url = LIST_URL.format(page=1, size=100)
+            detail_url = DETAIL_URL.format(rid=r["researchId"])
+        else:
+            pdf_rel = f"sector_reports/{category}/{dest.name}" if file_status == "saved" else None
+            list_url = CAT_LIST_URL.format(category=category, page=1, size=100)
+            detail_url = CAT_DETAIL_URL.format(category=category, rid=r["researchId"])
+        doc_id, created = catalog.upsert_document(
+            con, document_type="company" if is_company else category, title=r["title"],
+            broker=sanitize(r["brokerName"]), published_date=r["writeDate"],
+            pdf_path=pdf_rel, sha256=sha, pdf_key=pkey,
+            file_status=file_status)
+        stats["catalog_new" if created else "catalog_dup"] += 1
+        if file_status == "saved" and not created:
+            _promote_saved(con, doc_id, pdf_rel, sha)
+        catalog.upsert_source(
+            con, source="naver_mobile", source_report_id=sid,
+            document_id=doc_id,
+            list_url=list_url,
+            detail_url=detail_url,
+            pdf_url=url, run_id=run_id)
+        if is_company:
+            catalog.upsert_document_stock(
+                con, document_id=doc_id, stock_code=r["itemCode"],
+                relation_type="primary", method="naver_itemcode")
+        elif created and file_status == "saved" and link_mod is not None and names is not None:
+            try:
+                stats["linked"] += link_mod.link_document(
+                    con, doc_id, dest, names[0], names[1], broker=r["brokerName"])
+            except Exception as exc:
+                print(f"[naver_research] link 실패 doc={doc_id}: {exc}")
+        con.commit()
+
+
 def run(date_kst, out_dir=DEFAULT_EXPORT_BASE, *, list_fetch=_urlopen, detail_fetch=_urlopen,
         pdf_fetch=_urlopen, sleep_fn=time.sleep, facts_db=None, lookback_days=LOOKBACK_DAYS) -> dict:
     date_to = date_kst
@@ -285,255 +468,59 @@ def run(date_kst, out_dir=DEFAULT_EXPORT_BASE, *, list_fetch=_urlopen, detail_fe
         run_id = None
         if con is not None:
             catalog.init_catalog(con)
-            cur = con.execute(
-                "INSERT INTO report_collection_runs "
-                "(source, category, date_from, date_to, started_at, status) "
-                "VALUES ('naver_mobile', 'company', ?, ?, ?, 'running')",
-                (date_from, date_to, _utcnow()),
-            )
-            run_id = cur.lastrowid
-            con.commit()
+            run_id = _insert_run_row(con, "company", date_from, date_to)
         try:
-            for r in reports:
-                sid = f"company:{r['researchId']}"
-                if con is not None:
-                    known = con.execute(
-                        "SELECT document_id FROM report_sources "
-                        "WHERE source = 'naver_mobile' AND source_report_id = ?",
-                        (sid,),
-                    ).fetchone()
-                    if known is not None:
-                        frow = con.execute(
-                            "SELECT file_status FROM report_documents WHERE document_id = ?",
-                            (known[0],),
-                        ).fetchone()
-                        if frow is not None and frow[0] == "saved":
-                            catalog.upsert_source(
-                                con, source="naver_mobile", source_report_id=sid,
-                                document_id=known[0], run_id=run_id)
-                            stats["skipped_known"] += 1
-                            con.commit()
-                            continue
-                # 안정 키(pdf_key)는 attachUrl 에서만 나오므로 상세를 먼저 받는다.
-                detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch)
-                url = str(detail.get("attachUrl", "") or "")
-                if not url:
-                    stats["no_pdf"] += 1
-                    continue
-                pkey = pdf_key(url)
-                if con is not None:
-                    # PDF 존재·다운로드 성공과 무관하게 목표가 저장 → dest 검사보다 먼저.
-                    storage.upsert_api_fact(con, {
-                        "pdf_key": pkey,
-                        "research_id": str(r["researchId"]),
-                        "stock_code": r["itemCode"],
-                        "stock_name": r["itemName"],
-                        "broker": sanitize(r["brokerName"]),
-                        "report_date": r["writeDate"],
-                        "title": r["title"],
-                        "opinion": detail.get("opinion"),
-                        "goal_price": storage.parse_price(detail.get("goalPrice")),
-                        "price_at_write": storage.parse_price(detail.get("priceAtWriteDate")),
-                        "content_html": detail.get("content"),
-                    })
-                    con.commit()  # 뒤 리포트의 상세·PDF 네트워크 오류가 앞서 저장한 목표가까지 롤백하지 않게
-                    stats["facts_saved"] += 1
-                dest = dest_path(out_dir, r["itemName"], r["itemCode"], r["writeDate"], r["brokerName"], pkey)
-                if dest.exists():
-                    stats["skipped_exists"] += 1
-                    file_status = "saved"
-                else:
-                    try:
-                        ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
-                    except Exception:
-                        file_status = "failed"
-                        stats["failed"] += 1
-                    else:
-                        if ok:
-                            stats["downloaded"] += 1
-                            file_status = "saved"
-                        else:
-                            # download_pdf False = 응답이 %PDF 아님
-                            stats["not_pdf"] += 1
-                            file_status = "not_pdf"
-                    sleep_fn(REQUEST_SLEEP)
-                if con is not None:
-                    sha = catalog.sha256_file(dest) if file_status == "saved" else None
-                    pdf_rel = f"stock_reports/{dest.parent.name}/{dest.name}" if file_status == "saved" else None
-                    doc_id, created = catalog.upsert_document(
-                        con, document_type="company", title=r["title"],
-                        broker=sanitize(r["brokerName"]), published_date=r["writeDate"],
-                        pdf_path=pdf_rel, sha256=sha, pdf_key=pkey,
-                        file_status=file_status)
-                    stats["catalog_new" if created else "catalog_dup"] += 1
-                    if file_status == "saved" and not created:
-                        # 기존 문서가 not_pdf/failed였으면 upsert가 file_status를 안 바꾸므로 직접 승격.
-                        try:
-                            con.execute(
-                                "UPDATE report_documents SET file_status = 'saved', "
-                                "pdf_path = ?, sha256 = ? "
-                                "WHERE document_id = ? AND file_status <> 'saved'",
-                                (pdf_rel, sha, doc_id),
-                            )
-                        except sqlite3.IntegrityError:
-                            print(f"[naver_research] sha256 충돌로 file_status 승격 생략: doc={doc_id}")
-                    catalog.upsert_source(
-                        con, source="naver_mobile", source_report_id=sid,
-                        document_id=doc_id,
-                        list_url=LIST_URL.format(page=1, size=100),
-                        detail_url=DETAIL_URL.format(rid=r["researchId"]),
-                        pdf_url=url, run_id=run_id)
-                    catalog.upsert_document_stock(
-                        con, document_id=doc_id, stock_code=r["itemCode"],
-                        relation_type="primary", method="naver_itemcode")
-                    con.commit()
+            _collect_loop(reports, "company", out_dir,
+                          detail_fetch=detail_fetch, pdf_fetch=pdf_fetch,
+                          sleep_fn=sleep_fn, con=con, storage=storage,
+                          catalog=catalog, run_id=run_id, stats=stats,
+                          is_company=True)
         except Exception as exc:
             if con is not None:
-                con.execute(
-                    "UPDATE report_collection_runs SET finished_at = ?, status = 'error', "
-                    "stop_reason = ? WHERE run_id = ?",
-                    (_utcnow(), str(exc)[:200], run_id),
-                )
-                con.commit()
+                _fail_run_row(con, run_id, exc)
             raise
         if con is not None:
-            con.execute(
-                "UPDATE report_collection_runs SET finished_at = ?, status = ?, "
-                "pages_fetched = ?, rows_listed = ?, new_docs = ?, dup_docs = ?, "
-                "downloaded = ?, failed = ?, no_pdf = ?, stop_reason = ?, last_page = ? "
-                "WHERE run_id = ?",
-                (_utcnow(),
-                 "partial" if listing["stop_reason"] == "max_pages" else "completed",
-                 listing["pages_fetched"], listing["rows_listed"],
-                 stats["catalog_new"], stats["catalog_dup"], stats["downloaded"],
-                 stats["failed"], stats["no_pdf"], listing["stop_reason"],
-                 listing["last_page"], run_id),
-            )
-            con.commit()
+            _finish_run_row(con, run_id, listing, stats)
     return stats
 
 
 def run_sector(date_kst, category, out_dir=SECTOR_EXPORT_BASE, *, list_fetch=_urlopen,
                detail_fetch=_urlopen, pdf_fetch=_urlopen, sleep_fn=time.sleep,
-               facts_db, lookback_days=LOOKBACK_DAYS) -> dict:
+               facts_db, lookback_days=LOOKBACK_DAYS, names=None) -> dict:
     """섹터/시황 카테고리(industry/market/invest/economy) 수집. run()과 같은 규칙.
 
-    카탈로그(report_documents/report_sources)가 유일한 기록처. 분석 경계(설계 §4):
-    report_api_facts/report_document_stocks에는 절대 쓰지 않는다.
+    카탈로그(report_documents/report_sources/document_stocks rule_v1)가 기록처.
+    분석 경계(설계 §4): report_api_facts/report_facts/report_estimates에는 절대 쓰지 않는다.
+    names: (code_to_name, name_to_code) 주입(테스트용). None이면 load_names() 1회.
     """
     if category not in SECTOR_CATEGORIES:
         raise ValueError(f"sector category 아님: {category!r}")
+    link_mod = _load_sector_link()
+    if names is None:
+        names = link_mod.load_names()
     date_to = date_kst
     date_from = (date.fromisoformat(date_kst) - timedelta(days=lookback_days - 1)).isoformat()
     reports, listing = list_reports(date_from, date_to, fetch_fn=list_fetch, category=category)
     stats = {"listed": len(reports), "downloaded": 0, "skipped_exists": 0, "no_pdf": 0,
              "facts_saved": 0, "skipped_known": 0, "not_pdf": 0, "failed": 0,
-             "catalog_new": 0, "catalog_dup": 0, "stop_reason": listing["stop_reason"]}
+             "catalog_new": 0, "catalog_dup": 0, "stop_reason": listing["stop_reason"],
+             "linked": 0}
     storage = _load_storage()
     catalog = _load_catalog()
     storage.init_db(facts_db)
     with storage.connect_rw(facts_db) as con:
         catalog.init_catalog(con)
-        cur = con.execute(
-            "INSERT INTO report_collection_runs "
-            "(source, category, date_from, date_to, started_at, status) "
-            "VALUES ('naver_mobile', ?, ?, ?, ?, 'running')",
-            (category, date_from, date_to, _utcnow()),
-        )
-        run_id = cur.lastrowid
-        con.commit()
+        run_id = _insert_run_row(con, category, date_from, date_to)
         try:
-            for r in reports:
-                sid = f"{category}:{r['researchId']}"
-                known = con.execute(
-                    "SELECT document_id FROM report_sources "
-                    "WHERE source = 'naver_mobile' AND source_report_id = ?",
-                    (sid,),
-                ).fetchone()
-                if known is not None:
-                    frow = con.execute(
-                        "SELECT file_status FROM report_documents WHERE document_id = ?",
-                        (known[0],),
-                    ).fetchone()
-                    if frow is not None and frow[0] == "saved":
-                        catalog.upsert_source(
-                            con, source="naver_mobile", source_report_id=sid,
-                            document_id=known[0], run_id=run_id)
-                        stats["skipped_known"] += 1
-                        con.commit()
-                        continue
-                detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch, category=category)
-                url = str(detail.get("attachUrl", "") or "")
-                if not url:
-                    stats["no_pdf"] += 1
-                    continue
-                pkey = pdf_key(url)
-                dest = out_dir / category / f"{r['writeDate']}_{sanitize(r['brokerName'])}_{pkey}.pdf"
-                if dest.exists():
-                    stats["skipped_exists"] += 1
-                    file_status = "saved"
-                else:
-                    try:
-                        ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
-                    except Exception:
-                        file_status = "failed"
-                        stats["failed"] += 1
-                    else:
-                        if ok:
-                            stats["downloaded"] += 1
-                            file_status = "saved"
-                        else:
-                            # download_pdf False = 응답이 %PDF 아님
-                            stats["not_pdf"] += 1
-                            file_status = "not_pdf"
-                    sleep_fn(REQUEST_SLEEP)
-                sha = catalog.sha256_file(dest) if file_status == "saved" else None
-                pdf_rel = f"sector_reports/{category}/{dest.name}" if file_status == "saved" else None
-                doc_id, created = catalog.upsert_document(
-                    con, document_type=category, title=r["title"],
-                    broker=sanitize(r["brokerName"]), published_date=r["writeDate"],
-                    pdf_path=pdf_rel, sha256=sha, pdf_key=pkey,
-                    file_status=file_status)
-                stats["catalog_new" if created else "catalog_dup"] += 1
-                if file_status == "saved" and not created:
-                    # 기존 문서가 not_pdf/failed였으면 upsert가 file_status를 안 바꾸므로 직접 승격.
-                    try:
-                        con.execute(
-                            "UPDATE report_documents SET file_status = 'saved', "
-                            "pdf_path = ?, sha256 = ? "
-                            "WHERE document_id = ? AND file_status <> 'saved'",
-                            (pdf_rel, sha, doc_id),
-                        )
-                    except sqlite3.IntegrityError:
-                        print(f"[naver_research] sha256 충돌로 file_status 승격 생략: doc={doc_id}")
-                catalog.upsert_source(
-                    con, source="naver_mobile", source_report_id=sid,
-                    document_id=doc_id,
-                    list_url=CAT_LIST_URL.format(category=category, page=1, size=100),
-                    detail_url=CAT_DETAIL_URL.format(category=category, rid=r["researchId"]),
-                    pdf_url=url, run_id=run_id)
-                con.commit()
+            _collect_loop(reports, category, out_dir,
+                          detail_fetch=detail_fetch, pdf_fetch=pdf_fetch,
+                          sleep_fn=sleep_fn, con=con, storage=storage,
+                          catalog=catalog, run_id=run_id, stats=stats,
+                          is_company=False, link_mod=link_mod, names=names)
         except Exception as exc:
-            con.execute(
-                "UPDATE report_collection_runs SET finished_at = ?, status = 'error', "
-                "stop_reason = ? WHERE run_id = ?",
-                (_utcnow(), str(exc)[:200], run_id),
-            )
-            con.commit()
+            _fail_run_row(con, run_id, exc)
             raise
-        con.execute(
-            "UPDATE report_collection_runs SET finished_at = ?, status = ?, "
-            "pages_fetched = ?, rows_listed = ?, new_docs = ?, dup_docs = ?, "
-            "downloaded = ?, failed = ?, no_pdf = ?, stop_reason = ?, last_page = ? "
-            "WHERE run_id = ?",
-            (_utcnow(),
-             "partial" if listing["stop_reason"] == "max_pages" else "completed",
-             listing["pages_fetched"], listing["rows_listed"],
-             stats["catalog_new"], stats["catalog_dup"], stats["downloaded"],
-             stats["failed"], stats["no_pdf"], listing["stop_reason"],
-             listing["last_page"], run_id),
-        )
-        con.commit()
+        _finish_run_row(con, run_id, listing, stats)
     return stats
 
 
@@ -588,7 +575,7 @@ def main() -> None:
                   f"downloaded={sstats['downloaded']} skipped_known={sstats['skipped_known']} "
                   f"skipped={sstats['skipped_exists']} no_pdf={sstats['no_pdf']} "
                   f"not_pdf={sstats['not_pdf']} failed={sstats['failed']} "
-                  f"stop_reason={sstats['stop_reason']}")
+                  f"linked={sstats['linked']} stop_reason={sstats['stop_reason']}")
             if sstats["stop_reason"] == "max_pages":
                 partials.append(cat)
         if partials:
