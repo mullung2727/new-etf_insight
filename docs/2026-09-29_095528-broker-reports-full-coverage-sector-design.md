@@ -54,7 +54,7 @@
 
 **논리 모델** (확정: 기존 `etl/db/report_metrics.sqlite3` **같은 파일**에 아래 4개 테이블 추가. 별도 DB 파일 만들지 않음. 기존 3개 테이블 스키마는 변경하지 않음):
 
-- `report_documents`: 내부 `document_id`, `document_type`(company/sector/industry/market(시황·전략·경제, §8-1)/unknown), 제목, 증권사, 발행일, PDF 상대경로, 내용 해시, 원본 저장/열람 상태, 파싱 상태, **`pdf_key`(nullable, UNIQUE)**. `unknown`도 버리지 말고 검토 대상으로 둔다.
+- `report_documents`: 내부 `document_id`, `document_type`(company(종목)/industry(산업·섹터)/market(시황)/invest(투자전략)/economy(경제)/unknown — 네이버 카테고리와 1:1, `catalog.py` CHECK 제약과 동일. 별도 `sector` 값은 없다, §8-1), 제목, 증권사, 발행일, PDF 상대경로, 내용 해시, 원본 저장/열람 상태, 파싱 상태, **`pdf_key`(nullable, UNIQUE)**. `unknown`도 버리지 말고 검토 대상으로 둔다.
   - **기존 테이블과의 연결:** 네이버 출처 문서는 `pdf_key`를 채우고, 기존 `report_facts`/`report_api_facts`/`report_estimates`는 `pdf_key`로 조인한다(1:1). 기존 테이블에 `document_id` 컬럼을 추가하지 않는다. 네이버 섹터·시황 문서도 `pdf_key`는 채우지만(§6-1) `document_type != company`이므로 기존 테이블에 행을 만들지 않는다. 기존 테이블 적재 여부는 `pdf_key` 유무가 아니라 `document_type`으로 가른다.
   - **1:1 예외 (2026-09-29 실측):** 네이버가 같은 PDF 바이트를 다른 날짜·다른 `pdf_key`로 재게시한 사례 14건(기존 2,392파일 중). 해시 기준으로 문서는 1개로 합쳐지고 `report_documents.pdf_key`에는 첫 키만 남는다. 따라서 **`pdf_key` → 문서 조회는 `report_documents.pdf_key` 다음에 `report_sources`(URL/경로에 키 포함)까지 본다.** 조회 코드 작성 시(§6-6) 적용.
 - `report_sources`: `(source, source_report_id)` 유일 키 + `document_id` 외래키, 외부 URL들, 발견 시각/상태. 여러 출처가 같은 PDF에 연결돼도 **원본 문서는 하나**만 둔다. 기존 네이버 `researchId`와 증권사 자체 ID는 전역 유일 키로 혼용하지 않는다.
