@@ -15,7 +15,8 @@ input=$(cat)
 cwd=$(printf '%s' "$input" | sed -nE 's#.*"cwd" *: *"([^"]*)".*#\1#p')
 if printf '%s' "$input" | grep -Eq 'uv run( +-[^ ]+( +[^- ][^ ]*)?)* +python' \
   && ! printf '%s' "$cwd" | grep -Eq '[/\\]etl[/\\]*$' \
-  && ! printf '%s' "$input" | grep -Eq '(cd +[^ ;&|]*etl[/\\]*( |;|&|$)|--project[ =][^ ]*etl)'; then
+  && ! printf '%s' "$input" | grep -Eq '("command" *: *"|(&&|;|\|\|) *)cd +[^ ;&|"]*etl[/\\]*( |;|&|"|$)|uv run [^;&|"]*--project[ =][^ ;&|"]*etl[^;&|"]* python'; then
+  # cd 는 명령 맨 앞·구분자 뒤일 때만, --project 는 같은 uv run 구간일 때만 인정 (문자열 속 "cd etl" 우회 차단)
   printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"저장소 루트 uv run python = 시스템 Python(sklearn 등 없음). etl 환경 사용: `cd etl && PYTHONPATH=.. uv run python ...` (research 모듈은 -m research.private.xxx 형태)."}}'
   exit 0
 fi
