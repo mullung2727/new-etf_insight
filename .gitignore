@@ -90,3 +90,8 @@ research/rights_issue/out/
 
 # 유증 하락매수 전략 스킬 (비공개 전략 운영)
 .claude/skills/rights-dip-funds/
+
+
+# 실행 결과 JSON (재생성 가능). 코드·요약(RESULTS.md)은 exp/nxt-afterhours-cluster-closebet 브랜치에 커밋됨
+research/cluster_closebet/results/
+research/close_bet_afterhours/results_*.json
