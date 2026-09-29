@@ -81,6 +81,47 @@ class CatalogTest(unittest.TestCase):
                 "SELECT title FROM report_documents WHERE document_id=?",
                 (id3,)).fetchone()[0], "Old")
 
+    def test_init_adds_subcategory_to_legacy_db(self):
+        with storage.connect_rw(self.db) as con:
+            con.execute(
+                "CREATE TABLE report_documents ("
+                " document_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " document_type TEXT NOT NULL, title TEXT, broker TEXT NOT NULL,"
+                " published_date TEXT NOT NULL, pdf_path TEXT, sha256 TEXT UNIQUE,"
+                " pdf_key TEXT UNIQUE, file_status TEXT NOT NULL,"
+                " created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            )
+            con.execute(
+                "INSERT INTO report_documents (document_type, title, broker, "
+                "published_date, file_status, created_at, updated_at) "
+                "VALUES ('company','T','B','2026-09-01','saved','n','n')"
+            )
+            con.commit()
+            catalog.init_catalog(con)
+            cols = {r[1] for r in con.execute("PRAGMA table_info(report_documents)")}
+            self.assertIn("subcategory", cols)
+            self.assertEqual(con.execute(
+                "SELECT COUNT(*) FROM report_documents").fetchone()[0], 1)
+            catalog.init_catalog(con)
+            cols2 = {r[1] for r in con.execute("PRAGMA table_info(report_documents)")}
+            self.assertIn("subcategory", cols2)
+
+    def test_upsert_document_subcategory_fill(self):
+        with storage.connect_rw(self.db) as con:
+            catalog.init_catalog(con)
+            id1, _ = catalog.upsert_document(con, **_doc_kwargs(
+                subcategory=None, sha256="s1", pdf_key="k1"))
+            catalog.upsert_document(con, **_doc_kwargs(
+                subcategory="반도체", sha256="s1", pdf_key="k1"))
+            self.assertEqual(con.execute(
+                "SELECT subcategory FROM report_documents WHERE document_id=?",
+                (id1,)).fetchone()[0], "반도체")
+            catalog.upsert_document(con, **_doc_kwargs(
+                subcategory="에너지", sha256="s1", pdf_key="k1"))
+            self.assertEqual(con.execute(
+                "SELECT subcategory FROM report_documents WHERE document_id=?",
+                (id1,)).fetchone()[0], "반도체")
+
     def test_upsert_source(self):
         n1, n2 = "2026-01-01T00:00:00+00:00", "2026-02-02T00:00:00+00:00"
         with storage.connect_rw(self.db) as con:

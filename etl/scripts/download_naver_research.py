@@ -211,6 +211,11 @@ def list_reports(date_from, date_to, fetch_fn=_urlopen, page_size=100, max_pages
                 break
             rows_listed += 1       # 기간 안 전체 행(코드 없는 행 포함)
             if category != "company":
+                _cat = str(r.get("category", "") or "").strip()
+                _rc = str(r.get("researchCategory", "") or "").strip()
+                _sub = _cat or None
+                if _sub is not None and _rc and _sub == _rc:
+                    _sub = None
                 out.append({
                     "researchId": r["researchId"],
                     "itemCode": "",
@@ -218,6 +223,7 @@ def list_reports(date_from, date_to, fetch_fn=_urlopen, page_size=100, max_pages
                     "brokerName": str(r.get("brokerName", "") or "").strip(),
                     "title": str(r.get("title", "") or "").strip(),
                     "writeDate": wd,
+                    "subcategory": _sub,
                 })
                 continue
             code = str(r.get("itemCode", "") or "").strip()
@@ -302,7 +308,7 @@ def _finish_run_row(con, run_id, listing, stats) -> None:
         "downloaded = ?, failed = ?, no_pdf = ?, stop_reason = ?, last_page = ? "
         "WHERE run_id = ?",
         (_utcnow(),
-         "partial" if listing["stop_reason"] == "max_pages" else "completed",
+         "partial" if listing["stop_reason"] == "max_pages" or stats.get("detail_failed") else "completed",
          listing["pages_fetched"], listing["rows_listed"],
          stats["catalog_new"], stats["catalog_dup"], stats["downloaded"],
          stats["failed"], stats["no_pdf"], listing["stop_reason"],
@@ -383,7 +389,15 @@ def _collect_loop(reports, category, out_dir, *, detail_fetch, pdf_fetch, sleep_
         if con is not None and _skip_if_known_saved(con, catalog, sid, run_id, stats):
             continue
         # 안정 키(pdf_key)는 attachUrl 에서만 나오므로 상세를 먼저 받는다.
-        detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch, category=category)
+        # 상세 1건 실패가 7일 창 나머지를 날리지 않게 리포트별로 잡는다. 출처 행을 안 남기므로
+        # 다음 실행에서 자동 재시도되고, 이번 실행은 partial 로 기록·알림(CodeRabbit PR #34).
+        try:
+            detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch, category=category)
+        except Exception as exc:
+            stats["failed"] += 1
+            stats["detail_failed"] = stats.get("detail_failed", 0) + 1
+            print(f"[naver_research:{category}] 상세 조회 실패 rid={r['researchId']}: {exc}")
+            continue
         url = str(detail.get("attachUrl", "") or "")
         if not url:
             stats["no_pdf"] += 1
@@ -424,6 +438,7 @@ def _collect_loop(reports, category, out_dir, *, detail_fetch, pdf_fetch, sleep_
             detail_url = CAT_DETAIL_URL.format(category=category, rid=r["researchId"])
         doc_id, created = catalog.upsert_document(
             con, document_type="company" if is_company else category, title=r["title"],
+            subcategory=r.get("subcategory") or None,
             broker=sanitize(r["brokerName"]), published_date=r["writeDate"],
             pdf_path=pdf_rel, sha256=sha, pdf_key=pkey,
             file_status=file_status)
@@ -569,6 +584,7 @@ def main() -> None:
               f"facts_saved={stats['facts_saved']} skipped_known={stats['skipped_known']} "
               f"not_pdf={stats['not_pdf']} failed={stats['failed']} stop_reason={stats['stop_reason']}")
         partials = ["company"] if stats["stop_reason"] == "max_pages" else []
+        detail_failed = {"company": stats.get("detail_failed", 0)}
         for cat in SECTOR_CATEGORIES:
             sstats = run_sector(args.date, cat, facts_db=storage.DEFAULT_DB)
             print(f"[naver_research:{cat}] {args.date} listed={sstats['listed']} "
@@ -578,9 +594,15 @@ def main() -> None:
                   f"linked={sstats['linked']} stop_reason={sstats['stop_reason']}")
             if sstats["stop_reason"] == "max_pages":
                 partials.append(cat)
+            detail_failed[cat] = sstats.get("detail_failed", 0)
         if partials:
             print(f"[naver_research] PARTIAL: 목록 페이지 상한 도달({','.join(partials)}) — 기간 앞부분 누락 가능",
                   file=sys.stderr)
+        failed_cats = {k: v for k, v in detail_failed.items() if v}
+        if failed_cats:
+            print(f"[naver_research] PARTIAL: 상세 조회 실패 {failed_cats} — 다음 실행에서 재시도",
+                  file=sys.stderr)
+        if partials or failed_cats:
             sys.exit(3)
     else:
         parser.error("--date 또는 --stock 중 하나 필요")

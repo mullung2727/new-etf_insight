@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS report_documents (
   document_id INTEGER PRIMARY KEY AUTOINCREMENT,
   document_type TEXT NOT NULL CHECK (document_type IN ('company','industry','market','invest','economy','unknown')),
   title TEXT,
+  subcategory TEXT,
   broker TEXT NOT NULL,
   published_date TEXT NOT NULL,
   pdf_path TEXT,
@@ -79,6 +80,9 @@ def _utcnow() -> str:
 def init_catalog(con: sqlite3.Connection) -> None:
     """카탈로그 4개 테이블 생성. 재실행 멱등."""
     con.executescript(_CATALOG_SCHEMA)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(report_documents)")}
+    if "subcategory" not in cols:
+        con.execute("ALTER TABLE report_documents ADD COLUMN subcategory TEXT")
 
 
 def sha256_file(path: Path) -> str:
@@ -95,6 +99,7 @@ def upsert_document(
     *,
     document_type: str,
     title: str | None = None,
+    subcategory: str | None = None,
     broker: str,
     published_date: str,
     pdf_path: str | None = None,
@@ -106,40 +111,44 @@ def upsert_document(
     """문서 upsert → (document_id, created).
 
     찾기 순서: sha256(None 아니면) → pdf_key(None 아니면).
-    있으면 updated_at만 갱신(다른 컬럼 유지). 단 기존 title이 NULL/빈값이고
-    새 title이 있으면 title만 채운다.
+    있으면 updated_at만 갱신(다른 컬럼 유지). 단 기존 title/subcategory가
+    NULL/빈값이고 새 값이 있으면 해당 컬럼만 채운다.
     """
     now = now or _utcnow()
     row = None
     if sha256 is not None:
         row = con.execute(
-            "SELECT document_id, title FROM report_documents WHERE sha256 = ?",
+            "SELECT document_id, title, subcategory FROM report_documents WHERE sha256 = ?",
             (sha256,),
         ).fetchone()
     if row is None and pdf_key is not None:
         row = con.execute(
-            "SELECT document_id, title FROM report_documents WHERE pdf_key = ?",
+            "SELECT document_id, title, subcategory FROM report_documents WHERE pdf_key = ?",
             (pdf_key,),
         ).fetchone()
     if row is not None:
-        doc_id, existing_title = row[0], row[1]
+        doc_id, existing_title, existing_sub = row[0], row[1], row[2]
+        sets: list[str] = []
+        args: list[str] = []
         if (existing_title is None or existing_title == "") and title:
-            con.execute(
-                "UPDATE report_documents SET title = ?, updated_at = ? WHERE document_id = ?",
-                (title, now, doc_id),
-            )
-        else:
-            con.execute(
-                "UPDATE report_documents SET updated_at = ? WHERE document_id = ?",
-                (now, doc_id),
-            )
+            sets.append("title = ?")
+            args.append(title)
+        if (existing_sub is None or existing_sub == "") and subcategory:
+            sets.append("subcategory = ?")
+            args.append(subcategory)
+        sets.append("updated_at = ?")
+        args.extend([now, doc_id])
+        con.execute(
+            f"UPDATE report_documents SET {', '.join(sets)} WHERE document_id = ?",
+            tuple(args),
+        )
         return doc_id, False
     cur = con.execute(
-        "INSERT INTO report_documents (document_type, title, broker, published_date, "
-        "pdf_path, sha256, pdf_key, file_status, created_at, updated_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
-        (document_type, title, broker, published_date, pdf_path, sha256,
-         pdf_key, file_status, now, now),
+        "INSERT INTO report_documents (document_type, title, subcategory, broker, "
+        "published_date, pdf_path, sha256, pdf_key, file_status, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (document_type, title, subcategory, broker, published_date, pdf_path,
+         sha256, pdf_key, file_status, now, now),
     )
     return cur.lastrowid, True
 
