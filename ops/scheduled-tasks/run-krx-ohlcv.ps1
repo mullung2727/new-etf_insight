@@ -69,7 +69,9 @@ print(
 
   if ($fetched -gt 0) {
     Send-Report $report
-  } elseif ($isFinal -and $hasYday -ne "1" -and $now.AddDays(-1).DayOfWeek -notin @("Saturday", "Sunday")) {
+  }
+  # 성공 보고와 따로 판단 — 옛 누락일을 채운 실행이어도 전일분이 없으면 경고해야 한다 (CodeRabbit PR #34)
+  if ($isFinal -and $hasYday -ne "1" -and $now.AddDays(-1).DayOfWeek -notin @("Saturday", "Sunday")) {
     # 마지막 시도까지 전일분 없음 — 휴장이면 무시해도 되고, 아니면 수동 적재 필요
     $tail = ($build -split "`n" | Where-Object { $_ -match "fetch failed|KRX empty|retry" }) -join "`n"
     Send-Report "[KRX OHLCV] $yday 일봉 없음 (08:30 마지막 시도) — 휴장이 아니면 수동 적재 필요`n최신 적재일 $latest`n$tail`nlog: $log"
