@@ -53,10 +53,39 @@ class TestTradingCalendar(unittest.TestCase):
 class TestFetchDay(unittest.TestCase):
     def _resp(self, json_body):
         resp = MagicMock()
+        resp.status_code = 200
         resp.raise_for_status = MagicMock()
         resp.json.return_value = json_body
         resp.text = str(json_body)
         return resp
+
+    def test_retries_timeout_then_succeeds(self):
+        ok = self._resp({"OutBlock_1": []})
+        session = MagicMock()
+        session.get.side_effect = [requests.ReadTimeout("slow"), ok, ok]
+        with patch("scripts.build_krx_ohlcv.time.sleep") as slept:
+            self.assertEqual(fetch_day("20250102", "k", session=session), [])
+        self.assertEqual(session.get.call_count, 3)   # KOSPI 2번(1번 실패) + KOSDAQ 1번
+        self.assertIn(30, [c.args[0] for c in slept.call_args_list])
+
+    def test_gives_up_after_three_timeouts(self):
+        session = MagicMock()
+        session.get.side_effect = requests.ReadTimeout("down")
+        with patch("scripts.build_krx_ohlcv.time.sleep"):
+            with self.assertRaises(requests.ReadTimeout):
+                fetch_day("20250102", "k", session=session)
+        self.assertEqual(session.get.call_count, 3)
+
+    def test_4xx_not_retried(self):
+        bad = self._resp({})
+        bad.status_code = 401
+        bad.raise_for_status.side_effect = requests.HTTPError("401")
+        session = MagicMock()
+        session.get.return_value = bad
+        with patch("scripts.build_krx_ohlcv.time.sleep"):
+            with self.assertRaises(requests.HTTPError):
+                fetch_day("20250102", "k", session=session)
+        self.assertEqual(session.get.call_count, 1)
 
     def test_missing_outblock_raises(self):
         session = MagicMock()
