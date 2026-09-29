@@ -293,6 +293,8 @@ def main() -> None:
         print(f"[naver_research] stock={args.stock}({name}) since={args.since} until={args.until} "
               f"listed={stats['listed']} downloaded={stats['downloaded']} "
               f"skipped={stats['skipped_exists']} no_pdf={stats['no_pdf']}")
+        if stats["listed"] == 0:
+            print("[naver_research] 경고: 원천 목록 0건 — finance.naver.com 종목별 목록 주소 이동으로 원천 미지원일 수 있음", file=sys.stderr)
     elif args.date:
         storage = _load_storage()
         stats = run(args.date, out_dir=out, facts_db=storage.DEFAULT_DB)
