@@ -30,6 +30,8 @@ import download_naver_research as dnr  # noqa: E402
 _FACTS_DB = Path(__file__).resolve().parents[2] / "etl" / "db" / "report_metrics.sqlite3"
 _CODE_RE = re.compile(r"^\d{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DOC_TYPES = ("company", "industry", "market", "invest", "economy", "unknown")
+_DEFAULT_SECTOR_TYPES = ("industry", "market", "invest", "economy")
 
 router = APIRouter(prefix="/research", tags=["research"])
 
@@ -50,6 +52,12 @@ class ReportItem(BaseModel):
     writeDate: str
     downloaded: bool
     pdfKey: str
+    documentId: int
+    documentType: str
+    relationType: str
+    pageFrom: int | None
+    pageTo: int | None
+    subcategory: str | None = None
 
 
 class ReportsResponse(BaseModel):
@@ -58,6 +66,34 @@ class ReportsResponse(BaseModel):
     total: int
     already: int
     reports: list[ReportItem]
+
+
+class PrimaryStockItem(BaseModel):
+    code: str
+    name: str
+    pageFrom: int | None
+    pageTo: int | None
+
+
+class DocumentItem(BaseModel):
+    documentId: int
+    documentType: str
+    subcategory: str | None = None
+    title: str
+    brokerName: str
+    publishedDate: str
+    primaryStocks: list[PrimaryStockItem]
+
+
+class DocumentsResponse(BaseModel):
+    total: int
+    items: list[DocumentItem]
+
+
+class DocumentsFiltersResponse(BaseModel):
+    brokers: list[str]
+    subcategories: list[str]
+    types: list[str]
 
 
 class DownloadRequest(BaseModel):
@@ -79,13 +115,31 @@ class JobStatus(BaseModel):
     error: str | None = None
 
 
-def _resolve_name(code: str) -> str:
+def _resolve_names(codes) -> dict[str, str]:
+    """여러 종목코드 → 종목명 한 번에 조회. 실패 시 코드 그대로."""
+    uniq = list(dict.fromkeys(codes))
+    if not uniq:
+        return {}
     try:
         with krx_cursor() as con:
-            row = con.execute("SELECT name FROM stock_names WHERE code=?", [code]).fetchone()
-        return row[0] if row else code
+            rows = con.execute(
+                f"SELECT code, name FROM stock_names WHERE code IN "
+                f"({','.join('?' for _ in uniq)})",
+                uniq,
+            ).fetchall()
+        mapping = {c: n for c, n in rows}
+        return {c: mapping.get(c, c) for c in uniq}
     except Exception:
-        return code
+        return {c: c for c in uniq}
+
+
+def _resolve_name(code: str) -> str:
+    return _resolve_names([code])[code]
+
+
+def _exports_base() -> Path:
+    # 테스트가 dnr.DEFAULT_EXPORT_BASE를 monkeypatch하므로 매번 동적 계산.
+    return dnr.DEFAULT_EXPORT_BASE.parent
 
 
 def _dest_for(report: dict) -> Path:
@@ -130,12 +184,9 @@ def _split_broker_key(rest: str, known_keys) -> tuple[str, str] | None:
     return (parts[0], parts[1]) if len(parts) == 2 else None
 
 
-@router.get("/stock/{code}/reports", response_model=ReportsResponse, operation_id="research_stock_reports")
-def stock_reports(code: str, since: str | None = None, until: str | None = None,
-                  name: str | None = None) -> ReportsResponse:
-    """로컬 저장 PDF 목록(원천 조회 없음)."""
-    if not _CODE_RE.match(code):
-        raise HTTPException(status_code=422, detail="종목코드 6자리")
+def _scan_local_reports(code: str, since: str | None, until: str | None,
+                        name: str | None) -> ReportsResponse:
+    """카탈로그 없을 때 폴백: 로컬 저장 PDF 목록(원천 조회 없음)."""
     facts: dict[str, tuple[str | None, str | None]] = {}
     if _FACTS_DB.exists():
         try:
@@ -171,13 +222,207 @@ def stock_reports(code: str, since: str | None = None, until: str | None = None,
             items.append(ReportItem(
                 researchId=rid or key, brokerName=broker,
                 title=title or "", writeDate=write_date, downloaded=True,
-                pdfKey=key,
+                pdfKey=key, documentId=0, documentType="company",
+                relationType="primary", pageFrom=None, pageTo=None,
+                subcategory=None,
             ))
     items.sort(key=lambda i: i.brokerName)
     items.sort(key=lambda i: i.writeDate, reverse=True)
     name = name or _resolve_name(code)
     return ReportsResponse(code=code, name=name, total=len(items), already=len(items),
                            reports=items)
+
+
+def _catalog_stock_reports(code: str, since: str | None, until: str | None,
+                           name: str | None, include_mentions: bool) -> ReportsResponse:
+    """카탈로그 기반 종목 탭. 카탈로그 테이블 없으면 OperationalError(폴백용)."""
+    con = sqlite3.connect(f"file:{_FACTS_DB}?mode=ro", uri=True)
+    try:
+        q = ("SELECT d.document_id, d.document_type, d.subcategory, d.title, "
+             "d.broker, d.published_date, d.pdf_key, "
+             "s.relation_type, s.page_from, s.page_to "
+             "FROM report_document_stocks s "
+             "JOIN report_documents d USING(document_id) "
+             "WHERE s.stock_code=? AND d.file_status='saved'")
+        args: list[str] = [code]
+        if not include_mentions:
+            q += " AND s.relation_type='primary'"
+        if since:
+            q += " AND d.published_date >= ?"
+            args.append(since)
+        if until:
+            q += " AND d.published_date <= ?"
+            args.append(until)
+        rows = con.execute(q, args).fetchall()
+        try:
+            fact_rows = con.execute(
+                "SELECT pdf_key, research_id, title FROM report_api_facts "
+                "WHERE stock_code=?",
+                (code,),
+            ).fetchall()
+            facts = {k: (rid, t) for k, rid, t in fact_rows}
+        except sqlite3.OperationalError:
+            facts = {}
+    finally:
+        con.close()
+    items: list[ReportItem] = []
+    for doc_id, dtype, sub, title, broker, pub, pkey, rel, pf, pt in rows:
+        if dtype == "company":
+            rid, ftitle = facts.get(pkey, (None, None)) if pkey else (None, None)
+            research_id = rid or pkey or f"doc-{doc_id}"
+            disp_title = title or ftitle or ""
+        else:
+            research_id = f"doc-{doc_id}"
+            disp_title = title or ""
+        items.append(ReportItem(
+            researchId=research_id, brokerName=broker, title=disp_title,
+            writeDate=pub, downloaded=True, pdfKey=pkey or "",
+            documentId=doc_id, documentType=dtype, relationType=rel,
+            pageFrom=pf, pageTo=pt, subcategory=sub,
+        ))
+    items.sort(key=lambda i: i.brokerName)
+    items.sort(key=lambda i: 0 if i.documentType == "company" else 1)
+    items.sort(key=lambda i: i.writeDate, reverse=True)
+    name = name or _resolve_name(code)
+    return ReportsResponse(code=code, name=name, total=len(items), already=len(items),
+                           reports=items)
+
+
+@router.get("/stock/{code}/reports", response_model=ReportsResponse, operation_id="research_stock_reports")
+def stock_reports(code: str, since: str | None = None, until: str | None = None,
+                  name: str | None = None,
+                  include_mentions: bool = False) -> ReportsResponse:
+    """로컬 카탈로그가 권위 소스. 카탈로그 없으면 로컬 파일 스캔으로 폴백."""
+    if not _CODE_RE.match(code):
+        raise HTTPException(status_code=422, detail="종목코드 6자리")
+    if _FACTS_DB.exists():
+        try:
+            return _catalog_stock_reports(code, since, until, name, include_mentions)
+        except sqlite3.OperationalError:
+            pass
+    return _scan_local_reports(code, since, until, name)
+
+
+@router.get("/documents/filters", response_model=DocumentsFiltersResponse,
+               operation_id="research_documents_filters")
+def documents_filters() -> DocumentsFiltersResponse:
+    """섹터 화면용 필터 값. 비-company saved 기준."""
+    if not _FACTS_DB.exists():
+        return DocumentsFiltersResponse(brokers=[], subcategories=[], types=[])
+    try:
+        con = sqlite3.connect(f"file:{_FACTS_DB}?mode=ro", uri=True)
+        try:
+            brokers = [r[0] for r in con.execute(
+                "SELECT DISTINCT broker FROM report_documents "
+                "WHERE document_type != 'company' AND file_status='saved' "
+                "ORDER BY broker").fetchall()]
+            subs = [r[0] for r in con.execute(
+                "SELECT DISTINCT subcategory FROM report_documents "
+                "WHERE document_type != 'company' AND file_status='saved' "
+                "AND subcategory IS NOT NULL AND subcategory != '' "
+                "ORDER BY subcategory").fetchall()]
+            types = [r[0] for r in con.execute(
+                "SELECT DISTINCT document_type FROM report_documents "
+                "WHERE document_type != 'company' AND file_status='saved' "
+                "ORDER BY document_type").fetchall()]
+        finally:
+            con.close()
+    except sqlite3.OperationalError:
+        return DocumentsFiltersResponse(brokers=[], subcategories=[], types=[])
+    return DocumentsFiltersResponse(brokers=brokers, subcategories=subs, types=types)
+
+
+@router.get("/documents", response_model=DocumentsResponse, operation_id="research_documents")
+def documents(types: str | None = None, broker: str | None = None,
+              subcategory: str | None = None, since: str | None = None,
+              until: str | None = None, q: str | None = None,
+              limit: int = Query(default=50, le=200, ge=1),
+              offset: int = Query(default=0, ge=0)) -> DocumentsResponse:
+    """섹터 전용 화면용 목록. 기본 company 제외."""
+    if types is None:
+        wanted = list(_DEFAULT_SECTOR_TYPES)
+    else:
+        wanted = [t.strip() for t in types.split(",") if t.strip()]
+        if not wanted or any(t not in _DOC_TYPES for t in wanted):
+            raise HTTPException(status_code=422, detail="types 값 오류")
+    if not _FACTS_DB.exists():
+        return DocumentsResponse(total=0, items=[])
+    where = "file_status='saved' AND document_type IN (%s)" % ",".join("?" for _ in wanted)
+    args: list[str] = list(wanted)
+    if broker:
+        where += " AND broker=?"
+        args.append(broker)
+    if subcategory:
+        where += " AND subcategory=?"
+        args.append(subcategory)
+    if since:
+        where += " AND published_date >= ?"
+        args.append(since)
+    if until:
+        where += " AND published_date <= ?"
+        args.append(until)
+    if q:
+        where += " AND title LIKE ?"
+        args.append(f"%{q}%")
+    try:
+        con = sqlite3.connect(f"file:{_FACTS_DB}?mode=ro", uri=True)
+        try:
+            total = con.execute(
+                f"SELECT COUNT(*) FROM report_documents WHERE {where}", args).fetchone()[0]
+            rows = con.execute(
+                "SELECT document_id, document_type, subcategory, title, broker, "
+                f"published_date FROM report_documents WHERE {where} "
+                "ORDER BY published_date DESC, document_id DESC LIMIT ? OFFSET ?",
+                [*args, limit, offset]).fetchall()
+            stocks_by_doc: dict[int, list[tuple]] = {}
+            if rows:
+                ids = [r[0] for r in rows]
+                srows = con.execute(
+                    "SELECT document_id, stock_code, page_from, page_to "
+                    "FROM report_document_stocks WHERE document_id IN (%s) "
+                    "AND relation_type='primary' "
+                    "ORDER BY document_id, page_from" % ",".join(
+                        "?" for _ in ids), ids).fetchall()
+                for did, sc, pf, pt in srows:
+                    stocks_by_doc.setdefault(did, []).append((sc, pf, pt))
+        finally:
+            con.close()
+    except sqlite3.OperationalError:
+        return DocumentsResponse(total=0, items=[])
+    all_codes = [sc for lst in stocks_by_doc.values() for sc, _, _ in lst]
+    names = _resolve_names(all_codes)
+    items = [DocumentItem(
+        documentId=did, documentType=dt, subcategory=sub, title=t or "",
+        brokerName=b, publishedDate=pd,
+        primaryStocks=[PrimaryStockItem(code=sc, name=names.get(sc, sc),
+                                        pageFrom=pf, pageTo=pt)
+                       for sc, pf, pt in stocks_by_doc.get(did, [])],
+    ) for did, dt, sub, t, b, pd in rows]
+    return DocumentsResponse(total=total, items=items)
+
+
+@router.get("/documents/{document_id}/pdf", operation_id="research_document_pdf")
+def document_pdf(document_id: int) -> FileResponse:
+    """카탈로그 pdf_path 기준 PDF 서빙. 경로탈출·없음 → 404."""
+    if not _FACTS_DB.exists():
+        raise HTTPException(status_code=404, detail="파일 없음")
+    try:
+        con = sqlite3.connect(f"file:{_FACTS_DB}?mode=ro", uri=True)
+        try:
+            row = con.execute(
+                "SELECT pdf_path FROM report_documents WHERE document_id=?",
+                (document_id,)).fetchone()
+        finally:
+            con.close()
+    except sqlite3.OperationalError:
+        raise HTTPException(status_code=404, detail="파일 없음")
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="파일 없음")
+    base = _exports_base().resolve()
+    target = (base / row[0]).resolve()
+    if not target.is_relative_to(base) or not target.is_file():
+        raise HTTPException(status_code=404, detail="파일 없음")
+    return FileResponse(target, media_type="application/pdf")
 
 
 @router.get("/stock/{code}/reports/{research_id}/pdf", operation_id="research_stock_report_pdf")

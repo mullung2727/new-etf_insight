@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from main import app
 from routers import research
 
+from report_metrics import catalog
+
 client = TestClient(app)
 
 
@@ -331,3 +333,196 @@ def test_max_3_concurrent(monkeypatch):
     r = client.post("/research/stock/000660/download", json={})
     assert r.status_code == 429
     research._JOBS.clear()
+
+
+# --- 카탈로그 기반 API (§5, §6-6) ---
+
+_NAMES = {"319660": "피에스케이", "031980": "피에스케이홀딩스", "005930": "삼성전자"}
+
+
+def _catalog_setup(monkeypatch, tmp_path):
+    db = tmp_path / "cat.sqlite3"
+    con = sqlite3.connect(db)
+    catalog.init_catalog(con)
+    con.execute("CREATE TABLE IF NOT EXISTS report_api_facts (pdf_key TEXT PRIMARY KEY,"
+                " research_id TEXT NOT NULL, stock_code TEXT NOT NULL, title TEXT)")
+    con.commit()
+    con.close()
+    monkeypatch.setattr(research, "_FACTS_DB", db)
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE",
+                        tmp_path / "exports" / "stock_reports")
+    monkeypatch.setattr(research, "_resolve_names",
+                        lambda codes: {c: _NAMES.get(c, c) for c in codes})
+    return db
+
+
+def _add_doc(db, dtype="company", title="T", broker="B", date="2026-09-29",
+             pkey="k", sha="s", status="saved", sub=None, pdf_path=None):
+    con = sqlite3.connect(db)
+    try:
+        doc_id, _ = catalog.upsert_document(
+            con, document_type=dtype, title=title, subcategory=sub,
+            broker=broker, published_date=date, pdf_path=pdf_path,
+            sha256=f"{sha}-{pkey}", pdf_key=pkey,
+            file_status=status)
+        con.commit()
+        return doc_id
+    finally:
+        con.close()
+
+
+def _link(db, doc_id, code, rel="primary", pf=None, pt=None):
+    con = sqlite3.connect(db)
+    try:
+        catalog.upsert_document_stock(
+            con, document_id=doc_id, stock_code=code,
+            relation_type=rel, method="test", page_from=pf, page_to=pt)
+        con.commit()
+    finally:
+        con.close()
+
+
+def _add_fact(db, pkey, rid, code, title):
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO report_api_facts (pdf_key, research_id, stock_code, title)"
+                " VALUES (?,?,?,?)", (pkey, rid, code, title))
+    con.commit()
+    con.close()
+
+
+def test_stock_reports_catalog_primary_and_mentions(monkeypatch, tmp_path):
+    db = _catalog_setup(monkeypatch, tmp_path)
+    c1 = _add_doc(db, dtype="company", title="컴퍼니T", broker="신한투자증권",
+                  date="2026-09-29", pkey="k1", pdf_path="stock_reports/x/k1.pdf")
+    _add_fact(db, "k1", "777", "319660", "팩트T")
+    _link(db, c1, "319660", "primary")
+    i1 = _add_doc(db, dtype="industry", title="섹터T", broker="A증권",
+                  date="2026-09-29", pkey="ik1", sub="반도체",
+                  pdf_path="sector_reports/industry/i1.pdf")
+    _link(db, i1, "319660", "primary", 34, 41)
+    m1 = _add_doc(db, dtype="market", title="시황T", broker="B증권",
+                  date="2026-09-28", pkey="mk1",
+                  pdf_path="sector_reports/market/m1.pdf")
+    _link(db, m1, "319660", "mention")
+
+    r = client.get("/research/stock/319660/reports", params={"name": "피에스케이"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["total"] == 2 and d["already"] == 2
+    first, second = d["reports"]
+    assert first["documentType"] == "company"  # 같은 날짜면 company 먼저
+    assert first["researchId"] == "777" and first["title"] == "컴퍼니T"
+    assert second["documentType"] == "industry"
+    assert second["researchId"] == f"doc-{i1}"
+    assert second["pageFrom"] == 34 and second["pageTo"] == 41
+    assert second["subcategory"] == "반도체"
+    assert second["relationType"] == "primary"
+
+    r2 = client.get("/research/stock/319660/reports",
+                    params={"name": "피에스케이", "include_mentions": "true"})
+    assert r2.json()["total"] == 3
+
+
+def test_stock_reports_other_code_not_mixed(monkeypatch, tmp_path):
+    db = _catalog_setup(monkeypatch, tmp_path)
+    h1 = _add_doc(db, dtype="company", title="홀딩스T", broker="X증권",
+                  date="2026-09-29", pkey="hk1")
+    _link(db, h1, "031980", "primary")
+    r = client.get("/research/stock/319660/reports", params={"name": "피에스케이"})
+    assert r.json()["total"] == 0
+    r2 = client.get("/research/stock/031980/reports", params={"name": "피에스케이홀딩스"})
+    assert r2.json()["total"] == 1
+
+
+def test_stock_reports_excludes_not_pdf(monkeypatch, tmp_path):
+    db = _catalog_setup(monkeypatch, tmp_path)
+    b1 = _add_doc(db, dtype="company", title="깨짐", broker="X증권",
+                  date="2026-09-29", pkey="bk1", status="not_pdf")
+    _link(db, b1, "319660", "primary")
+    g1 = _add_doc(db, dtype="company", title="정상", broker="Y증권",
+                  date="2026-09-29", pkey="gk1")
+    _link(db, g1, "319660", "primary")
+    d = client.get("/research/stock/319660/reports",
+                   params={"name": "피에스케이"}).json()
+    assert d["total"] == 1
+    assert d["reports"][0]["title"] == "정상"
+
+
+def test_documents_list_filters_and_primary_stocks(monkeypatch, tmp_path):
+    db = _catalog_setup(monkeypatch, tmp_path)
+    c1 = _add_doc(db, dtype="company", title="종목리포트", broker="C증권",
+                  date="2026-09-29", pkey="ck1")
+    _link(db, c1, "319660", "primary")
+    i1 = _add_doc(db, dtype="industry", title="반도체 전망", broker="A증권",
+                  date="2026-09-29", pkey="ik1", sub="반도체")
+    _link(db, i1, "319660", "primary", 34, 41)
+    _link(db, i1, "005930", "primary", 10, 12)
+    i2 = _add_doc(db, dtype="industry", title="에너지 동향", broker="B증권",
+                  date="2026-09-28", pkey="ik2", sub="에너지")
+    _link(db, i2, "031980", "primary", 5, 6)
+
+    d = client.get("/research/documents").json()
+    assert d["total"] == 2  # company 제외
+    d2 = client.get("/research/documents", params={"types": "industry"}).json()
+    assert d2["total"] == 2
+    d3 = client.get("/research/documents", params={"q": "반도체"}).json()
+    assert d3["total"] == 1 and d3["items"][0]["title"] == "반도체 전망"
+    d4 = client.get("/research/documents", params={"limit": "1"}).json()
+    assert d4["total"] == 2 and len(d4["items"]) == 1
+    first = d["items"][0]
+    assert first["documentType"] == "industry"
+    codes = [s["code"] for s in first["primaryStocks"]]
+    assert codes == ["005930", "319660"]  # page_from 오름차순
+    assert first["primaryStocks"][1]["name"] == "피에스케이"
+    assert first["primaryStocks"][1]["pageFrom"] == 34
+
+
+def test_documents_invalid_types_422(monkeypatch, tmp_path):
+    _catalog_setup(monkeypatch, tmp_path)
+    r = client.get("/research/documents", params={"types": "bogus"})
+    assert r.status_code == 422
+
+
+def test_document_pdf_ok_traversal_and_missing(monkeypatch, tmp_path):
+    db = _catalog_setup(monkeypatch, tmp_path)
+    base = tmp_path / "exports"
+    pdf = base / "sector_reports" / "industry" / "t.pdf"
+    pdf.parent.mkdir(parents=True, exist_ok=True)
+    pdf.write_bytes(b"%PDF-ok")
+    g1 = _add_doc(db, dtype="industry", title="T", broker="A증권",
+                  date="2026-09-29", pkey="gk1",
+                  pdf_path="sector_reports/industry/t.pdf")
+    r = client.get(f"/research/documents/{g1}/pdf")
+    assert r.status_code == 200 and r.content == b"%PDF-ok"
+    assert r.headers["content-type"] == "application/pdf"
+
+    e1 = _add_doc(db, dtype="industry", title="E", broker="A증권",
+                  date="2026-09-29", pkey="ek1", pdf_path="../../x")
+    assert client.get(f"/research/documents/{e1}/pdf").status_code == 404
+    assert client.get("/research/documents/999999/pdf").status_code == 404
+
+
+def test_documents_filters(monkeypatch, tmp_path):
+    db = _catalog_setup(monkeypatch, tmp_path)
+    _add_doc(db, dtype="industry", title="T1", broker="B증권",
+             date="2026-09-29", pkey="fk1", sub="반도체")
+    _add_doc(db, dtype="market", title="T2", broker="A증권",
+             date="2026-09-29", pkey="fk2")
+    _add_doc(db, dtype="company", title="T3", broker="C증권",
+             date="2026-09-29", pkey="fk3")
+    d = client.get("/research/documents/filters").json()
+    assert d["brokers"] == ["A증권", "B증권"]
+    assert d["subcategories"] == ["반도체"]
+    assert d["types"] == ["industry", "market"]
+
+
+def test_stock_reports_falls_back_when_no_catalog_db(monkeypatch, tmp_path):
+    _forbid_source(monkeypatch)
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    monkeypatch.setattr(research, "_FACTS_DB", tmp_path / "none.sqlite3")
+    _seed_local_reports(tmp_path)
+    d = client.get("/research/stock/319660/reports",
+                   params={"name": "피에스케이"}).json()
+    assert d["total"] == 2
+    assert d["reports"][0]["documentType"] == "company"
+    assert d["reports"][0]["documentId"] == 0
