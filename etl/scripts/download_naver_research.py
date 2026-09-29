@@ -33,6 +33,9 @@ if hasattr(sys.stdout, "reconfigure"):
 
 LIST_URL = "https://m.stock.naver.com/api/research/company?page={page}&pageSize={size}"
 DETAIL_URL = "https://m.stock.naver.com/api/research/company/{rid}"
+SECTOR_CATEGORIES = ("industry", "market", "invest", "economy")
+CAT_LIST_URL = "https://m.stock.naver.com/api/research/{category}?page={page}&pageSize={size}"
+CAT_DETAIL_URL = "https://m.stock.naver.com/api/research/{category}/{rid}"
 # 종목별 과거 리포트(데스크톱 리서치, 종목코드 필터, EUC-KR 서버렌더 HTML, PDF 직링크)
 STOCK_LIST_URL = (
     "https://finance.naver.com/research/company_list.naver"
@@ -52,6 +55,7 @@ FETCH_TIMEOUT = 30
 REQUEST_SLEEP = 0.4  # 예의상 요청 간 간격
 LOOKBACK_DAYS = 7  # 일일 배치 목록 재조회 창(오늘 포함 일수)
 DEFAULT_EXPORT_BASE = Path(__file__).resolve().parents[1] / "exports" / "stock_reports"
+SECTOR_EXPORT_BASE = Path(__file__).resolve().parents[1] / "exports" / "sector_reports"
 _ILLEGAL_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
 _CODE_RE = re.compile(r"^\d{6}$")
 
@@ -164,18 +168,25 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def list_reports(date_from, date_to, fetch_fn=_urlopen, page_size=100, max_pages=20) -> tuple[list[dict], dict]:
-    """기간([date_from, date_to], 양끝 포함) 종목분석 리포트 메타 목록.
+def list_reports(date_from, date_to, fetch_fn=_urlopen, page_size=100, max_pages=20,
+                 category="company") -> tuple[list[dict], dict]:
+    """기간([date_from, date_to], 양끝 포함) 리포트 메타 목록.
 
     날짜 desc 페이지네이션. date_from 이전을 만나면 중단(past_range), 빈 페이지를
     만나면 중단(empty_page), 끝까지 다 돌면 max_pages. 두 번째 반환값은 수집 메타.
+    category='company'면 종목분석(LIST_URL, 6자리 코드 필터). 그 외면 카테고리
+    목록(CAT_LIST_URL, 코드 필터 없이 기간 내 행 전부, itemCode/itemName="").
     """
     out: list[dict] = []
     rows_listed = 0
     pages_fetched = 0
     stop_reason = "max_pages"
     for page in range(1, max_pages + 1):
-        rows = json.loads(fetch_fn(LIST_URL.format(page=page, size=page_size)))
+        if category == "company":
+            url = LIST_URL.format(page=page, size=page_size)
+        else:
+            url = CAT_LIST_URL.format(category=category, page=page, size=page_size)
+        rows = json.loads(fetch_fn(url))
         pages_fetched = page
         if not rows:
             stop_reason = "empty_page"
@@ -190,6 +201,16 @@ def list_reports(date_from, date_to, fetch_fn=_urlopen, page_size=100, max_pages
                 stop_reason = "past_range"
                 break
             rows_listed += 1       # 기간 안 전체 행(코드 없는 행 포함)
+            if category != "company":
+                out.append({
+                    "researchId": r["researchId"],
+                    "itemCode": "",
+                    "itemName": "",
+                    "brokerName": str(r.get("brokerName", "") or "").strip(),
+                    "title": str(r.get("title", "") or "").strip(),
+                    "writeDate": wd,
+                })
+                continue
             code = str(r.get("itemCode", "") or "").strip()
             if not _CODE_RE.match(code):
                 continue           # 종목코드 없는 행(비종목 혼입) 제외
@@ -208,9 +229,13 @@ def list_reports(date_from, date_to, fetch_fn=_urlopen, page_size=100, max_pages
     return out, meta
 
 
-def fetch_detail(research_id, fetch_fn=_urlopen) -> dict:
+def fetch_detail(research_id, fetch_fn=_urlopen, category="company") -> dict:
     """상세 → researchContent (attachUrl/content/opinion/goalPrice 포함)."""
-    data = json.loads(fetch_fn(DETAIL_URL.format(rid=research_id)))
+    if category == "company":
+        url = DETAIL_URL.format(rid=research_id)
+    else:
+        url = CAT_DETAIL_URL.format(category=category, rid=research_id)
+    data = json.loads(fetch_fn(url))
     return data.get("researchContent", {}) or {}
 
 
@@ -388,6 +413,130 @@ def run(date_kst, out_dir=DEFAULT_EXPORT_BASE, *, list_fetch=_urlopen, detail_fe
     return stats
 
 
+def run_sector(date_kst, category, out_dir=SECTOR_EXPORT_BASE, *, list_fetch=_urlopen,
+               detail_fetch=_urlopen, pdf_fetch=_urlopen, sleep_fn=time.sleep,
+               facts_db, lookback_days=LOOKBACK_DAYS) -> dict:
+    """섹터/시황 카테고리(industry/market/invest/economy) 수집. run()과 같은 규칙.
+
+    카탈로그(report_documents/report_sources)가 유일한 기록처. 분석 경계(설계 §4):
+    report_api_facts/report_document_stocks에는 절대 쓰지 않는다.
+    """
+    if category not in SECTOR_CATEGORIES:
+        raise ValueError(f"sector category 아님: {category!r}")
+    date_to = date_kst
+    date_from = (date.fromisoformat(date_kst) - timedelta(days=lookback_days - 1)).isoformat()
+    reports, listing = list_reports(date_from, date_to, fetch_fn=list_fetch, category=category)
+    stats = {"listed": len(reports), "downloaded": 0, "skipped_exists": 0, "no_pdf": 0,
+             "facts_saved": 0, "skipped_known": 0, "not_pdf": 0, "failed": 0,
+             "catalog_new": 0, "catalog_dup": 0, "stop_reason": listing["stop_reason"]}
+    storage = _load_storage()
+    catalog = _load_catalog()
+    storage.init_db(facts_db)
+    with storage.connect_rw(facts_db) as con:
+        catalog.init_catalog(con)
+        cur = con.execute(
+            "INSERT INTO report_collection_runs "
+            "(source, category, date_from, date_to, started_at, status) "
+            "VALUES ('naver_mobile', ?, ?, ?, ?, 'running')",
+            (category, date_from, date_to, _utcnow()),
+        )
+        run_id = cur.lastrowid
+        con.commit()
+        try:
+            for r in reports:
+                sid = f"{category}:{r['researchId']}"
+                known = con.execute(
+                    "SELECT document_id FROM report_sources "
+                    "WHERE source = 'naver_mobile' AND source_report_id = ?",
+                    (sid,),
+                ).fetchone()
+                if known is not None:
+                    frow = con.execute(
+                        "SELECT file_status FROM report_documents WHERE document_id = ?",
+                        (known[0],),
+                    ).fetchone()
+                    if frow is not None and frow[0] == "saved":
+                        catalog.upsert_source(
+                            con, source="naver_mobile", source_report_id=sid,
+                            document_id=known[0], run_id=run_id)
+                        stats["skipped_known"] += 1
+                        con.commit()
+                        continue
+                detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch, category=category)
+                url = str(detail.get("attachUrl", "") or "")
+                if not url:
+                    stats["no_pdf"] += 1
+                    continue
+                pkey = pdf_key(url)
+                dest = out_dir / category / f"{r['writeDate']}_{sanitize(r['brokerName'])}_{pkey}.pdf"
+                if dest.exists():
+                    stats["skipped_exists"] += 1
+                    file_status = "saved"
+                else:
+                    try:
+                        ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
+                    except Exception:
+                        file_status = "failed"
+                        stats["failed"] += 1
+                    else:
+                        if ok:
+                            stats["downloaded"] += 1
+                            file_status = "saved"
+                        else:
+                            # download_pdf False = 응답이 %PDF 아님
+                            stats["not_pdf"] += 1
+                            file_status = "not_pdf"
+                    sleep_fn(REQUEST_SLEEP)
+                sha = catalog.sha256_file(dest) if file_status == "saved" else None
+                pdf_rel = f"sector_reports/{category}/{dest.name}" if file_status == "saved" else None
+                doc_id, created = catalog.upsert_document(
+                    con, document_type=category, title=r["title"],
+                    broker=sanitize(r["brokerName"]), published_date=r["writeDate"],
+                    pdf_path=pdf_rel, sha256=sha, pdf_key=pkey,
+                    file_status=file_status)
+                stats["catalog_new" if created else "catalog_dup"] += 1
+                if file_status == "saved" and not created:
+                    # 기존 문서가 not_pdf/failed였으면 upsert가 file_status를 안 바꾸므로 직접 승격.
+                    try:
+                        con.execute(
+                            "UPDATE report_documents SET file_status = 'saved', "
+                            "pdf_path = ?, sha256 = ? "
+                            "WHERE document_id = ? AND file_status <> 'saved'",
+                            (pdf_rel, sha, doc_id),
+                        )
+                    except sqlite3.IntegrityError:
+                        print(f"[naver_research] sha256 충돌로 file_status 승격 생략: doc={doc_id}")
+                catalog.upsert_source(
+                    con, source="naver_mobile", source_report_id=sid,
+                    document_id=doc_id,
+                    list_url=CAT_LIST_URL.format(category=category, page=1, size=100),
+                    detail_url=CAT_DETAIL_URL.format(category=category, rid=r["researchId"]),
+                    pdf_url=url, run_id=run_id)
+                con.commit()
+        except Exception as exc:
+            con.execute(
+                "UPDATE report_collection_runs SET finished_at = ?, status = 'error', "
+                "stop_reason = ? WHERE run_id = ?",
+                (_utcnow(), str(exc)[:200], run_id),
+            )
+            con.commit()
+            raise
+        con.execute(
+            "UPDATE report_collection_runs SET finished_at = ?, status = ?, "
+            "pages_fetched = ?, rows_listed = ?, new_docs = ?, dup_docs = ?, "
+            "downloaded = ?, failed = ?, no_pdf = ?, stop_reason = ?, last_page = ? "
+            "WHERE run_id = ?",
+            (_utcnow(),
+             "partial" if listing["stop_reason"] == "max_pages" else "completed",
+             listing["pages_fetched"], listing["rows_listed"],
+             stats["catalog_new"], stats["catalog_dup"], stats["downloaded"],
+             stats["failed"], stats["no_pdf"], listing["stop_reason"],
+             listing["last_page"], run_id),
+        )
+        con.commit()
+    return stats
+
+
 def _resolve_name(code: str) -> str:
     """종목코드 → 종목명 (stock_names 매핑). 없으면 코드 그대로."""
     try:
@@ -432,8 +581,19 @@ def main() -> None:
               f"downloaded={stats['downloaded']} skipped={stats['skipped_exists']} no_pdf={stats['no_pdf']} "
               f"facts_saved={stats['facts_saved']} skipped_known={stats['skipped_known']} "
               f"not_pdf={stats['not_pdf']} failed={stats['failed']} stop_reason={stats['stop_reason']}")
-        if stats["stop_reason"] == "max_pages":
-            print("[naver_research] PARTIAL: 목록 페이지 상한 도달 — 기간 앞부분 누락 가능", file=sys.stderr)
+        partials = ["company"] if stats["stop_reason"] == "max_pages" else []
+        for cat in SECTOR_CATEGORIES:
+            sstats = run_sector(args.date, cat, facts_db=storage.DEFAULT_DB)
+            print(f"[naver_research:{cat}] {args.date} listed={sstats['listed']} "
+                  f"downloaded={sstats['downloaded']} skipped_known={sstats['skipped_known']} "
+                  f"skipped={sstats['skipped_exists']} no_pdf={sstats['no_pdf']} "
+                  f"not_pdf={sstats['not_pdf']} failed={sstats['failed']} "
+                  f"stop_reason={sstats['stop_reason']}")
+            if sstats["stop_reason"] == "max_pages":
+                partials.append(cat)
+        if partials:
+            print(f"[naver_research] PARTIAL: 목록 페이지 상한 도달({','.join(partials)}) — 기간 앞부분 누락 가능",
+                  file=sys.stderr)
             sys.exit(3)
     else:
         parser.error("--date 또는 --stock 중 하나 필요")
