@@ -1,4 +1,4 @@
-"""증권사 종목 리포트 — 자동완성 + 목록(다운로드 여부) + 백그라운드 다운로드.
+"""증권사 종목 리포트 — 자동완성 + 로컬 저장 PDF 목록 + 백그라운드 다운로드.
 
 다운로드 코어는 etl `download_naver_research`(stdlib-only) 재사용. 저장소는 일자별
 배치와 동일한 exports/stock_reports/ 공유(파일명 researchId 고유키 → 교차 중복제거).
@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import re
+import sqlite3
 import sys
 import threading
 import time
@@ -24,6 +26,10 @@ _ETL_SCRIPTS = Path(__file__).resolve().parents[2] / "etl" / "scripts"
 if str(_ETL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_ETL_SCRIPTS))
 import download_naver_research as dnr  # noqa: E402
+
+_FACTS_DB = Path(__file__).resolve().parents[2] / "etl" / "db" / "report_metrics.sqlite3"
+_CODE_RE = re.compile(r"^\d{6}$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 router = APIRouter(prefix="/research", tags=["research"])
 
@@ -108,20 +114,51 @@ def search(q: str = Query(min_length=1), limit: int = 20) -> list[StockCandidate
 @router.get("/stock/{code}/reports", response_model=ReportsResponse, operation_id="research_stock_reports")
 def stock_reports(code: str, since: str | None = None, until: str | None = None,
                   name: str | None = None) -> ReportsResponse:
-    """한 종목 리포트 목록(기간 필터) + 각 건 다운로드 여부(디스크 대조)."""
-    name = name or _resolve_name(code)
-    reports = dnr.list_stock_reports(code, name, since=since, until=until)
+    """로컬 저장 PDF 목록(원천 조회 없음)."""
+    if not _CODE_RE.match(code):
+        raise HTTPException(status_code=422, detail="종목코드 6자리")
+    facts: dict[str, tuple[str | None, str | None]] = {}
+    if _FACTS_DB.exists():
+        try:
+            con = sqlite3.connect(f"file:{_FACTS_DB}?mode=ro", uri=True)
+            try:
+                rows = con.execute(
+                    "SELECT pdf_key, research_id, title FROM report_api_facts WHERE stock_code=?",
+                    (code,),
+                ).fetchall()
+            finally:
+                con.close()
+            facts = {k: (rid, title) for k, rid, title in rows}
+        except Exception:
+            facts = {}
     items: list[ReportItem] = []
-    already = 0
-    for r in reports:
-        dl = _dest_for(r).exists()
-        already += int(dl)
-        items.append(ReportItem(
-            researchId=r["researchId"], brokerName=r["brokerName"],
-            title=r["title"], writeDate=r["writeDate"], downloaded=dl,
-            pdfKey=dnr.pdf_key(r["pdf_url"]),
-        ))
-    return ReportsResponse(code=code, name=name, total=len(items), already=already, reports=items)
+    for d in dnr.DEFAULT_EXPORT_BASE.glob(f"*_{code}"):
+        if not d.is_dir():
+            continue
+        for pdf in d.glob("*.pdf"):
+            stem = pdf.stem
+            if len(stem) <= 11 or stem[10] != "_" or not _DATE_RE.match(stem[:10]):
+                continue
+            parts = stem[11:].split("_", 1)
+            if len(parts) != 2:
+                continue
+            broker, key = parts
+            write_date = stem[:10]
+            if since and write_date < since:
+                continue
+            if until and write_date > until:
+                continue
+            rid, title = facts.get(key, (None, None))
+            items.append(ReportItem(
+                researchId=rid or key, brokerName=broker,
+                title=title or "", writeDate=write_date, downloaded=True,
+                pdfKey=key,
+            ))
+    items.sort(key=lambda i: i.brokerName)
+    items.sort(key=lambda i: i.writeDate, reverse=True)
+    name = name or _resolve_name(code)
+    return ReportsResponse(code=code, name=name, total=len(items), already=len(items),
+                           reports=items)
 
 
 @router.get("/stock/{code}/reports/{research_id}/pdf", operation_id="research_stock_report_pdf")
@@ -135,16 +172,24 @@ def stock_report_pdf(code: str, research_id: str,
     name = name or _resolve_name(code)
     dest = dnr.dest_path(dnr.DEFAULT_EXPORT_BASE, name, code, write_date, broker_name, pdf_key)
     base = dnr.DEFAULT_EXPORT_BASE.resolve()
-    resolved = dest.resolve()
-    if not resolved.is_relative_to(base) or not resolved.is_file():
-        raise HTTPException(status_code=404, detail="파일 없음")
-    return FileResponse(resolved, media_type="application/pdf")
+    # 폴더명(저장 당시 네이버 종목명) ≠ 현재 종목명이면 이름 조립 경로가 빗나간다 → 코드로 폴더 탐색
+    candidates = [dest] + ([d / dest.name for d in dnr.DEFAULT_EXPORT_BASE.glob(f"*_{code}")]
+                           if _CODE_RE.match(code) else [])
+    for c in candidates:
+        resolved = c.resolve()
+        if resolved.is_relative_to(base) and resolved.is_file():
+            return FileResponse(resolved, media_type="application/pdf")
+    raise HTTPException(status_code=404, detail="파일 없음")
 
 
 def _run_job(job: dict, since: str | None, until: str | None,
              research_ids: list[str] | None = None) -> None:
     try:
         reports = dnr.list_stock_reports(job["code"], job["name"], since=since, until=until)
+        if not reports:
+            job["status"] = "error"
+            job["error"] = "원천 목록 0건 — 네이버 종목별 리포트 주소 이동으로 현재 원천 미지원"
+            return
         if research_ids is not None:
             wanted = set(research_ids)
             reports = [r for r in reports if r["researchId"] in wanted]
