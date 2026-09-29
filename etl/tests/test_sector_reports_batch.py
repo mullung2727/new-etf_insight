@@ -198,5 +198,52 @@ class TestSectorRunRow(_SectorCase):
         self.assertEqual(tuple(row), ("industry", "completed"))
 
 
+class TestSubcategory(_SectorCase):
+    def test_list_industry_keeps_category(self):
+        pages = {1: [{"researchId": 1, "category": "반도체",
+                       "researchCategory": "산업분석", "writeDate": "2026-09-29",
+                       "brokerName": "A", "title": "t"},
+                      {"researchId": 0, "writeDate": "2026-09-01"}]}
+        out, _ = list_reports("2026-09-23", "2026-09-29",
+                              fetch_fn=_list_fetch(pages), category="industry")
+        self.assertEqual(out[0]["subcategory"], "반도체")
+
+    def test_list_market_none_when_category_equals_research_category(self):
+        pages = {1: [{"researchId": 1, "category": "시황정보",
+                       "researchCategory": "시황정보", "writeDate": "2026-09-29",
+                       "brokerName": "A", "title": "t"},
+                      {"researchId": 0, "writeDate": "2026-09-01"}]}
+        out, _ = list_reports("2026-09-23", "2026-09-29",
+                              fetch_fn=_list_fetch(pages), category="market")
+        self.assertIsNone(out[0]["subcategory"])
+
+    def test_run_sector_stores_subcategory(self):
+        ind_pages = {1: [{"researchId": 1, "category": "반도체",
+                           "researchCategory": "산업분석",
+                           "writeDate": "2026-09-29",
+                           "brokerName": "A", "title": "t"},
+                          {"researchId": 0, "writeDate": "2026-09-01"}]}
+        mkt_pages = {1: [{"researchId": 2, "category": "시황정보",
+                           "researchCategory": "시황정보",
+                           "writeDate": "2026-09-29",
+                           "brokerName": "B", "title": "m"},
+                          {"researchId": 0, "writeDate": "2026-09-01"}]}
+        run_sector("2026-09-29", "industry", out_dir=self.out,
+                   list_fetch=_list_fetch(ind_pages),
+                   detail_fetch=_detail_fetch({"1": {"attachUrl": "http://x/i1.pdf"}}),
+                   pdf_fetch=_pdf_fetch(), sleep_fn=lambda s: None,
+                   facts_db=self.db, names=({}, {}))
+        run_sector("2026-09-29", "market", out_dir=self.out,
+                   list_fetch=_list_fetch(mkt_pages),
+                   detail_fetch=_detail_fetch({"2": {"attachUrl": "http://x/m2.pdf"}}),
+                   pdf_fetch=_pdf_fetch(), sleep_fn=lambda s: None,
+                   facts_db=self.db, names=({}, {}))
+        with storage.connect_ro(self.db) as con:
+            rows = dict(con.execute(
+                "SELECT document_type, subcategory FROM report_documents").fetchall())
+        self.assertEqual(rows["industry"], "반도체")
+        self.assertIsNone(rows["market"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -66,6 +66,32 @@ class _BatchCase(unittest.TestCase):
         return self._one(f"SELECT COUNT(*) FROM {table}")[0]
 
 
+class TestDetailFailureIsolated(_BatchCase):
+    """상세 1건 실패가 나머지를 날리지 않고, run 은 partial, 다음 실행에서 재시도(CodeRabbit PR #34)."""
+
+    def test_one_detail_error_keeps_others(self):
+        pages = {1: [_row(101, "005930", "삼성전자", "2026-09-23"),
+                       _row(102, "000660", "SK하이닉스", "2026-09-22")]}
+        details = {"101": {"attachUrl": "http://x/a.pdf"}, "102": {"attachUrl": "http://x/b.pdf"}}
+        ok = _detail_fetch(details)
+
+        def flaky(url):
+            if url.endswith("/101"):
+                raise TimeoutError("timeout")
+            return ok(url)
+
+        kw = dict(out_dir=self.out, list_fetch=_list_fetch(pages), pdf_fetch=_pdf_fetch(),
+                  sleep_fn=lambda s: None, facts_db=self.db)
+        s1 = run("2026-09-23", detail_fetch=flaky, **kw)
+        self.assertEqual((s1["failed"], s1["detail_failed"], s1["downloaded"]), (1, 1, 1))
+        self.assertEqual(self._one("SELECT status FROM report_collection_runs ORDER BY run_id DESC")[0],
+                         "partial")
+        s2 = run("2026-09-23", detail_fetch=ok, **kw)
+        self.assertEqual((s2["downloaded"], s2["skipped_known"]), (1, 1))
+        self.assertEqual(self._one("SELECT status FROM report_collection_runs ORDER BY run_id DESC")[0],
+                         "completed")
+
+
 class TestWriteDateBasis(_BatchCase):
     def test_fact_date_and_filename_follow_write_date(self):
         pages = {1: [_row(101, "005930", "삼성전자", "2026-09-23"),
