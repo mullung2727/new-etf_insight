@@ -19,10 +19,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sqlite3
 import sys
 import time
 import urllib.request
 from contextlib import nullcontext
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -48,6 +50,7 @@ _UA = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) App
 _DESKTOP_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
 FETCH_TIMEOUT = 30
 REQUEST_SLEEP = 0.4  # 예의상 요청 간 간격
+LOOKBACK_DAYS = 7  # 일일 배치 목록 재조회 창(오늘 포함 일수)
 DEFAULT_EXPORT_BASE = Path(__file__).resolve().parents[1] / "exports" / "stock_reports"
 _ILLEGAL_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
 _CODE_RE = re.compile(r"^\d{6}$")
@@ -148,21 +151,45 @@ def _load_storage():
     return storage
 
 
-def list_reports(date_kst, fetch_fn=_urlopen, page_size=100, max_pages=20) -> list[dict]:
-    """대상일(YYYY-MM-DD) 종목분석 리포트 메타 목록. 날짜 desc 페이지네이션, 이전날 만나면 중단."""
+def _load_catalog():
+    """report_metrics.catalog 지연 로드. facts_db 없을 땐 import조차 안 한다."""
+    try:
+        from scripts.report_metrics import catalog
+    except ImportError:
+        from report_metrics import catalog
+    return catalog
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def list_reports(date_from, date_to, fetch_fn=_urlopen, page_size=100, max_pages=20) -> tuple[list[dict], dict]:
+    """기간([date_from, date_to], 양끝 포함) 종목분석 리포트 메타 목록.
+
+    날짜 desc 페이지네이션. date_from 이전을 만나면 중단(past_range), 빈 페이지를
+    만나면 중단(empty_page), 끝까지 다 돌면 max_pages. 두 번째 반환값은 수집 메타.
+    """
     out: list[dict] = []
+    rows_listed = 0
+    pages_fetched = 0
+    stop_reason = "max_pages"
     for page in range(1, max_pages + 1):
         rows = json.loads(fetch_fn(LIST_URL.format(page=page, size=page_size)))
+        pages_fetched = page
         if not rows:
+            stop_reason = "empty_page"
             break
         stop = False
         for r in rows:
             wd = str(r.get("writeDate", "") or "")
-            if wd > date_kst:
-                continue          # 대상일 이후(과거일 조회 시) — 건너뛰고 계속
-            if wd < date_kst:
-                stop = True        # 이전날 도달 → 대상일 끝
+            if wd > date_to:
+                continue          # 기간 이후(최신쪽) — 건너뛰고 계속
+            if wd < date_from:
+                stop = True        # 기간 이전 도달 → 이후는 더 과거뿐, 중단
+                stop_reason = "past_range"
                 break
+            rows_listed += 1       # 기간 안 전체 행(코드 없는 행 포함)
             code = str(r.get("itemCode", "") or "").strip()
             if not _CODE_RE.match(code):
                 continue           # 종목코드 없는 행(비종목 혼입) 제외
@@ -176,7 +203,9 @@ def list_reports(date_kst, fetch_fn=_urlopen, page_size=100, max_pages=20) -> li
             })
         if stop:
             break
-    return out
+    meta = {"pages_fetched": pages_fetched, "rows_listed": rows_listed,
+            "stop_reason": stop_reason, "last_page": pages_fetched}
+    return out, meta
 
 
 def fetch_detail(research_id, fetch_fn=_urlopen) -> dict:
@@ -213,48 +242,149 @@ def download_pdf(url: str, dest: Path, fetch_fn=_urlopen) -> bool:
 
 
 def run(date_kst, out_dir=DEFAULT_EXPORT_BASE, *, list_fetch=_urlopen, detail_fetch=_urlopen,
-        pdf_fetch=_urlopen, sleep_fn=time.sleep, facts_db=None) -> dict:
-    reports = list_reports(date_kst, fetch_fn=list_fetch)
+        pdf_fetch=_urlopen, sleep_fn=time.sleep, facts_db=None, lookback_days=LOOKBACK_DAYS) -> dict:
+    date_to = date_kst
+    date_from = (date.fromisoformat(date_kst) - timedelta(days=lookback_days - 1)).isoformat()
+    reports, listing = list_reports(date_from, date_to, fetch_fn=list_fetch)
     stats = {"listed": len(reports), "downloaded": 0, "skipped_exists": 0, "no_pdf": 0,
-             "facts_saved": 0}
+             "facts_saved": 0, "skipped_known": 0, "not_pdf": 0, "failed": 0,
+             "catalog_new": 0, "catalog_dup": 0, "stop_reason": listing["stop_reason"]}
     storage = _load_storage() if facts_db is not None else None
+    catalog = _load_catalog() if facts_db is not None else None
     if storage is not None:
         storage.init_db(facts_db)
         con_cm = storage.connect_rw(facts_db)
     else:
         con_cm = nullcontext(None)
     with con_cm as con:
-        for r in reports:
-            # 안정 키(pdf_key)는 attachUrl 에서만 나오므로 상세를 먼저 받는다.
-            detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch)
-            url = str(detail.get("attachUrl", "") or "")
-            if not url:
-                stats["no_pdf"] += 1
-                continue
+        run_id = None
+        if con is not None:
+            catalog.init_catalog(con)
+            cur = con.execute(
+                "INSERT INTO report_collection_runs "
+                "(source, category, date_from, date_to, started_at, status) "
+                "VALUES ('naver_mobile', 'company', ?, ?, ?, 'running')",
+                (date_from, date_to, _utcnow()),
+            )
+            run_id = cur.lastrowid
+            con.commit()
+        try:
+            for r in reports:
+                sid = f"company:{r['researchId']}"
+                if con is not None:
+                    known = con.execute(
+                        "SELECT document_id FROM report_sources "
+                        "WHERE source = 'naver_mobile' AND source_report_id = ?",
+                        (sid,),
+                    ).fetchone()
+                    if known is not None:
+                        frow = con.execute(
+                            "SELECT file_status FROM report_documents WHERE document_id = ?",
+                            (known[0],),
+                        ).fetchone()
+                        if frow is not None and frow[0] == "saved":
+                            catalog.upsert_source(
+                                con, source="naver_mobile", source_report_id=sid,
+                                document_id=known[0], run_id=run_id)
+                            stats["skipped_known"] += 1
+                            con.commit()
+                            continue
+                # 안정 키(pdf_key)는 attachUrl 에서만 나오므로 상세를 먼저 받는다.
+                detail = fetch_detail(r["researchId"], fetch_fn=detail_fetch)
+                url = str(detail.get("attachUrl", "") or "")
+                if not url:
+                    stats["no_pdf"] += 1
+                    continue
+                pkey = pdf_key(url)
+                if con is not None:
+                    # PDF 존재·다운로드 성공과 무관하게 목표가 저장 → dest 검사보다 먼저.
+                    storage.upsert_api_fact(con, {
+                        "pdf_key": pkey,
+                        "research_id": str(r["researchId"]),
+                        "stock_code": r["itemCode"],
+                        "stock_name": r["itemName"],
+                        "broker": sanitize(r["brokerName"]),
+                        "report_date": r["writeDate"],
+                        "title": r["title"],
+                        "opinion": detail.get("opinion"),
+                        "goal_price": storage.parse_price(detail.get("goalPrice")),
+                        "price_at_write": storage.parse_price(detail.get("priceAtWriteDate")),
+                        "content_html": detail.get("content"),
+                    })
+                    con.commit()  # 뒤 리포트의 상세·PDF 네트워크 오류가 앞서 저장한 목표가까지 롤백하지 않게
+                    stats["facts_saved"] += 1
+                dest = dest_path(out_dir, r["itemName"], r["itemCode"], r["writeDate"], r["brokerName"], pkey)
+                if dest.exists():
+                    stats["skipped_exists"] += 1
+                    file_status = "saved"
+                else:
+                    try:
+                        ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
+                    except Exception:
+                        file_status = "failed"
+                        stats["failed"] += 1
+                    else:
+                        if ok:
+                            stats["downloaded"] += 1
+                            file_status = "saved"
+                        else:
+                            # download_pdf False = 응답이 %PDF 아님
+                            stats["not_pdf"] += 1
+                            file_status = "not_pdf"
+                    sleep_fn(REQUEST_SLEEP)
+                if con is not None:
+                    sha = catalog.sha256_file(dest) if file_status == "saved" else None
+                    pdf_rel = f"stock_reports/{dest.parent.name}/{dest.name}" if file_status == "saved" else None
+                    doc_id, created = catalog.upsert_document(
+                        con, document_type="company", title=r["title"],
+                        broker=sanitize(r["brokerName"]), published_date=r["writeDate"],
+                        pdf_path=pdf_rel, sha256=sha, pdf_key=pkey,
+                        file_status=file_status)
+                    stats["catalog_new" if created else "catalog_dup"] += 1
+                    if file_status == "saved" and not created:
+                        # 기존 문서가 not_pdf/failed였으면 upsert가 file_status를 안 바꾸므로 직접 승격.
+                        try:
+                            con.execute(
+                                "UPDATE report_documents SET file_status = 'saved', "
+                                "pdf_path = ?, sha256 = ? "
+                                "WHERE document_id = ? AND file_status <> 'saved'",
+                                (pdf_rel, sha, doc_id),
+                            )
+                        except sqlite3.IntegrityError:
+                            print(f"[naver_research] sha256 충돌로 file_status 승격 생략: doc={doc_id}")
+                    catalog.upsert_source(
+                        con, source="naver_mobile", source_report_id=sid,
+                        document_id=doc_id,
+                        list_url=LIST_URL.format(page=1, size=100),
+                        detail_url=DETAIL_URL.format(rid=r["researchId"]),
+                        pdf_url=url, run_id=run_id)
+                    catalog.upsert_document_stock(
+                        con, document_id=doc_id, stock_code=r["itemCode"],
+                        relation_type="primary", method="naver_itemcode")
+                    con.commit()
+        except Exception as exc:
             if con is not None:
-                # PDF 존재·다운로드 성공과 무관하게 목표가 저장 → dest 검사보다 먼저.
-                storage.upsert_api_fact(con, {
-                    "pdf_key": pdf_key(url),
-                    "research_id": str(r["researchId"]),
-                    "stock_code": r["itemCode"],
-                    "stock_name": r["itemName"],
-                    "broker": sanitize(r["brokerName"]),
-                    "report_date": date_kst,
-                    "title": r["title"],
-                    "opinion": detail.get("opinion"),
-                    "goal_price": storage.parse_price(detail.get("goalPrice")),
-                    "price_at_write": storage.parse_price(detail.get("priceAtWriteDate")),
-                    "content_html": detail.get("content"),
-                })
-                con.commit()  # 뒤 리포트의 상세·PDF 네트워크 오류가 앞서 저장한 목표가까지 롤백하지 않게
-                stats["facts_saved"] += 1
-            dest = dest_path(out_dir, r["itemName"], r["itemCode"], date_kst, r["brokerName"], pdf_key(url))
-            if dest.exists():
-                stats["skipped_exists"] += 1
-                continue
-            ok = download_pdf(url, dest, fetch_fn=pdf_fetch)
-            stats["downloaded" if ok else "no_pdf"] += 1
-            sleep_fn(REQUEST_SLEEP)
+                con.execute(
+                    "UPDATE report_collection_runs SET finished_at = ?, status = 'error', "
+                    "stop_reason = ? WHERE run_id = ?",
+                    (_utcnow(), str(exc)[:200], run_id),
+                )
+                con.commit()
+            raise
+        if con is not None:
+            con.execute(
+                "UPDATE report_collection_runs SET finished_at = ?, status = ?, "
+                "pages_fetched = ?, rows_listed = ?, new_docs = ?, dup_docs = ?, "
+                "downloaded = ?, failed = ?, no_pdf = ?, stop_reason = ?, last_page = ? "
+                "WHERE run_id = ?",
+                (_utcnow(),
+                 "partial" if listing["stop_reason"] == "max_pages" else "completed",
+                 listing["pages_fetched"], listing["rows_listed"],
+                 stats["catalog_new"], stats["catalog_dup"], stats["downloaded"],
+                 stats["failed"], stats["no_pdf"], listing["stop_reason"],
+                 listing["last_page"], run_id),
+            )
+            con.commit()
     return stats
 
 
@@ -300,7 +430,11 @@ def main() -> None:
         stats = run(args.date, out_dir=out, facts_db=storage.DEFAULT_DB)
         print(f"[naver_research] {args.date} listed={stats['listed']} "
               f"downloaded={stats['downloaded']} skipped={stats['skipped_exists']} no_pdf={stats['no_pdf']} "
-              f"facts_saved={stats['facts_saved']}")
+              f"facts_saved={stats['facts_saved']} skipped_known={stats['skipped_known']} "
+              f"not_pdf={stats['not_pdf']} failed={stats['failed']} stop_reason={stats['stop_reason']}")
+        if stats["stop_reason"] == "max_pages":
+            print("[naver_research] PARTIAL: 목록 페이지 상한 도달 — 기간 앞부분 누락 가능", file=sys.stderr)
+            sys.exit(3)
     else:
         parser.error("--date 또는 --stock 중 하나 필요")
 
