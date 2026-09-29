@@ -246,6 +246,7 @@ def run(date_kst, out_dir=DEFAULT_EXPORT_BASE, *, list_fetch=_urlopen, detail_fe
                     "price_at_write": storage.parse_price(detail.get("priceAtWriteDate")),
                     "content_html": detail.get("content"),
                 })
+                con.commit()  # 뒤 리포트의 상세·PDF 네트워크 오류가 앞서 저장한 목표가까지 롤백하지 않게
                 stats["facts_saved"] += 1
             dest = dest_path(out_dir, r["itemName"], r["itemCode"], date_kst, r["brokerName"], pdf_key(url))
             if dest.exists():
