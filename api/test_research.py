@@ -110,6 +110,42 @@ def test_reports_invalid_code_422(monkeypatch, tmp_path):
     assert r.status_code == 422
 
 
+def test_reports_broker_name_with_underscore(monkeypatch, tmp_path):
+    """sanitize('A/B증권')='A_B증권' — 첫 '_' 분할이면 증권사 'A', 키 'B증권_...' 로 깨진다 (CodeRabbit PR #34)."""
+    _forbid_source(monkeypatch)
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    monkeypatch.setattr(research, "_FACTS_DB", tmp_path / "none.sqlite3")
+    d = tmp_path / "현대차_005380"
+    d.mkdir(parents=True)
+    (d / "2026-09-23_A_B증권_20260923_company_77.pdf").write_bytes(b"%PDF-x")
+    rep = client.get("/research/stock/005380/reports", params={"name": "현대차"}).json()["reports"][0]
+    assert (rep["brokerName"], rep["pdfKey"]) == ("A_B증권", "20260923_company_77")
+
+
+def test_split_broker_key_prefers_known_fact_key():
+    assert research._split_broker_key("A_B증권_x_y", {"x_y"}) == ("A_B증권", "x_y")
+    assert research._split_broker_key("X증권_k", set()) == ("X증권", "k")  # 구 규칙 유지
+    assert research._split_broker_key("nokey", set()) is None
+
+
+def test_download_job_range_empty_is_done_not_error(monkeypatch, tmp_path):
+    """원천은 정상인데 기간 안에 0건 → done(total 0), '원천 미지원' 오류로 표시하지 않음."""
+    def fake_list(code, name, since=None, until=None, max_pages=20, **k):
+        return [] if (since or until) else [_report("1", "2026-01-02")]
+    monkeypatch.setattr(research.dnr, "list_stock_reports", fake_list)
+    monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
+    monkeypatch.setattr(research.dnr, "REQUEST_SLEEP", 0)
+    r = client.post("/research/stock/005930/download",
+                    json={"name": "삼성전자", "since": "2026-09-01"})
+    jid = r.json()["job_id"]
+    for _ in range(60):
+        s = client.get(f"/research/jobs/{jid}").json()
+        if s["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert s["status"] == "done" and s["total"] == 0
+
+
 def test_download_job_source_empty_errors(monkeypatch, tmp_path):
     monkeypatch.setattr(research.dnr, "list_stock_reports", lambda *a, **k: [])
     monkeypatch.setattr(research.dnr, "DEFAULT_EXPORT_BASE", tmp_path)
