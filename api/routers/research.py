@@ -111,6 +111,25 @@ def search(q: str = Query(min_length=1), limit: int = 20) -> list[StockCandidate
         return []
 
 
+_KEY_TAIL_RE = re.compile(r"_(\d{8}_[A-Za-z]+_\d+)$")  # pstatic 키 예: 20260702_company_957350000
+
+
+def _split_broker_key(rest: str, known_keys) -> tuple[str, str] | None:
+    """파일명 '{증권사}_{키}' → (증권사, 키).
+
+    증권사(sanitize 로 '/'→'_')와 키 모두 '_'를 품을 수 있어 첫 '_' 분할은 틀린다.
+    1) 이 종목 facts 키 중 끝이 맞는 것(긴 것 우선) 2) pstatic 키 패턴 3) 구 규칙(첫 '_').
+    """
+    for k in sorted(known_keys, key=len, reverse=True):
+        if len(rest) > len(k) + 1 and rest.endswith("_" + k):
+            return rest[: -len(k) - 1], k
+    m = _KEY_TAIL_RE.search(rest)
+    if m and m.start() > 0:
+        return rest[: m.start()], m.group(1)
+    parts = rest.split("_", 1)
+    return (parts[0], parts[1]) if len(parts) == 2 else None
+
+
 @router.get("/stock/{code}/reports", response_model=ReportsResponse, operation_id="research_stock_reports")
 def stock_reports(code: str, since: str | None = None, until: str | None = None,
                   name: str | None = None) -> ReportsResponse:
@@ -139,8 +158,8 @@ def stock_reports(code: str, since: str | None = None, until: str | None = None,
             stem = pdf.stem
             if len(stem) <= 11 or stem[10] != "_" or not _DATE_RE.match(stem[:10]):
                 continue
-            parts = stem[11:].split("_", 1)
-            if len(parts) != 2:
+            parts = _split_broker_key(stem[11:], facts)
+            if parts is None:
                 continue
             broker, key = parts
             write_date = stem[:10]
@@ -186,6 +205,11 @@ def _run_job(job: dict, since: str | None, until: str | None,
              research_ids: list[str] | None = None) -> None:
     try:
         reports = dnr.list_stock_reports(job["code"], job["name"], since=since, until=until)
+        # 기간 필터로 0건인 정상 조회를 원천 오류로 오판하지 않게 — 필터 없이 첫 페이지만 확인
+        if not reports and (since or until) and dnr.list_stock_reports(job["code"], job["name"], max_pages=1):
+            job["total"] = 0
+            job["status"] = "done"
+            return
         if not reports:
             job["status"] = "error"
             job["error"] = "원천 목록 0건 — 네이버 종목별 리포트 주소 이동으로 현재 원천 미지원"
