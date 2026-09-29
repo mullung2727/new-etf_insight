@@ -198,7 +198,7 @@ class TestRunFactsDb(unittest.TestCase):
             {"researchId": 12, "itemName": "삼성전자", "itemCode": "005930",
              "writeDate": "2026-09-23", "brokerName": "X증권", "title": "유지"},
             {"researchId": 10, "itemName": "x", "itemCode": "000001",
-             "writeDate": "2026-09-22", "brokerName": "X", "title": "old"},
+             "writeDate": "2026-09-10", "brokerName": "X", "title": "old"},  # 7일 창 밖 종료행
         ]
         list_fetch = lambda url: json.dumps(rows).encode()  # noqa: E731
         def detail_fetch(url):
@@ -255,18 +255,20 @@ class TestRunFactsDb(unittest.TestCase):
         details = {"11": {"attachUrl": "http://x/a.pdf", "goalPrice": "500000"},
                    "12": {"attachUrl": "http://x/b.pdf", "goalPrice": "90000"}}
         list_fetch, detail_fetch = self._fetches(details)
-        def pdf_fetch(url):  # 첫 PDF 다운로드에서 네트워크 오류
+        def pdf_fetch(url):  # PDF 다운로드 네트워크 오류 → failed 기록 후 다음 행 계속
             raise TimeoutError(url)
         with TemporaryDirectory() as d:
             tmp = Path(d)
             db = tmp / "facts.sqlite3"
-            with self.assertRaises(TimeoutError):
-                run("2026-09-23", out_dir=tmp / "out", list_fetch=list_fetch,
-                    detail_fetch=detail_fetch, pdf_fetch=pdf_fetch,
-                    sleep_fn=lambda s: None, facts_db=db)
+            stats = run("2026-09-23", out_dir=tmp / "out", list_fetch=list_fetch,
+                        detail_fetch=detail_fetch, pdf_fetch=pdf_fetch,
+                        sleep_fn=lambda s: None, facts_db=db)
+            self.assertEqual(stats["failed"], 2)
+            self.assertEqual(stats["downloaded"], 0)
+            self.assertEqual(stats["facts_saved"], 2)
             with storage.connect_ro(db) as con:
                 keys = [r["pdf_key"] for r in con.execute("SELECT pdf_key FROM report_api_facts")]
-            self.assertEqual(keys, ["a"])  # 실패 전에 저장한 목표가는 남는다
+            self.assertEqual(keys, ["a", "b"])  # 실패해도 저장한 목표가는 남는다
 
     def test_no_db_without_facts_db(self):
         list_fetch, detail_fetch = self._fetches(

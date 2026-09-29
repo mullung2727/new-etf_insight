@@ -50,7 +50,7 @@ class TestListReports(unittest.TestCase):
         pages = {1: [self._row(3, "삼성전자", "005930", "2026-07-03"),
                      self._row(2, "농심", "004370", "2026-07-03"),
                      self._row(1, "카카오", "035720", "2026-07-02")]}  # 이전날 → 중단
-        rows = list_reports("2026-07-03", fetch_fn=_fake_list(pages))
+        rows = list_reports("2026-07-03", "2026-07-03", fetch_fn=_fake_list(pages))[0]
         self.assertEqual([r["researchId"] for r in rows], [3, 2])
 
     def test_paginates_until_older_date(self):
@@ -59,7 +59,7 @@ class TestListReports(unittest.TestCase):
             2: [self._row(50, "B", "000002", "2026-07-03"),
                 self._row(49, "C", "000003", "2026-07-01")],  # 이전날 → 중단
         }
-        rows = list_reports("2026-07-03", fetch_fn=_fake_list(pages), page_size=3)
+        rows = list_reports("2026-07-03", "2026-07-03", fetch_fn=_fake_list(pages), page_size=3)[0]
         self.assertEqual(len(rows), 4)  # page1 3건 + page2 1건
 
     def test_skips_rows_without_itemcode(self):
@@ -67,7 +67,7 @@ class TestListReports(unittest.TestCase):
         pages = {1: [self._row(3, "삼성전자", "005930", "2026-07-03"),
                      {"researchId": 2, "itemName": "시황", "itemCode": "", "writeDate": "2026-07-03"},
                      self._row(1, "x", "000001", "2026-06-30")]}
-        rows = list_reports("2026-07-03", fetch_fn=_fake_list(pages))
+        rows = list_reports("2026-07-03", "2026-07-03", fetch_fn=_fake_list(pages))[0]
         self.assertEqual([r["researchId"] for r in rows], [3])
 
 
@@ -122,7 +122,8 @@ class TestRunIdempotent(unittest.TestCase):
     def _list(self):
         row = {"researchId": 5, "itemName": "삼성전자", "itemCode": "005930",
                "writeDate": "2026-07-03", "brokerName": "대신증권", "title": "t"}
-        return lambda url: json.dumps([row, {**row, "researchId": 4, "writeDate": "2026-07-02"}]).encode()
+        # 06-20 = 7일 창([06-27, 07-03]) 밖 종료행 → listed 1건 유지
+        return lambda url: json.dumps([row, {**row, "researchId": 4, "writeDate": "2026-06-20"}]).encode()
 
     def _detail(self, counter):
         def f(url):
