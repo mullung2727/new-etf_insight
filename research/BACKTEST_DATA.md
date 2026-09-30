@@ -520,7 +520,7 @@ t 값            mean / (pstdev / sqrt(n))
 
 ## 7. 공용 모듈 — `research/backtest_daily/` (일봉 전용, 2026-09-30~)
 
-새 **일봉** 리서치는 위 §1~§6 가드를 직접 짜지 말고 이 패키지를 쓴다. 분봉은 아직 §2·§3 기존 모듈(공용화는 추후 별도).
+새 **일봉** 리서치는 위 §1~§6 가드를 직접 짜지 말고 이 패키지를 쓴다. **muse 명세에도 이 패키지 사용을 반드시 지시한다** (2026-09-30 사용자). 분봉은 아직 §2·§3 기존 모듈(공용화는 추후 별도).
 설계 `docs/PLAN_BACKTEST_DAILY.md`, 함수 목록 `research/backtest_daily/README.md`. 이식 검증: ipo_drift 1·2단계 결과 51개 수치 1e-4 이내 일치.
 
 | 이 문서의 가드 | 함수 |
@@ -531,7 +531,7 @@ t 값            mean / (pstdev / sqrt(n))
 | §1(e) 유동성 | `guards.liquidity` |
 | §2b 상한가 진입 | `guards.limit_up_close` (종가 진입) · `guards.limit_up_open` (시가 진입) |
 | §2c 권리락 ±31% | `guards.jump_ok` |
-| §4b 사이즈 중립 | `bench.size_index` · `bench.bench_return` |
+| §4b 사이즈 중립 | **`bench_daily.bench_id` · `bench_daily.bench_return`** (전일 시총 5구간+시장 × 전체/유동성, 진입·청산 시점 open/close 필수 인자). `bench.size_index` 는 구방식(종가 기준·저유동 포함) — 시가 진입이면 밤사이 수익만큼 초과수익이 낮게 나옴 |
 | 상폐 재무요건 (정리매매 함정) | `guards.fin_flags` |
 | §6 비용 3수준 · 일/월 가중 | `stats.cost_table` · `stats.weighted` |
 | walk-forward · placebo | `validate.walk_forward` (청산 < Y0101 강제) · `validate.placebo_percentile` |

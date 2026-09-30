@@ -101,3 +101,103 @@
 - [ ] §5 표 각 행 테스트 통과 (출력 첨부)
 - [ ] golden 일치
 - [ ] §4 결정이 코드에 반영된 위치(파일:줄) 표로 보고
+
+---
+
+# 2차 — 벤치마크 일별 수익률 사전 계산 `bench_daily` (2026-09-30)
+
+**요약** — 벤치마크 일별 수익률을 한 번 계산해 `etl/db/bench_daily.duckdb` 에 저장하고, 리서치는 읽기만 한다.
+하루를 **종가→종가 / 밤사이 / 장중** 세 조각으로 저장해 진입·청산 시점이 달라도 정확히 조합한다.
+
+상태: 사용자 승인 ("일별 수익률 다 구해놓고 쓰는게 빠를거 같아" · "추천대로. 다만 전략별로 헷갈리지 않게 잘만들어라").
+
+## 왜 (재현 검증에서 발견, `research/private/backtest_daily_repro/README.md`)
+- `size_index` 는 종가→종가 누적. **시가 진입** 전략은 벤치만 밤사이 수익(소형 유동성 +0.2~0.3%/일)을 먹어 초과수익이 낮게 나온다
+- `size_index` 는 저유동 종목 포함. 소형 구간에서 유동성 종목보다 하루 +0.02~0.11%p 높아 보유가 길수록 초과수익을 깎는다
+- h26 재현: 벤치만 바꿔도 gold h20 초과 +0.37% → −0.76%
+- 매 실행 400만 행으로 지수를 새로 만드는 비용도 없앤다
+
+## 저장 — `etl/db/bench_daily.duckdb` (gitignore 대상, 파생 데이터)
+
+```
+bench_daily(date VARCHAR, ms INT, bench_id VARCHAR, n INT, r_cc DOUBLE, r_on DOUBLE, r_in DOUBLE)  PK(date, bench_id)
+bench_meta(bench_id, universe, cap_bucket, label_ko, rule_ko)                 -- 사람이 읽는 설명
+bench_build(source_max_date, built_at, row_count, code_version)               -- 1행
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `r_cc` | 전일 종가 → 당일 종가 (기업행위 보정 `adj_returns`, ±30% 클립) |
+| `r_on` | 전일 종가 → 당일 시가 (같은 보정 계수, ±30% 클립) |
+| `r_in` | 당일 시가 → 당일 종가 |
+| `n` | 그날 그 벤치에 들어간 종목 수 |
+
+**bench_id 이름 규칙** — `{구간}_{모집단}`. 이름만 보고 뜻이 보이게 한다.
+
+| 구간 | 뜻 (전일 시총 기준) | 모집단 | 뜻 |
+|---|---|---|---|
+| `CAP1` | 1천억 미만 | `ALL` | 0값 아닌 전 종목 (스팩 제외) |
+| `CAP2` | 1천억~3천억 | `LIQ10` | 전일 거래대금 10억 이상 (스팩 제외) |
+| `CAP3` | 3천억~1조 | | |
+| `CAP4` | 1조~5조 | | |
+| `CAP5` | 5조 이상 | | |
+| `MKT` | 시장 전체 | | |
+
+→ 12개 (`CAP1_ALL` … `MKT_LIQ10`). 구간·모집단 판정은 **전일 값**만 쓴다 (룩어헤드 차단). 일별 동일가중.
+
+## API — 전략이 헷갈리지 않게 (전부 인자 필수, 기본값 없음)
+
+```python
+bench_id(cap_eok_prev: float, universe: "ALL"|"LIQ10") -> str      # 진입 전일 시총으로 구간 선택
+bench_return(bench_id, entry_date, entry_at: "open"|"close",
+             exit_date, exit_at: "open"|"close") -> float           # 보유 구간 벤치 수익
+```
+
+| 전략 모양 | 호출 | 조합 |
+|---|---|---|
+| 종가 매수 → 다음날 시가 매도 (종가베팅·Jev) | `entry_at="close", exit_at="open"` | 다음날 `r_on` |
+| 다음날 시가 매수 → h일 뒤 종가 (h26, ipo_drift 4단계) | `entry_at="open", exit_at="close"` | 진입일 `r_in` × 이후 `r_cc` |
+| 종가 매수 → h일 뒤 종가 (high52, ipo_drift 2단계) | `entry_at="close", exit_at="close"` | 이후 `r_cc` |
+| 시가 매수 → 같은 날 종가 (당일매매) | 같은 날짜, `open`→`close` | 당일 `r_in` |
+
+- 진입이 청산보다 늦거나(같은 날 close→open 등) 날짜가 벤치 범위 밖이면 **예외**. 조용히 NaN 주지 않는다
+- 사이 날에 벤치 행이 없으면(휴장) 건너뛴다 — 시장 거래일 기준
+
+## 갱신
+- `ensure_bench(force=False)`: 파일 없음 / `bench_build.source_max_date` < 일봉 DB 최신일 / `code_version` 다름 → 전체 재계산
+- 임시 파일에 쓰고 교체 (읽는 쪽이 반쯤 쓴 파일을 보지 않게)
+- 기존 `size_index` / `bench_return(idx_arr, …)` 는 **그대로 둔다** (ipo_drift 골든 재현용). README 에 "구방식 — 신규 리서치는 bench_daily" 표기
+
+## 결정
+| # | 항목 | 결정 | 정한 사람 |
+|---|---|---|---|
+| D9 | 저장 위치 | 별도 파일 `etl/db/bench_daily.duckdb` (일봉 DB 스키마 무변경) | 사용자(추천 수용) |
+| D10 | 하루 세 조각 | `r_cc`·`r_on`·`r_in` | Claude |
+| D11 | 벤치 12종 | 시총 5구간+시장 × {ALL, LIQ10} | Claude |
+| D12 | 인자 기본값 없음 | `universe`·`entry_at`·`exit_at` 매번 명시 — 전략마다 다른 시점을 실수로 섞지 않게 | Claude (사용자 "헷갈리지 않게") |
+
+## 검증
+| 요구 | 검증 |
+|---|---|
+| 조각 정합 | 단위: 보정 없는 날 `(1+r_on)(1+r_in) = 1+r_cc` (클립 안 걸린 행) |
+| 조합 규칙 4종 | 단위: 위 표 4행 각각 합성 벤치로 기대값 |
+| 전일 기준 배정 | 단위: 당일 시총이 구간 경계를 넘어도 전일 구간에 들어감 |
+| 잘못된 구간 예외 | 단위: close→open 같은 날, 범위 밖 날짜 → 예외 |
+| 기본값 없음 | 단위: `inspect.signature` 로 세 인자 기본값 없음 확인 |
+| 스테일 재계산 | 단위: 임시 DB 로 source_max_date 가 작으면 재계산, 같으면 안 함 |
+| 기존 골든 유지 | ipo_drift 골든 GOLDEN PASS 그대로 |
+| **h26 재측정 (핵심)** | 벤치를 `CAP*_LIQ10` · `open→close` 로 바꿔 h26 12셀 재계산 → 원본("같은 날 적격 평균") 대비 Δ 가 구방식(−0.30~−1.14%p)보다 크게 줄어드는지 보고 |
+
+## 2차 결과 (2026-09-30)
+- 테스트 39개 통과, `bench_daily.duckdb` 첫 생성 76초 (20,844행, 20180103~20260929)
+- h26 재측정 (원본 "같은 날 적격 평균" 대비 Δ, 원본 exc 기준):
+
+| 보유 | 구방식 size_index | bench_daily LIQ10 | bench_daily ALL |
+|---|---|---|---|
+| 1일 | −0.24~−0.30%p | **+0.03~+0.04%p** | −0.07~−0.13%p |
+| 5일 | −0.35~−0.49%p | +0.09~+0.18%p | −0.15~−0.27%p |
+| 20일 | −0.77~−1.14%p | +0.46~+0.76%p | −0.41~−0.74%p |
+
+- 시점 문제(밤사이)는 해결 — 1일 보유에서 차이 사라짐
+- 여러 날 보유 차이는 **정의 차이**다: bench_daily 는 매일 재구성한 지수(연쇄), h26 원본 벤치는 진입일 적격 종목 묶음을 그대로 보유한 수익. CAP2·LIQ10 20일에서 두 정의 차이 실측 0.24%p (`research/private/backtest_daily_repro/orig/cohort_vs_chain.py`)
+- **D13 (사용자 결정)**: 벤치마크 = 매일 재구성 지수(bench_daily) 로 확정. "같은 날 같은 조건 종목을 아무거나 샀다면" 비교는 벤치가 아니라 **대조 전략**이므로 `validate.placebo_percentile` 쪽에서 한다
