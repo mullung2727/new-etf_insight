@@ -517,3 +517,23 @@ t 값            mean / (pstdev / sqrt(n))
   (당일 거래대금 수억 원대) 셀에는 0.6% 여유를 그대로 두는 것이 맞다.
 - 결론: 비용을 하나로 고정하지 말고 **0.60% / 0.35% / 0.23% 세 수준 병기**한다.
   (적용례: `research/private/close_bet_research/exp26_selfrank_cost.py`)
+
+## 7. 공용 모듈 — `research/backtest_daily/` (일봉 전용, 2026-09-30~)
+
+새 **일봉** 리서치는 위 §1~§6 가드를 직접 짜지 말고 이 패키지를 쓴다. 분봉은 아직 §2·§3 기존 모듈(공용화는 추후 별도).
+설계 `docs/PLAN_BACKTEST_DAILY.md`, 함수 목록 `research/backtest_daily/README.md`. 이식 검증: ipo_drift 1·2단계 결과 51개 수치 1e-4 이내 일치.
+
+| 이 문서의 가드 | 함수 |
+|---|---|
+| §1(a)(b) 0값 행·거래정지 연속성 | `data.load_px` (ms 순번) · `guards.halt_ok` |
+| §1(c) 가격 미조정 | `adjust.adj_returns` (주식수 이벤트 ±30행 매칭 — 밴드 방식보다 정확) |
+| §1(d) 스팩 · 스팩합병사 | `universe.listing_flags` (`spac` / `spac_origin`) |
+| §1(e) 유동성 | `guards.liquidity` |
+| §2b 상한가 진입 | `guards.limit_up_close` (종가 진입) · `guards.limit_up_open` (시가 진입) |
+| §2c 권리락 ±31% | `guards.jump_ok` |
+| §4b 사이즈 중립 | `bench.size_index` · `bench.bench_return` |
+| 상폐 재무요건 (정리매매 함정) | `guards.fin_flags` |
+| §6 비용 3수준 · 일/월 가중 | `stats.cost_table` · `stats.weighted` |
+| walk-forward · placebo | `validate.walk_forward` (청산 < Y0101 강제) · `validate.placebo_percentile` |
+
+상장폐지는 **마지막 거래 가격 고정**(정리매매 포함)이 규약이다. `volume_shock_anchor` 는 −100% 로 처리했으니 그 결과와 비교할 때 주의.
