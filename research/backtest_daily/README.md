@@ -10,11 +10,18 @@
 | `adjust.py` | `adj_returns`, `adj_price`, `corp_action_events`, `ma_n`, `SH_TH`, `PX_TH`, `MATCH` |
 | `universe.py` | `listing_flags`, `SPAC_RE` |
 | `guards.py` | `limit_up_close`, `limit_up_open`, `liquidity`, `halt_ok`, `jump_ok`, `fin_flags`, `AVAIL`, `FIN_DB` |
-| `bench.py` | `size_index`, `cap_bucket`, `entry_cap`, `bench_return`, `CAP_EDGES`, `CAP_LABELS` |
+| `bench.py` (구방식 — 신규 리서치는 bench_daily) | `size_index`, `cap_bucket`, `entry_cap`, `bench_return`, `CAP_EDGES`, `CAP_LABELS` |
+| `bench_daily.py` | `build`, `ensure`, `load`, `bench_id`, `bench_return`, `bench_returns`, `BenchCache`, `BENCH_DB` |
 | `exits.py` | `hold_exit`, `trailing_exit` |
 | `paths.py` | `event_paths` |
 | `stats.py` | `weighted`, `day_key`, `month_key`, `cost_table`, `COSTS`, `day_daily_means`, `day_weighted_mean`, `day_median`, `day_win_rate`, `day_tstat` |
 | `validate.py` | `wf_train`, `select_best`, `walk_forward`, `placebo_percentile` |
+
+## bench_daily
+
+- 12종 `{CAP1..CAP5,MKT}_{ALL,LIQ10}` 일별 동일가중, 전일 시총·전일 거래대금 기준
+- 하루 세 조각 `r_cc`·`r_on`·`r_in` 저장, `bench_return` 으로 진입·청산 시점 조합
+- `ensure()` 로 `etl/db/bench_daily.duckdb` 갱신 후 `load()` 로 읽기만
 
 ## 결정
 
@@ -24,3 +31,9 @@
 - D7: walk-forward 학습은 진입일·청산일 모두 Y0101 미만 강제, 우회 인자 없음
 
 분봉은 추후 별도.
+
+## 벤치마크 vs 대조군 (D13)
+- `bench_daily` 는 **지수**다: 매일 전일 조건으로 종목을 다시 짜 동일가중 수익을 이어붙인다. 전략과 비교할 시장 잣대
+- "진입일에 같은 조건 종목을 아무거나 샀다면" 은 벤치가 아니라 **대조 전략** → placebo 로 잰다
+- 둘은 여러 날 보유에서 다르다 (CAP2·LIQ10 20일 약 0.24%p). 1일 보유는 거의 같다
+- 전략 모양별 호출은 `docs/PLAN_BACKTEST_DAILY.md` 2차 API 표 참조
