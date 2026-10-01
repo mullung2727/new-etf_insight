@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!-- Register:
+     Register-ScheduledTask -Xml (Get-Content -Path theme-alert-night.xml -Raw -Encoding UTF8) -TaskName "daily-theme-alert-night" -TaskPath "\new-etf_insight\" -Force
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>new_etf_insight theme alert night (21:00): collect telegram -> theme re-emergence alert (docs/PLAN_THEME_REEMERGENCE_ALERT.md)</Description>
+    <URI>\new-etf_insight\daily-theme-alert-night</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-10-01T21:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-theme-alert-night.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
