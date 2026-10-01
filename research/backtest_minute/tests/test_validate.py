@@ -39,6 +39,14 @@ class TestWalkForwardMonthly(unittest.TestCase):
         pd.testing.assert_frame_equal(o1, o2)
         self.assertEqual(d1["202402"]["selected"], "A")
 
+    def test_duplicate_months_raises(self):
+        tr = pd.DataFrame([
+            {"cand": "A", "exc": 0.05, "m": "x",
+             "entry_date": "20260215", "exit_date": "20260220"},
+        ])
+        with self.assertRaisesRegex(ValueError, "중복 월"):
+            walk_forward_monthly(tr, ["202602", "202602"], ["A"], "m")
+
 
 if __name__ == "__main__":
     unittest.main()
