@@ -6,6 +6,9 @@
 - When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
 - When starting, restarting, checking, or debugging local project servers, first read `skills/new-etf-insight-server-dev/SKILL.md`.
 - When running, checking, resuming, or debugging the all-symbol minute-bar backfill, first read `skills/new-etf-insight-minute-backfill/SKILL.md`.
+- When backtesting a trading strategy (일봉/분봉 데이터 조회, 청산 시뮬레이션, 표본 확장), first read `research/BACKTEST_DATA.md`.
+- 일봉 수익률·가드·비용 계산은 즉석 확인용 한 줄 계산이라도 `research/backtest_daily` 를 import 한다(재구현 금지). 수익률 표를 내기 전 `research/backtest_daily/README.md` 함수 목록과 대조: 상한가 `guards.limit_up_close`, 비용 `stats.COSTS`(기준 0.35%), 일별 가중 `stats.day_*`.
+- 분봉 계산도 즉석 확인용 한 줄 계산이라도 `research/backtest_minute` 를 import 한다(재구현 금지, 통계·비용·가드는 `research/backtest_daily`). 표를 내기 전 `research/BACKTEST_DATA.md` 맨 위 체크리스트(전일 정보 결합·유니버스·지정가 체결 `pre_open`·09:00 가격·청산)와 대조.
 - 자동매매·예약 배치를 조사하거나 설명하기 전에 `ops/batches/README.md`의 전략별 작업 매핑을 먼저 읽는다. 전략 매핑은 README를 기준으로 하고, 활성화·마지막/다음 실행·결과는 실제 Windows Task Scheduler 등록값을 별도로 조회해 구분한다. 작업을 `신규`/`구형`으로 추정해 부르지 않는다.
 
 이 문서는 `new-etf-insight` 프로젝트에서 에이전트가 항상 따라야 하는 최상위 작업 지침이다.

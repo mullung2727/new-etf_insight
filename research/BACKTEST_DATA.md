@@ -3,6 +3,18 @@
 주제와 무관하게 이 저장소에서 백테스트를 돌릴 때 쓰는 데이터·도구 정리.
 전략별 결과는 각 `research/<주제>/README.md` 참조.
 
+> **수익률 표 내기 전 체크 (즉석 확인 계산 포함, 2026-10-01 누락 사건)** — 일봉 계산은 §7 `research/backtest_daily`, 분봉 계산은 §8 `research/backtest_minute` import, 재구현 금지
+> 1. 상한가 진입 불가: 일봉 `guards.limit_up_close` (종가 진입) / `guards.limit_up_open` (시가 진입), 분봉 `ticks.buyable`
+> 2. 비용: `stats.COSTS` 3단계, 기준 `0.35%` — 임의 비용 금지 (분봉도 같은 함수)
+> 3. 집계: 일별 가중 `stats.day_weighted_mean` / `day_median` / `day_win_rate` (분봉도 같은 함수)
+>
+> 분봉 추가 체크 (§8)
+> 4. 전일 정보는 다음 거래일에만: `prevday.attach_prev` (같은 날 붙이면 assert) · 의심 변수는 `prevday.leak_report`
+> 5. 유니버스는 전일 정보로만: `data.universe` (당일 거래량·분봉 유무로 거르거나 빈자리 채우기 금지)
+> 6. 지정가 체결: `fills.limit_buy_fill(..., pre_open=)` — 장 전 주문은 시가 ≤ 지정가면 시가 체결, 장중은 저가가 한 호가 아래 와야 체결. 닿기만 하면 체결로 치지 말 것
+> 7. 09:00 가격은 09:00 봉이 있을 때만 (`data.snapshot`). 첫 봉이 늦으면 NaN
+> 8. 청산: `exits.tp_sl_exit` — 체결 다음 봉부터, 갭 우선, 같은 봉 TP·SL 동시면 SL, 하한가 매도 불가, 장중 정지 → 다음날 시가
+
 ## 0. 결과 문서 저장 위치
 
 이 저장소는 공개(public) 전제다. 백테스트 결과를 쓰기 전에 저장 위치부터 정한다.
