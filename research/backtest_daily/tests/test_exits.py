@@ -57,6 +57,12 @@ class TestTrailingExit(unittest.TestCase):
                                             ms_max=200)
         self.assertEqual((pos, frozen, reason), (None, False, "open"))
 
+    def test_nan_skipped_not_stuck(self):
+        # 고점 150 → NaN → 112.5(고점 대비 -25%) → 3행 청산, NaN행 청산 없음
+        P = [100.0, 150.0, float("nan"), 112.5]
+        pos, frozen, reason = trailing_exit([0, 1, 2, 3], P, 0, 100.0, ms_max=1000)
+        self.assertEqual((pos, frozen, reason), (3, False, None))
+
 
 if __name__ == "__main__":
     unittest.main()

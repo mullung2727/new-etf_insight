@@ -36,6 +36,8 @@ def event_paths(px: pd.DataFrame, r: np.ndarray, uni: pd.DataFrame,
     ucap0 = uni["cap0"].to_numpy(dtype=float)
     for j in range(nu):
         t, ms0 = ut[j], int(ums0[j])
+        if ms0 < ms_min or ms0 > ms_max:
+            continue
         bi = pos.get(t)
         if bi is None:
             tm = tr = tc = np.empty(0)

@@ -31,7 +31,7 @@ def trailing_exit(ms, P, entry_pos, p_entry, stop=0.20, max_hold=250, ms_max=Non
         base = np.empty(len(seg) + 1)
         base[0] = max(float(p_entry), float(Pv[entry_pos]))
         base[1:] = seg
-        run = np.maximum.accumulate(base[:-1])
+        run = np.fmax.accumulate(base[:-1])
         trig = np.flatnonzero(seg < run * (1 - stop))
         if trig.size:
             return (int(lo + trig[0]), False, None)
