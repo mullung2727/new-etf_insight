@@ -112,6 +112,16 @@ class TestDayBars(unittest.TestCase):
         self.assertTrue(np.isnan(snapshot(b, 85900)))
         self.assertTrue(np.isnan(snapshot(None, 90100)))
 
+    def test_snapshot_90000_requires_first_bar(self):
+        b = {"time": np.array([90500, 90600]),
+             "open": np.array([100.0, 101.0]),
+             "close": np.array([100.5, 101.5])}
+        self.assertTrue(np.isnan(snapshot(b, 90000)))
+        b0 = {"time": np.array([90000, 90100]),
+              "open": np.array([100.0, 101.0]),
+              "close": np.array([100.5, 101.5])}
+        self.assertAlmostEqual(snapshot(b0, 90000), 100.0)
+
 
 class TestNoSideEffect(unittest.TestCase):
     def test_no_fetch_import(self):

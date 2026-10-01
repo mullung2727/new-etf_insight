@@ -117,7 +117,7 @@ def day_bars(keys, mb_db=MB) -> dict:
 
 
 def snapshot(bars, t) -> float:
-    """t=90000 이면 첫 봉 open, 그 외 time≤t 마지막 봉 close. 없으면 NaN."""
+    """t=90000 이고 첫 봉이 090000 이면 그 open, 그 외 time≤t 마지막 봉 close. 없으면 NaN."""
     if bars is None:
         return float("nan")
     try:
@@ -130,7 +130,7 @@ def snapshot(bars, t) -> float:
     if tm.size == 0:
         return float("nan")
     if ti == 90000:
-        return float(op[0])
+        return float(op[0]) if tm[0] == 90000 else float("nan")
     j = int(np.searchsorted(tm, ti, side="right")) - 1
     if j < 0:
         return float("nan")

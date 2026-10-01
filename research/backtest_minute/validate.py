@@ -15,6 +15,10 @@ def wf_monthly(trades, test_month):
 
 def walk_forward_monthly(trades, months, cands, key_col, cost=0.0035, min_n=30):
     """월별 학습→선택→당월 OOS. 선택 없거나 학습 평균 ≤0 이면 매수 안 함."""
+    months = [str(m) for m in months]
+    dup = sorted({m for m in months if months.count(m) > 1})
+    if dup:
+        raise ValueError(f"중복 월: {', '.join(dup)}")
     months_dict: dict = {}
     oos_parts = []
     cands = tuple(cands)
