@@ -121,6 +121,14 @@ def send_batch_report(message: str) -> bool:
     return send_discord(message, webhook_url=os.getenv("DISCORD_BATCH_WEBHOOK_URL", ""))
 
 
+def send_theme_alert(message: str) -> bool:
+    """테마 알림 전용 Discord 채널로 보낸다(결정 12).
+
+    env: THEME_ALERT_DISCORD_WEBHOOK_URL.
+    """
+    return send_discord(message, webhook_url=os.getenv("THEME_ALERT_DISCORD_WEBHOOK_URL", ""))
+
+
 # 채널 → 이 모듈의 sender 함수 이름. 새 채널은 여기 한 줄 추가(위 docstring 참고).
 # 함수 객체가 아니라 이름으로 두는 건 호출 시점에 조회하기 위함이다(테스트 monkeypatch
 # 반영 + import 시점 캐시로 굳는 것 방지).
@@ -129,6 +137,7 @@ _SENDERS = {
     "telegram": "send_telegram",
     "telegram_report": "send_telegram_report",
     "batch": "send_batch_report",
+    "theme_alert": "send_theme_alert",
 }
 
 

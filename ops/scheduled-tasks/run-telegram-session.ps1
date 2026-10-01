@@ -57,6 +57,15 @@ try {
   Invoke-Step "telegram session pipeline ($Session, $collectStart~$target, discover->analyze->digest)" `
     ".\.venv\Scripts\python.exe" $pipelineArgs
 
+  # 2b) Theme re-emergence alert (docs/PLAN_THEME_REEMERGENCE_ALERT.md). Never fails the session.
+  $themeArgs = @("scripts\run_theme_alert.py", "--source", "telegram", "--date", $target, "--session", $Session)
+  if ($collectStart -ne $target) { $themeArgs += @("--start-date", $collectStart) }
+  try {
+    Invoke-Step "theme alert telegram ($Session, $collectStart~$target)" ".\.venv\Scripts\python.exe" $themeArgs
+  } catch {
+    "[$(Get-Date -Format o)] theme alert telegram skipped: $($_.Exception.Message)" | Tee-Object -FilePath $log -Append | Write-Output
+  }
+
   # 3) 하루 롤업: evening(마지막 세션) 뒤 3세션 합산 'TOP N 주목 종목' 전송. 그 외 세션은 스킵.
   if ($Session -eq "evening") {
     Invoke-Step "telegram daily rollup ($target)" `

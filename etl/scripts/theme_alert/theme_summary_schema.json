@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["themes"],
+  "properties": {
+    "themes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["theme_id", "stage", "evidence_level", "summary"],
+        "properties": {
+          "theme_id": {
+            "type": "integer"
+          },
+          "stage": {
+            "type": "string",
+            "enum": ["언급/전망", "검토", "협의", "계약·발주", "취소"]
+          },
+          "evidence_level": {
+            "type": "string",
+            "enum": ["참여 가능성", "증권사 전망", "공식 확정"]
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
