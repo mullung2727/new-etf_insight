@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import uuid
 from pathlib import Path
 
 import duckdb
@@ -12,7 +13,7 @@ import pandas as pd
 from . import adjust, bench, data, universe
 
 BENCH_DB = Path(__file__).resolve().parents[2] / "etl/db/bench_daily.duckdb"
-CODE_VERSION = "1"
+CODE_VERSION = "2"
 
 BUCKETS = ["CAP1", "CAP2", "CAP3", "CAP4", "CAP5"]
 UNIVERSES = ["ALL", "LIQ10"]
@@ -82,22 +83,45 @@ def build(db=data.DB, out=BENCH_DB) -> dict:
         prev_close[1:] = np.where(same[1:], close_arr[:-1], np.nan)
         prev_cap[1:] = np.where(same[1:], cap_arr[:-1], np.nan)
         prev_tv[1:] = np.where(same[1:], tv_arr[:-1], np.nan)
+    # 클립된 행 판정: 보정이 적용된 행은 |r|<0.05 라 정확히 ±0.30 인 행은
+    # 보정 없이 클립된 것. 그 중 원 가격 움직임이 ±31% 이상만 불가능이라 제외.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        raw_pr = close_arr / prev_close
+    hit_clip = (r == 0.30) | (r == -0.30)
+    impossible = hit_clip & (np.abs(raw_pr - 1.0) >= 0.31)
     valid = (contig & np.isfinite(r) & np.isfinite(prev_cap) & (prev_cap > 0)
              & np.isfinite(prev_close) & (prev_close > 0)
              & np.isfinite(close_arr) & (close_arr > 0)
              & np.isfinite(open_arr) & (open_arr > 0)
-             & (r > -0.30) & (r < 0.30))
+             & ~impossible)
     if n and spac:
         is_spac = np.array([t in spac for t in tic])
         valid &= ~is_spac
+    # 스팩 가격 행동: 직전 60행(당일 포함) 종가가 전부 1900~2600원이고
+    # 최대/최소-1 < 5%면 스팩 구간으로 제외 (합병 후 개명한 종목의 과거 구간용).
+    # 60행 미만 초기 행은 이름 기준만 적용.
+    spac_px = np.zeros(n, dtype=bool)
+    if n:
+        grp = pd.Series(close_arr).groupby(pd.Series(tic), sort=False)
+        roll = grp.rolling(60, min_periods=60)
+        mx = (roll.max().reset_index(level=0, drop=True)
+              .sort_index().to_numpy(dtype=float))
+        mn = (roll.min().reset_index(level=0, drop=True)
+              .sort_index().to_numpy(dtype=float))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            spac_px = ((mn >= 1900.0) & (mx <= 2600.0)
+                       & (mx / mn - 1.0 < 0.05))
+    valid &= ~spac_px
     with np.errstate(divide="ignore", invalid="ignore"):
         pr = close_arr / prev_close
         f = (1.0 + r) / pr
         r_on = open_arr / prev_close * f - 1.0
         r_in = close_arr / open_arr - 1.0
-    valid &= (np.isfinite(r_on) & np.isfinite(r_in)
-              & (r_on >= -0.30) & (r_on <= 0.30)
-              & (r_in >= -0.30) & (r_in <= 0.30))
+    # r_on: 시가는 가격제한폭 안이라 ±30%(부동소수 여유 1e-9) 밖만 제외.
+    # r_in: 하한가 시가→상한가 종가(+85.7%)도 정상이라 가격제한 조합 범위 밖만 제외.
+    r_in_lo, r_in_hi = 0.7 / 1.3 - 1.0, 1.3 / 0.7 - 1.0
+    valid &= (np.isfinite(r_on) & (np.abs(r_on) <= 0.30 + 1e-9)
+              & np.isfinite(r_in) & (r_in >= r_in_lo) & (r_in <= r_in_hi))
     if valid.any():
         cap_eok = prev_cap[valid] / 1e8
         bins = list(bench.CAP_EDGES[1:-1])
@@ -169,33 +193,36 @@ def build(db=data.DB, out=BENCH_DB) -> dict:
 
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = out.with_name(out.name + ".tmp")
-    if tmp.exists():
-        tmp.unlink()
-    con = duckdb.connect(str(tmp))
+    # 동시 빌드 충돌 방지: 호출마다 고유한 임시 파일, 실패 시 자기 것만 지움
+    tmp = out.with_name(f"{out.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
-        con.execute("CREATE TABLE bench_daily(date VARCHAR, ms INTEGER, bench_id VARCHAR,"
-                    " n INTEGER, r_cc DOUBLE, r_on DOUBLE, r_in DOUBLE)")
-        con.execute("CREATE TABLE bench_meta(bench_id VARCHAR, universe VARCHAR,"
-                    " cap_bucket VARCHAR, label_ko VARCHAR, rule_ko VARCHAR)")
-        con.execute("CREATE TABLE bench_build(source_max_date VARCHAR, built_at VARCHAR,"
-                    " row_count INTEGER, code_version VARCHAR)")
-        if len(bdf):
-            con.register("bdf", bdf)
-            con.execute("INSERT INTO bench_daily SELECT date, ms, bench_id, n, r_cc, r_on, r_in"
-                        " FROM bdf")
-            con.unregister("bdf")
-        con.register("mdf", mdf)
-        con.execute("INSERT INTO bench_meta SELECT bench_id, universe, cap_bucket, label_ko,"
-                    " rule_ko FROM mdf")
-        con.unregister("mdf")
-        con.register("bld", bld)
-        con.execute("INSERT INTO bench_build SELECT source_max_date, built_at, row_count,"
-                    " code_version FROM bld")
-        con.unregister("bld")
-    finally:
-        con.close()
-    os.replace(tmp, out)
+        con = duckdb.connect(str(tmp))
+        try:
+            con.execute("CREATE TABLE bench_daily(date VARCHAR, ms INTEGER, bench_id VARCHAR,"
+                        " n INTEGER, r_cc DOUBLE, r_on DOUBLE, r_in DOUBLE)")
+            con.execute("CREATE TABLE bench_meta(bench_id VARCHAR, universe VARCHAR,"
+                        " cap_bucket VARCHAR, label_ko VARCHAR, rule_ko VARCHAR)")
+            con.execute("CREATE TABLE bench_build(source_max_date VARCHAR, built_at VARCHAR,"
+                        " row_count INTEGER, code_version VARCHAR)")
+            if len(bdf):
+                con.register("bdf", bdf)
+                con.execute("INSERT INTO bench_daily SELECT date, ms, bench_id, n, r_cc, r_on,"
+                            " r_in FROM bdf")
+                con.unregister("bdf")
+            con.register("mdf", mdf)
+            con.execute("INSERT INTO bench_meta SELECT bench_id, universe, cap_bucket, label_ko,"
+                        " rule_ko FROM mdf")
+            con.unregister("mdf")
+            con.register("bld", bld)
+            con.execute("INSERT INTO bench_build SELECT source_max_date, built_at, row_count,"
+                        " code_version FROM bld")
+            con.unregister("bld")
+        finally:
+            con.close()
+        os.replace(tmp, out)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return {"source_max_date": src_max, "built_at": built_at,
             "row_count": int(len(bdf)), "code_version": CODE_VERSION, "out": str(out)}
 
@@ -357,14 +384,13 @@ def bench_returns(ids, entry_dates, entry_at, exit_dates, exit_at, table=None):
         if len(df) == 0:
             raise ValueError(f"bench에 행 없음: {bid!r}")
         dates, pos, cc, on, inn = _cols(df)
-        pre = np.cumprod(1.0 + cc)
-        rec = (pos, cc, on, inn, pre)
+        rec = (pos, cc, on, inn)
         cache[bid] = rec
         return rec
 
     out = np.empty(len(ids), dtype=float)
     for i, (bid, d1, d2) in enumerate(zip([str(v) for v in ids], ed, xd)):
-        pos, cc, on, inn, pre = prep(bid)
+        pos, cc, on, inn = prep(bid)
         if d1 not in pos:
             raise ValueError(f"진입일 없음: {d1}")
         if d2 not in pos:
@@ -391,10 +417,11 @@ def bench_returns(ids, entry_dates, entry_at, exit_dates, exit_at, table=None):
             f *= 1.0 + v
         a, b = i1 + 1, i2 - 1
         if a <= b:
+            # 조회 구간만 곱한다: 전체 누적곱은 구간 앞 NaN 에 오염됨
             seg = cc[a:b + 1]
             if not np.all(np.isfinite(seg)):
                 raise ValueError(f"벤치값 비정상: {d1}~{d2}")
-            f *= float(pre[b] / pre[a - 1])
+            f *= float(np.prod(1.0 + seg))
         last = float(cc[i2]) if exit_at == "close" else float(on[i2])
         if not np.isfinite(last):
             raise ValueError(f"벤치값 비정상: {d2}")

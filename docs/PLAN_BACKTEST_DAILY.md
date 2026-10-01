@@ -67,7 +67,7 @@
 | D3 | 기업행위 보정 | `adj_returns` 방식 하나로 통일 (list_shrs 0.67~1.5 밴드 방식 폐기) | Claude | 밴드는 권리락·20% 무상증자를 못 잡음 (BACKTEST_DATA §2c) |
 | D4 | 정지 후 재개일 수익 | 0 처리 (NaN → 누적곱에서 1) + 재개 점프가 ±31% 넘으면 `jump_ok` 로 표본 제외 | Claude | ipo_drift D18 과 일치 |
 | D5 | `fin_ok` | `envelope/exp29_fin_guard.fin_flags` 코드를 backtest_daily 로 **복사** 이식 (원본 유지). **확인 완료(2026-09-30)**: `fin_flags` 본문은 KRX 상폐 재무요건만(매출·세전손실·자본잠식·자기자본·시총, `x2` 배수). 파일 상단 import 만 엔벌로프 전략 것 → 함수 본문·`AVAIL` 상수만 복사 | Claude | public 모듈이 private 를 import 하면 공개 저장소에서 깨짐 |
-| D6 | 가중 기본값 | 통계 함수는 `weight="day"|"month"` 인자 필수(기본값 없음) | Claude | 어느 가중인지 호출부에서 보이게 |
+| D6 | 가중 기본값 | 통계 함수 `stats.weighted(values, keys)` 는 가중 키를 **기본값 없이** 받는다 — 호출부가 `day_key(dates)` 또는 `month_key(dates)` 를 넘겨 일·월 가중을 명시. (2026-10-01 리뷰 #7: 처음 문서의 `weight=` 인자 대신 키 인자로 구현됨, 의도 동일 — 문서를 구현에 맞춤) | Claude | 어느 가중인지 호출부에서 보이게 |
 | D7 | walk-forward 누설 차단 | 함수 안에서 `exit_date < Y0101` 을 강제(호출자가 못 끔) | Claude | 과거 사고 방지용 불변식 — 우회 경로 없게 |
 | D8 | 코드 생성 | muse 가 이식·작성, Claude 가 검수·테스트 실행 | 기존 규칙 | |
 
@@ -201,3 +201,7 @@ bench_return(bench_id, entry_date, entry_at: "open"|"close",
 - 시점 문제(밤사이)는 해결 — 1일 보유에서 차이 사라짐
 - 여러 날 보유 차이는 **정의 차이**다: bench_daily 는 매일 재구성한 지수(연쇄), h26 원본 벤치는 진입일 적격 종목 묶음을 그대로 보유한 수익. CAP2·LIQ10 20일에서 두 정의 차이 실측 0.24%p (`research/private/backtest_daily_repro/orig/cohort_vs_chain.py`)
 - **D13 (사용자 결정)**: 벤치마크 = 매일 재구성 지수(bench_daily) 로 확정. "같은 날 같은 조건 종목을 아무거나 샀다면" 비교는 벤치가 아니라 **대조 전략**이므로 `validate.placebo_percentile` 쪽에서 한다
+
+## 2차 보충 — 리뷰 반영 (2026-10-01, `research/private/backtest_daily_repro/prompts/03_review_result.md`)
+- **세 조각은 각각 독립된 동일가중 포트폴리오 수익이다** (리뷰 #2). `mean(r_on)`·`mean(r_in)` 을 곱해도 `mean(r_cc)` 와 같지 않다 — 종목 간 밤사이·장중 공분산(갭 뒤 되돌림) 때문. `bench_return` 은 종가→종가 구간을 두 조각으로 쪼개 계산하지 않으므로 결과는 일관된다: 시가 진입 = "그날 시가에 동일가중으로 산 포트폴리오", 시가 청산 = "전일 종가 포트폴리오를 시가에 판 것". 조각을 직접 곱해 종가→종가를 만들지 말 것
+- 수정 (F1~F6): event_paths 기준일 수익 제외 / 정확히 ±30% 정상 가격제한 행 유지 · 장중 수익은 가격제한 조합 범위(−46.2%~+85.8%)만 제외 / 벡터 조회 앞 NaN 오염 / 동시 빌드 임시파일 / 스팩 가격행동 판정 추가 / CODE_VERSION 2
