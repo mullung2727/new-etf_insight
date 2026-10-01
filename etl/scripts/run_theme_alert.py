@@ -472,6 +472,7 @@ def process_batch(items, con_state, cfg, llm_fn, send_fn, mode, fetch_texts_fn) 
 
     # 5. 요약 호출 — new·progress_candidate만, 10개씩 (backfill은 건너뜀)
     alerts = []
+    failed_tids = set()
     if mode != "backfill":
         cand_ids = sorted(
             tid for tid, (kind, _gap) in decisions.items() if kind != "repeat"
@@ -532,14 +533,14 @@ def process_batch(items, con_state, cfg, llm_fn, send_fn, mode, fetch_texts_fn) 
                 gap_days=gap if alert_kind == "new" else None,
                 prev_stage=prev if alert_kind == "progress" else None,
             )
-            # 6. 전송 — 테마 1개 = 1통
+            # 6. 전송 — 테마 1개 = 1통 (send 실패분은 저장도 건너뛰고 다음 실행에서 재시도)
             if mode == "send":
                 ok = send_fn(message)
-                if ok:
-                    sent_at = _now_utc_iso()
-                else:
-                    sent_at = None
+                if not ok:
                     print(f"[theme_alert] 전송 실패: {name}")
+                    failed_tids.add(tid)
+                    continue
+                sent_at = _now_utc_iso()
             else:
                 print(message)
                 sent_at = None
@@ -560,6 +561,7 @@ def process_batch(items, con_state, cfg, llm_fn, send_fn, mode, fetch_texts_fn) 
             result["alerts"].append(message)
 
     # 7. 한 번에 저장 — 테마 없는 원문도 processed에
+    # (mode=send에서 전송 실패한 테마는 mentions·alerts·processed 전부 건너뜀)
     mentions = [
         {
             "theme_id": tid,
@@ -571,11 +573,16 @@ def process_batch(items, con_state, cfg, llm_fn, send_fn, mode, fetch_texts_fn) 
         for tid, refs in groups.items()
         for r in refs
     ]
+    processed_items = items
+    if mode == "send" and failed_tids:
+        mentions = [m for m in mentions if m["theme_id"] not in failed_tids]
+        failed_refs = {r for tid in failed_tids for r in groups.get(tid, [])}
+        processed_items = [it for it in items if it["ref"] not in failed_refs]
     save_run(
         con_state,
         mentions,
         alerts,
-        [{"source": it["source"], "ref": it["ref"]} for it in items],
+        [{"source": it["source"], "ref": it["ref"]} for it in processed_items],
     )
     return result
 

@@ -595,7 +595,7 @@ class TestNoSend(_ThemeAlertCase):
 
 
 class TestSendFailure(_ThemeAlertCase):
-    """5b. 전송 실패: send_fn이 False → theme_alerts.sent_at NULL."""
+    """5b. 전송 실패: send_fn이 False → 저장 건너뛰고 다음 실행에서 재시도."""
 
     def test_failed_send_stores_null_sent_at(self):
         self._add_post("ch1", 1, "2026-09-15", "알래스카 LNG 본문")
@@ -624,9 +624,104 @@ class TestSendFailure(_ThemeAlertCase):
             )
         self.assertEqual(rc, 0)
         self.assertEqual(len(self.sent), 1)
+        # 1회차: 전송 실패 → alerts·mentions·processed 전부 저장 안 됨
+        con = self._state()
+        self.assertEqual(
+            con.execute("SELECT COUNT(*) FROM theme_alerts").fetchone()[0], 0
+        )
+        self.assertEqual(
+            con.execute("SELECT COUNT(*) FROM theme_mentions").fetchone()[0], 0
+        )
+        self.assertEqual(
+            con.execute(
+                "SELECT COUNT(*) FROM theme_processed WHERE ref = ?", ("ch1/1",)
+            ).fetchone()[0],
+            0,
+        )
+        calls_after_first = len(llm.calls)
+        self.assertEqual(calls_after_first, 2)
+
+        # 2회차: 같은 입력, 전송 성공 → llm 재호출·[신규 테마] 전송·저장
+        self.sent.clear()
+        rc = self._run(
+            ["--source", "telegram", "--date", "2026-09-15"], llm, channels=["ch1"]
+        )
+        self.assertEqual(rc, 0)
+        self.assertGreater(len(llm.calls), calls_after_first)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("[신규 테마]", self.sent[0])
         con = self._state()
         row = con.execute("SELECT sent_at FROM theme_alerts").fetchone()
-        self.assertIsNone(row[0])
+        self.assertIsNotNone(row[0])
+        self.assertEqual(
+            con.execute("SELECT COUNT(*) FROM theme_mentions").fetchone()[0], 1
+        )
+        self.assertEqual(
+            con.execute(
+                "SELECT COUNT(*) FROM theme_processed WHERE ref = ?", ("ch1/1",)
+            ).fetchone()[0],
+            1,
+        )
+
+    def test_shared_ref_partial_failure(self):
+        self._add_post("ch1", 1, "2026-09-15", "두 테마 본문")
+        llm = _FakeLlm(
+            extract={
+                "themes": [
+                    {"name": "테마A", "match_existing": None, "refs": ["ch1/1"]},
+                    {"name": "테마B", "match_existing": None, "refs": ["ch1/1"]},
+                ]
+            },
+            summary=_summary_for_prompt,
+        )
+
+        def flaky_send(message):
+            self.sent.append(message)
+            return "테마B" not in message
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = main(
+                ["--source", "telegram", "--date", "2026-09-15"],
+                llm_fn=llm,
+                send_fn=flaky_send,
+                state_db_path=self.state_path,
+                telegram_db_path=self.tg_path,
+                youtube_db_path=self.yt_path,
+                channels=["ch1"],
+            )
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(self.sent), 2)
+        con = self._state()
+        tid_a = con.execute(
+            "SELECT theme_id FROM themes WHERE name = ?", ("테마A",)
+        ).fetchone()[0]
+        tid_b = con.execute(
+            "SELECT theme_id FROM themes WHERE name = ?", ("테마B",)
+        ).fetchone()[0]
+        self.assertEqual(
+            con.execute(
+                "SELECT COUNT(*) FROM theme_mentions WHERE theme_id = ?", (tid_a,)
+            ).fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            con.execute(
+                "SELECT COUNT(*) FROM theme_mentions WHERE theme_id = ?", (tid_b,)
+            ).fetchone()[0],
+            0,
+        )
+        self.assertEqual(
+            con.execute(
+                "SELECT COUNT(*) FROM theme_alerts WHERE theme_id = ?", (tid_a,)
+            ).fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            con.execute("SELECT COUNT(*) FROM theme_alerts").fetchone()[0], 1
+        )
+        self.assertEqual(
+            con.execute("SELECT COUNT(*) FROM theme_processed").fetchone()[0], 0
+        )
 
 
 class TestBackfill(_ThemeAlertCase):

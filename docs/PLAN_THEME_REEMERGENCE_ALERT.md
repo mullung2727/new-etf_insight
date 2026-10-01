@@ -59,6 +59,7 @@
 7. **커밋** — `theme_mentions`·`theme_alerts`·`theme_processed`를 한 트랜잭션으로 저장.
    - 재실행: 처리된 원문은 1단계에서 빠지므로 중복 없음.
    - 한계: 6 전송 후 7 커밋 전에 죽으면 재실행 시 같은 알림 1회 재전송 가능. 감수.
+   - 전송 실패(디스코드 장애·웹훅 없음 → `notify` False): 그 테마의 alert·mentions를 저장하지 않고, 그 테마 원문은 processed에서 빼서 다음 실행에 재추출·재판정·재전송 (PR #38 리뷰 반영, 2026-10-01 사용자)
 
 ## DB 스키마 — `etl/db/theme_alert.sqlite3`
 
