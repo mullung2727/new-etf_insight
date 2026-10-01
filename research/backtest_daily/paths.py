@@ -64,7 +64,8 @@ def event_paths(px: pd.DataFrame, r: np.ndarray, uni: pd.DataFrame,
                     p = int(np.searchsorted(tm, m))
                     if p < tm.size and tm[p] == m:
                         miss = 0
-                        if np.isfinite(tr[p]):
+                        # D0 종가 기준: k=0 은 기준점이라 그날 수익을 곱하지 않음
+                        if k >= 1 and np.isfinite(tr[p]):
                             lev *= 1 + tr[p]
                     else:
                         miss += 1
