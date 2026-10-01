@@ -254,7 +254,7 @@ if abs(on_gap) >= 0.31:
   → 백테스트 수익이 전부 살 수 없는 종목에서 나왔다
 ```
 
-## 3. 공용 시뮬레이터
+## 3. 공용 시뮬레이터 (구 — 새 분봉 리서치는 §8 `backtest_minute`)
 
 ```python
 from research.watchlist_expected_return.phase8_minute_pullback_strategy import simulate_minute_exit
@@ -520,7 +520,7 @@ t 값            mean / (pstdev / sqrt(n))
 
 ## 7. 공용 모듈 — `research/backtest_daily/` (일봉 전용, 2026-09-30~)
 
-새 **일봉** 리서치는 위 §1~§6 가드를 직접 짜지 말고 이 패키지를 쓴다. **muse 명세에도 이 패키지 사용을 반드시 지시한다** (2026-09-30 사용자). 분봉은 아직 §2·§3 기존 모듈(공용화는 추후 별도).
+새 **일봉** 리서치는 위 §1~§6 가드를 직접 짜지 말고 이 패키지를 쓴다. **muse 명세에도 이 패키지 사용을 반드시 지시한다** (2026-09-30 사용자). 분봉은 §8 `backtest_minute`.
 설계 `docs/PLAN_BACKTEST_DAILY.md`, 함수 목록 `research/backtest_daily/README.md`. 이식 검증: ipo_drift 1·2단계 결과 51개 수치 1e-4 이내 일치.
 
 | 이 문서의 가드 | 함수 |
@@ -537,3 +537,21 @@ t 값            mean / (pstdev / sqrt(n))
 | walk-forward · placebo | `validate.walk_forward` (청산 < Y0101 강제) · `validate.placebo_percentile` |
 
 상장폐지는 **마지막 거래 가격 고정**(정리매매 포함)이 규약이다. `volume_shock_anchor` 는 −100% 로 처리했으니 그 결과와 비교할 때 주의.
+
+## 8. 공용 모듈 — `research/backtest_minute/` (분봉 전용, 2026-10-01~)
+
+새 **분봉** 리서치는 §2 `minute_bar_store`·§3 `simulate_minute_exit` 대신 이 패키지를 쓴다. 통계·가드·스팩·placebo·여러 날 보유 벤치는 §7 `backtest_daily` 를 그대로 import 한다(다시 만들지 않음). **muse 명세에도 두 패키지 사용을 지시한다.**
+설계 `docs/PLAN_BACKTEST_MINUTE.md`, 함수 목록 `research/backtest_minute/README.md`. 이식 검증: 과거 분봉 리서치 무작위 3개(시드 20261001) 원본 결과 재현.
+
+- 전 종목 분봉은 **2025-12-01~** (그 전은 하루 ~130종목). 유니버스 기본 = 전 종목, 전일 정보로만 거름
+- 분봉 로드는 DB 읽기 전용 — 없는 날짜를 키움에서 받지 않는다
+
+| 함정 | 함수 |
+|---|---|
+| 룩어헤드 (전일 피처를 당일에 붙임) | `prevday.attach_prev` (F→D=F+1, F종가=전일종가 assert) · `prevday.leak_report` |
+| 유니버스에 당일 정보 (생존 편향) | `data.universe` (D 는 시가만) |
+| 지정가 체결 낙관 | `fills.limit_buy_fill(..., pre_open=)` — 장 전 주문 = 시가 ≤ 지정가면 시가 체결, 장중 = 저가가 한 호가 아래 와야 체결 |
+| 상한가 매수 불가 · 호가 단위 | `ticks.buyable` · `ticks.tick_size` / `upper_limit` / `lower_limit` |
+| 하한가 매도 불가 · 장중 정지 · 분봉 결측 | `exits.tp_sl_exit` (풀린 봉/다음날 시가, 15:15 전 끊김 → 다음날 시가, 일봉 보수 처리) |
+| 짧은 기간 검증 | `validate.walk_forward_monthly` (청산 < 검증월 1일 강제) |
+| 여러 날 보유 벤치 | `bench.hold_bench` → `bench_daily.bench_return` |
