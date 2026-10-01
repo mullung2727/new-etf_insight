@@ -28,7 +28,10 @@ def limit_up_close(df, pos) -> str | None:
     prev = cl[pos - 1]
     if not np.isfinite(prev) or prev <= 0:
         return LIMIT_UNDECIDABLE
-    if cl[pos] / prev - 1 >= 0.295:
+    cur = cl[pos]
+    if not np.isfinite(cur) or cur <= 0:
+        return LIMIT_UNDECIDABLE
+    if cur / prev - 1 >= 0.295:
         return LIMIT_UP
     return None
 
@@ -37,6 +40,8 @@ def limit_up_open(df, t_pos) -> str | None:
     """상한가 가드(시가 진입용). T+1 시가 / T 종가 - 1 ≥ 29.5% → 제외. 호출 전 T+1 ms 연속 확인."""
     o = float(df["open"].iloc[t_pos + 1])
     c = float(df["close"].iloc[t_pos])
+    if not np.isfinite(o) or not np.isfinite(c) or c <= 0:
+        return LIMIT_UNDECIDABLE
     return LIMIT_UP if o / c - 1 >= 0.295 else None
 
 
@@ -107,7 +112,8 @@ def fin_flags(T: pd.DataFrame, x2: int, fin_db=FIN_DB) -> pd.DataFrame:
     sq = sqlite3.connect(str(fin_db))
     a = pd.read_sql("""SELECT stock_code, bsns_year y, reprt_code rc, fs_div,
                               account_nm n, amount v FROM accounts
-                       WHERE account_nm IN ('매출액','법인세차감전 순이익','자본총계','자본금')""", sq)
+                       WHERE account_nm IN ('매출액','법인세차감전 순이익','자본총계','자본금')
+                         AND reprt_code IN ('11011','11012','11013','11014')""", sq)
     sq.close()
     a = a.pivot_table(index=["stock_code", "y", "rc", "fs_div"], columns="n",
                       values="v", aggfunc="last").reset_index()

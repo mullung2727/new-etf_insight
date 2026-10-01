@@ -35,6 +35,7 @@ def walk_forward(trades, years, cands, key_col, cost=0.0035, min_n=30):
     """
     years_dict: dict = {}
     oos_parts = []
+    cands = tuple(cands)
     for Y in years:
         trn = wf_train(trades, Y)
         cand, mean, n = select_best(trn, cands, key_col, cost=cost, min_n=min_n)
