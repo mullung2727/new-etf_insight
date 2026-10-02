@@ -55,6 +55,30 @@ def _is_retryable_send(exc: Exception) -> bool:
     return isinstance(exc, requests.exceptions.ConnectionError)
 
 
+def _post_discord(
+    url: str, payload: dict, params: dict | None = None, *, _sleep=time.sleep
+) -> requests.Response | None:
+    """Discord 웹훅 POST + 일시 오류 재시도. 성공 시 Response, 실패 시 None (예외 안 던짐).
+
+    params=None이면 params 키워드 없이 호출(기존 호출 형태 유지). _sleep 은 테스트 주입용.
+    """
+    for attempt in range(_SEND_RETRIES + 1):
+        try:
+            if params is None:
+                resp = requests.post(url, json=payload, timeout=_TIMEOUT)
+            else:
+                resp = requests.post(url, json=payload, params=params, timeout=_TIMEOUT)
+            resp.raise_for_status()
+            return resp
+        except Exception as exc:
+            if attempt < _SEND_RETRIES and _is_retryable_send(exc):
+                _sleep(_SEND_RETRY_BACKOFF * (attempt + 1))
+                continue
+            print(f"[notify] Discord send failed: {exc}")
+            return None
+    return None  # 도달 불가 (루프가 반환/처리) — 타입체커 안심용
+
+
 def send_discord(message: str, webhook_url: str | None = None, *, _sleep=time.sleep) -> bool:
     """Discord로 message를 POST. 성공 True, 미설정/실패 False (예외 안 던짐).
 
@@ -67,18 +91,7 @@ def send_discord(message: str, webhook_url: str | None = None, *, _sleep=time.sl
         print("[notify] DISCORD_WEBHOOK_URL not set - skip Discord notify")
         return False
     payload = {"content": message[:_DISCORD_MAX_LEN]}
-    for attempt in range(_SEND_RETRIES + 1):
-        try:
-            resp = requests.post(url, json=payload, timeout=_TIMEOUT)
-            resp.raise_for_status()
-            return True
-        except Exception as exc:
-            if attempt < _SEND_RETRIES and _is_retryable_send(exc):
-                _sleep(_SEND_RETRY_BACKOFF * (attempt + 1))
-                continue
-            print(f"[notify] Discord send failed: {exc}")
-            return False
-    return False  # 도달 불가 (루프가 반환/처리) — 타입체커 안심용
+    return _post_discord(url, payload, _sleep=_sleep) is not None
 
 
 def send_telegram(message: str) -> bool:
@@ -122,11 +135,42 @@ def send_batch_report(message: str) -> bool:
 
 
 def send_theme_alert(message: str) -> bool:
-    """테마 알림 전용 Discord 채널로 보낸다(결정 12).
+    """테마 알림 전용 Discord 포럼 채널에 글을 올린다(결정 12).
 
-    env: THEME_ALERT_DISCORD_WEBHOOK_URL.
+    env: THEME_ALERT_DISCORD_WEBHOOK_URL (포럼 채널 웹훅 전제 — thread_name 필수).
+    첫 줄이 글 제목(thread_name, 100자), 첫 "\\n\\n" 앞이 본문, 뒤 링크 묶음은
+    새 글의 첫 댓글로 단다. 댓글 실패해도 글은 올라갔으니 True(중복 생성 방지).
     """
-    return send_discord(message, webhook_url=os.getenv("THEME_ALERT_DISCORD_WEBHOOK_URL", ""))
+    url = os.getenv("THEME_ALERT_DISCORD_WEBHOOK_URL", "")
+    if not url:
+        print("[notify] THEME_ALERT_DISCORD_WEBHOOK_URL not set - skip theme alert notify")
+        return False
+    if "\n\n" in message:
+        main, links = message.split("\n\n", 1)
+    else:
+        main, links = message, ""
+    thread_name = message.split("\n", 1)[0][:100] or "theme alert"
+    resp = _post_discord(
+        url,
+        {"content": main[:_DISCORD_MAX_LEN], "thread_name": thread_name},
+        params={"wait": "true"},
+    )
+    if resp is None:
+        return False
+    if links:
+        try:
+            channel_id = resp.json().get("channel_id")
+        except Exception:
+            channel_id = None
+        if channel_id:
+            _post_discord(
+                url,
+                {"content": links[:_DISCORD_MAX_LEN]},
+                params={"thread_id": channel_id},
+            )
+        else:
+            print("[notify] theme alert links skipped: no channel_id in forum response")
+    return True
 
 
 # 채널 → 이 모듈의 sender 함수 이름. 새 채널은 여기 한 줄 추가(위 docstring 참고).

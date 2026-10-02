@@ -248,6 +248,14 @@ class TestMessageLinks(unittest.TestCase):
         self.assertNotIn("- [L5]", msg)
         self.assertNotIn("- [L6]", msg)
 
+    def test_body_links_split_by_blank_line(self):
+        refs = [_ref("L0", _iso(_BASE), _iso(_BASE))]
+        msg = format_message("X", 0, "new", "언급/전망", "요약문", "증권사 전망", refs)
+        self.assertIn("\n\n", msg)
+        main, links = msg.split("\n\n", 1)
+        self.assertNotIn("http", main)
+        self.assertIn("https://example.com/L0", links)
+
 
 class TestMessageHeadline(unittest.TestCase):
     """9·10. 등록 ⭐ + [신규 테마]/[진전] 머리말."""
@@ -915,12 +923,14 @@ class TestThemeAlertChannel(unittest.TestCase):
         m.assert_called_once_with("x")
 
     def test_sender_uses_webhook_env(self):
-        with mock.patch.object(notify_mod, "send_discord", return_value=True) as m:
+        resp = mock.MagicMock()
+        resp.raise_for_status.return_value = None
+        with mock.patch("scripts.notify.requests.post", return_value=resp) as post:
             with mock.patch.dict(
                 os.environ, {"THEME_ALERT_DISCORD_WEBHOOK_URL": "https://hook/x"}
             ):
                 notify_mod.send_theme_alert("m")
-        m.assert_called_once_with("m", webhook_url="https://hook/x")
+        self.assertEqual(post.call_args[0][0], "https://hook/x")
 
 
 class TestEnvPath(unittest.TestCase):

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from scripts.notify import notify, send_discord, send_telegram, send_telegram_report
+from scripts.notify import notify, send_discord, send_telegram, send_telegram_report, send_theme_alert
 
 
 def _http_error(status: int) -> requests.exceptions.HTTPError:
@@ -177,6 +177,83 @@ class TestNotifyDispatch(unittest.TestCase):
              patch("scripts.notify.send_discord", return_value=True) as dc:
             notify("m")
         dc.assert_called_once()
+
+
+class TestSendThemeAlert(unittest.TestCase):
+    """포럼 채널: 첫 줄=글 제목(thread_name), 링크 묶음=첫 댓글."""
+
+    def test_posts_main_and_links_comment(self):
+        first = MagicMock()
+        first.raise_for_status.return_value = None
+        first.json.return_value = {"channel_id": "111"}
+        with patch.dict(
+            "os.environ", {"THEME_ALERT_DISCORD_WEBHOOK_URL": "https://hook/x"}, clear=True
+        ), patch(
+            "scripts.notify.requests.post", side_effect=[first, _ok_resp()]
+        ) as post:
+            ok = send_theme_alert("head line\n- 요약: s\n\n- [L0] https://example.com/L0")
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 2)
+        first_call, second_call = post.call_args_list
+        self.assertEqual(first_call[0][0], "https://hook/x")
+        self.assertEqual(first_call[1]["json"]["thread_name"], "head line")
+        self.assertEqual(first_call[1]["params"], {"wait": "true"})
+        self.assertNotIn("http", first_call[1]["json"]["content"])
+        self.assertEqual(second_call[1]["params"], {"thread_id": "111"})
+        self.assertEqual(second_call[1]["json"]["content"], "- [L0] https://example.com/L0")
+
+    def test_single_post_without_links(self):
+        with patch.dict(
+            "os.environ", {"THEME_ALERT_DISCORD_WEBHOOK_URL": "https://hook/x"}, clear=True
+        ), patch("scripts.notify.requests.post", return_value=_ok_resp()) as post:
+            ok = send_theme_alert("[테마 알림 실패] telegram 2026-09-15: boom")
+        self.assertTrue(ok)
+        post.assert_called_once()
+        self.assertEqual(
+            post.call_args[1]["json"]["thread_name"],
+            "[테마 알림 실패] telegram 2026-09-15: boom",
+        )
+        self.assertEqual(post.call_args[1]["params"], {"wait": "true"})
+
+    def test_thread_name_truncated_to_100(self):
+        with patch.dict(
+            "os.environ", {"THEME_ALERT_DISCORD_WEBHOOK_URL": "https://hook/x"}, clear=True
+        ), patch("scripts.notify.requests.post", return_value=_ok_resp()) as post:
+            send_theme_alert("A" * 150 + "\n- 요약: s")
+        self.assertEqual(post.call_args[1]["json"]["thread_name"], "A" * 100)
+
+    def test_first_post_failure_returns_false(self):
+        resp_4xx = MagicMock()
+        resp_4xx.raise_for_status.side_effect = _http_error(404)
+        with patch.dict(
+            "os.environ", {"THEME_ALERT_DISCORD_WEBHOOK_URL": "https://hook/x"}, clear=True
+        ), patch("scripts.notify.requests.post", return_value=resp_4xx) as post:
+            ok = send_theme_alert("head\n\n- [L0] https://example.com/L0")
+        self.assertFalse(ok)
+        self.assertEqual(post.call_count, 1)
+
+    def test_second_post_failure_returns_true(self):
+        first = MagicMock()
+        first.raise_for_status.return_value = None
+        first.json.return_value = {"channel_id": "111"}
+        second_fail = MagicMock()
+        second_fail.raise_for_status.side_effect = _http_error(400)
+        with patch.dict(
+            "os.environ", {"THEME_ALERT_DISCORD_WEBHOOK_URL": "https://hook/x"}, clear=True
+        ), patch(
+            "scripts.notify.requests.post", side_effect=[first, second_fail]
+        ) as post:
+            ok = send_theme_alert("head\n- body\n\n- [L0] https://example.com/L0")
+        self.assertTrue(ok)
+        self.assertEqual(post.call_count, 2)
+
+    def test_skips_when_env_unset(self):
+        with patch.dict("os.environ", {}, clear=True), patch(
+            "scripts.notify.requests.post"
+        ) as post:
+            ok = send_theme_alert("head\n\nlinks")
+        self.assertFalse(ok)
+        post.assert_not_called()
 
 
 if __name__ == "__main__":
