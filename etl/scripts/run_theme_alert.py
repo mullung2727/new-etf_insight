@@ -183,7 +183,10 @@ def format_message(
     gap_days=None,
     prev_stage: str | None = None,
 ) -> str:
-    """알림 문구 (결정 1·13). refs: [{posted_at, collected_at, url, label}]."""
+    """알림 문구 (결정 1·13). refs: [{posted_at, collected_at, url, label}].
+
+    빈 줄 뒤 링크 = 포럼 첫 댓글(send_theme_alert).
+    """
     if kind == "new":
         if gap_days is None:
             head = f"[신규 테마] {theme_name} (첫 관측)"
@@ -204,10 +207,12 @@ def format_message(
         f"- 게시 {posted_kst:%m/%d %H:%M} · 수집 {collected_kst:%m/%d %H:%M}",
     ]
     ordered = sorted(refs, key=lambda r: r["posted_at"])
-    for r in ordered[:_MAX_LINKS]:
-        lines.append(f"- [{r['label']}] {r['url']}")
+    link_lines = [f"- [{r['label']}] {r['url']}" for r in ordered[:_MAX_LINKS]]
     if len(ordered) > _MAX_LINKS:
-        lines.append(f"- 외 {len(ordered) - _MAX_LINKS}건")
+        link_lines.append(f"- 외 {len(ordered) - _MAX_LINKS}건")
+    if link_lines:
+        lines.append("")
+        lines.extend(link_lines)
     return "\n".join(lines)
 
 
