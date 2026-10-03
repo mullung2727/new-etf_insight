@@ -90,31 +90,45 @@ def _broker_key(url: str) -> str:
         return str(url)
 
 
-def read_reservation(broker_url: str) -> dict | None:
-    """계좌 예약 1건. 파일 없음·깨짐·키 없음 → None (예외 없음, 깨짐은 경고)."""
+def _load_reservation_file() -> tuple[dict | None, bool]:
+    """예약 파일 전체 → (dict | None, 깨짐 여부). 파일 없음 → (None, False)."""
     try:
         raw = RESERVATION_PATH.read_text(encoding="utf-8")
     except OSError:
-        return None
+        return None, False
     try:
         data = json.loads(raw)
     except ValueError as error:
-        print(f"[reserve] 예약 파일 깨짐 — 예약 없음 취급 ({RESERVATION_PATH}: {error})")
-        return None
+        print(f"[reserve] 예약 파일 깨짐 — fail closed ({RESERVATION_PATH}: {error})")
+        return None, True
     if not isinstance(data, dict):
-        print(f"[reserve] 예약 파일 형식 오류 — 예약 없음 취급 ({RESERVATION_PATH})")
+        print(f"[reserve] 예약 파일 형식 오류 — fail closed ({RESERVATION_PATH})")
+        return None, True
+    return data, False
+
+
+def read_reservation(broker_url: str) -> dict | None:
+    """계좌 예약 1건. 파일 없음·깨짐·키 없음 → None (예외 없음, 깨짐은 경고)."""
+    data, _ = _load_reservation_file()
+    if data is None:
         return None
     entry = data.get(_broker_key(broker_url))
     return entry if isinstance(entry, dict) else None
 
 
 def available_cash(broker_url: str, exclude_reserve: bool = True) -> int | None:
-    """주문가능금액 — exclude_reserve 면 유증 예약 차감 (없으면 기존값 그대로)."""
+    """주문가능금액 — exclude_reserve 면 유증 예약 차감 (없으면 기존값 그대로).
+    예약 파일이 존재하는데 깨지면 0 (fail closed, A-10)."""
     cash = _deposit_cash(broker_url)
     if cash is None or not exclude_reserve:
         return cash
-    reservation = read_reservation(broker_url)
-    if reservation is None:
+    data, corrupt = _load_reservation_file()
+    if corrupt:
+        return 0
+    if data is None:
+        return cash
+    reservation = data.get(_broker_key(broker_url))
+    if not isinstance(reservation, dict):
         return cash
     try:
         reserve = int(reservation.get("reserve", 0))

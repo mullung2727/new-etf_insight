@@ -224,11 +224,11 @@ class CashReservationTest(unittest.TestCase):
         self.assertEqual(available_cash(self.URL), 0)
 
     @patch("scripts.trading_batch_common.requests.get")
-    def test_corrupt_file_treated_as_no_reserve(self, get: Mock):
+    def test_corrupt_file_fails_closed(self, get: Mock):
         get.return_value = self._deposit("10000000")
         self.path.write_text("{깨짐", encoding="utf-8")
         with patch("builtins.print") as warned:
-            self.assertEqual(available_cash(self.URL), 10_000_000)
+            self.assertEqual(available_cash(self.URL), 0)   # A-10 — 깨지면 0
             self.assertIsNone(read_reservation(self.URL))
         self.assertTrue(warned.called)
 
