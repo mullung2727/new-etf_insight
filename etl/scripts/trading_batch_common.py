@@ -1,13 +1,21 @@
 """자동매매 배치 공용 broker REST·주문시간·수량 유틸리티."""
 from __future__ import annotations
 
+import json
+import os
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import requests
 
 
 REQUEST_TIMEOUT = 15
+
+# 유증 전략 자금 분리 예약 (R2b). {"host:port": {"reserve", "capital_total", ...}}.
+# 유증 verify·order 가 갱신, 다른 전략 available_cash 가 차감. 파일 없으면 기존 동작 그대로.
+RESERVATION_PATH = Path(__file__).resolve().parents[1] / "db" / "cash_reservations.json"
 
 # 청산이 끝난 것으로 간주하는 sell_status. 청산 워커의 미청산 조회와 주문 배치의
 # 중복매수 가드가 같은 집합을 봐야 한다 — 한쪽만 알면 유령 포지션이 매수를 영구 차단한다.
@@ -69,7 +77,54 @@ def require_profile(broker_url: str, expected: str) -> bool:
         return False
 
 
-def available_cash(broker_url: str) -> int | None:
+def _broker_key(url: str) -> str:
+    """broker_url → 예약 키 (host:port). localhost ≡ 127.0.0.1."""
+    try:
+        parts = urlsplit(str(url))
+        host = (parts.hostname or "").lower()
+        if host == "localhost":
+            host = "127.0.0.1"
+        port = parts.port
+        return f"{host}:{port}" if port else host
+    except Exception:
+        return str(url)
+
+
+def read_reservation(broker_url: str) -> dict | None:
+    """계좌 예약 1건. 파일 없음·깨짐·키 없음 → None (예외 없음, 깨짐은 경고)."""
+    try:
+        raw = RESERVATION_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError as error:
+        print(f"[reserve] 예약 파일 깨짐 — 예약 없음 취급 ({RESERVATION_PATH}: {error})")
+        return None
+    if not isinstance(data, dict):
+        print(f"[reserve] 예약 파일 형식 오류 — 예약 없음 취급 ({RESERVATION_PATH})")
+        return None
+    entry = data.get(_broker_key(broker_url))
+    return entry if isinstance(entry, dict) else None
+
+
+def available_cash(broker_url: str, exclude_reserve: bool = True) -> int | None:
+    """주문가능금액 — exclude_reserve 면 유증 예약 차감 (없으면 기존값 그대로)."""
+    cash = _deposit_cash(broker_url)
+    if cash is None or not exclude_reserve:
+        return cash
+    reservation = read_reservation(broker_url)
+    if reservation is None:
+        return cash
+    try:
+        reserve = int(reservation.get("reserve", 0))
+    except (TypeError, ValueError):
+        return cash
+    return max(0, cash - reserve)
+
+
+def _deposit_cash(broker_url: str) -> int | None:
+    """GET /account/deposit → ord_alow_amt. 실패 시 None."""
     try:
         response = requests.get(f"{broker_url}/account/deposit", timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
@@ -77,6 +132,24 @@ def available_cash(broker_url: str) -> int | None:
         return int(value) if value is not None else None
     except Exception:
         return None
+
+
+def write_reservation(broker_url: str, reserve: int, capital_total: int, strategy: str) -> None:
+    """예약 1건 저장 — tmp → os.replace 원자적, 다른 계좌 키 보존. 호출부는 P3(b)."""
+    try:
+        data = json.loads(RESERVATION_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except (OSError, ValueError):
+        data = {}
+    data[_broker_key(broker_url)] = {
+        "reserve": int(reserve), "capital_total": int(capital_total),
+        "strategy": strategy, "updated": now_seoul().isoformat(),
+    }
+    RESERVATION_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = RESERVATION_PATH.with_name(RESERVATION_PATH.name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, RESERVATION_PATH)
 
 
 def fetch_realized(broker_url: str, ticker: str) -> dict | None:
