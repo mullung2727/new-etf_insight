@@ -32,7 +32,8 @@ DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_ohlcv.duckdb"
 UNIVERSE_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt"
 DEFAULT_FROM_DATE = "20240101"
 BATCH_SIZE = 200
-BENCHMARKS = ("SPY", "QQQ", "IWM")
+ETF_TICKERS = ("SPY", "QQQ", "IWM", "TQQQ", "BIL", "HYG", "JNK", "IEI", "IEF")
+ETF_FROM_DATE = "19900101"  # 상장일부터 전부. 매 실행 전 구간 재수신
 NEW_YORK = ZoneInfo("America/New_York")
 
 _EXCLUDED_NAME = re.compile(
@@ -71,6 +72,22 @@ CREATE TABLE IF NOT EXISTS stock_names (
 """
 
 
+_CREATE_ETF_OHLCV = """
+CREATE TABLE IF NOT EXISTS etf_ohlcv (
+    date VARCHAR, ticker VARCHAR,
+    open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE,
+    volume BIGINT,
+    PRIMARY KEY (date, ticker)
+)
+"""
+_CREATE_ETF_DIVIDENDS = """
+CREATE TABLE IF NOT EXISTS etf_dividends (
+    ticker VARCHAR, date VARCHAR, amount DOUBLE,
+    PRIMARY KEY (ticker, date)
+)
+"""
+
+
 @dataclass(frozen=True)
 class UniverseItem:
     ticker: str
@@ -93,7 +110,7 @@ def _default_text_fetch(url: str) -> str:
 def load_universe(
     text_fetch: Callable[[str], str] = _default_text_fetch,
 ) -> list[UniverseItem]:
-    """Return current US common-stock universe plus three benchmark ETFs."""
+    """Return current US common-stock universe."""
     frame = pd.read_csv(io.StringIO(text_fetch(UNIVERSE_URL)), sep="|", dtype=str)
     required = {"Nasdaq Traded", "Symbol", "Security Name", "Listing Exchange", "ETF", "Test Issue"}
     if not required.issubset(frame.columns):
@@ -117,8 +134,6 @@ def load_universe(
             continue
         market = _MARKETS.get(str(row.get("Listing Exchange") or "").strip(), "UNKNOWN")
         out[symbol] = UniverseItem(symbol, name, market)
-    for ticker in BENCHMARKS:
-        out.setdefault(ticker, UniverseItem(ticker, ticker, "ARCA"))
     return [out[ticker] for ticker in sorted(out)]
 
 
@@ -126,6 +141,8 @@ def ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(_CREATE_OHLCV)
     con.execute(_CREATE_SPLITS)
     con.execute(_CREATE_NAMES)
+    con.execute(_CREATE_ETF_OHLCV)
+    con.execute(_CREATE_ETF_DIVIDENDS)
 
 
 def upsert_names(con: duckdb.DuckDBPyConnection, universe: Iterable[UniverseItem]) -> None:
@@ -391,13 +408,13 @@ def audit_gaps(
 ) -> dict[str, list[str]]:
     """Find internal missing dates against SPY; never classify edge gaps as errors."""
     calendar = [row[0] for row in con.execute(
-        "SELECT date FROM ohlcv WHERE ticker='SPY' ORDER BY date"
+        "SELECT date FROM etf_ohlcv WHERE ticker='SPY' ORDER BY date"
     ).fetchall()]
     if not calendar:
         raise RuntimeError("SPY calendar is empty")
-    latest = con.execute("SELECT max(date) FROM ohlcv WHERE ticker='SPY'").fetchone()[0]
+    latest = con.execute("SELECT max(date) FROM etf_ohlcv WHERE ticker='SPY'").fetchone()[0]
     expected_latest = max(row[0] for row in con.execute("SELECT DISTINCT date FROM ohlcv").fetchall())
-    if latest != expected_latest:
+    if latest is None or latest < expected_latest:
         raise RuntimeError("SPY calendar is not current")
     allowed = {item.ticker for item in universe}
     missing_rows = con.execute("""
@@ -405,7 +422,7 @@ def audit_gaps(
             SELECT ticker, min(date) AS lo, max(date) AS hi
             FROM ohlcv GROUP BY ticker
         ), calendar AS (
-            SELECT date FROM ohlcv WHERE ticker='SPY'
+            SELECT date FROM etf_ohlcv WHERE ticker='SPY'
         )
         SELECT b.ticker, c.date
         FROM bounds AS b
@@ -558,6 +575,92 @@ def ensure_ohlcv(
     }
 
 
+def ensure_etf(
+    con: duckdb.DuckDBPyConnection,
+    end_date: str,
+    download: Callable[[list[str], str, str], pd.DataFrame] = _default_download,
+    today_ny: str | None = None,
+    tickers: Iterable[str] = ETF_TICKERS,
+    from_date: str = ETF_FROM_DATE,
+) -> dict[str, object]:
+    """Reload full ETF history every run; purge ETF tickers from stock tables."""
+    ensure_schema(con)
+    today_ny = today_ny or datetime.now(NEW_YORK).strftime("%Y%m%d")
+    ticker_list = list(tickers)
+    failed: list[str] = []
+    succeeded: list[str] = []
+    inserted = 0
+    dividend_rows = 0
+    try:
+        frames, missing = fetch_batch(ticker_list, from_date, end_date, download)
+    except Exception as exc:
+        print(f"[etf] fetch failed error={type(exc).__name__}", flush=True)
+        frames, missing = {}, ticker_list
+    failed.extend(missing)
+    for ticker, frame in frames.items():
+        prices: list[tuple] = []
+        divs: list[tuple] = []
+        for index, values in frame.iterrows():
+            day = _day_string(index)
+            if day >= today_ny:
+                continue
+            dividend = values.get("Dividends")
+            if dividend is not None and pd.notna(dividend) and float(dividend) != 0:
+                divs.append((ticker, day, float(dividend)))
+            ohlc = [values.get(key) for key in ("Open", "High", "Low", "Close")]
+            if any(pd.isna(value) for value in ohlc):
+                continue
+            volume_value = values.get("Volume")
+            volume = None if pd.isna(volume_value) else int(volume_value)
+            prices.append(
+                (
+                    day, ticker,
+                    float(ohlc[0]), float(ohlc[1]), float(ohlc[2]), float(ohlc[3]),
+                    volume,
+                )
+            )
+        con.execute("BEGIN TRANSACTION")
+        try:
+            stored_first = con.execute(
+                "SELECT min(date) FROM etf_ohlcv WHERE ticker=?", [ticker]
+            ).fetchone()[0]
+            first = min((row[0] for row in prices), default=None)
+            # 잘린 응답(앞 구간 누락·빈 응답)으로 기존 전 구간을 날리는 걸 막는다.
+            if first is None or (stored_first is not None and first > stored_first):
+                raise RuntimeError(
+                    f"{ticker} ETF 재조회가 기존 구간을 못 덮는다 (저장 {stored_first} < 응답 {first})"
+                )
+            con.execute("DELETE FROM etf_ohlcv WHERE ticker=?", [ticker])
+            con.execute("DELETE FROM etf_dividends WHERE ticker=?", [ticker])
+            if prices:
+                con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", prices)
+            if divs:
+                con.executemany("INSERT INTO etf_dividends VALUES (?,?,?)", divs)
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            failed.append(ticker)
+            continue
+        inserted += len(prices)
+        dividend_rows += len(divs)
+        succeeded.append(ticker)
+    if succeeded:
+        placeholders = ",".join("?" for _ in succeeded)
+        con.execute(f"DELETE FROM ohlcv WHERE ticker IN ({placeholders})", succeeded)
+        con.execute(f"DELETE FROM splits WHERE ticker IN ({placeholders})", succeeded)
+        con.execute(f"DELETE FROM stock_names WHERE code IN ({placeholders})", succeeded)
+    print(
+        f"[etf] end={end_date} tickers={len(ticker_list)} "
+        f"rows={inserted} dividends={dividend_rows} failed={len(set(failed))}",
+        flush=True,
+    )
+    return {
+        "inserted_rows": inserted,
+        "dividend_rows": dividend_rows,
+        "failed_tickers": sorted(set(failed)),
+    }
+
+
 def _validate_date(label: str, value: str) -> None:
     try:
         datetime.strptime(value, "%Y%m%d")
@@ -571,6 +674,7 @@ def main() -> None:
     parser.add_argument("--to", dest="to_date")
     parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument("--refresh-shares", action="store_true")
+    parser.add_argument("--etf-only", action="store_true")
     args = parser.parse_args()
     today_ny = datetime.now(NEW_YORK).strftime("%Y%m%d")
     to_date = args.to_date or today_ny
@@ -578,9 +682,20 @@ def main() -> None:
     _validate_date("--to", to_date)
     if args.from_date >= to_date:
         raise SystemExit("error: --from must be before --to (exclusive)")
+    if args.etf_only:
+        args.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with duckdb.connect(str(args.db_path)) as con:
+            etf_stats = ensure_etf(con, to_date, today_ny=today_ny)
+        print(
+            f"etf_rows={etf_stats['inserted_rows']} "
+            f"etf_div={etf_stats['dividend_rows']} "
+            f"etf_failed={len(etf_stats['failed_tickers'])} -> {args.db_path}"
+        )
+        return
     universe = load_universe()
     args.db_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(args.db_path)) as con:
+        etf_stats = ensure_etf(con, to_date, today_ny=today_ny)
         stats = ensure_ohlcv(con, universe, args.from_date, to_date, today_ny=today_ny)
         gap_stats = repair_gaps(con, universe, to_date, today_ny=today_ny)
         share_stats = ensure_shares(
@@ -596,7 +711,10 @@ def main() -> None:
         f"gap_unresolved={len(gap_stats['unresolved'])} "
         f"shares_updated={share_stats['updated_rows']} "
         f"shares_empty={len(share_stats['empty_tickers'])} "
-        f"shares_failed={len(share_stats['failed_tickers'])} -> {args.db_path}"
+        f"shares_failed={len(share_stats['failed_tickers'])} "
+        f"etf_rows={etf_stats['inserted_rows']} "
+        f"etf_div={etf_stats['dividend_rows']} "
+        f"etf_failed={len(etf_stats['failed_tickers'])} -> {args.db_path}"
     )
 
 

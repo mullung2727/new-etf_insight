@@ -75,7 +75,7 @@
 | `NFCI` | 시카고 연준 금융여건지수 (매주 과거값 수정) | 주 | X |
 | `STLFSI4` | 세인트루이스 연준 금융스트레스지수 | 주 | X |
 
-**ETF (9개)** — `build_us_ohlcv.py` 상수 `ETF_TICKERS` (기존 `BENCHMARKS` 대체). 시작일 2023-09-01 (주식 2024-01-01과 별도 상수).
+**ETF (9개)** — `build_us_ohlcv.py` 상수 `ETF_TICKERS` (기존 `BENCHMARKS` 대체). 시작일 `ETF_FROM_DATE = "19900101"` — 상장일부터 전부 (사용자 결정: 과거치 최대로. 장기 OAS 대체치 복원에도 씀).
 
 | 티커 | 쓰임 |
 |---|---|
@@ -87,7 +87,7 @@
 
 ### 2.2 스키마
 
-**`etl/db/us_ohlcv.duckdb` 추가 테이블** (기존 `ohlcv`·`splits`·`stock_names` 는 그대로, `splits` 는 ETF도 같이 씀)
+**`etl/db/us_ohlcv.duckdb` 추가 테이블** (기존 `ohlcv`·`splits`·`stock_names` 는 그대로. ETF는 `splits` 를 안 씀 — 매번 전 구간 재수신이라 분할 반영이 늘 일관)
 
 ```sql
 etf_ohlcv (
@@ -158,9 +158,9 @@ uv run python scripts/build_us_macro.py
 | 단계 | 동작 |
 |---|---|
 | 1 목록 | `load_universe()` 에서 `BENCHMARKS` 추가 제거. ETF는 `ETF_TICKERS` 상수만 |
-| 2 받기 | 같은 `fetch_batch()` (`actions=True` 라 `Dividends` 컬럼 포함). 뉴욕 오늘 행 버림 |
-| 3 적재 | `etf_ohlcv` 에 upsert, 배당 0 아닌 행은 `etf_dividends` 에 upsert |
-| 4 분할 | 주식과 같은 규칙: 새 분할 → 그 티커 전 구간 재적재(배당 포함), `splits` 기록 |
+| 2 받기 | 같은 `fetch_batch()` 로 **매 실행 전 구간**(`ETF_FROM_DATE`~) 재수신. 9종목×30년이라 한 번 호출. 뉴욕 오늘 행 버림 |
+| 3 적재 | 티커별 한 트랜잭션: `etf_ohlcv`·`etf_dividends` 해당 티커 DELETE 후 INSERT. 응답이 비었거나 첫 날짜가 저장된 첫 날짜보다 늦으면(잘린 응답) 그 티커는 실패 처리·기존 행 보존 |
+| 4 정리 | ETF 적재 후 주식 `ohlcv`·`splits`·`stock_names` 에서 `ETF_TICKERS` 행 삭제 (멱등) |
 | 5 달력 | `audit_gaps()` 는 `etf_ohlcv` 의 SPY 거래일을 쓴다 |
 
 ---
@@ -229,7 +229,7 @@ CAGR, MDD, Sharpe(무위험 0 — BIL 차감은 참고 줄), Calmar, 연환산 �
 |---|---|
 | ETF는 주식 테이블에 안 섞임 | E1 ETF 적재 → `etf_ohlcv` 에만 행, 주식 `ohlcv` 에 ETF 티커 0행. 종목 목록에 SPY·QQQ·IWM 안 붙음 (기존 T6 갱신) |
 | 배당 저장 | E2 `Dividends` 0.5인 날 → `etf_dividends` 1행, 0인 날은 행 없음 |
-| ETF 분할 재적재 | E3 새 구간에 분할 → 그 티커 전 구간 재요청, 가격·배당 모두 교체, `splits` 1행 |
+| ETF 전 구간 교체·잘린 응답 보호 | E3 두 번째 실행에서 가격이 바뀐 응답(분할 가정) → 행이 새 값으로 교체. 첫 날짜가 늦은 잘린 응답 → 그 티커 실패, 기존 행 유지 |
 | 달력은 ETF SPY | E4 `audit_gaps` 가 `etf_ohlcv` SPY로 누락 탐지. SPY 비었으면 점검 실패 (기존 T12·T15 갱신) |
 | 장중 봉 금지 | E5 뉴욕 오늘 날짜 ETF 행 적재 안 됨 |
 | 받은 값 이력 보존 | T1 같은 관측일 값이 바뀌어 다시 받음 → 행 2개, 최신값 조회는 새 값 |
@@ -260,7 +260,7 @@ P0 공개 시각 측정 (P1 직후 시작, 1주, 다른 단계와 병행)
    - 수동/임시로 몇 시간 간격 실행 → OAS 관측일별 처음 나타난 fetched_at
    → verify: 공개 시각(KST) 표, D3 확정
 P1b 미국 일봉 DB 마무리 + ETF 경로 + 테스트 E1~E5
-   - ETF 9개 2023-09-01부터 적재, 주식 9/11 이후 이어받기, 주식 ohlcv 의 SPY·QQQ·IWM 삭제
+   - ETF 9개 상장일부터 적재, 주식 9/11 이후 이어받기, 주식 ohlcv 의 SPY·QQQ·IWM 삭제
    → verify: 테스트 통과, `PLAN_US_OHLCV.md` P2 검증 항목 기록, TQQQ·QQQ 종가·배당 샘플 대조
 P2 리서치 틀 + 규칙 + 테스트 T7~T14, T16
    → verify: 테스트 통과
