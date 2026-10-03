@@ -36,6 +36,7 @@ FRED_SERIES = (
     "BAMLH0A0HYM2EY",  # HY effective yield
     "NFCI",            # Chicago Fed NFCI (weekly, revised)
     "STLFSI4",         # St. Louis Fed Financial Stress (weekly)
+    "VIXCLS",          # CBOE VIX close (daily)
 )
 
 _CREATE_FRED_OBS = """
