@@ -85,3 +85,8 @@ etl/scripts/close_bet.json.bak
 
 # 키움 제공 REST API 스펙 덤프 (2.5MB) — 재배포 안 함
 kiwoom-rest-api-spec.json
+research/rights_issue/cache/
+research/rights_issue/out/
+
+# 유증 하락매수 전략 스킬 (비공개 전략 운영)
+.claude/skills/rights-dip-funds/
