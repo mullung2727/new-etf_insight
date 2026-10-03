@@ -85,7 +85,9 @@ def send_discord(message: str, webhook_url: str | None = None, *, _sleep=time.sl
     일시적 오류(429/5xx/타임아웃)는 재시도 — 한 번의 웹훅 blip이 digest 전송 실패로
     텔레그램 세션 전체를 FAILED로 만들던 문제. _sleep 은 테스트 주입용.
     """
-    url = webhook_url if webhook_url is not None else os.getenv("DISCORD_WEBHOOK_URL", "")
+    # 기본 발송처 = 배치 채널. BATCH 미설정 때만 기존 기본값으로 폴백 (조용한 유실 방지).
+    url = webhook_url if webhook_url is not None else (
+        os.getenv("DISCORD_BATCH_WEBHOOK_URL", "") or os.getenv("DISCORD_WEBHOOK_URL", ""))
     if not url:
         # ASCII only: cp949 콘솔에서도 안전 (stdout 재설정 안 한 호출자 대비)
         print("[notify] DISCORD_WEBHOOK_URL not set - skip Discord notify")

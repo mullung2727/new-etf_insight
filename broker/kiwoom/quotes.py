@@ -43,6 +43,13 @@ def _abs_int(val: Any) -> int | None:
     return abs(n) if n is not None else None
 
 
+def _signed_int(val: Any) -> int | None:
+    """ka10061 음수는 '--28837'처럼 마이너스가 두 개로 온다 → 하나로 바꿔 _to_int에 위임."""
+    if isinstance(val, str) and val.startswith("--"):
+        val = "-" + val[2:]
+    return _to_int(val)
+
+
 def _strip_code(code: str) -> str:
     """ka10095는 보통 'A' 접두 없이 오지만 방어적으로 제거."""
     code = str(code).strip()
@@ -105,6 +112,57 @@ def get_stock_status(symbol: str) -> dict[str, Any]:
         "market_name": d.get("marketName"),
         "last_price": _abs_int(d.get("lastPrice")),
     }
+
+
+_INVESTOR_FIELDS = (
+    "ind_invsr", "frgnr_invsr", "orgn", "fnnc_invt", "insrnc", "invtrt",
+    "etc_fnnc", "bank", "penfnd_etc", "samo_fund", "natn", "etc_corp", "natfor",
+)
+
+
+def get_investor_sum(symbol: str, start: str, end: str, amt_qty_tp: str = "1") -> dict[str, Any]:
+    """ka10061 종목별투자자기관별합계요청 — 기간 내 투자자·기관별 순매수 합계.
+
+    금액 단위는 스펙에 없음 — 부호(순매수/순매도)만 신뢰, 크기 단위는 실호출로 확인.
+    """
+    res = request(
+        tr.TR_INVESTOR_SUM,
+        tr.EP_STKINFO,
+        {"stk_cd": symbol, "strt_dt": start, "end_dt": end,
+         "amt_qty_tp": amt_qty_tp, "trde_tp": "0", "unit_tp": "1"},
+    )
+    rows = res.data.get("stk_invsr_orgn_tot", []) or []
+    row = rows[0] if rows else {}
+    out: dict[str, Any] = {k: _signed_int(row.get(k)) for k in _INVESTOR_FIELDS}
+    out.update({"symbol": symbol, "start": start, "end": end, "amt_qty_tp": amt_qty_tp, "raw": row})
+    return out
+
+
+def get_stock_themes(symbol: str, days: int = 5) -> list[dict[str, Any]]:
+    """ka90001 테마그룹별요청(종목검색) — 종목이 속한 테마와 테마 기간수익률."""
+    if not 1 <= days <= 99:
+        raise ValueError(f"days는 1~99 사이여야 함: {days}")
+    res = request(
+        tr.TR_THEME_GROUP,
+        tr.EP_THEME,
+        {"qry_tp": "2", "stk_cd": symbol, "date_tp": str(days),
+         "thema_nm": "", "flu_pl_amt_tp": "1", "stex_tp": "1"},
+    )
+    out = []
+    for it in res.data.get("thema_grp", []) or []:
+        out.append(
+            {
+                "code": str(it.get("thema_grp_cd") or "").strip(),
+                "name": str(it.get("thema_nm") or "").strip(),
+                "stk_num": _to_int(it.get("stk_num")),
+                "flu_rt": _to_float(it.get("flu_rt")),
+                "period_return": _to_float(it.get("dt_prft_rt")),
+                "rising": _to_int(it.get("rising_stk_num")),
+                "falling": _to_int(it.get("fall_stk_num")),
+                "main_stk": str(it.get("main_stk") or "").strip(),
+            }
+        )
+    return out
 
 
 def get_orderbook(symbol: str) -> dict[str, Any]:
