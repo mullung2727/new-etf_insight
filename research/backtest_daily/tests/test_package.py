@@ -6,7 +6,8 @@ from pathlib import Path
 import research.backtest_daily
 
 MODULES = ["data", "adjust", "universe", "guards", "bench",
-           "exits", "paths", "stats", "validate"]
+           "exits", "paths", "stats", "validate",
+           "portfolio", "perf"]
 
 
 class TestPackage(unittest.TestCase):
