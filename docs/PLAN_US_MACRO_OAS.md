@@ -15,6 +15,16 @@
 | D3 | 매일 배치 시각 | **P0 측정 후 확정. 임시안 KST 07:30** | 미국 장 마감(KST 05:00/06:00) 뒤라 당일 ETF 종가는 확정된다. OAS가 몇 시에 올라오는지는 아직 모른다 → P0에서 몇 시간 간격으로 받아 처음 나타난 시각을 기록한다 |
 | D4 | 세금 | **확정: 계산 안 함** (사용자 결정 2026-10-03). §7 주의사항에만 기재 | — |
 | D5 | 리서치 코드 공개 위치 | **확정: `research/us_oas/` (공개)** | 검증된 유효 전략 아님. 유효 판정 시 `research/private/` 로 이동 |
+| D6 | VIX·VIX3M 출처·위치 | **확정: yfinance `^VIX`·`^VIX3M` → `us_macro.duckdb` `index_ohlcv`** (사용자 결정 2026-10-04) | 배경은 아래 "D6 배경" |
+
+### D6 배경 (2026-10-04)
+- **DB 나누는 원칙**: `us_ohlcv` = 사고파는 대상(주식·ETF) 가격, `us_macro` = 신호를 읽는 지표(OAS·NFCI·VIX). VIX·VIX3M은 CBOE가 옵션으로 계산하는 **지수**라 직접 매매 불가·배당 없음·거래량 없음 → ETF 테이블에 넣으면 나중에 "매매 가능 목록"으로 읽는 코드에 섞인다. 지표 DB에 둔다.
+- **FRED `VIXCLS` 는 하루 늦다**: 2026-10-04(토) 시점 FRED 최신 10-01, yfinance 10-02. 9/28~10/1 값은 둘이 완전히 같음 → 신호는 yfinance, `VIXCLS` 는 대조용으로 계속 적재.
+- **키움은 VIX 없음**: `usa10102` 미국 지수 목록 실호출 결과 27개(나스닥 11·S&P500 1·다우 15), CBOE 지수 0. 단 키움 미국 API(`kiwoom-rest-api-spec.json`, `usa*`·`ust*` 126 TR)로 **미국 주문은 가능** → 실매매 단계 후보.
+- **yfinance 지연**: 장중 시세는 지연(약 15분으로 알려짐, 미확인)이나 일봉 종가는 장 마감 직후 반영. 하루 1회 일봉이라 무관.
+- **당일 봉 기준**: 기존 ETF·주식 수집은 "뉴욕 오늘 날짜 행 버림"이라 장 마감 뒤(KST 07:30 = 뉴욕 전날 저녁)에 돌면 끝난 당일 봉까지 버린다. 지수 수집은 "뉴욕 16:30(VIX 공식 종가 16:15 + 여유) 전이면 버림"으로 한다. ETF·주식 쪽 같은 문제는 D3(배치 시각) 정할 때 함께 정리.
+- **VIX는 수정 없음**: FRED처럼 값 변경 이력을 쌓지 않고 통째 교체 + `fetched_at` 만 갱신.
+- **적재 실측 (2026-10-04)**: `^VIX` 1990-01-02~2026-10-02 9,258행, `^VIX3M` 2006-07-17~ 5,086행. `VIXCLS` 와 겹치는 9,254일 중 0.01 넘게 다른 날 11일(최대 2.61) — 원인 미조사, 신호 쓰기 전 확인.
 
 ---
 
@@ -32,7 +42,7 @@
 | 기존 미국 일봉 DB | `us_ohlcv.duckdb` 2024-01-02~2026-09-11, 5,774종목, 배당 미반영, ETF는 SPY·QQQ·IWM만(주식 `ohlcv` 에 섞임), 스케줄 없음. `PLAN_US_OHLCV.md` P1 완료·P2 적재됨(검증 기록 없음)·P3 문서 미작성 |
 | SPY·QQQ·IWM 사용처 | `build_us_ohlcv.py`·테스트 외 참조 없음(research 0건). 단 `audit_gaps()` 가 **SPY를 거래일 달력**으로 씀 |
 | FRED API 공개일 | `realtime_start` 전 구간 조회: 786개 관측일 모두 공개일 = 관측일(지연 0일), 수정 이력 0건. 실제로는 다음 날 공개되므로(토요일 KST 기준 최신이 목요일 10-01) **3년 롤링 전환 때 재작성된 값으로 판단, 사용 불가** |
-| 공용 백테스트 모듈 | `research/backtest_daily` 는 KRX 전용(상한가 가드, 비용 0.35%). CAGR·MDD·Sharpe 같은 포트폴리오 지표는 없음 → 이번 틀에서 새로 만든다 |
+| 공용 백테스트 모듈 | `research/backtest_daily` 는 건별 이벤트용이라 비중 엔진·CAGR·MDD·Sharpe 없음 → **공용 모듈에 `portfolio.py`·`perf.py` 추가**(사용자 결정: 리서치별 재작성 말고 공용 유지보수). 별도 브랜치 `feat/backtest-portfolio` (c6dd9ea) |
 
 ---
 
@@ -119,6 +129,15 @@ fred_obs (
 )
 -- 같은 날 다시 받아 값이 같으면 행을 추가하지 않는다 (§3 단계 3)
 
+-- 신호용 지수 일봉 (yfinance). 매 실행 전 구간 재수신·티커별 통째 교체 (D6)
+index_ohlcv (
+    date       VARCHAR,     -- YYYYMMDD 뉴욕 거래일
+    ticker     VARCHAR,     -- 야후 심볼 '^VIX', '^VIX3M'
+    open, high, low, close DOUBLE,
+    fetched_at TIMESTAMP,   -- UTC
+    PRIMARY KEY (date, ticker)
+)
+
 signal_log (
     run_at        TIMESTAMP,  -- 판정 실행 시각 (UTC)
     rule_id       VARCHAR,    -- 예 'tqqq_oas_v1'
@@ -144,6 +163,7 @@ signal_log (
 |---|---|---|
 | 1 FRED 받기 | `fetch_fred(series_id)` | API `series/observations`, 전 구간. `value == "."`(결측)는 버림 |
 | 2 변경분만 적재 | `upsert_fred()` | DB 최신값과 값이 다르거나 새 관측일인 행만 INSERT. 같으면 건너뜀 |
+| 2b 지수 받기 | `fetch_index()` → `replace_index()` | yfinance `INDEX_TICKERS = ("^VIX", "^VIX3M")` 전 구간(1990~). 티커별 한 트랜잭션 DELETE 후 INSERT, 잘린 응답이면 기존 행 보존. 오늘 봉은 뉴욕 16:30 전이면 버림 |
 | 3 판정 기록 | `record_signal()` | `research/us_oas` 규칙을 불러 최신 OAS로 상태·비중 계산 → `signal_log` 1행 |
 | 4 결과 출력 | — | 시리즈별 새 행 수, 실패 목록. 하나 실패해도 나머지는 적재 |
 
@@ -239,6 +259,9 @@ CAGR, MDD, Sharpe(무위험 0 — BIL 차감은 참고 줄), Calmar, 연환산 �
 | 결측 무시 | T4 FRED `"."` 행 적재 안 됨 |
 | 키 없음 | T5 `FRED_API_KEY` 비었으면 조용히 건너뛰지 않고 오류 종료 |
 | 부분 실패 | T6 시리즈 하나 예외 → 나머지 적재, 실패 목록 출력 |
+| 지수 통째 교체 | V1 두 번째 실행 값이 바뀌면 교체, 행 수 불변. 잘린 응답이면 그 티커 실패·기존 행 유지 |
+| 지수 당일 봉 | V2 뉴욕 16:29 실행 → 오늘 봉 없음, 16:31 실행 → 오늘 봉 있음 |
+| 지수 실패 격리 | V3 지수 다운로드 예외 → FRED 적재는 정상, 실패 목록에 지수 |
 | 총수익 | T7 close 100→99, 그날 배당 2 → 수익 +1% |
 | 미래값 금지 | T8 T일 비중은 T일 OAS를 안 씀 (T일 OAS를 극단값으로 바꿔도 T일 비중 불변) |
 | 비중 적용 시점 | T9 T 종가에 바꾼 비중은 T일 수익에 안 섞임 |

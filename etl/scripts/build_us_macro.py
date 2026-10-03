@@ -14,13 +14,17 @@ import _bootstrap  # noqa: F401
 
 import argparse
 import os
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Callable
+from zoneinfo import ZoneInfo
 
 import duckdb
+import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+from build_us_ohlcv import _default_download, fetch_batch
 
 ROOT = Path(__file__).resolve().parents[2]                        # new-etf_insight/
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_macro.duckdb"
@@ -39,6 +43,11 @@ FRED_SERIES = (
     "VIXCLS",          # CBOE VIX close (daily)
 )
 
+INDEX_TICKERS = ("^VIX", "^VIX3M")   # 신호용 지수 (매매 대상 아님 → us_ohlcv 가 아니라 여기)
+INDEX_FROM_DATE = "19900101"
+NEW_YORK = ZoneInfo("America/New_York")
+INDEX_CLOSE_CUTOFF = time(16, 30)    # VIX 공식 종가 16:15 + 여유
+
 _CREATE_FRED_OBS = """
 CREATE TABLE IF NOT EXISTS fred_obs (
     series_id  VARCHAR,
@@ -48,10 +57,19 @@ CREATE TABLE IF NOT EXISTS fred_obs (
     PRIMARY KEY (series_id, date, fetched_at)
 )
 """
+_CREATE_INDEX_OHLCV = """
+CREATE TABLE IF NOT EXISTS index_ohlcv (
+    date VARCHAR, ticker VARCHAR,
+    open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE,
+    fetched_at TIMESTAMP,
+    PRIMARY KEY (date, ticker)
+)
+"""
 
 
 def ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(_CREATE_FRED_OBS)
+    con.execute(_CREATE_INDEX_OHLCV)
 
 
 def fetch_fred(
@@ -147,6 +165,87 @@ def load_series(
     return [(date, float(value)) for date, value in stored]
 
 
+def index_cutoff_day(now_ny: datetime) -> str:
+    """이 날짜 이상인 봉은 버린다. 마감 시각 이후면 다음 날, 아니면 오늘."""
+    if now_ny.time() >= INDEX_CLOSE_CUTOFF:
+        return (now_ny.date() + timedelta(days=1)).strftime("%Y%m%d")
+    return now_ny.date().strftime("%Y%m%d")
+
+
+def replace_index(
+    con: duckdb.DuckDBPyConnection,
+    ticker: str,
+    frame: pd.DataFrame,
+    cutoff_day: str,
+    fetched_at: datetime,
+) -> int:
+    """티커 전 구간을 한 트랜잭션으로 교체하고 넣은 행 수를 반환한다.
+
+    잘린 응답(빈 응답이거나 새 첫 날짜가 저장된 첫 날짜보다 늦음)이면
+    RuntimeError 로 기존 행을 보존한다.
+    """
+    rows: list[tuple] = []
+    for idx, values in frame.iterrows():
+        day = pd.Timestamp(idx).strftime("%Y%m%d")
+        if day >= cutoff_day:
+            continue
+        ohlc = [values.get(key) for key in ("Open", "High", "Low", "Close")]
+        if any(pd.isna(value) for value in ohlc):
+            continue
+        rows.append(
+            (
+                day, ticker,
+                float(ohlc[0]), float(ohlc[1]), float(ohlc[2]), float(ohlc[3]),
+                fetched_at,
+            )
+        )
+    con.execute("BEGIN TRANSACTION")
+    try:
+        stored_first = con.execute(
+            "SELECT min(date) FROM index_ohlcv WHERE ticker=?", [ticker]
+        ).fetchone()[0]
+        first = min((row[0] for row in rows), default=None)
+        if first is None or (stored_first is not None and first > stored_first):
+            raise RuntimeError(
+                f"{ticker} 지수 재조회가 기존 구간을 못 덮는다 (저장 {stored_first} < 응답 {first})"
+            )
+        con.execute("DELETE FROM index_ohlcv WHERE ticker=?", [ticker])
+        con.executemany("INSERT INTO index_ohlcv VALUES (?,?,?,?,?,?,?)", rows)
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    return len(rows)
+
+
+def ensure_index(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    now_ny: datetime | None = None,
+    fetched_at: datetime | None = None,
+    download: Callable[[list[str], str, str], pd.DataFrame] = _default_download,
+    tickers: tuple[str, ...] = INDEX_TICKERS,
+) -> dict:
+    """지수 일봉 전 구간을 받아 티커별로 교체한다. 한 티커 실패가 나머지를 막지 않는다."""
+    now_ny = now_ny or datetime.now(NEW_YORK)
+    fetched_at = fetched_at or datetime.now(timezone.utc).replace(tzinfo=None)
+    end = (now_ny.date() + timedelta(days=1)).strftime("%Y%m%d")
+    cutoff_day = index_cutoff_day(now_ny)
+    ticker_list = list(tickers)
+    try:
+        frames, missing = fetch_batch(ticker_list, INDEX_FROM_DATE, end, download)
+    except Exception as exc:
+        return {"inserted": {}, "failed": {ticker: type(exc).__name__ for ticker in ticker_list}}
+    inserted: dict[str, int] = {}
+    failed: dict[str, str] = {ticker: "missing from download response" for ticker in missing}
+    for ticker, frame in frames.items():
+        try:
+            inserted[ticker] = replace_index(con, ticker, frame, cutoff_day, fetched_at)
+        except Exception as exc:
+            failed[ticker] = str(exc)
+    return {"inserted": inserted, "failed": failed}
+
+
 def run(
     con: duckdb.DuckDBPyConnection,
     api_key: str,
@@ -154,6 +253,9 @@ def run(
     series: tuple[str, ...] = FRED_SERIES,
     fetch: Callable[[str, str], list[tuple[str, float]]] = fetch_fred,
     now: datetime | None = None,
+    index_download: Callable[[list[str], str, str], pd.DataFrame] = _default_download,
+    now_ny: datetime | None = None,
+    indices: tuple[str, ...] = INDEX_TICKERS,
 ) -> dict:
     """Fetch every series and upsert; one series failing does not stop the rest."""
     fetched_at = now or datetime.now(timezone.utc).replace(tzinfo=None)
@@ -165,6 +267,17 @@ def run(
             inserted[series_id] = upsert_fred(con, series_id, rows, fetched_at)
         except Exception as exc:
             failed[series_id] = str(exc)
+    if indices:
+        try:
+            index_result = ensure_index(
+                con, now_ny=now_ny, fetched_at=fetched_at,
+                download=index_download, tickers=indices,
+            )
+            inserted.update(index_result["inserted"])
+            failed.update(index_result["failed"])
+        except Exception as exc:
+            for ticker in indices:
+                failed.setdefault(ticker, str(exc))
     return {"inserted": inserted, "failed": failed}
 
 
