@@ -18,7 +18,7 @@ def load_px(db=DB) -> pd.DataFrame:
             WITH mkt AS (SELECT DISTINCT date FROM ohlcv),
                  m AS (SELECT date, ROW_NUMBER() OVER (ORDER BY date) - 1 AS ms FROM mkt)
             SELECT o.date, o.ticker, o.market, o.open, o.high, o.low, o.close,
-                   o.volume, o.trading_value, o.market_cap, m.ms
+                   o.volume, o.trading_value, o.market_cap, o.cmp_prev, m.ms
             FROM ohlcv o JOIN m USING (date)
             WHERE o.volume > 0 AND o.open > 0 AND o.close > 0
             ORDER BY o.ticker, o.date

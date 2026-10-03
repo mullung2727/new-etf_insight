@@ -22,7 +22,7 @@ from scripts.build_krx_ohlcv import (
 
 
 def _row(date: str, ticker: str, market: str = "KOSPI") -> tuple:
-    return (date, ticker, market, 100, 110, 90, 105, 1000, 105000, 999, 10)
+    return (date, ticker, market, 100, 110, 90, 105, 1000, 105000, 999, 10, 5)
 
 
 class TestParseInt(unittest.TestCase):
@@ -92,6 +92,21 @@ class TestFetchDay(unittest.TestCase):
             fetch_day("20250102", "k", session=session, names_out=names)
         # KOSPI+KOSDAQ 각 1행 → 2건
         self.assertEqual(names, [("005930", "삼성전자"), ("005930", "삼성전자")])
+
+    def test_cmp_prev_parsed_from_response(self):
+        session = MagicMock()
+        session.get.return_value = self._resp(
+            {"OutBlock_1": [{"BAS_DD": "20250102", "ISU_CD": "005930",
+                             "TDD_OPNPRC": "100", "TDD_HGPRC": "110",
+                             "TDD_LWPRC": "90", "TDD_CLSPRC": "105",
+                             "ACC_TRDVOL": "1,000", "ACC_TRDVAL": "105,000",
+                             "MKTCAP": "999", "LIST_SHRS": "10",
+                             "CMPPREVDD_PRC": "-12"}]}
+        )
+        with patch("scripts.build_krx_ohlcv.time.sleep"):
+            rows = fetch_day("20250102", "k", session=session)
+        self.assertEqual(len(rows[0]), 12)
+        self.assertEqual(rows[0][-1], -12)
 
 
 class TestEnsureOhlcv(unittest.TestCase):
@@ -202,6 +217,34 @@ class TestEnsureOhlcv(unittest.TestCase):
             stats = ensure_ohlcv(self.con, "20250102", "20250102", "k")
         mocked.assert_not_called()
         self.assertEqual(stats["missing_days"], 0)
+
+    def test_migration_adds_cmp_prev_to_old_schema(self):
+        self.con.execute("""
+            CREATE TABLE ohlcv (
+                date VARCHAR,
+                ticker VARCHAR,
+                market VARCHAR,
+                open INTEGER,
+                high INTEGER,
+                low INTEGER,
+                close INTEGER,
+                volume BIGINT,
+                trading_value BIGINT,
+                market_cap BIGINT,
+                list_shrs BIGINT,
+                PRIMARY KEY (date, ticker)
+            )
+        """)
+        stats = self._run("20250102", "20250102", {
+            "20250102": [_row("20250102", "005930")],
+        })
+        cols = {r[1] for r in self.con.execute("PRAGMA table_info('ohlcv')").fetchall()}
+        self.assertIn("cmp_prev", cols)
+        self.assertEqual(stats["fetched_days"], 1)
+        val = self.con.execute(
+            "SELECT cmp_prev FROM ohlcv WHERE date='20250102' AND ticker='005930'"
+        ).fetchone()[0]
+        self.assertEqual(val, _row("20250102", "005930")[-1])
 
 
 if __name__ == "__main__":
