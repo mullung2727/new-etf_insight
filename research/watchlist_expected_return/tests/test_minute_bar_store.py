@@ -4,7 +4,7 @@
   - 미조회 날짜만 조회하고, 이미 받은 날짜는 재조회하지 않는다(중복 조회 제거가 이 모듈의 목적)
   - 봉이 0개인 날도 조회 완료로 표시된다(거래정지 ≠ 미조회)
   - 같은 봉을 두 번 넣어도 PK 로 중복 제거된다
-  - 정규장 밖 봉과 요청 밖 날짜는 반환하지 않는다
+  - 전 시간대 봉을 반환하고 요청 밖 날짜만 제외한다
   - JSON 캐시 마이그레이션이 earliest_requested_dt~base_dt 범위만 적재한다
 """
 import json
@@ -192,7 +192,7 @@ class TestFetchAndReuse(unittest.TestCase):
             self.assertEqual(len(bars), 1)
             self.assertEqual(missing_dates(con, TICKER, ["20260601"]), [])
 
-    def test_out_of_session_and_out_of_range_bars_excluded(self):
+    def test_out_of_range_bars_excluded_but_full_session_returned(self):
         class OddApi(_FakeApi):
             def __call__(self, symbol, scope, base_dt, cont_yn="N", next_key=""):
                 self.calls.append((symbol, base_dt))
@@ -205,7 +205,7 @@ class TestFetchAndReuse(unittest.TestCase):
 
         with connect(self.db) as con:
             bars = load_bars(con, TICKER, ["20260601"], fetch_page=OddApi())
-        self.assertEqual([bar["time"] for bar in bars], ["090000"])
+        self.assertEqual([bar["time"] for bar in bars], ["085900", "090000", "160000"])
 
 
 class TestMigrateJsonCache(unittest.TestCase):

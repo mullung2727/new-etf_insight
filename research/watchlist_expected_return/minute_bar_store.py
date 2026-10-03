@@ -240,7 +240,7 @@ def load_bars(
     scope: str = DEFAULT_SCOPE,
     fetch_page: Callable[..., dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """dates 의 정규장 1분봉. 미조회 날짜는 받아서 적재한 뒤 함께 반환한다."""
+    """dates 의 전 시간대 1분봉. 미조회 날짜는 받아서 적재한 뒤 함께 반환한다."""
     if not dates:
         return []
     fetch_into_store(con, ticker, dates, scope=scope, fetch_page=fetch_page)
@@ -248,8 +248,8 @@ def load_bars(
     rows = con.execute(
         f"SELECT timestamp, date, time, open, high, low, close, volume FROM minute_bars "
         f"WHERE ticker = ? AND scope = ? AND date IN ({placeholders}) "
-        f"AND time BETWEEN ? AND ? ORDER BY timestamp",
-        [ticker, scope, *dates, SESSION_OPEN, SESSION_CLOSE],
+        f"ORDER BY timestamp",
+        [ticker, scope, *dates],
     ).fetchall()
     return [dict(zip(("timestamp", "date", "time", "open", "high", "low", "close", "volume"), row))
             for row in rows]

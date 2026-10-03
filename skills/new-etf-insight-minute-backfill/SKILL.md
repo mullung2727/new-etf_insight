@@ -13,3 +13,6 @@ description: Run, inspect, resume, or debug the new-etf-insight KRX all-symbol o
 - 실패 조사 시 해당 날짜 로그와 `minute_backfill_failures`를 함께 확인한다.
 - `blocked` 재시도는 원인을 확인한 뒤 `--retry-blocked`로 한정 실행한다.
 - 실수집을 수동 실행할 때는 기존 작업이 실행 중인지 먼저 확인한다.
+- DB 우선: `load_bars`는 `minute_fetched`에 없는 날짜만 `ka10080`으로 조회 후 적재한다. 비용 사전 확인은 `missing_dates`로 한다.
+- 반환은 요청 날짜의 전 시간대 봉이다. 15:30 이후 시간외 봉도 포함한다.
+- NXT 시간외는 `--market nxt` 패스로 `{종목}_NX` 키에 모은다(ka10099 유니버스, 선행 30분, 실패해도 KRX 계속). KRX 봉은 15:35까지다.
