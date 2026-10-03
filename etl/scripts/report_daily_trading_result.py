@@ -30,7 +30,7 @@ def _connect_ro(db_path: Path) -> sqlite3.Connection:
 
 
 def load_filled_sells(db_path: Path, date_kst: str) -> list[dict]:
-    """지정 KST 날짜에 실제 매도 체결된 두 전략 행을 공통 형태로 반환한다."""
+    """지정 KST 날짜에 실제 매도 체결된 전략 행을 공통 형태로 반환한다."""
     date_dash = _date_dash(date_kst)
     # 매수일 컬럼이 전략마다 다르다. 종가베팅은 당일 종가에 사므로 `date` 가 매수일이고,
     # 눌림목은 워치리스트 편입일과 매수일이 달라 `bought_at` 타임스탬프를 잘라 쓴다.
@@ -71,6 +71,43 @@ def load_filled_sells(db_path: Path, date_kst: str) -> list[dict]:
                         "bought_date": row[11],
                     }
                 )
+        # R21 유증 — 청산 확정 행. 손익은 원장 추정치(비용 미차감)라 수수료·세금은 미확정 경고가 붙는다.
+        date_compact = date_dash.replace("-", "")
+        has_rights = con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='rights_dip_positions'"
+        ).fetchone()
+        if has_rights:
+            result = con.execute(
+                """
+                SELECT ticker, avg_price, COALESCE(b1_qty, 0) + COALESCE(b2_qty, 0),
+                       close_price, sold_qty, close_date, close_reason, pnl, b1_date
+                FROM rights_dip_positions
+                WHERE close_reason IS NOT NULL AND close_date=?
+                ORDER BY ticker
+                """,
+                (date_compact,),
+            ).fetchall()
+            for row in result:
+                invested = (row[1] or 0) * (row[4] or 0)
+                rows.append(
+                    {
+                        "strategy": "유증",
+                        "ticker": row[0],
+                        "buy_price": row[1],
+                        "buy_qty": row[2],
+                        "sell_price": row[3],
+                        "sell_qty": row[4],
+                        "sold_at": row[5],
+                        "exit_reason": row[6],
+                        "pnl_pct": round(row[7] / invested * 100, 10)
+                        if row[7] is not None and invested
+                        else None,
+                        "sell_cmsn": None,
+                        "sell_tax": None,
+                        "sell_pl_won": row[7],
+                        "bought_date": row[8],
+                    }
+                )
     return rows
 
 
@@ -90,7 +127,7 @@ def _empty_summary() -> dict:
 
 def summarize_trades(rows: list[dict]) -> tuple[dict[str, dict], list[str]]:
     """전략별·전체 실제 금액을 합산하고 실제값 누락·전략 중복을 경고한다."""
-    summary = {"종가베팅": _empty_summary(), "눌림목": _empty_summary(), "전체": _empty_summary()}
+    summary = {"종가베팅": _empty_summary(), "눌림목": _empty_summary(), "유증": _empty_summary(), "전체": _empty_summary()}
     warnings: list[str] = []
     strategies_by_ticker: dict[str, set[str]] = {}
     for row in rows:
@@ -172,7 +209,7 @@ def format_report(
 
     lines.append("")
     lines.append("전략별 요약")
-    for key in ("종가베팅", "눌림목"):
+    for key in ("종가베팅", "눌림목", "유증"):
         bucket = summary[key]
         if bucket["count"] == 0:
             continue
