@@ -254,3 +254,74 @@ class CashReservationTest(unittest.TestCase):
     def test_query_failure_stays_none(self, _get: Mock):
         self._write({_broker_key(self.URL): self._entry()})
         self.assertIsNone(available_cash(self.URL))
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_read_error_fails_closed(self, get: Mock):
+        """권한 오류 등 읽기 실패 → 깨진 파일과 같이 다른 전략 0."""
+        get.return_value = self._deposit("10000000")
+        self._write({_broker_key(self.URL): self._entry()})
+        with patch.object(Path, "read_text", side_effect=PermissionError("denied")):
+            with patch("builtins.print") as warned:
+                self.assertEqual(available_cash(self.URL), 0)
+                self.assertIsNone(read_reservation(self.URL))
+            self.assertTrue(warned.called)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_invalid_reserve_fails_closed(self, get: Mock):
+        get.return_value = self._deposit("10000000")
+        for bad in ("abc", -1, True):
+            with self.subTest(bad=bad):
+                self._write({_broker_key(self.URL): self._entry(reserve=bad)})
+                with patch("builtins.print") as warned:
+                    self.assertEqual(available_cash(self.URL), 0)
+                self.assertTrue(warned.called)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_invalid_capital_total_fails_closed(self, get: Mock):
+        get.return_value = self._deposit("10000000")
+        for bad in ("abc", -1, True):
+            with self.subTest(bad=bad):
+                self._write({_broker_key(self.URL): self._entry(capital=bad)})
+                with patch("builtins.print") as warned:
+                    self.assertEqual(available_cash(self.URL), 0)
+                self.assertTrue(warned.called)
+
+    def test_write_refuses_corrupt_file(self):
+        before = "{깨짐"
+        self.path.write_text(before, encoding="utf-8")
+        with self.assertRaises(RuntimeError) as ctx:
+            write_reservation(self.URL, 100, 8_000_000, "rights_dip")
+        self.assertIn(str(self.path), str(ctx.exception))
+        self.assertEqual(self.path.read_text(encoding="utf-8"), before)
+
+    def test_write_refuses_non_dict_file(self):
+        before = json.dumps([1, 2])
+        self.path.write_text(before, encoding="utf-8")
+        with self.assertRaises(RuntimeError):
+            write_reservation(self.URL, 100, 8_000_000, "rights_dip")
+        self.assertEqual(self.path.read_text(encoding="utf-8"), before)
+
+    def test_write_read_error_raises(self):
+        self._write({_broker_key(self.URL): self._entry()})
+        with patch.object(Path, "read_text", side_effect=PermissionError("denied")):
+            with self.assertRaises(RuntimeError):
+                write_reservation(self.URL, 100, 8_000_000, "rights_dip")
+        self.assertEqual(json.loads(self.path.read_text(encoding="utf-8")),
+                         {_broker_key(self.URL): self._entry()})
+
+    def test_write_rejects_bad_amounts(self):
+        for bad in ("abc", -1, True, 8.0, None):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    write_reservation(self.URL, bad, 8_000_000, "rights_dip")
+                with self.assertRaises(ValueError):
+                    write_reservation(self.URL, 100, bad, "rights_dip")
+        self.assertFalse(self.path.exists())
+
+    def test_write_leaves_no_temp_files(self):
+        self._write({"127.0.0.1:8002": self._entry(reserve=100)})
+        write_reservation(self.URL, 8_000_000, 8_000_000, "rights_dip")
+        leftovers = [p.name for p in self.path.parent.iterdir() if p.name != self.path.name]
+        self.assertEqual(leftovers, [])
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(data["127.0.0.1:8002"]["reserve"], 100)

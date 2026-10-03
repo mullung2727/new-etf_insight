@@ -13,12 +13,14 @@ def load_px(db=DB) -> pd.DataFrame:
     """정지(0값) 행 제외 일봉 + 시장 거래일 순번 ms(0부터). (ticker, date) 정렬."""
     con = duckdb.connect(str(db), read_only=True)
     try:
+        cols = {row[1] for row in con.execute("PRAGMA table_info('ohlcv')").fetchall()}
+        cmp_prev = "o.cmp_prev" if "cmp_prev" in cols else "NULL AS cmp_prev"
         px = con.execute(
-            """
+            f"""
             WITH mkt AS (SELECT DISTINCT date FROM ohlcv),
                  m AS (SELECT date, ROW_NUMBER() OVER (ORDER BY date) - 1 AS ms FROM mkt)
             SELECT o.date, o.ticker, o.market, o.open, o.high, o.low, o.close,
-                   o.volume, o.trading_value, o.market_cap, o.cmp_prev, m.ms
+                   o.volume, o.trading_value, o.market_cap, {cmp_prev}, m.ms
             FROM ohlcv o JOIN m USING (date)
             WHERE o.volume > 0 AND o.open > 0 AND o.close > 0
             ORDER BY o.ticker, o.date
