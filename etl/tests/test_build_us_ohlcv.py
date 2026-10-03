@@ -5,12 +5,14 @@ import duckdb
 import pandas as pd
 
 from scripts.build_us_ohlcv import (
+    ETF_TICKERS,
     UniverseItem,
     _insert_rows,
     _replace_split_history,
     apply_share_history,
     audit_gaps,
     carry_forward_shares,
+    ensure_etf,
     ensure_ohlcv,
     ensure_schema,
     ensure_shares,
@@ -22,10 +24,11 @@ from scripts.build_us_ohlcv import (
 )
 
 
-def _frame(ticker_days, *, splits=None):
+def _frame(ticker_days, *, splits=None, dividends=None):
     """ticker_days: ticker -> [(YYYY-MM-DD, close)]"""
     pieces = {}
     splits = splits or {}
+    dividends = dividends or {}
     for ticker, values in ticker_days.items():
         index = pd.to_datetime([value[0] for value in values])
         close = [value[1] for value in values]
@@ -37,7 +40,7 @@ def _frame(ticker_days, *, splits=None):
                 "Close": close,
                 "Adj Close": close,
                 "Volume": [100] * len(close),
-                "Dividends": [0.0] * len(close),
+                "Dividends": [dividends.get((ticker, day), 0.0) for day, _ in values],
                 "Stock Splits": [splits.get((ticker, day), 0.0) for day, _ in values],
             },
             index=index,
@@ -49,8 +52,12 @@ def _row(day, ticker, close=100.0):
     return (day, ticker, "NASDAQ", close, close, close, close, 100, close * 100, None, None)
 
 
+def _etf_row(day, ticker="SPY"):
+    return (day, ticker, 100.0, 101.0, 99.0, 100.0, 100)
+
+
 class TestUniverse(unittest.TestCase):
-    def test_t6_common_stock_filter_and_benchmarks(self):
+    def test_t6_common_stock_filter_no_etfs(self):
         text = """Nasdaq Traded|Symbol|Security Name|Listing Exchange|ETF|Test Issue
 Y|AAA|Alpha Common Stock|Q|N|N
 Y|SPAC|Example Acquisition Corp|N|N|N
@@ -69,7 +76,7 @@ File Creation Time: 20260912|||||
         items = load_universe(lambda _url: text)
         tickers = {item.ticker for item in items}
         # 클래스주는 야후 표기(BRK-B)로 살린다. 두 글자 이상 접미사는 아직 제외.
-        self.assertEqual(tickers, {"AAA", "SPAC", "BRK-B", "SPY", "QQQ", "IWM"})
+        self.assertEqual(tickers, {"AAA", "SPAC", "BRK-B"})
         self.assertEqual(next(item.market for item in items if item.ticker == "AAA"), "NASDAQ")
 
 
@@ -241,7 +248,6 @@ class TestGapAudit(unittest.TestCase):
     def setUp(self):
         self.con = duckdb.connect(":memory:")
         ensure_schema(self.con)
-        self.spy = UniverseItem("SPY", "SPY", "ARCA")
         self.aaa = UniverseItem("AAA", "Alpha", "NASDAQ")
 
     def tearDown(self):
@@ -249,12 +255,14 @@ class TestGapAudit(unittest.TestCase):
 
     def test_t12_internal_gap_detected(self):
         _insert_rows(self.con, [
-            _row("20260909", "SPY"), _row("20260910", "SPY"), _row("20260911", "SPY"),
             _row("20260909", "AAA"), _row("20260911", "AAA"),
         ])
-        self.assertEqual(audit_gaps(self.con, [self.spy, self.aaa]), {"AAA": ["20260910"]})
+        self.con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", [
+            _etf_row("20260909"), _etf_row("20260910"), _etf_row("20260911"),
+        ])
+        self.assertEqual(audit_gaps(self.con, [self.aaa]), {"AAA": ["20260910"]})
         stats = repair_gaps(
-            self.con, [self.spy, self.aaa], "20260912",
+            self.con, [self.aaa], "20260912",
             lambda tickers, start, end: _frame({"AAA": [("20260910", 100)]}),
             "20260912",
         )
@@ -262,16 +270,18 @@ class TestGapAudit(unittest.TestCase):
 
     def test_t13_listing_edges_not_reported_or_deleted(self):
         _insert_rows(self.con, [
-            _row("20260909", "SPY"), _row("20260910", "SPY"), _row("20260911", "SPY"),
             _row("20260910", "AAA"),
         ])
-        self.assertEqual(audit_gaps(self.con, [self.spy, self.aaa]), {})
+        self.con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", [
+            _etf_row("20260909"), _etf_row("20260910"), _etf_row("20260911"),
+        ])
+        self.assertEqual(audit_gaps(self.con, [self.aaa]), {})
         self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='AAA'").fetchone()[0], 1)
 
         _insert_rows(self.con, [_row("20260909", "AAA"), _row("20260911", "AAA")])
         self.con.execute("DELETE FROM ohlcv WHERE ticker='AAA' AND date='20260910'")
         stats = repair_gaps(
-            self.con, [self.spy, self.aaa], "20260912",
+            self.con, [self.aaa], "20260912",
             lambda tickers, start, end: _frame({"AAA": [("20260909", 100), ("20260911", 100)]}),
             "20260912",
         )
@@ -279,10 +289,145 @@ class TestGapAudit(unittest.TestCase):
         self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='AAA'").fetchone()[0], 2)
 
     def test_t15_stale_spy_calendar_fails_safely(self):
-        _insert_rows(self.con, [_row("20260910", "SPY"), _row("20260911", "AAA")])
+        _insert_rows(self.con, [_row("20260911", "AAA")])
+        self.con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", [_etf_row("20260910")])
         with self.assertRaisesRegex(RuntimeError, "not current"):
-            audit_gaps(self.con, [self.spy, self.aaa])
-        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv").fetchone()[0], 2)
+            audit_gaps(self.con, [self.aaa])
+        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv").fetchone()[0], 1)
+        self.assertEqual(self.con.execute("SELECT count(*) FROM etf_ohlcv").fetchone()[0], 1)
+
+    def test_spy_ahead_of_stocks_is_ok(self):
+        _insert_rows(self.con, [
+            _row("20260909", "AAA"), _row("20260910", "AAA"),
+        ])
+        self.con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", [
+            _etf_row("20260909"), _etf_row("20260910"), _etf_row("20260911"),
+        ])
+        self.assertEqual(audit_gaps(self.con, [self.aaa]), {})
+
+
+class TestEtf(unittest.TestCase):
+    def setUp(self):
+        self.con = duckdb.connect(":memory:")
+        ensure_schema(self.con)
+
+    def tearDown(self):
+        self.con.close()
+
+    def test_etf_tickers(self):
+        self.assertEqual(
+            ETF_TICKERS,
+            ("SPY", "QQQ", "IWM", "TQQQ", "BIL", "HYG", "JNK", "IEI", "IEF"),
+        )
+
+    def test_e1_etf_rows_not_mixed_into_stock_tables(self):
+        _insert_rows(self.con, [_row("20260910", "SPY")])
+        self.con.execute("INSERT INTO stock_names VALUES ('SPY','SPDR S&P 500','2026-09-11')")
+        stats = ensure_etf(
+            self.con, "20260912",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-09-10", 100)] for ticker in tickers}
+            ),
+            "20260912",
+            tickers=("SPY", "TQQQ"),
+        )
+        self.assertEqual(stats["failed_tickers"], [])
+        self.assertEqual(
+            sorted(row[0] for row in self.con.execute("SELECT DISTINCT ticker FROM etf_ohlcv").fetchall()),
+            ["SPY", "TQQQ"],
+        )
+        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='SPY'").fetchone()[0], 0)
+        self.assertEqual(self.con.execute("SELECT count(*) FROM stock_names WHERE code='SPY'").fetchone()[0], 0)
+
+    def test_e2_dividends_stored(self):
+        stats = ensure_etf(
+            self.con, "20260912",
+            lambda tickers, start, end: _frame(
+                {"TQQQ": [("2026-09-09", 100), ("2026-09-10", 100), ("2026-09-11", 100)]},
+                dividends={("TQQQ", "2026-09-10"): 0.5},
+            ),
+            "20260912",
+            tickers=("TQQQ",),
+        )
+        self.assertEqual(stats["dividend_rows"], 1)
+        self.assertEqual(
+            self.con.execute("SELECT ticker, date, amount FROM etf_dividends").fetchall(),
+            [("TQQQ", "20260910", 0.5)],
+        )
+
+    def test_e3_full_replace_and_truncated_response_protected(self):
+        def download_for(days):
+            def _download(tickers, start, end):
+                return _frame({ticker: list(days) for ticker in tickers})
+            return _download
+
+        ensure_etf(
+            self.con, "20260912",
+            download_for([("2026-09-09", 100), ("2026-09-10", 100), ("2026-09-11", 100)]),
+            "20260912",
+            tickers=("SPY",),
+        )
+        ensure_etf(
+            self.con, "20260912",
+            download_for([("2026-09-09", 25), ("2026-09-10", 25), ("2026-09-11", 25)]),
+            "20260912",
+            tickers=("SPY",),
+        )
+        self.assertEqual(
+            self.con.execute("SELECT DISTINCT close FROM etf_ohlcv WHERE ticker='SPY'").fetchall(),
+            [(25.0,)],
+        )
+        truncated = ensure_etf(
+            self.con, "20260912",
+            download_for([("2026-09-10", 25), ("2026-09-11", 25)]),
+            "20260912",
+            tickers=("SPY",),
+        )
+        self.assertEqual(truncated["failed_tickers"], ["SPY"])
+        self.assertEqual(self.con.execute("SELECT count(*) FROM etf_ohlcv WHERE ticker='SPY'").fetchone()[0], 3)
+        self.assertEqual(
+            self.con.execute("SELECT DISTINCT close FROM etf_ohlcv WHERE ticker='SPY'").fetchall(),
+            [(25.0,)],
+        )
+
+    def test_e4_empty_etf_calendar_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "SPY calendar is empty"):
+            audit_gaps(self.con, [UniverseItem("AAA", "Alpha", "NASDAQ")])
+
+    def test_e5_intraday_bar_excluded(self):
+        ensure_etf(
+            self.con, "20260912",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-09-10", 100), ("2026-09-11", 100)] for ticker in tickers}
+            ),
+            "20260911",
+            tickers=("SPY",),
+        )
+        self.assertEqual(
+            self.con.execute("SELECT date FROM etf_ohlcv WHERE ticker='SPY'").fetchall(),
+            [("20260910",)],
+        )
+
+    def test_e6_download_error_preserves_existing_rows(self):
+        self.con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", [_etf_row("20260910")])
+
+        def download(tickers, start, end):
+            raise RuntimeError("network")
+
+        stats = ensure_etf(self.con, "20260912", download, "20260912", tickers=("SPY", "TQQQ"))
+        self.assertEqual(stats["failed_tickers"], ["SPY", "TQQQ"])
+        self.assertEqual(stats["inserted_rows"], 0)
+        self.assertEqual(self.con.execute("SELECT count(*) FROM etf_ohlcv").fetchone()[0], 1)
+
+    def test_e7_download_error_preserves_stock_rows(self):
+        _insert_rows(self.con, [_row("20260910", "SPY")])
+
+        def download(tickers, start, end):
+            raise RuntimeError("network")
+
+        stats = ensure_etf(self.con, "20260912", download, "20260912", tickers=("SPY",))
+        self.assertEqual(stats["failed_tickers"], ["SPY"])
+        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='SPY'").fetchone()[0], 1)
 
 
 if __name__ == "__main__":
