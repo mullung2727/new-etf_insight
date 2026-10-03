@@ -134,6 +134,18 @@ def send_batch_report(message: str) -> bool:
     return send_discord(message, webhook_url=os.getenv("DISCORD_BATCH_WEBHOOK_URL", ""))
 
 
+def send_rights_alert(message: str) -> bool:
+    """유증 하락매수 전용 Discord 채널로 보낸다.
+
+    env: RIGHTS_DIP_DISCORD_WEBHOOK_URL. 없으면 기본 채널(send_discord)로 폴백.
+    """
+    url = os.getenv("RIGHTS_DIP_DISCORD_WEBHOOK_URL", "")
+    if not url:
+        print("[notify] RIGHTS_DIP_DISCORD_WEBHOOK_URL not set - fallback to default Discord channel")
+        return send_discord(message)
+    return send_discord(message, webhook_url=url)
+
+
 def send_theme_alert(message: str) -> bool:
     """테마 알림 전용 Discord 포럼 채널에 글을 올린다(결정 12).
 

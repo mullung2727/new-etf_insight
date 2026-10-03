@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from scripts.notify import notify, send_discord, send_telegram, send_telegram_report, send_theme_alert
+from scripts.notify import notify, send_discord, send_rights_alert, send_telegram, send_telegram_report, send_theme_alert
 
 
 def _http_error(status: int) -> requests.exceptions.HTTPError:
@@ -254,6 +254,22 @@ class TestSendThemeAlert(unittest.TestCase):
             ok = send_theme_alert("head\n\nlinks")
         self.assertFalse(ok)
         post.assert_not_called()
+
+
+class TestSendRightsAlert(unittest.TestCase):
+    """유증 전용 채널: env 있음 → 그 웹훅, 없음 → 기본 채널 폴백."""
+
+    def test_webhook_and_fallback(self):
+        with patch.dict(
+            "os.environ", {"RIGHTS_DIP_DISCORD_WEBHOOK_URL": "https://rights/hook"}, clear=True
+        ), patch("scripts.notify.requests.post", return_value=_ok_resp()) as post:
+            self.assertTrue(send_rights_alert("hello"))
+        self.assertEqual(post.call_args[0][0], "https://rights/hook")
+        with patch.dict(
+            "os.environ", {"DISCORD_WEBHOOK_URL": "https://main/hook"}, clear=True
+        ), patch("scripts.notify.requests.post", return_value=_ok_resp()) as post:
+            self.assertTrue(send_rights_alert("hi"))
+        self.assertEqual(post.call_args[0][0], "https://main/hook")
 
 
 if __name__ == "__main__":
