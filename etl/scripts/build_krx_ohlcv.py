@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS ohlcv (
     trading_value BIGINT,
     market_cap    BIGINT,
     list_shrs     BIGINT,
+    cmp_prev      INTEGER,  -- KRX CMPPREVDD_PRC 전일대비. 기준가 = close - cmp_prev
     PRIMARY KEY (date, ticker)
 )
 """
@@ -171,6 +172,7 @@ def fetch_day(
                     _parse_int(x.get("ACC_TRDVAL")),
                     _parse_int(x.get("MKTCAP")),
                     _parse_int(x.get("LIST_SHRS")),
+                    _parse_int(x.get("CMPPREVDD_PRC")),
                 )
             )
         time.sleep(REQUEST_SLEEP)
@@ -181,7 +183,7 @@ def _insert_ohlcv_rows(con: duckdb.DuckDBPyConnection, rows: list) -> None:
     """PK 인덱스가 걸린 테이블에 executemany 하면 행마다 인덱스를 갱신해 느리다.
     PK 없는 임시테이블에 모아 넣고 한 번에 upsert 한다(거래일당 10.4초 → 1초 미만)."""
     con.execute("CREATE OR REPLACE TEMP TABLE _ohlcv_staging AS SELECT * FROM ohlcv LIMIT 0")
-    con.executemany("INSERT INTO _ohlcv_staging VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+    con.executemany("INSERT INTO _ohlcv_staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
     con.execute("INSERT OR REPLACE INTO ohlcv SELECT * FROM _ohlcv_staging")
 
 
@@ -205,7 +207,7 @@ def ensure_ohlcv(
     con.execute(_CREATE_HOLIDAYS)
     # 기존 DB 마이그레이션 — 새 컬럼 없으면 추가
     existing_cols = {r[1] for r in con.execute("PRAGMA table_info('ohlcv')").fetchall()}
-    for col, dtype in [("market_cap", "BIGINT"), ("list_shrs", "BIGINT")]:
+    for col, dtype in [("market_cap", "BIGINT"), ("list_shrs", "BIGINT"), ("cmp_prev", "INTEGER")]:
         if col not in existing_cols:
             con.execute(f"ALTER TABLE ohlcv ADD COLUMN {col} {dtype}")
     calendar = get_trading_calendar(from_date, to_date)

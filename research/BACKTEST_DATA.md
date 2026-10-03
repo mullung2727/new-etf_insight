@@ -7,6 +7,7 @@
 > 1. 상한가 진입 불가: 일봉 `guards.limit_up_close` (종가 진입) / `guards.limit_up_open` (시가 진입), 분봉 `ticks.buyable`
 > 2. 비용: `stats.COSTS` 3단계, 기준 `0.35%` — 임의 비용 금지 (분봉도 같은 함수)
 > 3. 집계: 일별 가중 `stats.day_weighted_mean` / `day_median` / `day_win_rate` (분봉도 같은 함수)
+> 4. 기업행위일(권리락·분할) 수익률: `ohlcv.cmp_prev` 기준가(`close − cmp_prev`) 사용, 원 종가 수익률 금지 (권리락 세션 미커밋 — 공용 규약 adj_returns 와 충돌, 미정)
 >
 > 분봉 추가 체크 (§8)
 > 4. 전일 정보는 다음 거래일에만: `prevday.attach_prev` (같은 날 붙이면 assert) · 의심 변수는 `prevday.leak_report`
