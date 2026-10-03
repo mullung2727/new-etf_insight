@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -94,8 +95,11 @@ def _load_reservation_file() -> tuple[dict | None, bool]:
     """예약 파일 전체 → (dict | None, 깨짐 여부). 파일 없음 → (None, False)."""
     try:
         raw = RESERVATION_PATH.read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
         return None, False
+    except OSError as error:
+        print(f"[reserve] 예약 파일 읽기 실패 — fail closed ({RESERVATION_PATH}: {error})")
+        return None, True
     try:
         data = json.loads(raw)
     except ValueError as error:
@@ -107,8 +111,13 @@ def _load_reservation_file() -> tuple[dict | None, bool]:
     return data, False
 
 
+def _valid_amount(value: object) -> bool:
+    """예약 금액 검증 — 0 이상 정수, bool 제외."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def read_reservation(broker_url: str) -> dict | None:
-    """계좌 예약 1건. 파일 없음·깨짐·키 없음 → None (예외 없음, 깨짐은 경고)."""
+    """계좌 예약 1건. 파일 없음·읽기 실패·깨짐·키 없음 → None (예외 없음, 깨짐은 경고)."""
     data, _ = _load_reservation_file()
     if data is None:
         return None
@@ -118,7 +127,7 @@ def read_reservation(broker_url: str) -> dict | None:
 
 def available_cash(broker_url: str, exclude_reserve: bool = True) -> int | None:
     """주문가능금액 — exclude_reserve 면 유증 예약 차감 (없으면 기존값 그대로).
-    예약 파일이 존재하는데 깨지면 0 (fail closed, A-10)."""
+    예약 파일이 존재하는데 깨지거나 예약값이 이상하면 0 (fail closed, A-10)."""
     cash = _deposit_cash(broker_url)
     if cash is None or not exclude_reserve:
         return cash
@@ -130,10 +139,11 @@ def available_cash(broker_url: str, exclude_reserve: bool = True) -> int | None:
     reservation = data.get(_broker_key(broker_url))
     if not isinstance(reservation, dict):
         return cash
-    try:
-        reserve = int(reservation.get("reserve", 0))
-    except (TypeError, ValueError):
-        return cash
+    reserve = reservation.get("reserve", 0)
+    capital_total = reservation.get("capital_total", 0)
+    if not _valid_amount(reserve) or not _valid_amount(capital_total):
+        print(f"[reserve] 예약값 오류 — fail closed ({RESERVATION_PATH})")
+        return 0
     return max(0, cash - reserve)
 
 
@@ -149,21 +159,50 @@ def _deposit_cash(broker_url: str) -> int | None:
 
 
 def write_reservation(broker_url: str, reserve: int, capital_total: int, strategy: str) -> None:
-    """예약 1건 저장 — tmp → os.replace 원자적, 다른 계좌 키 보존. 호출부는 P3(b)."""
+    """예약 1건 저장 — tmp → os.replace 원자적, 다른 계좌 키 보존. 호출부는 P3(b).
+
+    기존 파일이 있는데 읽기 실패·JSON 깨짐·dict 아님 → 덮어쓰지 않고 RuntimeError.
+    reserve·capital_total 이 0 이상 정수(bool 제외) 아님 → ValueError.
+    """
+    if not _valid_amount(reserve) or not _valid_amount(capital_total):
+        raise ValueError(f"예약값 오류: reserve={reserve!r} capital_total={capital_total!r}")
     try:
-        data = json.loads(RESERVATION_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (OSError, ValueError):
+        raw = RESERVATION_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
         data = {}
+    except OSError as error:
+        raise RuntimeError(
+            f"예약 파일 읽기 실패 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
+    else:
+        try:
+            data = json.loads(raw)
+        except ValueError as error:
+            raise RuntimeError(
+                f"예약 파일 깨짐 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
+        if not isinstance(data, dict):
+            raise RuntimeError(f"예약 파일 형식 오류 — 덮어쓰지 않음 ({RESERVATION_PATH})")
     data[_broker_key(broker_url)] = {
-        "reserve": int(reserve), "capital_total": int(capital_total),
+        "reserve": reserve, "capital_total": capital_total,
         "strategy": strategy, "updated": now_seoul().isoformat(),
     }
     RESERVATION_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = RESERVATION_PATH.with_name(RESERVATION_PATH.name + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, RESERVATION_PATH)
+    # 쓰는 쪽이 08:50 order·16:00 verify 뿐이라 동시 실행 없음 — 프로세스 간 잠금 없음.
+    tmp: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=str(RESERVATION_PATH.parent),
+            prefix=RESERVATION_PATH.name + ".", delete=False,
+        ) as handle:
+            tmp = handle.name
+            handle.write(json.dumps(data, ensure_ascii=False))
+        os.replace(tmp, RESERVATION_PATH)
+    except BaseException:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        raise
 
 
 def fetch_realized(broker_url: str, ticker: str) -> dict | None:
