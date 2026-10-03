@@ -16,6 +16,15 @@
 | `paths.py` | `event_paths` |
 | `stats.py` | `weighted`, `day_key`, `month_key`, `cost_table`, `COSTS`, `day_daily_means`, `day_weighted_mean`, `day_median`, `day_win_rate`, `day_tstat` |
 | `validate.py` | `wf_train`, `select_best`, `walk_forward`, `placebo_percentile` |
+| `portfolio.py` (시장 무관) | `run` |
+| `perf.py` (시장 무관) | `equity`, `cagr`, `vol`, `sharpe`, `max_drawdown`, `calmar`, `yearly`, `drawdowns`, `trades_per_year`, `summary`, `PERIODS` |
+
+## portfolio · perf (비중 전략)
+
+- DB를 읽지 않는다. 수익률표·목표비중표(pandas)만 받는다 → 한국·미국 어느 데이터에도 쓴다
+- `portfolio.run`: T일 행 = T 종가에 맞출 목표 비중, 수익은 T+1부터 반영. 목표가 바뀐 날만 매매하고 그 외엔 드리프트 유지
+- 비용은 인자(`cost`, 한 방향 체결 금액당)로 넘긴다. `turnover = Σ|목표 − 드리프트 비중|` 라 매도·매수 양쪽이 다 잡힌다 (100/0→70/30 이면 turnover 0.6). 한국 이벤트용 `stats.COSTS` 와 별개
+- `perf.max_drawdown` 은 시작 자산 1.0을 고점에 포함한다
 
 ## bench_daily
 
