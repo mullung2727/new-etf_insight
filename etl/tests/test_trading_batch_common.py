@@ -1,12 +1,21 @@
-"""두 자동매매 배치가 공유하는 broker 주문 인프라 테스트."""
+"""두 자동매매 배치가 공유하는 broker 주문 인프라 테스트.
+
+실행 (etl/ 에서):
+    $env:PYTHONPATH="."; uv run python -m unittest tests.test_trading_batch_common
+"""
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import Mock, patch
 
+from scripts import trading_batch_common as tbc
 from scripts.trading_batch_common import (
     CLOSED_SELL_STATUSES,
+    _broker_key,
     available_cash,
     current_price,
     fetch_realized,
@@ -15,7 +24,9 @@ from scripts.trading_batch_common import (
     market_order,
     quote_snapshot,
     quantity_for_budget,
+    read_reservation,
     require_profile,
+    write_reservation,
 )
 
 
@@ -152,3 +163,94 @@ class ClosedSellStatusesTest(unittest.TestCase):
         """'missing' 이 종료로 안 잡히면 중복매수 가드가 그 종목을 영구 차단한다."""
         self.assertIn("filled", CLOSED_SELL_STATUSES)
         self.assertIn("missing", CLOSED_SELL_STATUSES)
+
+
+class BrokerKeyTest(unittest.TestCase):
+    """예약 키 — host:port, localhost ≡ 127.0.0.1."""
+
+    def test_localhost_equals_loopback(self):
+        self.assertEqual(_broker_key("http://localhost:8001"),
+                         _broker_key("http://127.0.0.1:8001/"))
+
+    def test_port_distinguishes_accounts(self):
+        self.assertNotEqual(_broker_key("http://127.0.0.1:8001"),
+                            _broker_key("http://127.0.0.1:8002"))
+
+
+class CashReservationTest(unittest.TestCase):
+    """유증 자금 분리 예약 (R2b P3a) — 파일 없으면 기존 동작 그대로."""
+
+    URL = "http://127.0.0.1:8001"
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.path = Path(self.td.name) / "cash_reservations.json"
+        self._patch = patch.object(tbc, "RESERVATION_PATH", self.path)
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        self.td.cleanup()
+
+    def _deposit(self, value):
+        response = Mock(json=lambda: {"ord_alow_amt": value})
+        response.raise_for_status = Mock()
+        return response
+
+    def _write(self, obj):
+        self.path.write_text(json.dumps(obj), encoding="utf-8")
+
+    def _entry(self, reserve=8_000_000, capital=8_000_000):
+        return {"reserve": reserve, "capital_total": capital,
+                "strategy": "rights_dip", "updated": "2026-10-02T00:00:00+09:00"}
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_no_file_returns_broker_value(self, get: Mock):
+        get.return_value = self._deposit("10000000")
+        self.assertEqual(available_cash(self.URL), 10_000_000)
+        self.assertIsNone(read_reservation(self.URL))
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_reserve_subtracted(self, get: Mock):
+        get.return_value = self._deposit("10000000")
+        self._write({_broker_key(self.URL): self._entry()})
+        self.assertEqual(available_cash(self.URL), 2_000_000)
+        self.assertEqual(available_cash(self.URL, exclude_reserve=False), 10_000_000)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_reserve_over_cash_floors_zero(self, get: Mock):
+        get.return_value = self._deposit("1000000")
+        self._write({_broker_key(self.URL): self._entry()})
+        self.assertEqual(available_cash(self.URL), 0)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_corrupt_file_treated_as_no_reserve(self, get: Mock):
+        get.return_value = self._deposit("10000000")
+        self.path.write_text("{깨짐", encoding="utf-8")
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL), 10_000_000)
+            self.assertIsNone(read_reservation(self.URL))
+        self.assertTrue(warned.called)
+
+    def test_missing_key_returns_none(self):
+        self._write({"127.0.0.1:8002": self._entry()})
+        self.assertIsNone(read_reservation(self.URL))
+
+    def test_write_roundtrip_preserves_other_keys(self):
+        self._write({"127.0.0.1:8002": self._entry(reserve=100)})
+        write_reservation(self.URL, 8_000_000, 8_000_000, "rights_dip")
+        data = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(data["127.0.0.1:8002"]["reserve"], 100)
+        entry = data[_broker_key(self.URL)]
+        self.assertEqual((entry["reserve"], entry["capital_total"], entry["strategy"]),
+                         (8_000_000, 8_000_000, "rights_dip"))
+        self.assertIn("updated", entry)
+
+    def test_localhost_key_shared_with_loopback(self):
+        write_reservation("http://localhost:8001", 100, 8_000_000, "rights_dip")
+        self.assertIsNotNone(read_reservation("http://127.0.0.1:8001/"))
+
+    @patch("scripts.trading_batch_common.requests.get", side_effect=RuntimeError("down"))
+    def test_query_failure_stays_none(self, _get: Mock):
+        self._write({_broker_key(self.URL): self._entry()})
+        self.assertIsNone(available_cash(self.URL))
