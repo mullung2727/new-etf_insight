@@ -5,11 +5,15 @@ from datetime import datetime
 from unittest.mock import patch
 
 import duckdb
+import pandas as pd
 import requests
 
 from scripts.build_us_macro import (
+    NEW_YORK,
+    ensure_index,
     ensure_schema,
     fetch_fred,
+    index_cutoff_day,
     load_series,
     main,
     run,
@@ -18,6 +22,19 @@ from scripts.build_us_macro import (
 
 T1 = datetime(2026, 10, 1)
 T2 = datetime(2026, 10, 2)
+
+
+def _frame(ticker_days):
+    """ticker_days: ticker -> [(YYYY-MM-DD, close)] → yfinance group_by="ticker" 형태"""
+    pieces = {}
+    for ticker, values in ticker_days.items():
+        index = pd.to_datetime([value[0] for value in values])
+        close = [value[1] for value in values]
+        pieces[ticker] = pd.DataFrame(
+            {"Open": close, "High": close, "Low": close, "Close": close},
+            index=index,
+        )
+    return pd.concat(pieces, axis=1)
 
 
 class _FakeResponse:
@@ -80,7 +97,7 @@ class TestFredObs(unittest.TestCase):
                 raise RuntimeError("boom")
             return [("20260101", 1.0)]
 
-        result = run(self.con, "KEY", series=("A", "B"), fetch=fake_fetch)
+        result = run(self.con, "KEY", series=("A", "B"), fetch=fake_fetch, indices=())
         self.assertIn("A", result["failed"])
         self.assertGreater(result["inserted"]["B"], 0)
         self.assertEqual(
@@ -107,6 +124,101 @@ class TestFredObs(unittest.TestCase):
                 "SELECT count(*) FROM fred_obs WHERE series_id='S' AND date='20260101'"
             ).fetchone()[0],
             1,
+        )
+
+
+class TestIndexOhlcv(unittest.TestCase):
+    def setUp(self):
+        self.con = duckdb.connect(":memory:")
+        ensure_schema(self.con)
+
+    def tearDown(self):
+        self.con.close()
+
+    def test_v1_index_full_replace_and_truncated_protected(self):
+        def download_for(days):
+            def _download(tickers, start, end):
+                return _frame({ticker: list(days) for ticker in tickers})
+            return _download
+
+        now_ny = datetime(2026, 10, 3, 12, 0, tzinfo=NEW_YORK)
+        days = [("2026-09-30", 20), ("2026-10-01", 20), ("2026-10-02", 20)]
+        ensure_index(self.con, now_ny=now_ny, download=download_for(days), tickers=("^VIX",))
+        days2 = [(day, 21) for day, _ in days]
+        ensure_index(self.con, now_ny=now_ny, download=download_for(days2), tickers=("^VIX",))
+        self.assertEqual(
+            self.con.execute("SELECT count(*) FROM index_ohlcv WHERE ticker='^VIX'").fetchone()[0],
+            3,
+        )
+        self.assertEqual(
+            self.con.execute("SELECT DISTINCT close FROM index_ohlcv WHERE ticker='^VIX'").fetchall(),
+            [(21.0,)],
+        )
+        truncated = ensure_index(
+            self.con, now_ny=now_ny, download=download_for(days2[1:]), tickers=("^VIX",),
+        )
+        self.assertIn("^VIX", truncated["failed"])
+        self.assertEqual(
+            self.con.execute("SELECT count(*) FROM index_ohlcv WHERE ticker='^VIX'").fetchone()[0],
+            3,
+        )
+        self.assertEqual(
+            self.con.execute("SELECT DISTINCT close FROM index_ohlcv WHERE ticker='^VIX'").fetchall(),
+            [(21.0,)],
+        )
+
+    def test_index_cutoff_day(self):
+        self.assertEqual(
+            index_cutoff_day(datetime(2026, 10, 2, 16, 29, tzinfo=NEW_YORK)), "20261002"
+        )
+        self.assertEqual(
+            index_cutoff_day(datetime(2026, 10, 2, 16, 31, tzinfo=NEW_YORK)), "20261003"
+        )
+
+    def test_v2_index_today_bar(self):
+        days = [("2026-10-01", 20), ("2026-10-02", 21)]
+        download = lambda tickers, start, end: _frame({ticker: list(days) for ticker in tickers})
+        ensure_index(
+            self.con,
+            now_ny=datetime(2026, 10, 2, 16, 29, tzinfo=NEW_YORK),
+            download=download,
+            tickers=("^VIX",),
+        )
+        self.assertEqual(
+            self.con.execute(
+                "SELECT count(*) FROM index_ohlcv WHERE ticker='^VIX' AND date='20261002'"
+            ).fetchone()[0],
+            0,
+        )
+        ensure_index(
+            self.con,
+            now_ny=datetime(2026, 10, 2, 16, 31, tzinfo=NEW_YORK),
+            download=download,
+            tickers=("^VIX",),
+        )
+        self.assertEqual(
+            self.con.execute(
+                "SELECT count(*) FROM index_ohlcv WHERE ticker='^VIX' AND date='20261002'"
+            ).fetchone()[0],
+            1,
+        )
+
+    def test_v3_index_failure_isolated_from_fred(self):
+        def bad_download(tickers, start, end):
+            raise RuntimeError("network")
+
+        result = run(
+            self.con, "KEY",
+            series=("B",),
+            fetch=lambda series_id, api_key: [("20260101", 1.0)],
+            indices=("^VIX",),
+            index_download=bad_download,
+            now_ny=datetime(2026, 10, 3, 12, 0, tzinfo=NEW_YORK),
+        )
+        self.assertGreater(result["inserted"]["B"], 0)
+        self.assertIn("^VIX", result["failed"])
+        self.assertEqual(
+            self.con.execute("SELECT count(*) FROM fred_obs WHERE series_id='B'").fetchone()[0], 1
         )
 
 
