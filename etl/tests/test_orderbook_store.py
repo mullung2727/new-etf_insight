@@ -112,5 +112,42 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(got, ("e", "KRX", "005930,000660", "20260911", '{"reason": "window_end"}'))
 
 
+class RawTest(unittest.TestCase):
+    def raw_row(self, ticker="005930", recv_ts="2026-10-05T09:00:00.500+09:00", **book):
+        base = {"run_id": 1, "date": "20261005", "ticker": ticker, "venue": "KRX",
+                "recv_ts": recv_ts, "quote_tm": "090000"}
+        base.update({c: None for c in store.BOOK_COLUMNS})
+        base.update(book)
+        return base
+
+    def test_raw_path_is_monthly(self):
+        self.assertEqual(store.raw_path(Path("/tmp/raw"), "20261005").name,
+                         "orderbook_raw_202610.sqlite3")
+
+    def test_ensure_raw_schema_and_write_raw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "orderbook_raw_202610.sqlite3"
+            with connect_rw(db) as con:
+                store.ensure_raw_schema(con)
+                store.write_raw(con, [self.raw_row(ask1_px=100),
+                                      self.raw_row(ticker="000660", ask1_px=200)])
+                n = con.execute("SELECT count(*) FROM orderbook_event").fetchone()[0]
+                got = con.execute("SELECT run_id, date, ticker, venue, recv_ts, quote_tm, ask1_px"
+                                  " FROM orderbook_event ORDER BY rowid").fetchall()
+            self.assertEqual(n, 2)
+            self.assertEqual(got[0][:6], (1, "20261005", "005930", "KRX",
+                                          "2026-10-05T09:00:00.500+09:00", "090000"))
+            self.assertEqual((got[0][6], got[1][2], got[1][6]), (100, "000660", 200))
+
+    def test_write_raw_empty_is_noop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "orderbook_raw_202610.sqlite3"
+            with connect_rw(db) as con:
+                store.ensure_raw_schema(con)
+                store.write_raw(con, [])
+                n = con.execute("SELECT count(*) FROM orderbook_event").fetchone()[0]
+        self.assertEqual(n, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
