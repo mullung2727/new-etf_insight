@@ -84,5 +84,31 @@ class TestRun(unittest.TestCase):
         self.assertAlmostEqual(out["ret"].iloc[1], 0.10)
 
 
+    def test_p8_rebalance_every_periodic(self):
+        returns = pd.DataFrame({"A": [0.10, 0.10, 0.10], "B": [0.0, 0.0, 0.0]}, index=D3)
+        weights = pd.DataFrame({"A": [0.5, 0.5, 0.5], "B": [0.5, 0.5, 0.5]}, index=D3)
+        out = run(weights, returns, 0.0, rebalance_every=2)
+        self.assertAlmostEqual(out["turnover"].iloc[0], 1.0)
+        self.assertAlmostEqual(out["turnover"].iloc[1], 0.0)
+        self.assertGreater(out["turnover"].iloc[2], 0.0)
+        self.assertAlmostEqual(out["w_A"].iloc[2], 0.5)
+        out_none = run(weights, returns, 0.0)
+        self.assertAlmostEqual(out_none["turnover"].iloc[1], 0.0)
+        self.assertAlmostEqual(out_none["turnover"].iloc[2], 0.0)
+
+    def test_p9_rebalance_every_validation(self):
+        returns = pd.DataFrame({"A": [0.10, -0.05]}, index=D2)
+        weights = pd.DataFrame({"A": [1.0, 1.0]}, index=D2)
+        for bad in (0, -1):
+            with self.assertRaises(ValueError):
+                run(weights, returns, 0.0, rebalance_every=bad)
+
+    def test_p10_default_equals_none(self):
+        returns = pd.DataFrame({"A": [0.0, 0.10], "B": [0.0, 0.0]}, index=D2)
+        weights = pd.DataFrame({"A": [0.5, 0.5], "B": [0.5, 0.5]}, index=D2)
+        pd.testing.assert_frame_equal(run(weights, returns, 0.001),
+                                      run(weights, returns, 0.001, None))
+
+
 if __name__ == "__main__":
     unittest.main()
