@@ -173,5 +173,87 @@ class TestProxy(unittest.TestCase):
             proxy.etf_signal(etf, coef, "19990101", 3.0, days)
 
 
+def _vix(days):
+    return pd.Series(
+        [20.0 + 2.0 * math.sin(k * 0.7 + 1.0) for k in range(len(days))],
+        index=list(days),
+    )
+
+
+class TestProxyVix(unittest.TestCase):
+    def test_v1_default_cols_compat(self):
+        days = _days(n=140)
+        etf = _etf(days)
+        oas = _oas(days, [3.0 + 0.001 * k for k in range(len(days))])
+        dates = days[-10:]
+        base = proxy.nowcast(oas, etf, dates)
+        expl = proxy.nowcast(oas, etf, dates, ("HYG", "IEI"))
+        pd.testing.assert_frame_equal(expl, base)
+        coef = proxy.fit_ols(proxy.daily_pairs(oas, etf))
+        s1 = proxy.etf_signal(etf, coef, days[0], 3.0, days, window=10)
+        s2 = proxy.etf_signal(etf, coef, days[0], 3.0, days, window=10, cols=("HYG", "IEI"))
+        pd.testing.assert_frame_equal(s2, s1)
+
+    def test_v2_make_features(self):
+        days = _days(n=10)
+        etf = _etf(days)
+        vix = _vix(days)
+        f = proxy.make_features(etf, vix)
+        self.assertEqual(list(f.index), days)
+        self.assertEqual(list(f.columns), ["HYG", "IEI", "HYG_l1", "VIX", "VIX_l1"])
+        self.assertAlmostEqual(
+            f.loc[days[3], "VIX"],
+            math.log(vix.loc[days[3]]) - math.log(vix.loc[days[2]]),
+        )
+        self.assertAlmostEqual(f.loc[days[3], "VIX_l1"], f.loc[days[2], "VIX"])
+        self.assertAlmostEqual(f.loc[days[3], "HYG_l1"], etf.loc[days[2], "HYG"])
+        for c in ("HYG_l1", "VIX", "VIX_l1"):
+            self.assertTrue(pd.isna(f.loc[days[0], c]))
+        self.assertTrue(pd.isna(f.loc[days[1], "VIX_l1"]))
+        vix_extra = pd.concat([vix, pd.Series([999.0], index=["20990101"])])
+        f2 = proxy.make_features(etf, vix_extra)
+        pd.testing.assert_frame_equal(f2, f)
+        f3 = proxy.make_features(etf, vix.drop([days[2]]))
+        self.assertTrue(pd.isna(f3.loc[days[2], "VIX"]))
+        self.assertTrue(pd.isna(f3.loc[days[3], "VIX"]))
+
+    def test_v3_four_var_exact_recovery(self):
+        days = _days(n=140)
+        etf = _etf(days)
+        f = proxy.make_features(etf, _vix(days))
+        cols = ("HYG", "IEI", "VIX", "VIX_l1")
+        vals = [3.0, 3.0]
+        for k in range(2, len(days)):
+            d = (1 + 5 * f["HYG"].iloc[k] - 3 * f["IEI"].iloc[k]
+                 + 20 * f["VIX"].iloc[k] + 10 * f["VIX_l1"].iloc[k])
+            vals.append(vals[-1] + d / 100)
+        oas = _oas(days, vals)
+        pairs = proxy.daily_pairs(oas, f, cols)
+        self.assertGreater(len(pairs), 10)
+        coef = proxy.fit_ols(pairs, cols)
+        self.assertEqual(len(coef), 5)
+        for got, want in zip(coef, (1.0, 5.0, -3.0, 20.0, 10.0)):
+            self.assertAlmostEqual(got, want, delta=1e-6)
+
+    def test_v4_no_future_vix(self):
+        days = _days(n=140)
+        etf = _etf(days)
+        vix = _vix(days)
+        cols = ("HYG", "IEI", "VIX", "VIX_l1")
+        f = proxy.make_features(etf, vix)
+        oas = _oas(days, [3.0 + 0.001 * k for k in range(len(days))])
+        dates = days[-10:]
+        t = dates[2]
+        base = proxy.nowcast(oas, f, dates, cols)
+        self.assertTrue(bool(base.loc[t, "fitted"]))
+        vix2 = vix.copy()
+        for d in days[days.index(t) + 1:]:
+            vix2.loc[d] = 999.0
+        f2 = proxy.make_features(etf, vix2)
+        changed = proxy.nowcast(oas, f2, dates, cols)
+        self.assertEqual(changed.loc[t, "oas"], base.loc[t, "oas"])
+        self.assertEqual(changed.loc[t, "d10_bp"], base.loc[t, "d10_bp"])
+
+
 if __name__ == "__main__":
     unittest.main()
