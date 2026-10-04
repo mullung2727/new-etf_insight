@@ -43,9 +43,14 @@ FRED_SERIES = (
     "VIXCLS",          # CBOE VIX close (daily)
     "DFII10",          # 10Y TIPS real yield (daily)
     "BAA10Y",          # Moody's Baa - 10Y Treasury (daily, 1986~), 검증용
+    "DGS10",           # 10Y Treasury (daily)
+    "DTB3",            # 3M T-bill (daily)
+    "ICNSA",           # 실업수당 신규청구 NSA (주간). 2009 전 첫공개값 없음 → 현재값으로 근사용
 )
 
-INDEX_TICKERS = ("^VIX", "^VIX3M")   # 신호용 지수 (매매 대상 아님 → us_ohlcv 가 아니라 여기)
+FIRST_RELEASE_SERIES = ("UNRATE", "ICNSA")
+
+INDEX_TICKERS = ("^VIX", "^VIX3M", "DX-Y.NYB", "HG=F", "GC=F")   # 신호용 (매매 대상 아님 → us_ohlcv 가 아니라 여기). 시장 가격이라 수정 없음, 선물은 연결선물이라 롤오버 날 튈 수 있음
 INDEX_FROM_DATE = "19900101"
 NEW_YORK = ZoneInfo("America/New_York")
 INDEX_CLOSE_CUTOFF = time(16, 30)    # VIX 공식 종가 16:15 + 여유
@@ -67,11 +72,22 @@ CREATE TABLE IF NOT EXISTS index_ohlcv (
     PRIMARY KEY (date, ticker)
 )
 """
+_CREATE_FRED_FIRST_RELEASE = """
+CREATE TABLE IF NOT EXISTS fred_first_release (
+    series_id VARCHAR, date VARCHAR,        -- 관측일 YYYYMMDD
+    value DOUBLE,
+    realtime_start VARCHAR,                 -- 첫 공개일 YYYYMMDD
+    backfilled BOOLEAN,                     -- realtime_start 가 그 시리즈 최초 vintage 날짜와 같으면 True (ALFRED 기록 시작 전 관측 = 진짜 첫 공개일 아님)
+    fetched_at TIMESTAMP,
+    PRIMARY KEY (series_id, date)
+)
+"""
 
 
 def ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(_CREATE_FRED_OBS)
     con.execute(_CREATE_INDEX_OHLCV)
+    con.execute(_CREATE_FRED_FIRST_RELEASE)
 
 
 def fetch_fred(
@@ -139,6 +155,79 @@ def upsert_fred(
     con.execute("BEGIN TRANSACTION")
     try:
         con.executemany("INSERT INTO fred_obs VALUES (?,?,?,?)", new)
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    return len(new)
+
+
+def fetch_first_release(
+    series_id: str,
+    api_key: str,
+    *,
+    get: Callable[..., requests.Response] = requests.get,
+) -> list[tuple[str, float, str]]:
+    """Fetch first-release values via ALFRED (output_type=4).
+
+    Returns [(YYYYMMDD 관측일, value, YYYYMMDD 첫 공개일)] in response order.
+    Rows with value "." are dropped. Errors never echo the api_key.
+    """
+    try:
+        resp = get(
+            FRED_URL,
+            params={
+                "series_id": series_id,
+                "api_key": api_key,
+                "file_type": "json",
+                "realtime_start": "1776-07-04",
+                "realtime_end": "9999-12-31",
+                "output_type": 4,
+            },
+            timeout=60,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"FRED {series_id} failed: {type(exc).__name__}") from None
+    if resp.status_code != 200:
+        raise RuntimeError(f"FRED {series_id} failed: HTTP {resp.status_code}")
+    try:
+        observations = resp.json()["observations"]
+    except Exception as exc:
+        raise RuntimeError(f"FRED {series_id} failed: {type(exc).__name__}") from None
+    rows: list[tuple[str, float, str]] = []
+    for obs in observations:
+        if obs.get("value") == ".":
+            continue
+        rows.append(
+            (
+                str(obs["date"]).replace("-", ""),
+                float(obs["value"]),
+                str(obs["realtime_start"]).replace("-", ""),
+            )
+        )
+    return rows
+
+
+def upsert_first_release(
+    con: duckdb.DuckDBPyConnection,
+    series_id: str,
+    rows: list[tuple[str, float, str]],
+    fetched_at: datetime,
+) -> int:
+    """Upsert first-release rows; return the inserted row count. One transaction."""
+    if not rows:
+        return 0
+    min_rs = min(realtime_start for _, _, realtime_start in rows)
+    deduped: dict[str, tuple[float, str]] = {}
+    for date, value, realtime_start in rows:
+        deduped[date] = (value, realtime_start)
+    new = [
+        (series_id, date, value, realtime_start, realtime_start == min_rs, fetched_at)
+        for date, (value, realtime_start) in deduped.items()
+    ]
+    con.execute("BEGIN TRANSACTION")
+    try:
+        con.executemany("INSERT OR REPLACE INTO fred_first_release VALUES (?,?,?,?,?,?)", new)
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")
@@ -258,6 +347,8 @@ def run(
     index_download: Callable[[list[str], str, str], pd.DataFrame] = _default_download,
     now_ny: datetime | None = None,
     indices: tuple[str, ...] = INDEX_TICKERS,
+    first_release: tuple[str, ...] = FIRST_RELEASE_SERIES,
+    fetch_first: Callable[[str, str], list[tuple[str, float, str]]] | None = None,
 ) -> dict:
     """Fetch every series and upsert; one series failing does not stop the rest."""
     fetched_at = now or datetime.now(timezone.utc).replace(tzinfo=None)
@@ -269,6 +360,14 @@ def run(
             inserted[series_id] = upsert_fred(con, series_id, rows, fetched_at)
         except Exception as exc:
             failed[series_id] = str(exc)
+    _fetch_first = fetch_first or fetch_first_release
+    for series_id in first_release:
+        key = f"{series_id}:first"
+        try:
+            rows_first = _fetch_first(series_id, api_key)
+            inserted[key] = upsert_first_release(con, series_id, rows_first, fetched_at)
+        except Exception as exc:
+            failed[key] = str(exc)
     if indices:
         try:
             index_result = ensure_index(

@@ -12,11 +12,13 @@ from scripts.build_us_macro import (
     NEW_YORK,
     ensure_index,
     ensure_schema,
+    fetch_first_release,
     fetch_fred,
     index_cutoff_day,
     load_series,
     main,
     run,
+    upsert_first_release,
     upsert_fred,
 )
 
@@ -97,7 +99,7 @@ class TestFredObs(unittest.TestCase):
                 raise RuntimeError("boom")
             return [("20260101", 1.0)]
 
-        result = run(self.con, "KEY", series=("A", "B"), fetch=fake_fetch, indices=())
+        result = run(self.con, "KEY", series=("A", "B"), fetch=fake_fetch, indices=(), first_release=())
         self.assertIn("A", result["failed"])
         self.assertGreater(result["inserted"]["B"], 0)
         self.assertEqual(
@@ -214,9 +216,69 @@ class TestIndexOhlcv(unittest.TestCase):
             indices=("^VIX",),
             index_download=bad_download,
             now_ny=datetime(2026, 10, 3, 12, 0, tzinfo=NEW_YORK),
+            first_release=(),
         )
         self.assertGreater(result["inserted"]["B"], 0)
         self.assertIn("^VIX", result["failed"])
+        self.assertEqual(
+            self.con.execute("SELECT count(*) FROM fred_obs WHERE series_id='B'").fetchone()[0], 1
+        )
+
+
+class TestFirstRelease(unittest.TestCase):
+    def setUp(self):
+        self.con = duckdb.connect(":memory:")
+        ensure_schema(self.con)
+
+    def tearDown(self):
+        self.con.close()
+
+    def test_r1_fetch_first_release(self):
+        payload = {"observations": [
+            {"date": "2026-01-01", "value": "4.1", "realtime_start": "2026-02-01"},
+            {"date": "2026-02-01", "value": ".", "realtime_start": "2026-03-01"},
+            {"date": "2026-03-01", "value": "4.2", "realtime_start": "2026-04-05"},
+        ]}
+        captured: dict = {}
+
+        def fake_get(url, params, timeout):
+            captured.update(params)
+            return _FakeResponse(payload=payload)
+
+        rows = fetch_first_release("UNRATE", "KEY", get=fake_get)
+        self.assertEqual(rows, [("20260101", 4.1, "20260201"), ("20260301", 4.2, "20260405")])
+        self.assertEqual(captured.get("output_type"), 4)
+
+    def test_r2_upsert_first_release_backfilled(self):
+        rows = [
+            ("20260101", 1.0, "20200101"),
+            ("20260201", 2.0, "20200101"),
+            ("20260301", 3.0, "20260401"),
+        ]
+        count = upsert_first_release(self.con, "U", rows, T1)
+        self.assertEqual(count, 3)
+        stored = self.con.execute(
+            "SELECT date, backfilled FROM fred_first_release WHERE series_id='U' ORDER BY date"
+        ).fetchall()
+        self.assertEqual(stored, [("20260101", True), ("20260201", True), ("20260301", False)])
+
+    def test_r3_run_partial_failure_first_release(self):
+        def fake_fetch(series_id, api_key):
+            return [("20260101", 1.0)]
+
+        def fake_first(series_id, api_key):
+            raise RuntimeError("boom")
+
+        result = run(
+            self.con, "KEY",
+            series=("B",),
+            fetch=fake_fetch,
+            indices=(),
+            first_release=("X",),
+            fetch_first=fake_first,
+        )
+        self.assertIn("X:first", result["failed"])
+        self.assertGreater(result["inserted"]["B"], 0)
         self.assertEqual(
             self.con.execute("SELECT count(*) FROM fred_obs WHERE series_id='B'").fetchone()[0], 1
         )
