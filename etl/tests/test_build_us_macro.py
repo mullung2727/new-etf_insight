@@ -171,10 +171,10 @@ class TestIndexOhlcv(unittest.TestCase):
 
     def test_index_cutoff_day(self):
         self.assertEqual(
-            index_cutoff_day(datetime(2026, 10, 2, 16, 29, tzinfo=NEW_YORK)), "20261002"
+            index_cutoff_day(datetime(2026, 10, 2, 19, 59, tzinfo=NEW_YORK)), "20261002"
         )
         self.assertEqual(
-            index_cutoff_day(datetime(2026, 10, 2, 16, 31, tzinfo=NEW_YORK)), "20261003"
+            index_cutoff_day(datetime(2026, 10, 2, 20, 1, tzinfo=NEW_YORK)), "20261003"
         )
 
     def test_v2_index_today_bar(self):
@@ -182,7 +182,7 @@ class TestIndexOhlcv(unittest.TestCase):
         download = lambda tickers, start, end: _frame({ticker: list(days) for ticker in tickers})
         ensure_index(
             self.con,
-            now_ny=datetime(2026, 10, 2, 16, 29, tzinfo=NEW_YORK),
+            now_ny=datetime(2026, 10, 2, 19, 59, tzinfo=NEW_YORK),
             download=download,
             tickers=("^VIX",),
         )
@@ -194,7 +194,7 @@ class TestIndexOhlcv(unittest.TestCase):
         )
         ensure_index(
             self.con,
-            now_ny=datetime(2026, 10, 2, 16, 31, tzinfo=NEW_YORK),
+            now_ny=datetime(2026, 10, 2, 20, 1, tzinfo=NEW_YORK),
             download=download,
             tickers=("^VIX",),
         )

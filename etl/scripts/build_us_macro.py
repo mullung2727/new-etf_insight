@@ -53,7 +53,7 @@ FIRST_RELEASE_SERIES = ("UNRATE", "ICNSA")
 INDEX_TICKERS = ("^VIX", "^VIX3M", "DX-Y.NYB", "HG=F", "GC=F")   # 신호용 (매매 대상 아님 → us_ohlcv 가 아니라 여기). 시장 가격이라 수정 없음, 선물은 연결선물이라 롤오버 날 튈 수 있음
 INDEX_FROM_DATE = "19900101"
 NEW_YORK = ZoneInfo("America/New_York")
-INDEX_CLOSE_CUTOFF = time(16, 30)    # VIX 공식 종가 16:15 + 여유
+INDEX_CLOSE_CUTOFF = time(20, 0)    # 뉴욕 장후 거래 종료 — build_us_ohlcv 와 같은 기준
 
 _CREATE_FRED_OBS = """
 CREATE TABLE IF NOT EXISTS fred_obs (
