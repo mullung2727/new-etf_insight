@@ -144,4 +144,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_macro_signals.py
 
 결과: `RESULTS_MACRO_SIGNALS.md` (실행 시 덮어쓰기). 월말 비중첩 표본, 분위는 전체 표본 기준 묘사용(매매 아님).
 
+## 합성 TQQQ·매크로 오버레이
+
+QQQ(1999~)+DTB3로 상장 전 TQQQ·BIL 합성 후 200일선 상한 0.4 × 달러(+5%)·금리차(역전해소) 오버레이 10개 비교 (D19). 임계 사전 고정, 비용 0.1%, 세전.
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_macro_overlay.py
+```
+
+결과: `RESULTS_MACRO_OVERLAY.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).

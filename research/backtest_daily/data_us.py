@@ -108,3 +108,23 @@ def load_first_release(series_id: str, db: Path = US_MACRO_DB) -> pd.DataFrame:
     df["value"] = df["value"].astype(float)
     df["backfilled"] = df["backfilled"].astype(bool)
     return df
+
+
+def synth_leveraged(base_ret: pd.Series, rate_pct: pd.Series,
+                    leverage: float = 3.0, fee_annual: float = 0.0095) -> pd.Series:
+    """일간 리밸런싱 레버리지 ETF 근사: L·r_base − fee/252 − (L−1)·rate/100/252.
+
+    차입비용=단기국채금리(rate_pct, % 연율, base_ret index로 reindex 후 ffill),
+    보수 0.95%/년 기본. base_ret NaN일은 NaN.
+    """
+    rate = rate_pct.reindex(base_ret.index).ffill()
+    return leverage * base_ret - fee_annual / 252 - (leverage - 1) * rate / 100 / 252
+
+
+def synth_cash(rate_pct: pd.Series, dates=None) -> pd.Series:
+    """BIL 대용 일간 현금 수익: rate/100/252.
+
+    rate_pct(% 연율)를 dates index로 reindex 후 ffill. dates 생략 시 rate_pct index.
+    """
+    idx = list(dates) if dates is not None else list(rate_pct.index)
+    return rate_pct.reindex(idx).ffill() / 100 / 252
