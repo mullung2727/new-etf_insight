@@ -36,4 +36,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_nowcast.py
 
 결과: `RESULTS_NOWCAST.md` (실행 시 덮어쓰기, ORACLE은 실매매 불가 상한).
 
+## ETF 단독 신호
+
+실 OAS 없이 HYG·IEI만으로 수준·Δ10 추정 → 2010-02~ 장기 백테스트 (D9). 계수는 OAS 전 구간으로 한 번 고정, 2010~2023은 표본외. ETF_LEVEL(수준+Δ)·ETF_DELTA(Δ만).
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_etf_proxy.py
+```
+
+결과: `RESULTS_ETF_PROXY.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
