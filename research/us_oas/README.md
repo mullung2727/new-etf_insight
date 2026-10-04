@@ -180,4 +180,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_reentry_grid.py
 
 결과: `RESULTS_REENTRY_GRID.md` (실행 시 덮어쓰기).
 
+## TQQQ 상한 고정
+
+평소 TQQQ 상한 c × 나머지 자산 R(QQQ/BIL) × 추세(none/W200_instant/W200_confirm) 30개 전 조합 비교 (D23). 1999~ 합성 이음, 상한·추세 사전 고정, 월 1회(21거래일) 재조정, 비용 0.1%, 세전.
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_cap_grid.py
+```
+
+결과: `RESULTS_CAP_GRID.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
