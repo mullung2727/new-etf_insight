@@ -6,7 +6,9 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-from research.backtest_daily.data_us import load_etf_tr, load_fred, load_index
+from research.backtest_daily.data_us import (
+    load_etf_tr, load_first_release, load_fred, load_index,
+)
 
 
 class TestDataUs(unittest.TestCase):
@@ -33,6 +35,17 @@ class TestDataUs(unittest.TestCase):
             )
             con.execute("CREATE TABLE index_ohlcv (date VARCHAR, ticker VARCHAR, close DOUBLE)")
             con.execute("INSERT INTO index_ohlcv VALUES ('20240102','^VIX',13.5), ('20240103','^VIX',14.0)")
+            con.execute(
+                "CREATE TABLE fred_first_release (series_id VARCHAR, date VARCHAR,"
+                " value DOUBLE, realtime_start VARCHAR, backfilled BOOLEAN,"
+                " fetched_at TIMESTAMP)"
+            )
+            con.execute(
+                "INSERT INTO fred_first_release VALUES ('UNRATE','20240201',3.9,"
+                " '20240308', FALSE, TIMESTAMP '2024-03-09 00:00:00'),"
+                " ('UNRATE','20240101',3.7,'20240202', FALSE,"
+                " TIMESTAMP '2024-02-03 00:00:00')"
+            )
         finally:
             con.close()
 
@@ -67,6 +80,17 @@ class TestDataUs(unittest.TestCase):
         self.assertEqual(s.name, "^VIX")
         self.assertEqual(s.index.tolist(), ["20240102", "20240103"])
         self.assertAlmostEqual(s.loc["20240103"], 14.0)
+
+    def test_m5_first_release_columns_and_sort(self):
+        df = load_first_release("UNRATE", db=self.db)
+        self.assertEqual(df.columns.tolist(),
+                         ["date", "value", "realtime_start", "backfilled"])
+        self.assertEqual(df["date"].tolist(), ["20240101", "20240201"])
+        self.assertAlmostEqual(df["value"].iloc[0], 3.7)
+        self.assertEqual(df["realtime_start"].iloc[1], "20240308")
+        self.assertEqual(df["backfilled"].tolist(), [False, False])
+        with self.assertRaises(ValueError):
+            load_first_release("NOPE", db=self.db)
 
 
 if __name__ == "__main__":

@@ -132,4 +132,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_bil_timing.py
 
 결과: `RESULTS_BIL_TIMING.md` (실행 시 덮어쓰기).
 
+## 리스크 후보 지표
+
+시점 보장 6개 지표(금리차·Sahm·실업청구·달러·구리/금) + 이후 QQQ 성과 측정 (D18-2). 판단일 T에는 T 이전 공개값만: 시장값 관측일<T, UNRATE realtime_start<T, ICNSA는 2009-06 이후 첫 공개값·이전은 관측일+12일<T 사후값(근사 표시).
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_macro_signals.py
+```
+
+결과: `RESULTS_MACRO_SIGNALS.md` (실행 시 덮어쓰기). 월말 비중첩 표본, 분위는 전체 표본 기준 묘사용(매매 아님).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
