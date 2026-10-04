@@ -96,4 +96,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_trend_grid.py
 
 결과: `RESULTS_TREND_GRID.md` (실행 시 덮어쓰기).
 
+## 외부 방어전략 재현
+
+외부 제안 "TQQQ 방어전략"을 임계값 그대로 재현 + fast·persistent·실질금리·severe·OAS 블록별 제거 비교 (D14). 16년 ETF 추정(oas_lag 0·2) + 3년 실 OAS(lag 1·2·nowcast).
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_defense.py
+```
+
+결과: `RESULTS_DEFENSE.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
