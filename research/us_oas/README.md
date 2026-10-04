@@ -108,4 +108,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_defense.py
 
 결과: `RESULTS_DEFENSE.md` (실행 시 덮어쓰기).
 
+## 200일선+Fast 조합
+
+200일선 상한(m 0.4/0.2, 당일 종가) × fast stress(문서값 그대로, 전일) 조합 비교 (D15). TQQQ=min(ma_cap, fast), 나머지 QQQ, BIL 없음. 기준 TQQQ·QQQ·DOC_FULL(run_defense FULL, oas_lag 2).
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_combo.py
+```
+
+결과: `RESULTS_COMBO.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
