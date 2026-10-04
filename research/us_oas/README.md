@@ -156,4 +156,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_macro_overlay.py
 
 결과: `RESULTS_MACRO_OVERLAY.md` (실행 시 덮어쓰기).
 
+## 200일선 아래 피신 비교
+
+200일선 아래에서만 TQQQ를 m(0.4/0.2/0.0)으로 낮추고 나머지를 QQQ·절반BIL·전부BIL로 피신하는 9개 + 매크로 조건부(M00_MACRO) 비교 (D20). 1999~ 합성 이음, QQQ_MA는 TQQQ 없이 추세만 쓴 기준.
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_exit_compare.py
+```
+
+결과: `RESULTS_EXIT_COMPARE.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
