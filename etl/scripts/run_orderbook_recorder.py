@@ -683,7 +683,7 @@ def run(cfg: dict, *, clock: Any = None, broker: Any = None, sse_factory: Callab
                 raw_dir.mkdir(parents=True, exist_ok=True)
                 raw_con = stack.enter_context(connect_rw(store.raw_path(raw_dir, date)))
                 store.ensure_raw_schema(raw_con)
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OSError) as exc:
                 log.warning("원본 DB 열기 실패: %s", exc)
                 raw_con = None
             recorder = Recorder(cfg, date, window, run_id, con, clock, broker, watchlist_db,
