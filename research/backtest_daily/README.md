@@ -7,6 +7,7 @@
 | 모듈 | 함수·상수 |
 |---|---|
 | `data.py` | `load_px`, `market_dates`, `stock_names`, `DB` |
+| `data_us.py` (미국) | `load_etf_tr`, `load_fred`, `load_index`, `US_OHLCV_DB`, `US_MACRO_DB` |
 | `adjust.py` | `adj_returns`, `adj_price`, `corp_action_events`, `ma_n`, `SH_TH`, `PX_TH`, `MATCH` |
 | `universe.py` | `listing_flags`, `SPAC_RE` |
 | `guards.py` | `limit_up_close`, `limit_up_open`, `liquidity`, `halt_ok`, `jump_ok`, `fin_flags`, `AVAIL`, `FIN_DB` |
