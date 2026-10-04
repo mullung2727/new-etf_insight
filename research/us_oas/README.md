@@ -60,4 +60,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_vix_proxy.py
 
 결과: `RESULTS_VIX_PROXY.md` (실행 시 덮어쓰기).
 
+## VIX 비대칭
+
+VIX 로그변화의 오름·내림을 분리한 신호 변형 비교 (D11). 오름은 믿고 내림은 덜 믿는 가설: ASYM_A(오름·내림 계수 분리)·ASYM_B(오름만 반영). 계수는 OAS 전 구간 고정, 수준 조건은 평가 1(실매매 방식)에서만 사용.
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_vix_asym.py
+```
+
+결과: `RESULTS_VIX_ASYM.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).

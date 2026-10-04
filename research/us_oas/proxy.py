@@ -9,11 +9,13 @@ PROXY_TICKERS = ("HYG", "IEI")
 
 
 def make_features(etf_logret: pd.DataFrame, vix_close: pd.Series | None = None) -> pd.DataFrame:
-    """설명변수표. index=etf_logret.index(거래일), 컬럼 HYG·IEI·HYG_l1(+VIX·VIX_l1).
+    """설명변수표. index=etf_logret.index(거래일), 컬럼 HYG·IEI·HYG_l1(+VIX·VIX_l1·VIX_up·VIX_dn·VIX_up_l1·VIX_dn_l1).
 
     HYG_l1 = HYG 1칸 shift(전날 값). vix_close 가 주어지면 log 종가를 거래일
     index 로 reindex 한 뒤 diff → VIX(거래일 기준 전날 VIX 대비),
-    VIX_l1 = VIX 1칸 shift. 첫 행(HYG_l1·VIX·VIX_l1)은 NaN.
+    VIX_l1 = VIX 1칸 shift. VIX_up = max(VIX, 0), VIX_dn = min(VIX, 0)
+    (NaN 은 NaN 유지), VIX_up_l1·VIX_dn_l1 = 각각 1칸 shift.
+    첫 행(HYG_l1·VIX·VIX_l1·VIX_up·VIX_dn)은 NaN.
     """
     out = pd.DataFrame(
         {"HYG": etf_logret["HYG"], "IEI": etf_logret["IEI"]},
@@ -24,6 +26,10 @@ def make_features(etf_logret: pd.DataFrame, vix_close: pd.Series | None = None) 
         lv = np.log(vix_close.astype(float)).reindex(etf_logret.index)
         out["VIX"] = lv.diff()
         out["VIX_l1"] = out["VIX"].shift(1)
+        out["VIX_up"] = out["VIX"].clip(lower=0.0)
+        out["VIX_dn"] = out["VIX"].clip(upper=0.0)
+        out["VIX_up_l1"] = out["VIX_up"].shift(1)
+        out["VIX_dn_l1"] = out["VIX_dn"].shift(1)
     return out
 
 
