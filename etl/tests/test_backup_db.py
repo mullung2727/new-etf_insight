@@ -12,6 +12,8 @@ from unittest import mock
 
 from scripts.backup_db import (
     BACKUP_DIRNAME,
+    backup_duckdb,
+    backup_file,
     backup_sqlite,
     find_backup_root,
     is_fresh,
@@ -317,3 +319,86 @@ class TestRowCountMismatch(_BackupCase):
                 backup_sqlite(src, dst)
         self.assertEqual(dst.read_bytes(), b"old-backup")
         self.assertFalse(dst.with_name(dst.name + ".tmp").exists())
+
+
+class TestTmpCleanupOnFailure(_BackupCase):
+    def _failing_copy2(self, exc):
+        def fake_copy2(src, dst, *args, **kwargs):
+            Path(dst).write_bytes(b"partial")
+            raise exc
+
+        return fake_copy2
+
+    def test_backup_file_copy_fail_cleans_tmp(self):
+        src = self._write("research/private/f.json", '{"k": 1}')
+        dst = self.dest / "research/private/f.json"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"old-backup")
+        tmp = dst.with_name(dst.name + ".tmp")
+        with mock.patch(
+            "scripts.backup_db.shutil.copy2",
+            new=self._failing_copy2(OSError("copy boom")),
+        ):
+            with self.assertRaises(OSError):
+                backup_file(src, dst)
+        self.assertFalse(tmp.exists())
+        self.assertEqual(dst.read_bytes(), b"old-backup")
+
+    def test_backup_duckdb_copy_fail_cleans_tmp(self):
+        src = self._duckdb("etl/db/d.duckdb")
+        dst = self.dest / "etl/db/d.duckdb"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"old-backup")
+        tmp = dst.with_name(dst.name + ".tmp")
+        with mock.patch(
+            "scripts.backup_db.shutil.copy2",
+            new=self._failing_copy2(OSError("copy boom")),
+        ):
+            with self.assertRaises(OSError):
+                backup_duckdb(src, dst)
+        self.assertFalse(tmp.exists())
+        self.assertEqual(dst.read_bytes(), b"old-backup")
+
+    def test_backup_sqlite_second_connect_fail_cleans_tmp(self):
+        src = self._sqlite("etl/db/s.sqlite3")
+        dst = self.dest / "etl/db/s.sqlite3"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b"old-backup")
+        tmp = dst.with_name(dst.name + ".tmp")
+        real_connect = sqlite3.connect
+
+        class _CloseTrack:
+            def __init__(self, con):
+                self._con = con
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+                return self._con.close()
+
+            def __getattr__(self, name):
+                return getattr(self._con, name)
+
+        for exc in (OSError("open boom"), sqlite3.OperationalError("open boom")):
+            with self.subTest(exc=type(exc).__name__):
+                tmp.write_bytes(b"stale")
+                calls = {"n": 0}
+                tracked = {}
+
+                def fake_connect(*args, _exc=exc, **kwargs):
+                    calls["n"] += 1
+                    if calls["n"] == 2:
+                        tmp.write_bytes(b"partial")
+                        raise _exc
+                    con = _CloseTrack(real_connect(*args, **kwargs))
+                    tracked["con"] = con
+                    return con
+
+                with mock.patch(
+                    "scripts.backup_db.sqlite3.connect", new=fake_connect
+                ):
+                    with self.assertRaises(type(exc)):
+                        backup_sqlite(src, dst)
+                self.assertFalse(tmp.exists())
+                self.assertEqual(dst.read_bytes(), b"old-backup")
+                self.assertTrue(tracked["con"].closed)

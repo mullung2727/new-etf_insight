@@ -182,15 +182,21 @@ def _format_mismatch(src_counts: dict[str, int], dst_counts: dict[str, int]) -> 
     return ", ".join(diffs)
 
 
-def backup_sqlite(src: Path, dst: Path) -> None:
-    tmp = dst.with_name(dst.name + ".tmp")
+def _unlink_quiet(path: Path) -> None:
     try:
-        tmp.unlink()
+        Path(path).unlink()
     except OSError:
         pass
-    src_con = sqlite3.connect(f"file:{src.as_posix()}?mode=ro", uri=True)
-    dst_con = sqlite3.connect(str(tmp))
+
+
+def backup_sqlite(src: Path, dst: Path) -> None:
+    tmp = dst.with_name(dst.name + ".tmp")
+    _unlink_quiet(tmp)
+    src_con = None
+    dst_con = None
     try:
+        src_con = sqlite3.connect(f"file:{src.as_posix()}?mode=ro", uri=True)
+        dst_con = sqlite3.connect(str(tmp))
         src_con.backup(dst_con)
         ok = dst_con.execute("PRAGMA quick_check").fetchall() == [("ok",)]
         mismatch = None
@@ -199,21 +205,24 @@ def backup_sqlite(src: Path, dst: Path) -> None:
             dst_counts = table_counts_sqlite(dst_con)
             if src_counts != dst_counts:
                 mismatch = _format_mismatch(src_counts, dst_counts)
+        if not ok:
+            raise RuntimeError("quick_check 실패")
+        if mismatch is not None:
+            raise RuntimeError(f"행 수 불일치: {mismatch}")
+    except Exception:
+        if dst_con is not None:
+            dst_con.close()
+            dst_con = None
+        if src_con is not None:
+            src_con.close()
+            src_con = None
+        _unlink_quiet(tmp)
+        raise
     finally:
-        dst_con.close()
-        src_con.close()
-    if not ok:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        raise RuntimeError("quick_check 실패")
-    if mismatch is not None:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        raise RuntimeError(f"행 수 불일치: {mismatch}")
+        if dst_con is not None:
+            dst_con.close()
+        if src_con is not None:
+            src_con.close()
     os.replace(tmp, dst)
 
 
@@ -232,35 +241,34 @@ def backup_duckdb(src: Path, dst: Path) -> None:
         src_counts = table_counts_duckdb(con)
     finally:
         con.close()
+    _unlink_quiet(tmp)
     try:
-        tmp.unlink()
-    except OSError:
-        pass
-    shutil.copy2(src, tmp)
-    try:
-        vcon = duckdb.connect(str(tmp), read_only=True)
+        shutil.copy2(src, tmp)
         try:
-            dst_counts = table_counts_duckdb(vcon)
-        finally:
-            vcon.close()
+            vcon = duckdb.connect(str(tmp), read_only=True)
+            try:
+                dst_counts = table_counts_duckdb(vcon)
+            finally:
+                vcon.close()
+        except Exception:
+            raise RuntimeError("tmp 검증 실패")
+        if src_counts != dst_counts:
+            raise RuntimeError(
+                f"행 수 불일치: {_format_mismatch(src_counts, dst_counts)}"
+            )
     except Exception:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        raise RuntimeError("tmp 검증 실패")
-    if src_counts != dst_counts:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
-        raise RuntimeError(f"행 수 불일치: {_format_mismatch(src_counts, dst_counts)}")
+        _unlink_quiet(tmp)
+        raise
     os.replace(tmp, dst)
 
 
 def backup_file(src: Path, dst: Path) -> None:
     tmp = dst.with_name(dst.name + ".tmp")
-    shutil.copy2(src, tmp)
+    try:
+        shutil.copy2(src, tmp)
+    except Exception:
+        _unlink_quiet(tmp)
+        raise
     os.replace(tmp, dst)
 
 
