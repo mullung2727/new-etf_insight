@@ -4,6 +4,7 @@ etl/ 에서: PYTHONPATH=.. uv run python ../research/us_oas/run_tqqq_oas.py
 """
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,9 @@ import pandas as pd
 from research.backtest_daily import perf, portfolio
 from research.backtest_daily.data_us import load_etf_tr, load_fred
 from research.us_oas import rules
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows cp949 크래시 가드
 
 COST = 0.001
 OAS_SERIES = "BAMLH0A0HYM2"
