@@ -3,6 +3,7 @@ import math
 import statistics
 import unittest
 
+import numpy as np
 import pandas as pd
 
 from research.backtest_daily import perf
@@ -58,6 +59,36 @@ class TestPerf(unittest.TestCase):
                    perf.drawdowns, perf.summary):
             with self.subTest(fn=fn.__name__), self.assertRaises(ValueError):
                 fn(bad)
+
+    def test_f8_inf_raises(self):
+        for v in (np.inf, -np.inf):
+            bad = _s([0.01, v])
+            for fn in (perf.equity, perf.cagr, perf.vol, perf.sharpe,
+                       perf.max_drawdown, perf.calmar, perf.yearly,
+                       perf.drawdowns, perf.summary):
+                with self.subTest(fn=fn.__name__, v=v), self.assertRaises(ValueError):
+                    fn(bad)
+
+    def test_f9_sharpe_rf_missing_date_raises(self):
+        ret = _s([0.01, -0.01, 0.02, 0.0])
+        rf = pd.Series([0.0, 0.0, 0.0], index=list(ret.index[:3]), dtype=float)
+        with self.assertRaisesRegex(ValueError, "rf missing or non-finite for some ret dates"):
+            perf.sharpe(ret, rf)
+
+    def test_f10_sharpe_rf_nan_raises(self):
+        ret = _s([0.01, -0.01, 0.02, 0.0])
+        rf = pd.Series([0.0, float("nan"), 0.0, 0.0], index=list(ret.index), dtype=float)
+        with self.assertRaisesRegex(ValueError, "rf missing or non-finite for some ret dates"):
+            perf.sharpe(ret, rf)
+
+    def test_f11_sharpe_rf_extra_dates_ok(self):
+        ret = _s([0.01, -0.01, 0.02, 0.0])
+        rf_base = pd.Series([0.001] * 4, index=list(ret.index), dtype=float)
+        rf_extra = pd.Series([0.001] * 5, index=[*list(ret.index), "20990101"], dtype=float)
+        self.assertAlmostEqual(perf.sharpe(ret, rf_extra), perf.sharpe(ret, rf_base))
+        ex = [x - 0.001 for x in (0.01, -0.01, 0.02, 0.0)]
+        expected = statistics.mean(ex) / statistics.stdev(ex) * math.sqrt(252)
+        self.assertAlmostEqual(perf.sharpe(ret, rf_extra), expected)
 
 
 if __name__ == "__main__":
