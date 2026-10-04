@@ -151,3 +151,23 @@ def combine_weights(w_oas_tqqq: pd.Series, below: pd.Series, ma_tqqq: float, def
     bil = np.where(mask & (defense == "BIL"), 1.0 - t_ma, 0.0)
     qqq = 1.0 - tqqq - bil
     return pd.DataFrame({"TQQQ": tqqq, "QQQ": qqq, "BIL": bil}, index=w_oas_tqqq.index)
+
+
+def bil_overlay(below: pd.Series, bil_flag: pd.Series, ma_tqqq: float, share: float) -> pd.DataFrame:
+    """200일선 아래 + 타이밍 조건일에 rest 일부를 BIL로. columns ["TQQQ", "QQQ", "BIL"], 행 합 1.
+
+    TQQQ = ma_tqqq if below else 1.0, rest = 1 - TQQQ.
+    below & bil_flag인 날: BIL = share·rest, QQQ = rest - BIL.
+    그 외: BIL = 0, QQQ = rest. share는 0~1.
+    """
+    if not 0.0 <= share <= 1.0:
+        raise ValueError("share must be within 0..1")
+    if not below.index.equals(bil_flag.index):
+        raise ValueError("below and bil_flag must share the same index")
+    mask = below.fillna(False).astype(bool).to_numpy(dtype=bool)
+    flag = bil_flag.fillna(False).astype(bool).to_numpy(dtype=bool)
+    tqqq = np.where(mask, float(ma_tqqq), 1.0)
+    rest = 1.0 - tqqq
+    bil = np.where(mask & flag, float(share) * rest, 0.0)
+    qqq = rest - bil
+    return pd.DataFrame({"TQQQ": tqqq, "QQQ": qqq, "BIL": bil}, index=below.index)
