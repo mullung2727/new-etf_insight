@@ -48,4 +48,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_etf_proxy.py
 
 결과: `RESULTS_ETF_PROXY.md` (실행 시 덮어쓰기).
 
+## VIX 보정
+
+당일·전날 VIX 로그변화와 전날 HYG를 더한 ETF 신호 변형 비교 (D10). 계수는 OAS 전 구간 고정, 2010~2023은 표본외. 수준 조건 끔(Δ10만).
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_vix_proxy.py
+```
+
+결과: `RESULTS_VIX_PROXY.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
