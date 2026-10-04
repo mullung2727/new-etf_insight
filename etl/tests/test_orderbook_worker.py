@@ -275,6 +275,13 @@ class MorningRunTest(WorkerBase):
         self.assertEqual(run["rows_written"], self.snapshot_count())
         self.assertGreater(run["note"]["stats"]["raw_errors"], 0)
 
+    def test_raw_dir_mkdir_failure_keeps_snapshots(self):
+        self.raw.write_text("x", encoding="utf-8")
+        self.assertEqual(self.run_at("09:59:30"), 0)
+        [run] = self.runs()
+        self.assertGreater(run["rows_written"], 40)
+        self.assertEqual(run["rows_written"], self.snapshot_count())
+
     def test_reg_retry_exhausted_exits_1(self):
         self.broker.fail_post = 99
         self.assertEqual(self.run_at("09:59:00"), 1)
