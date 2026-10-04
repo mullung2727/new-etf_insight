@@ -10,8 +10,8 @@ PERIODS = 252
 
 
 def _check(ret: pd.Series) -> None:
-    if bool(ret.isna().any()):
-        raise ValueError("ret contains NaN")
+    if not np.isfinite(ret.to_numpy(dtype=float)).all():
+        raise ValueError("ret contains non-finite returns")
 
 
 def equity(ret: pd.Series) -> pd.Series:
@@ -33,7 +33,13 @@ def vol(ret: pd.Series, periods: int = PERIODS) -> float:
 
 def sharpe(ret: pd.Series, rf: pd.Series | None = None, periods: int = PERIODS) -> float:
     _check(ret)
-    ex = ret - rf if rf is not None else ret
+    if rf is not None:
+        rf_aligned = rf.reindex(ret.index)
+        if not np.isfinite(rf_aligned.to_numpy(dtype=float)).all():
+            raise ValueError("rf missing or non-finite for some ret dates")
+        ex = ret - rf_aligned
+    else:
+        ex = ret
     sd = ex.std(ddof=1)
     if sd == 0:
         return float("nan")
