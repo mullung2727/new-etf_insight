@@ -42,6 +42,7 @@ FRED_SERIES = (
     "STLFSI4",         # St. Louis Fed Financial Stress (weekly)
     "VIXCLS",          # CBOE VIX close (daily)
     "DFII10",          # 10Y TIPS real yield (daily)
+    "BAA10Y",          # Moody's Baa - 10Y Treasury (daily, 1986~), 검증용
 )
 
 INDEX_TICKERS = ("^VIX", "^VIX3M")   # 신호용 지수 (매매 대상 아님 → us_ohlcv 가 아니라 여기)
