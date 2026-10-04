@@ -8,6 +8,7 @@ import pandas as pd
 
 from research.backtest_daily.data_us import (
     load_etf_tr, load_first_release, load_fred, load_index,
+    synth_cash, synth_leveraged,
 )
 
 
@@ -91,6 +92,34 @@ class TestDataUs(unittest.TestCase):
         self.assertEqual(df["backfilled"].tolist(), [False, False])
         with self.assertRaises(ValueError):
             load_first_release("NOPE", db=self.db)
+
+
+class TestSynth(unittest.TestCase):
+    def test_s1_leveraged_basic_and_borrow(self):
+        idx = ["20240102", "20240103"]
+        base = pd.Series([0.01, 0.01], index=idx)
+        out = synth_leveraged(base, pd.Series([0.0, 0.0], index=idx),
+                              leverage=3.0, fee_annual=0.0)
+        for d in idx:
+            self.assertAlmostEqual(out.loc[d], 0.03)
+        out5 = synth_leveraged(base, pd.Series([5.0, 5.0], index=idx),
+                               leverage=3.0, fee_annual=0.0)
+        for d in idx:
+            self.assertAlmostEqual(out5.loc[d], 0.03 - 2 * 0.05 / 252)
+
+    def test_s2_rate_ffill(self):
+        idx = ["20240102", "20240103", "20240104"]
+        base = pd.Series([0.01, 0.01, 0.01], index=idx)
+        rate = pd.Series([5.0], index=["20240102"])  # 이후 결측 → 직전값
+        out = synth_leveraged(base, rate, leverage=3.0, fee_annual=0.0)
+        for d in idx:
+            self.assertAlmostEqual(out.loc[d], 0.03 - 2 * 0.05 / 252)
+
+    def test_s3_cash(self):
+        out = synth_cash(pd.Series([5.0, 5.0], index=["20240102", "20240103"]),
+                         ["20240102", "20240103"])
+        for d in ("20240102", "20240103"):
+            self.assertAlmostEqual(out.loc[d], 0.05 / 252)
 
 
 if __name__ == "__main__":
