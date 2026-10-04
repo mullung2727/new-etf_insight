@@ -200,7 +200,8 @@ class TestProxyVix(unittest.TestCase):
         vix = _vix(days)
         f = proxy.make_features(etf, vix)
         self.assertEqual(list(f.index), days)
-        self.assertEqual(list(f.columns), ["HYG", "IEI", "HYG_l1", "VIX", "VIX_l1"])
+        self.assertEqual(list(f.columns), ["HYG", "IEI", "HYG_l1", "VIX", "VIX_l1",
+                                               "VIX_up", "VIX_dn", "VIX_up_l1", "VIX_dn_l1"])
         self.assertAlmostEqual(
             f.loc[days[3], "VIX"],
             math.log(vix.loc[days[3]]) - math.log(vix.loc[days[2]]),
@@ -253,6 +254,47 @@ class TestProxyVix(unittest.TestCase):
         changed = proxy.nowcast(oas, f2, dates, cols)
         self.assertEqual(changed.loc[t, "oas"], base.loc[t, "oas"])
         self.assertEqual(changed.loc[t, "d10_bp"], base.loc[t, "d10_bp"])
+
+
+class TestProxyVixAsym(unittest.TestCase):
+    def test_a1_vix_asym_split(self):
+        days = _days(n=6)
+        etf = _etf(days)
+        diffs = [None, 0.1, -0.2, 0.0, 0.05, -0.05]
+        closes = [20.0]
+        for dd in diffs[1:]:
+            closes.append(closes[-1] * math.exp(dd))
+        vix = pd.Series(closes, index=list(days))
+        f = proxy.make_features(etf, vix)
+        self.assertAlmostEqual(f.loc[days[1], "VIX"], 0.1)
+        self.assertAlmostEqual(f.loc[days[1], "VIX_up"], 0.1)
+        self.assertEqual(f.loc[days[1], "VIX_dn"], 0.0)
+        self.assertAlmostEqual(f.loc[days[2], "VIX"], -0.2)
+        self.assertEqual(f.loc[days[2], "VIX_up"], 0.0)
+        self.assertAlmostEqual(f.loc[days[2], "VIX_dn"], -0.2)
+        self.assertEqual(f.loc[days[3], "VIX_up"], 0.0)
+        self.assertEqual(f.loc[days[3], "VIX_dn"], 0.0)
+        self.assertAlmostEqual(f.loc[days[2], "VIX_up_l1"], f.loc[days[1], "VIX_up"])
+        self.assertAlmostEqual(f.loc[days[2], "VIX_dn_l1"], f.loc[days[1], "VIX_dn"])
+        self.assertAlmostEqual(f.loc[days[3], "VIX_up_l1"], 0.0)
+        self.assertAlmostEqual(f.loc[days[3], "VIX_dn_l1"], -0.2)
+        for c in ("VIX_up", "VIX_dn"):
+            self.assertTrue(pd.isna(f.loc[days[0], c]))
+        for c in ("VIX_up_l1", "VIX_dn_l1"):
+            self.assertTrue(pd.isna(f.loc[days[0], c]))
+            self.assertTrue(pd.isna(f.loc[days[1], c]))
+
+    def test_a2_existing_cols_unchanged(self):
+        days = _days(n=10)
+        etf = _etf(days)
+        vix = _vix(days)
+        f = proxy.make_features(etf, vix)
+        pd.testing.assert_series_equal(f["HYG"], etf["HYG"], check_names=False)
+        pd.testing.assert_series_equal(f["IEI"], etf["IEI"], check_names=False)
+        pd.testing.assert_series_equal(f["HYG_l1"], etf["HYG"].shift(1), check_names=False)
+        lv = np.log(vix.astype(float)).reindex(etf.index)
+        pd.testing.assert_series_equal(f["VIX"], lv.diff(), check_names=False)
+        pd.testing.assert_series_equal(f["VIX_l1"], lv.diff().shift(1), check_names=False)
 
 
 if __name__ == "__main__":
