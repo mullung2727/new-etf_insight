@@ -177,5 +177,46 @@ class TestBilOverlay(unittest.TestCase):
             rules.bil_overlay(below, flag, 0.4, 1.5)
 
 
+class TestTrendState(unittest.TestCase):
+    def test_t1_instant(self):
+        level = pd.Series([10.0, 10.0, 10.0, 5.0, 5.0, 20.0, 20.0])
+        numpy.testing.assert_allclose(
+            rules.trend_state(level, 3, "instant").to_numpy(),
+            [1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0])
+
+    def test_t2_confirm(self):
+        # idx5·6: ma 위 1·2일째 → 0, idx7: 아래로 → 리셋, idx8·9·10: 1·2·3일째 → 0·0·1
+        level = pd.Series([10.0, 10.0, 10.0, 5.0, 5.0, 10.0, 10.0, 5.0,
+                           10.0, 10.0, 10.0, 10.0])
+        numpy.testing.assert_allclose(
+            rules.trend_state(level, 3, "confirm", confirm_days=3).to_numpy(),
+            [1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0])
+
+    def test_t3_band(self):
+        level = pd.Series([100.0, 100.0, 100.0, 50.0, 1050 / 13, 100.0])
+        ma = level.rolling(3, min_periods=3).mean()
+        self.assertAlmostEqual(level[4] / ma[4], 1.05, places=6)  # ma 위지만 밴드 미달
+        self.assertLess(level[4], ma[4] * 1.1)
+        self.assertGreaterEqual(level[5], ma[5] * 1.1)
+        numpy.testing.assert_allclose(
+            rules.trend_state(level, 3, "band", band=0.1).to_numpy(),
+            [1.0, 1.0, 1.0, 0.0, 0.0, 1.0])
+
+    def test_t4_staged(self):
+        # idx5: 첫날 0.5, idx6: 아래로 → 0, idx7·8·9: 0.5·0.5·1.0
+        level = pd.Series([10.0, 10.0, 10.0, 5.0, 5.0, 10.0, 5.0,
+                           10.0, 10.0, 10.0, 10.0])
+        numpy.testing.assert_allclose(
+            rules.trend_state(level, 3, "staged", confirm_days=3).to_numpy(),
+            [1.0, 1.0, 1.0, 0.0, 0.0, 0.5, 0.0, 0.5, 0.5, 1.0, 1.0])
+
+    def test_t5_nan_and_bad_reentry(self):
+        level = pd.Series([5.0, 4.0, 3.0, 2.0, 1.0])
+        out = rules.trend_state(level, 3, "instant")
+        self.assertEqual(out.tolist()[:2], [1.0, 1.0])
+        with self.assertRaises(ValueError):
+            rules.trend_state(level, 3, "slow")
+
+
 if __name__ == "__main__":
     unittest.main()

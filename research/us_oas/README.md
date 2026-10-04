@@ -168,4 +168,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_exit_compare.py
 
 결과: `RESULTS_EXIT_COMPARE.md` (실행 시 덮어쓰기).
 
+## 재진입 강화 격자
+
+나가는 건 즉시·돌아오는 건 확인 후: 이동평균 길이(100/150/180/200/250) × 재진입(instant/confirm/band/staged) × 방어자산(BIL/QQQ) 40개 전 조합 비교 (D21). 1999~ 합성 이음, confirm 20일·band 3% 사전 고정.
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_reentry_grid.py
+```
+
+결과: `RESULTS_REENTRY_GRID.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
