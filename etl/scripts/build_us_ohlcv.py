@@ -16,7 +16,7 @@ import sys
 import time
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Iterable
 from zoneinfo import ZoneInfo
@@ -35,6 +35,7 @@ BATCH_SIZE = 200
 ETF_TICKERS = ("SPY", "QQQ", "IWM", "TQQQ", "BIL", "HYG", "JNK", "IEI", "IEF")
 ETF_FROM_DATE = "19900101"  # 상장일부터 전부. 매 실행 전 구간 재수신
 NEW_YORK = ZoneInfo("America/New_York")
+BAR_CLOSE_CUTOFF = dtime(20, 0)  # 뉴욕 장후 거래 종료. 이 시각 이후 실행이면 당일 봉 확정으로 본다
 
 _EXCLUDED_NAME = re.compile(
     r"\b(?:Warrants?|Units?|Rights?|Preferred|Depositary)\b", re.IGNORECASE
@@ -93,6 +94,13 @@ class UniverseItem:
     ticker: str
     name: str
     market: str
+
+
+def bar_cutoff_day(now_ny: datetime) -> str:
+    """이 날짜 이상인 봉은 버린다. 장후 종료 시각 이후면 다음 날, 아니면 오늘."""
+    if now_ny.time() >= BAR_CLOSE_CUTOFF:
+        return (now_ny.date() + timedelta(days=1)).strftime("%Y%m%d")
+    return now_ny.date().strftime("%Y%m%d")
 
 
 def _yahoo_symbol(ticker: str) -> str | None:
@@ -682,8 +690,8 @@ def main() -> None:
     parser.add_argument("--refresh-shares", action="store_true")
     parser.add_argument("--etf-only", action="store_true")
     args = parser.parse_args()
-    today_ny = datetime.now(NEW_YORK).strftime("%Y%m%d")
-    to_date = args.to_date or today_ny
+    cutoff = bar_cutoff_day(datetime.now(NEW_YORK))
+    to_date = args.to_date or cutoff
     _validate_date("--from", args.from_date)
     _validate_date("--to", to_date)
     if args.from_date >= to_date:
@@ -691,7 +699,7 @@ def main() -> None:
     if args.etf_only:
         args.db_path.parent.mkdir(parents=True, exist_ok=True)
         with duckdb.connect(str(args.db_path)) as con:
-            etf_stats = ensure_etf(con, to_date, today_ny=today_ny)
+            etf_stats = ensure_etf(con, to_date, today_ny=cutoff)
         print(
             f"etf_rows={etf_stats['inserted_rows']} "
             f"etf_div={etf_stats['dividend_rows']} "
@@ -701,9 +709,9 @@ def main() -> None:
     universe = load_universe()
     args.db_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(args.db_path)) as con:
-        etf_stats = ensure_etf(con, to_date, today_ny=today_ny)
-        stats = ensure_ohlcv(con, universe, args.from_date, to_date, today_ny=today_ny)
-        gap_stats = repair_gaps(con, universe, to_date, today_ny=today_ny)
+        etf_stats = ensure_etf(con, to_date, today_ny=cutoff)
+        stats = ensure_ohlcv(con, universe, args.from_date, to_date, today_ny=cutoff)
+        gap_stats = repair_gaps(con, universe, to_date, today_ny=cutoff)
         share_stats = ensure_shares(
             con,
             (item.ticker for item in universe),

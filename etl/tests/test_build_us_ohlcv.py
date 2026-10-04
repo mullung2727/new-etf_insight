@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 import duckdb
@@ -6,11 +7,13 @@ import pandas as pd
 
 from scripts.build_us_ohlcv import (
     ETF_TICKERS,
+    NEW_YORK,
     UniverseItem,
     _insert_rows,
     _replace_split_history,
     apply_share_history,
     audit_gaps,
+    bar_cutoff_day,
     carry_forward_shares,
     ensure_etf,
     ensure_ohlcv,
@@ -454,6 +457,16 @@ class TestEtf(unittest.TestCase):
         stats = ensure_etf(self.con, "20260912", download, "20260912", tickers=("SPY",))
         self.assertEqual(stats["failed_tickers"], ["SPY"])
         self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='SPY'").fetchone()[0], 1)
+
+
+class TestBarCutoff(unittest.TestCase):
+    def test_bar_cutoff_day(self):
+        self.assertEqual(
+            bar_cutoff_day(datetime(2026, 10, 2, 19, 59, tzinfo=NEW_YORK)), "20261002"
+        )
+        self.assertEqual(
+            bar_cutoff_day(datetime(2026, 10, 2, 20, 1, tzinfo=NEW_YORK)), "20261003"
+        )
 
 
 if __name__ == "__main__":
