@@ -85,7 +85,16 @@ def iter_sources(root: Path) -> list[Path]:
             return
         out.append(p)
 
-    for sub in ("etl/db", "research/private"):
+    for sub in (
+        "etl/db",
+        "research/private",
+        "etl/exports",
+        "etl/runs",
+        ".claude/skills/rights-dip-funds",
+        "research/rights_issue/cache",
+        "research/rights_issue/out",
+        "research/watchlist_pullback_strategy/minute_cache",
+    ):
         base = root / sub
         if not base.is_dir():
             continue
@@ -95,12 +104,34 @@ def iter_sources(root: Path) -> list[Path]:
     broker = root / "broker"
     if broker.is_dir():
         for p in sorted(broker.iterdir()):
-            if p.is_file() and fnmatch.fnmatch(p.name, "*.db"):
+            if p.is_file() and (
+                fnmatch.fnmatch(p.name, "*.db")
+                or fnmatch.fnmatch(p.name, ".token_cache*.json")
+            ):
                 _add(p)
-    env = root / ".env"
-    if env.is_file():
-        _add(env)
-    return sorted(out)
+    for name in (
+        "etl/scripts/close_bet.json",
+        "broker-web/.env.local",
+        "kiwoom-rest-api-spec.json",
+    ):
+        p = root / name
+        if p.is_file():
+            _add(p)
+    for p in sorted(root.rglob(".env*")):
+        if not p.is_file():
+            continue
+        try:
+            rel = p.relative_to(root)
+        except ValueError:
+            continue
+        if fnmatch.fnmatch(p.name, "*.example"):
+            continue
+        if "node_modules" in rel.parts or ".venv" in rel.parts or "venv" in rel.parts:
+            continue
+        if rel.parts[:2] == (".claude", "worktrees"):
+            continue
+        _add(p)
+    return sorted(set(out))
 
 
 def _kind(src: Path) -> str:
