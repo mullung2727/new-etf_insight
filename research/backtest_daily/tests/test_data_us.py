@@ -61,6 +61,30 @@ class TestDataUs(unittest.TestCase):
         self.assertAlmostEqual(tr.loc["20240103", "TQQQ"], 0.01)
         self.assertAlmostEqual(tr.loc["20240103", "QQQ"], 0.10)
 
+    def test_d4_middle_gap_yields_nan_pair(self):
+        """중간 결측일은 그날·다음날 수익 둘 다 NaN (여러 날 수익이 하루에 섞이지 않음)."""
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            db = Path(tmp.name) / "gap.duckdb"
+            con = duckdb.connect(str(db))
+            try:
+                con.execute("CREATE TABLE etf_ohlcv (date VARCHAR, ticker VARCHAR, close DOUBLE)")
+                con.execute(
+                    "INSERT INTO etf_ohlcv VALUES ('20240102','A',100), ('20240103','A',101),"
+                    " ('20240104','A',102), ('20240102','B',50), ('20240104','B',55)"
+                )
+                con.execute("CREATE TABLE etf_dividends (ticker VARCHAR, date VARCHAR, amount DOUBLE)")
+            finally:
+                con.close()
+            tr = load_etf_tr(["A", "B"], db=db)
+            self.assertEqual(tr.index.tolist(), ["20240102", "20240103", "20240104"])
+            self.assertTrue(pd.isna(tr.loc["20240103", "B"]))
+            self.assertTrue(pd.isna(tr.loc["20240104", "B"]))
+            self.assertAlmostEqual(tr.loc["20240103", "A"], 0.01)
+            self.assertAlmostEqual(tr.loc["20240104", "A"], 102 / 101 - 1)
+        finally:
+            tmp.cleanup()
+
     def test_d2_fred_as_of(self):
         s = load_fred("BAMLH0A0HYM2", db=self.db)
         self.assertEqual(s.name, "BAMLH0A0HYM2")

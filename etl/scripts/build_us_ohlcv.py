@@ -621,14 +621,20 @@ def ensure_etf(
             )
         con.execute("BEGIN TRANSACTION")
         try:
-            stored_first = con.execute(
-                "SELECT min(date) FROM etf_ohlcv WHERE ticker=?", [ticker]
-            ).fetchone()[0]
+            stored_first, stored_last = con.execute(
+                "SELECT min(date), max(date) FROM etf_ohlcv WHERE ticker=?", [ticker]
+            ).fetchone()
             first = min((row[0] for row in prices), default=None)
-            # 잘린 응답(앞 구간 누락·빈 응답)으로 기존 전 구간을 날리는 걸 막는다.
+            last = max((row[0] for row in prices), default=None)
+            # 잘린 응답(앞·뒤 구간 누락·빈 응답)으로 기존 전 구간을 날리는 걸 막는다.
             if first is None or (stored_first is not None and first > stored_first):
                 raise RuntimeError(
                     f"{ticker} ETF 재조회가 기존 구간을 못 덮는다 (저장 {stored_first} < 응답 {first})"
+                )
+            if stored_last is not None and (last is None or last < stored_last):
+                raise RuntimeError(
+                    f"{ticker} ETF 재조회가 기존 구간을 못 덮는다 "
+                    f"(저장 마지막 {stored_last} > 응답 마지막 {last})"
                 )
             con.execute("DELETE FROM etf_ohlcv WHERE ticker=?", [ticker])
             con.execute("DELETE FROM etf_dividends WHERE ticker=?", [ticker])
