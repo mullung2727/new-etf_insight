@@ -5,7 +5,7 @@ from pathlib import Path
 
 import research.backtest_daily
 
-MODULES = ["data", "adjust", "universe", "guards", "bench",
+MODULES = ["data", "data_us", "adjust", "universe", "guards", "bench",
            "exits", "paths", "stats", "validate",
            "portfolio", "perf"]
 
