@@ -171,15 +171,21 @@ def _ep_lines(name: str, w: pd.DataFrame, rets: pd.DataFrame) -> list[str]:
         return [f"### {name}", "에피소드 없음.", ""]
     qqq = rets["QQQ"]
     rows = [(s, e, len(rets.loc[s:e]), _ep_qqq_ret(qqq, s, e)) for s, e in eps]
-    loss = sorted(rows, key=lambda r: r[3], reverse=True)[:3]
-    gain = sorted(rows, key=lambda r: r[3])[:3]
+    loss = sorted([r for r in rows if r[3] > 0], key=lambda r: r[3], reverse=True)[:3]
+    gain = sorted([r for r in rows if r[3] < 0], key=lambda r: r[3])[:3]
     lines = [f"### {name} (에피소드 {len(eps)}개)",
              "| 구분 | 기간 | 일수 | QQQ 수익 |",
              "|---|---|---|---|"]
-    for i, (s, e, n, r) in enumerate(loss, 1):
-        lines.append(f"| 손실 {i} (놓친 반등) | {s}~{e} | {n} | {_spct(r)} |")
-    for i, (s, e, n, r) in enumerate(gain, 1):
-        lines.append(f"| 이득 {i} (피한 하락) | {s}~{e} | {n} | {_spct(r)} |")
+    if loss:
+        for i, (s, e, n, r) in enumerate(loss, 1):
+            lines.append(f"| 손실 {i} (놓친 반등) | {s}~{e} | {n} | {_spct(r)} |")
+    else:
+        lines.append("없음")
+    if gain:
+        for i, (s, e, n, r) in enumerate(gain, 1):
+            lines.append(f"| 이득 {i} (피한 하락) | {s}~{e} | {n} | {_spct(r)} |")
+    else:
+        lines.append("없음")
     lines.append("")
     return lines
 
@@ -256,7 +262,7 @@ def main() -> None:
     L += ["## 3. BIL 손익 분해 (16년)",
           "BIL 보유일에 Σ(비중 w[T] × 다음날(T+1) 수익(BIL−QQQ)) — 목표비중 기준 gross 기여,"
           " 비용 제외. 양수면 BIL로 피한 게 이득.",
-          "에피소드 6개 미만 변형은 손실·이득 목록이 겹칠 수 있다.",
+
           "",
           "| 변형 | BIL 보유일 | 에피소드 수 | BIL 손익 기여 |",
           "|---|---|---|---|"]

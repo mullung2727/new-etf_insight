@@ -390,6 +390,32 @@ class TestEtf(unittest.TestCase):
             [(25.0,)],
         )
 
+    def test_e8_truncated_tail_response_protected(self):
+        """잘린 재조회(뒤 구간 누락)는 기존 이력을 지우지 않고 실패한다."""
+        def download_for(days):
+            def _download(tickers, start, end):
+                return _frame({ticker: list(days) for ticker in tickers})
+            return _download
+
+        ensure_etf(
+            self.con, "20260912",
+            download_for([("2026-09-09", 100), ("2026-09-10", 100), ("2026-09-11", 100)]),
+            "20260912",
+            tickers=("SPY",),
+        )
+        truncated = ensure_etf(
+            self.con, "20260912",
+            download_for([("2026-09-09", 25), ("2026-09-10", 25)]),
+            "20260912",
+            tickers=("SPY",),
+        )
+        self.assertEqual(truncated["failed_tickers"], ["SPY"])
+        self.assertEqual(self.con.execute("SELECT count(*) FROM etf_ohlcv WHERE ticker='SPY'").fetchone()[0], 3)
+        self.assertEqual(
+            self.con.execute("SELECT DISTINCT close FROM etf_ohlcv WHERE ticker='SPY'").fetchall(),
+            [(100.0,)],
+        )
+
     def test_e4_empty_etf_calendar_fails(self):
         with self.assertRaisesRegex(RuntimeError, "SPY calendar is empty"):
             audit_gaps(self.con, [UniverseItem("AAA", "Alpha", "NASDAQ")])

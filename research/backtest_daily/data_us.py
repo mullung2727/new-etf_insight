@@ -34,11 +34,12 @@ def load_etf_tr(tickers: list[str], db: Path = US_OHLCV_DB) -> pd.DataFrame:
     out = pd.DataFrame(index=dates, columns=tickers, dtype=float)
     for t in tickers:
         closes = px[px["ticker"] == t].sort_values("date").set_index("date")["close"].astype(float)
+        c = closes.reindex(dates)
         if div_amt is not None and t in set(div["ticker"]):
-            d = div_amt.loc[t].reindex(closes.index).fillna(0.0)
+            d = div_amt.loc[t].reindex(dates).fillna(0.0)
         else:
-            d = pd.Series(0.0, index=closes.index)
-        out[t] = ((closes + d) / closes.shift(1) - 1).reindex(dates)
+            d = pd.Series(0.0, index=pd.Index(dates))
+        out[t] = (c + d) / c.shift(1) - 1
     return out
 
 
