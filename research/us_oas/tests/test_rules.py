@@ -145,5 +145,37 @@ class TestCombine(unittest.TestCase):
             rules.combine_weights(w_oas, below, 0.4, "CASH")
 
 
+class TestBilOverlay(unittest.TestCase):
+    def test_b1_below_false_ignores_flag(self):
+        idx = ["20240102", "20240103"]
+        below = pd.Series([False, False], index=idx)
+        flag = pd.Series([False, True], index=idx)
+        w = rules.bil_overlay(below, flag, 0.4, 0.5)
+        self.assertEqual(list(w.columns), ["TQQQ", "QQQ", "BIL"])
+        numpy.testing.assert_allclose(w["TQQQ"].to_numpy(), [1.0, 1.0])
+        numpy.testing.assert_allclose(w["QQQ"].to_numpy(), [0.0, 0.0])
+        numpy.testing.assert_allclose(w["BIL"].to_numpy(), [0.0, 0.0])
+
+    def test_b2_below_true_flag_false(self):
+        below = pd.Series([True], index=["20240102"])
+        flag = pd.Series([False], index=below.index)
+        w = rules.bil_overlay(below, flag, 0.4, 0.5)
+        numpy.testing.assert_allclose(w.loc["20240102"].to_numpy(), [0.4, 0.6, 0.0])
+
+    def test_b3_share_split(self):
+        below = pd.Series([True], index=["20240102"])
+        flag = pd.Series([True], index=below.index)
+        w50 = rules.bil_overlay(below, flag, 0.4, 0.5)
+        numpy.testing.assert_allclose(w50.loc["20240102"].to_numpy(), [0.4, 0.3, 0.3])
+        w100 = rules.bil_overlay(below, flag, 0.4, 1.0)
+        numpy.testing.assert_allclose(w100.loc["20240102"].to_numpy(), [0.4, 0.0, 0.6])
+
+    def test_b4_bad_share(self):
+        below = pd.Series([True], index=["20240102"])
+        flag = pd.Series([True], index=below.index)
+        with self.assertRaises(ValueError):
+            rules.bil_overlay(below, flag, 0.4, 1.5)
+
+
 if __name__ == "__main__":
     unittest.main()

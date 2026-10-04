@@ -120,4 +120,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_combo.py
 
 결과: `RESULTS_COMBO.md` (실행 시 덮어쓰기).
 
+## BIL 타이밍
+
+200일선 아래에서 QQQ 대신 BIL을 들고 갈 타이밍 비교 (D17). TQQQ 상한 0.4 고정, 조건 A(BAA10Y 백분위)·B(severe)·C(mom<0) × share 0.5/1.0.
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_bil_timing.py
+```
+
+결과: `RESULTS_BIL_TIMING.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
