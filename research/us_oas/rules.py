@@ -171,3 +171,71 @@ def bil_overlay(below: pd.Series, bil_flag: pd.Series, ma_tqqq: float, share: fl
     bil = np.where(mask & flag, float(share) * rest, 0.0)
     qqq = rest - bil
     return pd.DataFrame({"TQQQ": tqqq, "QQQ": qqq, "BIL": bil}, index=below.index)
+
+
+def trend_state(level: pd.Series, window: int, reentry: str,
+                confirm_days: int = 20, band: float = 0.03) -> pd.Series:
+    """이동평균 추세 상태기계 → 그날 종가에 맞출 TQQQ 비중 (1.0 / 0.5 / 0.0).
+
+    ma = level의 window 단순이동평균(당일 포함). ma NaN인 날은 1.0(보유).
+    보유(1.0)·복귀 중(0.5)에서 level < ma면 즉시 0.0.
+    이탈(0.0)에서 복귀: instant=당일 ma 위, confirm=연속 confirm_days일째,
+    band=ma×(1+band) 이상, staged=ma 위 첫날 0.5 뒤 연속 confirm_days일째(진입일 포함) 1.0.
+    아래로 가면 카운트 리셋. reentry가 넷 중 하나가 아니면 ValueError.
+    """
+    if reentry not in ("instant", "confirm", "band", "staged"):
+        raise ValueError("reentry must be one of 'instant', 'confirm', 'band', 'staged'")
+    ma = level.rolling(window, min_periods=window).mean()
+    lv = level.to_numpy(dtype=float)
+    mv = ma.to_numpy(dtype=float)
+    out = np.empty(len(lv), dtype=float)
+    state = 1.0
+    count = 0
+    for i in range(len(lv)):
+        if np.isnan(mv[i]):
+            state, count, out[i] = 1.0, 0, 1.0
+            continue
+        above = lv[i] >= mv[i]
+        if state == 1.0:
+            if above:
+                out[i] = 1.0
+            else:
+                state, count, out[i] = 0.0, 0, 0.0
+        elif state == 0.5:  # staged 복귀 중
+            if not above:
+                state, count, out[i] = 0.0, 0, 0.0
+            else:
+                count += 1
+                if count >= confirm_days:
+                    state, out[i] = 1.0, 1.0
+                else:
+                    out[i] = 0.5
+        elif reentry == "instant":
+            if above:
+                state, out[i] = 1.0, 1.0
+            else:
+                out[i] = 0.0
+        elif reentry == "confirm":
+            if above:
+                count += 1
+                if count >= confirm_days:
+                    state, out[i] = 1.0, 1.0
+                else:
+                    out[i] = 0.0
+            else:
+                count, out[i] = 0, 0.0
+        elif reentry == "band":
+            if lv[i] >= mv[i] * (1 + band):
+                state, out[i] = 1.0, 1.0
+            else:
+                out[i] = 0.0
+        else:  # staged
+            if above:
+                count = 1
+                if count >= confirm_days:
+                    state, out[i] = 1.0, 1.0
+                else:
+                    state, out[i] = 0.5, 0.5
+            else:
+                out[i] = 0.0
+    return pd.Series(out, index=level.index)
