@@ -15,6 +15,7 @@
 | D3 | 매일 배치 시각 | **P0 측정 후 확정. 임시안 KST 07:30** | 미국 장 마감(KST 05:00/06:00) 뒤라 당일 ETF 종가는 확정된다. OAS가 몇 시에 올라오는지는 아직 모른다 → P0에서 몇 시간 간격으로 받아 처음 나타난 시각을 기록한다 |
 | D4 | 세금 | **확정: 계산 안 함** (사용자 결정 2026-10-03). §7 주의사항에만 기재 | — |
 | D5 | 리서치 코드 공개 위치 | **확정: `research/us_oas/` (공개)** | 검증된 유효 전략 아님. 유효 판정 시 `research/private/` 로 이동 |
+| D7 | 볼린저 OAS 규칙 추가 | **확정: 126일 ±1σ, 비중 A(40/60)·B(70/30) 둘 다 비교** (사용자 결정 2026-10-04) | §4.2b |
 | D6 | VIX·VIX3M 출처·위치 | **확정: yfinance `^VIX`·`^VIX3M` → `us_macro.duckdb` `index_ohlcv`** (사용자 결정 2026-10-04) | 배경은 아래 "D6 배경" |
 
 ### D6 배경 (2026-10-04)
@@ -189,13 +190,13 @@ uv run python scripts/build_us_macro.py
 ## 4. 리서치 틀 — `research/us_oas/`
 
 ```text
-data.py     load_fred(series, as_of=None), load_tr(tickers)   # 총수익 = (close+dividend)/전일 close − 1
-engine.py   run(weights: DataFrame, returns, cost=0.001)      # 비중표 → 일별 포트폴리오 수익
-metrics.py  summary(), yearly(), worst_drawdowns(n=5), state_days(), rebalance_count()
-rules/tqqq_oas.py  states(oas, params) → state·weights 시계열
-rules/tqqq_oas_v1.json  임계값 (명세 값 그대로)
-proxy.py    ETF 대체치 회귀·신호 일치율
-run_tqqq_oas.py  비교 3종(QQQ·TQQQ·OAS 전략) 표 출력
+research/backtest_daily/data_us.py   (공용, 신규) load_etf_tr(tickers) 총수익 = (close+배당)/전일 close − 1,
+                                     load_fred(series, as_of=None), load_index(tickers)
+research/backtest_daily/portfolio.py (공용, PR #43 머지) run(weights, returns, cost) 비중표 → 일수익
+research/backtest_daily/perf.py      (공용, PR #43 머지) summary·yearly·drawdowns·trades_per_year
+research/us_oas/rules.py             spec_states(oas, prev) 명세 규칙 / bollinger_states(oas) 볼린저 규칙
+research/us_oas/proxy.py             ETF 대체치 회귀·신호 일치율
+research/us_oas/run_tqqq_oas.py      비교표 출력 (QQQ·TQQQ·명세·볼린저 A·볼린저 B)
 ```
 
 확장 지점은 하나다: **규칙은 "날짜별 목표 비중표"만 내면 된다.** 엔진·지표는 그대로 재사용한다.
@@ -227,6 +228,24 @@ run_tqqq_oas.py  비교 3종(QQQ·TQQQ·OAS 전략) 표 출력
 
 - ΔOAS10 = 최근 OAS − 10 **OAS 관측일** 전 OAS (bp).
 - 3년치에선 OAS가 5%를 넘지 않아 2·3·5번 분기는 안 탄다. 단위 테스트로만 확인한다.
+
+### 4.2b 볼린저 OAS 규칙 (D7, 사용자 결정 2026-10-04 — 비교용 별도 규칙)
+
+출처: 예전 국민연금 해외채권 Enhanced Index 작업(`D:\q백업\nps_ehd_idx\research\source\ei_oas_zscore.py`)의 회사채 OAS 볼린저 국면. **코드·데이터는 옮기지 않는다**(고객 업무·Bloomberg 라이선스, 저장소 공개). 아이디어만 쓴다.
+
+- 밴드: 하이일드 OAS 일간, **126거래일(약 6개월) 단순 이동평균 ± 1 표준편차**. 창·폭은 원 작업 값 그대로 고정 — 이번 3년 데이터로 고르지 않는다(원 작업의 3~12개월 그리드 탐색은 하지 않음).
+- 판단일 T의 밴드·OAS 는 §4.1과 같이 T 이전 관측값까지만 쓴다.
+- 국면: OAS > 상단 → 위험 회피, OAS < 하단 → 위험 선호, 그 외 → 보통. 밴드가 아직 없는 처음 126일은 보통.
+- 비중 두 안을 **둘 다** 돌려 비교:
+
+| 국면 | 볼린저 A | 볼린저 B |
+|---|---|---|
+| 위험 회피 | TQQQ 40 / QQQ 60 | TQQQ 70 / QQQ 30 |
+| 보통 | TQQQ 100 | TQQQ 100 |
+| 위험 선호 | TQQQ 100 | TQQQ 100 |
+
+- 알려진 약점: 스트레스가 길면 밴드가 따라 올라와 높은 수준에서도 "보통"으로 돌아간다 → 명세 규칙을 대체하지 않고 비교만.
+- 3년 중 앞 6개월이 밴드 계산에 쓰여 실제 비교 구간은 약 2.5년. 볼린저와 다른 전략을 같은 구간(밴드 생긴 날부터)으로도 한 번 더 낸다.
 
 ### 4.3 비용
 - 기본: 매매한 비중 합(한 방향) × 0.1%.
@@ -271,7 +290,10 @@ CAGR, MDD, Sharpe(무위험 0 — BIL 차감은 참고 줄), Calmar, 연환산 �
 | E 뒤 복귀 | T13 E 상태에서 OAS 4.4% → A. ΔOAS10 −60bp → A |
 | 5~8% 공백 | T14 prev=C, OAS 5.5%·ΔOAS10 +80 → C 유지 |
 | 판정 기록 | T15 `record_signal` → `signal_log` 1행, `oas_date` < 실행일 |
-| 지표 | T16 알려진 수익열의 CAGR·MDD·Sharpe 손계산 값과 일치 |
+| 지표 | T16 알려진 수익열의 CAGR·MDD·Sharpe 손계산 값과 일치 (공용 perf 테스트로 충족, PR #43) |
+| 볼린저 국면 | B1 OAS가 126일 평균+1σ 위 → 위험 회피, 아래 −1σ → 위험 선호, 처음 126일 → 보통 |
+| 볼린저 미래값 금지 | B2 T일 OAS를 극단값으로 바꿔도 T일 국면 불변 (T−1 까지만 사용) |
+| 볼린저 비중 | B3 A안 위험 회피 = 40/60, B안 = 70/30, 그 외 100/0 |
 
 ---
 
