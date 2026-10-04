@@ -84,4 +84,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_hold.py
 
 결과: `RESULTS_HOLD.md` (실행 시 덮어쓰기).
 
+## 추세+OAS 격자
+
+200일선 아래 TQQQ 상한(ma_tqqq 0.7/0.4/0.2/0.0) × 방어자산(QQQ/BIL) × OAS(on/off) 16개 전 조합 비교 (D13). 200일선 길이 고정, 값 하나 선택 아님.
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_trend_grid.py
+```
+
+결과: `RESULTS_TREND_GRID.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).

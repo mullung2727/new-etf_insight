@@ -130,3 +130,24 @@ def hold_while_below(w: pd.Series, below: pd.Series) -> pd.Series:
         else:
             out[i] = out[i - 1]
     return pd.Series(out, index=w.index)
+
+
+def combine_weights(w_oas_tqqq: pd.Series, below: pd.Series, ma_tqqq: float, defense: str) -> pd.DataFrame:
+    """추세 상한 + OAS 감축 조합. columns ["TQQQ", "QQQ", "BIL"], 행 합 1.
+
+    t_ma = ma_tqqq if below else 1.0, TQQQ = min(w_oas_tqqq, t_ma).
+    나머지 1 - TQQQ: below 이고 defense == "BIL" 이면 (1 - t_ma)은 BIL,
+    남는 (t_ma - TQQQ)은 QQQ. 그 외는 전부 QQQ.
+    OAS 끈 경우는 호출 측에서 w_oas_tqqq를 전부 1.0으로 넘긴다.
+    """
+    if defense not in ("QQQ", "BIL"):
+        raise ValueError("defense must be 'QQQ' or 'BIL'")
+    if not w_oas_tqqq.index.equals(below.index):
+        raise ValueError("w_oas_tqqq and below must share the same index")
+    mask = below.fillna(False).astype(bool).to_numpy(dtype=bool)
+    w_oas = w_oas_tqqq.to_numpy(dtype=float)
+    t_ma = np.where(mask, float(ma_tqqq), 1.0)
+    tqqq = np.minimum(w_oas, t_ma)
+    bil = np.where(mask & (defense == "BIL"), 1.0 - t_ma, 0.0)
+    qqq = 1.0 - tqqq - bil
+    return pd.DataFrame({"TQQQ": tqqq, "QQQ": qqq, "BIL": bil}, index=w_oas_tqqq.index)
