@@ -110,5 +110,40 @@ class TestHold(unittest.TestCase):
             rules.hold_while_below(w, below)
 
 
+class TestCombine(unittest.TestCase):
+    def test_g1_above_uses_oas_only(self):
+        w_oas = pd.Series([1.0, 0.7, 0.2], index=["20240102", "20240103", "20240104"])
+        below = pd.Series([False, False, False], index=w_oas.index)
+        w = rules.combine_weights(w_oas, below, 0.4, "BIL")
+        self.assertEqual(list(w.columns), ["TQQQ", "QQQ", "BIL"])
+        numpy.testing.assert_allclose(w["TQQQ"].to_numpy(), [1.0, 0.7, 0.2])
+        numpy.testing.assert_allclose(w["QQQ"].to_numpy(), [0.0, 0.3, 0.8])
+        numpy.testing.assert_allclose(w["BIL"].to_numpy(), [0.0, 0.0, 0.0])
+
+    def test_g2_below_bil_no_oas_cut(self):
+        w_oas = pd.Series([1.0], index=["20240102"])
+        below = pd.Series([True], index=w_oas.index)
+        w = rules.combine_weights(w_oas, below, 0.4, "BIL")
+        numpy.testing.assert_allclose(w.loc["20240102"].to_numpy(), [0.4, 0.0, 0.6])
+
+    def test_g3_below_bil_with_oas_cut(self):
+        w_oas = pd.Series([0.2], index=["20240102"])
+        below = pd.Series([True], index=w_oas.index)
+        w = rules.combine_weights(w_oas, below, 0.4, "BIL")
+        numpy.testing.assert_allclose(w.loc["20240102"].to_numpy(), [0.2, 0.2, 0.6])
+
+    def test_g4_below_qqq_defense(self):
+        w_oas = pd.Series([0.7], index=["20240102"])
+        below = pd.Series([True], index=w_oas.index)
+        w = rules.combine_weights(w_oas, below, 0.4, "QQQ")
+        numpy.testing.assert_allclose(w.loc["20240102"].to_numpy(), [0.4, 0.6, 0.0])
+
+    def test_g5_bad_defense(self):
+        w_oas = pd.Series([1.0], index=["20240102"])
+        below = pd.Series([True], index=w_oas.index)
+        with self.assertRaises(ValueError):
+            rules.combine_weights(w_oas, below, 0.4, "CASH")
+
+
 if __name__ == "__main__":
     unittest.main()
