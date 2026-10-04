@@ -2,6 +2,7 @@
 
 DB: etl/db/orderbook.sqlite3 (WAL). 이 모듈은 orderbook DB 에만 스키마를 만든다.
 한 격자 회차(모든 종목 행 + 실행기록 갱신)는 한 트랜잭션이다. 실패하면 회차 전체 rollback.
+원본 0D 이벤트는 etl/db/orderbook_raw/orderbook_raw_YYYYMM.sqlite3 에 월별로 append 한다.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import sqlite3
 from typing import Any
 
 DB_PATH = pathlib.Path(__file__).resolve().parents[1] / "db" / "orderbook.sqlite3"
+RAW_DIR = pathlib.Path(__file__).resolve().parents[1] / "db" / "orderbook_raw"
 
 # (FID, 컬럼, 가격여부). 가격은 부호(전일대비 표시)를 떼고 절댓값.
 _FIDS: list[tuple[str, str, bool]] = (
@@ -43,6 +45,21 @@ SCHEMA = (
 _INSERT = (f"INSERT OR REPLACE INTO orderbook_snapshot ({', '.join(SNAPSHOT_COLUMNS)})"
            f" VALUES ({', '.join(':' + c for c in SNAPSHOT_COLUMNS)})")
 _RUN_FIELDS = {"ended_at", "source_date", "venue", "symbols", "rows_written", "note"}
+RAW_COLUMNS = ["run_id", "date", "ticker", "venue", "recv_ts", "quote_tm", *BOOK_COLUMNS]
+RAW_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS orderbook_event (\n"
+    "  run_id INTEGER NOT NULL,\n  date TEXT NOT NULL,\n  ticker TEXT NOT NULL,\n"
+    "  venue TEXT NOT NULL,\n  recv_ts TEXT NOT NULL,\n  quote_tm TEXT,\n"
+    + "".join(f"  {c} INTEGER,\n" for c in BOOK_COLUMNS[:-1])
+    + f"  {BOOK_COLUMNS[-1]} INTEGER\n);\n"
+    "CREATE INDEX IF NOT EXISTS ix_orderbook_event_date_ticker ON orderbook_event(date, ticker);\n"
+)
+_RAW_INSERT = (f"INSERT INTO orderbook_event ({', '.join(RAW_COLUMNS)})"
+               f" VALUES ({', '.join(':' + c for c in RAW_COLUMNS)})")
+
+
+def raw_path(raw_dir: pathlib.Path, date: str) -> pathlib.Path:
+    return raw_dir / f"orderbook_raw_{date[:6]}.sqlite3"
 
 
 def normalize(values: dict[str, Any]) -> tuple[dict[str, Any], int]:
@@ -69,6 +86,21 @@ def normalize(values: dict[str, Any]) -> tuple[dict[str, Any], int]:
 
 def ensure_schema(con: sqlite3.Connection) -> None:
     con.executescript(SCHEMA)
+
+
+def ensure_raw_schema(con: sqlite3.Connection) -> None:
+    con.executescript(RAW_SCHEMA)
+
+
+def write_raw(con: sqlite3.Connection, rows: list[dict]) -> None:
+    if not rows:
+        return
+    try:
+        con.executemany(_RAW_INSERT, rows)
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
 
 
 def start_run(con: sqlite3.Connection, *, date: str, started_at: str, mode: str,

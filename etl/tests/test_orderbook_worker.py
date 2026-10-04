@@ -10,6 +10,7 @@ import sqlite3
 import tempfile
 import time as real_time
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -97,6 +98,7 @@ class WorkerBase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         self.db, self.lock = root / "orderbook.sqlite3", root / "orderbook.lock"
+        self.raw = root / "raw"
         self.wl, self.scores = root / "watchlist.sqlite3", root / "scores.json"
         con = sqlite3.connect(self.wl)
         con.execute("CREATE TABLE llm_scores (date TEXT, ticker TEXT, score INTEGER, PRIMARY KEY (date, ticker))")
@@ -128,7 +130,7 @@ class WorkerBase(unittest.TestCase):
                 self.sse.tick(t - 0.05, sorted(self.broker.codes))
         self.clock.on_sleep = tick
         return rec.run(self.cfg, clock=self.clock, broker=self.broker, sse_factory=self.sse_factory,
-                       db_path=self.db, lock_path=self.lock, watchlist_db=self.wl,
+                       db_path=self.db, lock_path=self.lock, watchlist_db=self.wl, raw_dir=self.raw,
                        trading_day=lambda d: trading)
 
     def runs(self):
@@ -213,6 +215,10 @@ class NoSubscriptionTest(WorkerBase):
         self.assertEqual(run["note"]["reason"], "holiday")
         self.assertIsNotNone(run["ended_at"])
 
+    def test_holiday_creates_no_raw_file(self):
+        self.assertEqual(self.run_at("08:44:00", trading=(False, "추석")), 0)
+        self.assertFalse((self.raw / "orderbook_raw_202609.sqlite3").exists())
+
     def test_t25_duplicate_run_exits_without_run_row(self):
         held = rec.acquire_lock(self.lock)
         try:
@@ -246,6 +252,28 @@ class MorningRunTest(WorkerBase):
         self.assertEqual({s["ticker"] for s in subs}, {"000660", "005930"})
         self.assertTrue(all(s["first_recv_ts"] and s["end_reason"] == "window_end" for s in subs))
         self.assertTrue(self.sse.stopped)
+
+    def test_full_window_saves_raw_events(self):
+        self.assertEqual(self.run_at("09:59:30"), 0)
+        db = self.raw / "orderbook_raw_202609.sqlite3"
+        con = sqlite3.connect(db)
+        n = con.execute("SELECT count(*) FROM orderbook_event").fetchone()[0]
+        tickers = {r[0] for r in con.execute("SELECT DISTINCT ticker FROM orderbook_event")}
+        con.close()
+        [run] = self.runs()
+        self.assertGreater(n, 0)
+        self.assertEqual(n, run["note"]["stats"]["raw_events"])
+        self.assertEqual(tickers, {"000660", "005930"})
+        self.assertEqual(run["note"]["stats"]["raw_errors"], 0)
+
+    def test_raw_write_failure_keeps_snapshots(self):
+        with mock.patch.object(rec.store, "write_raw",
+                               side_effect=sqlite3.OperationalError("boom")):
+            self.assertEqual(self.run_at("09:59:30"), 0)
+        [run] = self.runs()
+        self.assertGreater(run["rows_written"], 40)
+        self.assertEqual(run["rows_written"], self.snapshot_count())
+        self.assertGreater(run["note"]["stats"]["raw_errors"], 0)
 
     def test_reg_retry_exhausted_exits_1(self):
         self.broker.fail_post = 99

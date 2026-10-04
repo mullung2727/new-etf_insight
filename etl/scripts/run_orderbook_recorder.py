@@ -3,9 +3,11 @@
 SSE 수신 스레드가 0D 이벤트를 ``parse_event`` 로 해석해 ``Grid.on_event`` 로 슬롯을 갱신하고,
 메인 스레드가 KST 정수 초마다 ``Grid.flush`` 로 행을 뽑아 SQLite 에 쓴다.
 신선도는 broker 가 찍은 ``_recv_ts`` 로만 판정한다(ETL 수신 시각 아님).
+유효한 0D 이벤트 전부는 월별 원본 파일(orderbook_raw_YYYYMM.sqlite3)에도 이벤트 단위로 append 한다.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
@@ -354,12 +356,17 @@ class Recorder:
     """한 구간(오전/오후)의 등록·격자 저장·복구. note 와 DB 는 메인 스레드만 만진다."""
 
     def __init__(self, cfg: dict, date: str, window: str, run_id: int, con: sqlite3.Connection,
-                 clock: Any, broker: Any, watchlist_db: pathlib.Path) -> None:
+                 clock: Any, broker: Any, watchlist_db: pathlib.Path,
+                 raw_con: sqlite3.Connection | None = None) -> None:
         self.cfg, self.date, self.window, self.run_id, self.con = cfg, date, window, run_id, con
         self.clock, self.broker, self.watchlist_db = clock, broker, watchlist_db
+        self.raw_con = raw_con
+        self._raw: list[dict] = []
+        self._raw_lock = threading.Lock()
         win = cfg["windows"][window]
         self.start, self.end = _at(date, win["start"]), _at(date, win["end"])
         self.grid = Grid(date, end_ts=self.end, max_stale_sec=cfg["max_stale_sec"])
+        self.grid.stats.update({"raw_events": 0, "raw_errors": 0})
         self.note: dict[str, Any] = {"window": dict(win), "reason": None, "source_updates": [],
                                      "subscriptions": [], "stats": self.grid.stats}
         self.acked: list[str] = []
@@ -386,7 +393,13 @@ class Recorder:
     def on_message(self, msg: dict) -> None:
         channel, payload = msg.get("channel"), msg.get("payload") or {}
         if channel == "0D":
-            self.grid.on_event(parse_event(payload, self.date, set(self.grid.tickers())))
+            event = parse_event(payload, self.date, set(self.grid.tickers()))
+            self.grid.on_event(event)
+            if event.get("ticker") is not None and self.raw_con is not None:
+                row = {"run_id": self.run_id, "date": self.date, "ticker": event["ticker"],
+                       "venue": VENUE, "recv_ts": event["recv_iso"], **event["book"]}
+                with self._raw_lock:
+                    self._raw.append(row)
         elif channel == "system" and payload.get("type") == "connected":
             self.connected.set()
             self.need_restore.set()      # 새 SSE 의 sticky connected 와 재접속 connected 를 한 번의 POST 로 합친다
@@ -399,6 +412,22 @@ class Recorder:
         self.dropped.set()
 
     # ── 메인 스레드 ──
+    def _flush_raw(self) -> None:
+        if self.raw_con is None:
+            return
+        with self._raw_lock:
+            rows, self._raw = self._raw, []
+        if not rows:
+            return
+        try:
+            store.write_raw(self.raw_con, rows)
+        except sqlite3.Error as exc:
+            log.warning("원본 0D 저장 실패: %s", exc)
+            self.grid.stats["raw_errors"] += 1
+            return
+        self.grid.stats["raw_events"] += len(rows)
+
+
     def _remaining(self) -> float:
         return self.end - self.clock.now()
 
@@ -564,6 +593,7 @@ class Recorder:
                 self._poll_additions()
             self._run_pending()
             rows = self.grid.flush(self.clock.now())
+            self._flush_raw()
             if rows is None:
                 return "window_end"
             firsts = self.grid.pop_first_receipts()
@@ -610,13 +640,14 @@ class Recorder:
             # 진행 중 등록 POST 가 끝난 뒤에 종료 DELETE 가 나가야 해제 후 등록이 남지 않는다.
             self.reg_pool.shutdown(wait=True, cancel_futures=True)
             sse.stop()
+            self._flush_raw()
             if self.cross_thread:
                 self.cross_thread.join(timeout=5)
 
 
 def run(cfg: dict, *, clock: Any = None, broker: Any = None, sse_factory: Callable[..., Any] = SSEStream,
         db_path: pathlib.Path = store.DB_PATH, lock_path: pathlib.Path = LOCK_PATH,
-        watchlist_db: pathlib.Path = WATCHLIST_DB,
+        watchlist_db: pathlib.Path = WATCHLIST_DB, raw_dir: pathlib.Path = store.RAW_DIR,
         trading_day: Callable[[str], tuple[bool, str]] = trading_day_status) -> int:
     """§7 생명주기. 반환: 종료 코드(정상·휴장·빈 목록·비활성 0, DB·등록 소진 1)."""
     clock = clock or RealClock()
@@ -636,7 +667,8 @@ def run(cfg: dict, *, clock: Any = None, broker: Any = None, sse_factory: Callab
         date = datetime.fromtimestamp(now, KST).strftime("%Y%m%d")
         broker = broker or HttpBroker(cfg["broker_url"])
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        with connect_rw(db_path) as con:
+        with contextlib.ExitStack() as stack:
+            con = stack.enter_context(connect_rw(db_path))
             store.ensure_schema(con)
             win = cfg["windows"][window]
             run_id = store.start_run(con, date=date, started_at=_iso(now), mode=window,
@@ -647,7 +679,15 @@ def run(cfg: dict, *, clock: Any = None, broker: Any = None, sse_factory: Callab
                 store.update_run(con, run_id, ended_at=_iso(clock.now()),
                                  note={"window": dict(win), "reason": "holiday", "holiday": why})
                 return 0
-            recorder = Recorder(cfg, date, window, run_id, con, clock, broker, watchlist_db)
+            try:
+                raw_dir.mkdir(parents=True, exist_ok=True)
+                raw_con = stack.enter_context(connect_rw(store.raw_path(raw_dir, date)))
+                store.ensure_raw_schema(raw_con)
+            except sqlite3.Error as exc:
+                log.warning("원본 DB 열기 실패: %s", exc)
+                raw_con = None
+            recorder = Recorder(cfg, date, window, run_id, con, clock, broker, watchlist_db,
+                                raw_con=raw_con)
             code, reason = 0, None
             try:
                 reason = recorder.execute(sse_factory, cfg["broker_url"].rstrip("/") + "/events")
