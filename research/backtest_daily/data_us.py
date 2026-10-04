@@ -85,3 +85,26 @@ def load_index(ticker: str, db: Path = US_MACRO_DB) -> pd.Series:
     s.index.name = None
     s.name = ticker
     return s
+
+
+def load_first_release(series_id: str, db: Path = US_MACRO_DB) -> pd.DataFrame:
+    """FRED 첫 공개값(ALFRED output_type=4).
+
+    columns date·value·realtime_start·backfilled, date 오름차순.
+    없는 시리즈는 ValueError.
+    """
+    con = duckdb.connect(str(db), read_only=True)
+    try:
+        rows = con.execute(
+            "SELECT date, value, realtime_start, backfilled FROM fred_first_release"
+            " WHERE series_id = ? ORDER BY date",
+            [series_id],
+        ).fetchall()
+    finally:
+        con.close()
+    if not rows:
+        raise ValueError(f"unknown series: {series_id}")
+    df = pd.DataFrame(rows, columns=["date", "value", "realtime_start", "backfilled"])
+    df["value"] = df["value"].astype(float)
+    df["backfilled"] = df["backfilled"].astype(bool)
+    return df
