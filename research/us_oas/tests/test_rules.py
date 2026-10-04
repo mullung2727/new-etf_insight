@@ -89,5 +89,26 @@ class TestRules(unittest.TestCase):
         numpy.testing.assert_allclose(w["QQQ"].to_numpy(), [0.0, 0.3, 0.6, 0.8, 0.3])
 
 
+class TestHold(unittest.TestCase):
+    def test_h1_below_ma(self):
+        level = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0, 4.0, 3.0, 2.0, 1.0])
+        b = rules.below_ma(level, window=3)
+        # idx5: 4 < mean(4,5,4)=4.33
+        self.assertEqual(b.tolist(), [False] * 5 + [True] * 4)
+
+    def test_h2_hold_while_below(self):
+        w = pd.Series([1.0, 0.7, 1.0, 1.0, 0.4, 1.0])
+        below = pd.Series([False, True, True, False, True, True])
+        numpy.testing.assert_allclose(
+            rules.hold_while_below(w, below).to_numpy(),
+            [1.0, 0.7, 0.7, 1.0, 0.4, 0.4])
+
+    def test_h3_hold_index_mismatch(self):
+        w = pd.Series([1.0, 0.7], index=["20240102", "20240103"])
+        below = pd.Series([False, True], index=["20240102", "20240104"])
+        with self.assertRaises(ValueError):
+            rules.hold_while_below(w, below)
+
+
 if __name__ == "__main__":
     unittest.main()

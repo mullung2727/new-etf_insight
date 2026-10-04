@@ -99,3 +99,34 @@ def spec_weights(aligned: pd.DataFrame) -> pd.DataFrame:
 def boll_weights(aligned: pd.DataFrame, variant: str) -> pd.DataFrame:
     """BOLL_WEIGHTS[variant]로 국면 → TQQQ 비중 → 목표비중표."""
     return to_weights(boll_regime(aligned).map(BOLL_WEIGHTS[variant]))
+
+
+def below_ma(level: pd.Series, window: int = 200) -> pd.Series:
+    """level이 같은 날 포함 최근 window개 단순평균보다 작으면 True.
+
+    level index는 오름차순 날짜. 평균을 못 내는 처음 window-1개는 False.
+    (T 종가 판단에 T 종가 사용 — 당일 확정값이라 허용.)
+    """
+    ma = level.rolling(window, min_periods=window).mean()
+    return (level < ma).astype(bool)
+
+
+def hold_while_below(w: pd.Series, below: pd.Series) -> pd.Series:
+    """200일선 아래에선 더 줄이는 건 허용, 늘리는 건 금지.
+
+    날짜 순서대로 out[T] = min(w[T], out[T-1]) if below[T] else w[T].
+    첫 날은 w[T]. 두 Series의 index가 같아야 한다(아니면 ValueError).
+    """
+    if not w.index.equals(below.index):
+        raise ValueError("w and below must share the same index")
+    vals = w.to_numpy(dtype=float)
+    mask = below.fillna(False).astype(bool).to_numpy(dtype=bool)
+    out = np.empty(len(vals), dtype=float)
+    for i in range(len(vals)):
+        if i == 0 or not mask[i]:
+            out[i] = vals[i]
+        elif vals[i] < out[i - 1]:
+            out[i] = vals[i]
+        else:
+            out[i] = out[i - 1]
+    return pd.Series(out, index=w.index)

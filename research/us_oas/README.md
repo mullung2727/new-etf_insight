@@ -72,4 +72,16 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_vix_asym.py
 
 결과: `RESULTS_VIX_ASYM.md` (실행 시 덮어쓰기).
 
+## 200일선 유지
+
+OAS 감축 + QQQ 200일선 아래에선 비중 상향 금지(HOLD, D12). 감축은 OAS, 되돌림은 200일선 위에서만. MA200(아래 0.4·위 1.0)은 추세만 쓴 참고 기준.
+
+`etl/` 에서:
+
+```powershell
+cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_hold.py
+```
+
+결과: `RESULTS_HOLD.md` (실행 시 덮어쓰기).
+
 설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
