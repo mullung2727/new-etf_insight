@@ -113,3 +113,48 @@ def oracle(oas: pd.Series, dates) -> pd.DataFrame:
         d10 = (vals[j] - vals[j - 10]) * 100 if j >= 10 else np.nan
         rows.append((obs_dates[j], float(vals[j]), d10))
     return pd.DataFrame(rows, index=dates, columns=["oas_date", "oas", "d10_bp"])
+
+
+def fit_fixed(oas: pd.Series, etf_logret: pd.DataFrame, start, end) -> np.ndarray:
+    """고정 계수 — daily_pairs 중 index 가 start 이상 end 이하인 쌍으로 fit_ols. 반환 [b0, b1, b2]."""
+    pairs = daily_pairs(oas, etf_logret)
+    sel = pairs[(pairs.index >= start) & (pairs.index <= end)]
+    return fit_ols(sel)
+
+
+def pred_change_bp(etf_logret: pd.DataFrame, coef) -> pd.Series:
+    """거래일별 예측 하루 변화(bp) = b0 + b1·HYG + b2·IEI. HYG·IEI 중 NaN 이면 NaN."""
+    b0, b1, b2 = (float(c) for c in coef)
+    hyg = etf_logret["HYG"].astype(float)
+    iei = etf_logret["IEI"].astype(float)
+    return b0 + b1 * hyg + b2 * iei
+
+
+def etf_signal(etf_logret, coef, anchor_date, anchor_value, dates, window=10) -> pd.DataFrame:
+    """실 OAS 를 쓰지 않는 신호, 백테스트·실매매 같은 계산.
+
+    p = pred_change_bp. T 의 d10_bp = T 를 포함한 최근 window 거래일 p 의 합
+    (T 종가 시점에 T 의 ETF 수익은 이미 확정 → 당일 사용 허용, window 안에 NaN 있으면 NaN).
+    수준 oas = anchor_value + (C_T − C_anchor)/100, C = p 의 누적합(NaN 은 0으로 누적).
+    anchor_date 는 dates 안에 있어야 함(없으면 ValueError). anchor 이전도 같은 식으로 계산.
+    반환 컬럼 oas·d10_bp·pred_bp, index = dates.
+    """
+    dates = list(dates)
+    if anchor_date not in dates:
+        raise ValueError(f"anchor_date {anchor_date} not in dates")
+    p = pred_change_bp(etf_logret, coef)
+    pred = p.reindex(dates)
+    vals = pred.to_numpy(dtype=float)
+    d10 = np.full(len(dates), np.nan)
+    for i in range(len(dates)):
+        if i + 1 < window:
+            continue
+        w = vals[i - window + 1:i + 1]
+        if np.isnan(w).any():
+            continue
+        d10[i] = float(w.sum())
+    fill = np.where(np.isnan(vals), 0.0, vals)
+    cum = np.cumsum(fill)
+    c_anchor = cum[dates.index(anchor_date)]
+    oas_vals = float(anchor_value) + (cum - c_anchor) / 100.0
+    return pd.DataFrame({"oas": oas_vals, "d10_bp": d10, "pred_bp": vals}, index=dates)

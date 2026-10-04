@@ -2,6 +2,7 @@
 import math
 import unittest
 
+import numpy as np
 import pandas as pd
 
 from research.us_oas import proxy
@@ -115,6 +116,61 @@ class TestProxy(unittest.TestCase):
         self.assertEqual(oc2.loc[t, "oas_date"], days[14])
         self.assertEqual(oc2.loc[t, "oas"], oas.loc[days[14]])
         self.assertAlmostEqual(oc2.loc[t, "d10_bp"], (oas.loc[days[14]] - oas.loc[days[4]]) * 100)
+
+    def test_e1_d10_includes_t_and_nan(self):
+        days = _days(n=30)
+        etf = _etf(days)
+        coef = np.array([1.0, 10.0, -5.0])
+        sig = proxy.etf_signal(etf, coef, days[0], 3.0, days, window=10)
+        p = proxy.pred_change_bp(etf, coef)
+        t = days[15]
+        i = days.index(t)
+        expected = float(p.loc[days[i - 9:i + 1]].sum())
+        self.assertAlmostEqual(sig.loc[t, "d10_bp"], expected, places=9)
+        self.assertAlmostEqual(sig.loc[t, "pred_bp"], p.loc[t], places=12)
+        self.assertTrue(pd.isna(sig.loc[days[8], "d10_bp"]))
+        etf2 = etf.copy()
+        etf2.loc[days[12], "HYG"] = float("nan")
+        sig2 = proxy.etf_signal(etf2, coef, days[0], 3.0, days, window=10)
+        self.assertTrue(pd.isna(sig2.loc[days[12], "d10_bp"]))
+        self.assertTrue(pd.isna(sig2.loc[t, "d10_bp"]))
+        t2 = days[22]
+        i2 = days.index(t2)
+        p2 = proxy.pred_change_bp(etf2, coef)
+        expected2 = float(p2.loc[days[i2 - 9:i2 + 1]].sum())
+        self.assertAlmostEqual(sig2.loc[t2, "d10_bp"], expected2, places=9)
+
+    def test_e2_level_anchor(self):
+        days = _days(n=30)
+        etf = _etf(days)
+        coef = np.array([2.0, 10.0, -5.0])
+        anchor = days[15]
+        anchor_val = 3.5
+        sig = proxy.etf_signal(etf, coef, anchor, anchor_val, days, window=10)
+        p = proxy.pred_change_bp(etf, coef)
+        self.assertAlmostEqual(sig.loc[anchor, "oas"], anchor_val, places=12)
+        self.assertAlmostEqual(sig.loc[days[16], "oas"], anchor_val + p.loc[days[16]] / 100, places=9)
+        self.assertAlmostEqual(sig.loc[days[14], "oas"], anchor_val - p.loc[anchor] / 100, places=9)
+
+    def test_e3_fit_fixed_ignores_outside(self):
+        days = _days(n=140)
+        etf = _etf(days)
+        oas = _oas(days, [3.0 + 0.001 * k for k in range(len(days))])
+        start, end = days[50], days[100]
+        base = proxy.fit_fixed(oas, etf, start, end)
+        mod = oas.copy()
+        mod.loc[days[10]] = 99.0
+        mod.loc[days[120]] = -99.0
+        changed = proxy.fit_fixed(mod, etf, start, end)
+        for b, c in zip(base, changed):
+            self.assertAlmostEqual(b, c, places=9)
+
+    def test_e4_anchor_missing_raises(self):
+        days = _days(n=30)
+        etf = _etf(days)
+        coef = np.array([0.0, 1.0, 1.0])
+        with self.assertRaises(ValueError):
+            proxy.etf_signal(etf, coef, "19990101", 3.0, days)
 
 
 if __name__ == "__main__":
