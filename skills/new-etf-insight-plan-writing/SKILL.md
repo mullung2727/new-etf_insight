@@ -1,12 +1,32 @@
 ---
 name: new-etf-insight-plan-writing
-description: Checklist for writing or updating a PLAN/design doc before implementation in this repo. Read this before authoring a docs PLAN so decisions are concrete, enforcement paths are verified, and requirements map 1:1 to tests. Prevents "auto-guaranteed" style false assumptions.
+description: Checklist for writing, updating, implementing and closing a PLAN/design doc in this repo. Read before authoring a docs PLAN and again when an implementation based on a PLAN is finished (progress checklist, 구현 차이, move to docs/done). Prevents "auto-guaranteed" false assumptions and stale/unmoved plans.
 ---
 
-# PLAN(설계문서) 작성 지침
+# PLAN(설계문서) 작성·완료 지침
 
-PLAN을 새로 쓰거나 고칠 때 **먼저 이 체크리스트를 통과**시킨다.
-목적: 애매한 단정으로 요구사항이 조용히 누락되는 사고 방지.
+PLAN을 새로 쓰거나 고칠 때, 그리고 **PLAN 기반 구현을 끝낼 때** 이 문서를 따른다.
+목적: 애매한 단정으로 요구사항이 조용히 누락되는 사고 + 끝난 PLAN이 docs/에 방치되거나 코드와 어긋나는 사고 방지.
+
+## 0. 문서 형식 (고정)
+
+- 위치·이름: `docs/PLAN_<NAME>.md` (대문자·밑줄). 완료되면 `docs/done/`.
+- 맨 위: 제목 → `한 줄:` 요약(핵심 먼저, 상세는 아래) → 아래 `## 진행` 절 → 본문 → 맨 끝 `## 구현 차이` 절.
+- `## 진행` 절은 모든 PLAN에 같은 4줄을 그대로 쓴다. 상태 문장("설계안", "구현 중")은 따로 쓰지 않는다 — 체크박스가 상태다.
+
+```markdown
+## 진행
+- [ ] 구현·테스트 머지 (PR #)
+- [ ] 운영 등록 (스케줄 작업·config) — 해당 없으면 "해당 없음" 적고 체크
+- [ ] 첫 실가동 확인 (날짜) — 해당 없으면 "해당 없음" 적고 체크
+- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+```
+
+- `## 구현 차이`: 구현하며 설계와 달라진 결정만 `- 원래 X → 실제 Y (이유)` 한 줄씩. 없으면 "없음".
+- 단계가 여럿(P1/P2…)이면 단계별로 같은 4줄 블록을 둔다.
+
+> 실제 사고(2026-10): 파이프라인이 머지됐는데 문서 상태는 "설계안·구현 안 함"으로 남음. 끝난 PLAN 8개가 docs/에 방치.
+> us-daily는 코드 머지 후 스케줄 등록이 빠져 배치가 안 돎 → "운영 등록"·"첫 실가동"을 완료 조건에 넣은 이유.
 
 ## 1. 단정 금지 — "자동 보장"은 grep으로 증명
 
@@ -19,7 +39,6 @@ PLAN을 새로 쓰거나 고칠 때 **먼저 이 체크리스트를 통과**시�
 
 > 실제 사고: "종목당 노트 1개 → merge_notes_by_symbol이 자동 보장"이라 단정.
 > merge는 체결 자동연결에서만 돌고 수동 create_note는 우회 → 중복 노트 무한 생성.
-> 참고 메모리: verify-invariant-enforcement-path.
 
 ## 2. 애매어 금지 — 구체 조건/경로/함수명으로
 
@@ -37,9 +56,48 @@ PLAN을 새로 쓰거나 고칠 때 **먼저 이 체크리스트를 통과**시�
 - PLAN에 "수정 없음 / 손 안 댐"으로 적은 코드가 **실제로 요구사항을 다 커버하는지** 다시 본다.
 - 누락은 보통 여기 숨는다("이건 기존 걸로 되니 안 건드림"이 사실은 우회 경로일 때).
 
-## 5. 구현 완료 후 재검토(반드시)
+## 5. 사양 출처 표기 — 사용자 지정 vs 내 판단
 
-- 구현 끝나고 **PLAN을 다시 열어** 각 확정 결정·범위 항목을 코드와 대조.
-- "완료" 보고 전에: 요구사항 목록 ↔ 구현 ↔ 테스트 세 개가 전부 맞물리는지 확인.
-- PLAN 범위대로 다 했어도, PLAN의 가정 자체가 틀렸을 수 있음(1번). 보고 시 "PLAN 기준 완료"와
-  "요구사항 기준 완료"를 구분해 생각한다.
+- 규칙·파라미터 표에 "누가 정했나(사용자/내 판단)" 열을 둔다. 사용자 조건을 내 기존 전략 틀로 바꿔 끼우지 않는다.
+- 사용자에게 결정을 물을 땐 "§3·E7" 같은 문서 번호 말고 내용(문제 → 선택지별 결과 → 추천)으로 묻는다. 사용자는 문서를 안 본다.
+
+> 실제 사고(2026-09-20 엔벌로프): 실험 9개 동안 사용자 설계가 한 번도 안 돌고 "기각" 결론.
+
+## 6. 기존 운영 설정부터 읽기
+
+실매매·배치 전략을 바꾸는 PLAN이면, 쓰기 전에 **운영 원본**(config json, 러너 스크립트, 스케줄 xml)을 읽는다.
+research README 본문은 초기안일 수 있다.
+
+> 실제 사고(2026-09-17): 옛 README 기준으로 종가베팅 규칙을 설명·측정 — 현행과 달랐음.
+
+## 7. 운영 배치·실매매 PLAN 체크
+
+해당하는 항목만 PLAN 본문에 "어디서 처리하는지(파일:함수)"로 적는다.
+
+- 휴장일: 거래일 아니면 조용히 종료(실패 아님). 달력 조회 실패는 실패로 알림.
+- 실패 알림 1회: 파이썬이 알림 보냈으면 러너는 중복 알림 금지, 파이썬 알림이 실패했으면 러너가 대신 알림(exit code로 구분).
+- `notify()` 직접 호출 진입점은 `load_dotenv` 필수(없으면 웹훅 빈값으로 조용히 스킵).
+- Windows: stdout utf-8 재설정(cp949 print 크래시), 한글 든 `.ps1` 은 UTF-8 BOM.
+- 스케줄: `ops/scheduled-tasks/*.xml` + 등록 절차까지 PLAN에 적고, 등록은 "진행" 체크 항목. 임시 작업이 worktree 경로를 실행하지 않게(worktree 정리가 막힘).
+- 같은 계좌 타 전략: 예약금(reservation)·가용현금, 타 전략 보유분 매도 금지, 1회 주문 한도(`MAX_ORDER_AMOUNT`) 분할.
+
+## 8. 리서치 PLAN
+
+백테스트·전략 리서치는 `research/BACKTEST_DATA.md` §0 을 따른다: 시작 전 `research/private/REJECTED.md`·`LEADS.md` 확인,
+끝나면 유효(private 이동)·종결(REJECTED)·단서(LEADS) 중 하나로 정리.
+
+## 9. 구현 완료 시 (반드시)
+
+PLAN 기반 구현의 마지막 PR에서:
+
+1. **PLAN을 다시 열어** 각 확정 결정·범위 항목을 코드와 대조. 요구사항 ↔ 구현 ↔ 테스트가 맞물리는지 확인.
+   "PLAN 기준 완료"와 "요구사항 기준 완료"를 구분해 생각한다(PLAN 가정 자체가 틀렸을 수 있음, 1번).
+2. `## 구현 차이` 절 갱신, `## 진행` 체크박스 갱신(PR 번호·날짜).
+3. PR 본문에 `PLAN_<NAME>` 을 적는다.
+4. 운영 등록·첫 실가동까지 끝나 4줄이 모두 체크되면 `git mv docs/PLAN_<NAME>.md docs/done/` 후
+   `grep -rn "PLAN_<NAME>"` 으로 참조 링크(코드 주석·README·스킬)도 `docs/done/` 경로로 고친다.
+   첫 실가동이 PR 머지 뒤라면, 실가동 확인 후 docs PR로 체크·이동한다.
+
+강제 장치(하니스):
+- `.claude/hooks/block-plan-pr.sh`: PR 본문이 `PLAN_X` 를 언급하는데 브랜치가 `docs/PLAN_X.md`(또는 done)를 안 고쳤으면 `gh pr create` 차단. 단순 언급이면 `ALLOW_PLAN_PR=1`.
+- `scripts/pre_commit_checks.py`: 스테이징된 `docs/PLAN_*.md` 의 진행 절이 전부 체크됐는데 아직 `docs/` 에 있으면 커밋 차단.

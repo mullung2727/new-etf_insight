@@ -7,6 +7,8 @@
 - When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
 - When starting, restarting, checking, or debugging local project servers, first read `skills/new-etf-insight-server-dev/SKILL.md`.
 - When running, checking, resuming, or debugging the all-symbol minute-bar backfill, first read `skills/new-etf-insight-minute-backfill/SKILL.md`.
+- When writing or updating a PLAN/design doc (설계문서) before implementation, **and when finishing an implementation based on a PLAN** (진행 체크·구현 차이·docs/done 이동), first read `skills/new-etf-insight-plan-writing/SKILL.md`.
+- When committing, branching, opening a PR, merging, or handling CodeRabbit review comments, first read `skills/new-etf-insight-git-workflow/SKILL.md`.
 - When backtesting a trading strategy (일봉/분봉 데이터 조회, 청산 시뮬레이션, 표본 확장), first read `research/BACKTEST_DATA.md`.
 - 일봉 수익률·가드·비용 계산은 즉석 확인용 한 줄 계산이라도 `research/backtest_daily` 를 import 한다(재구현 금지). 수익률 표를 내기 전 `research/backtest_daily/README.md` 함수 목록과 대조: 상한가 `guards.limit_up_close`, 비용 `stats.COSTS`(기준 0.35%), 일별 가중 `stats.day_*`.
 - 분봉 계산도 즉석 확인용 한 줄 계산이라도 `research/backtest_minute` 를 import 한다(재구현 금지, 통계·비용·가드는 `research/backtest_daily`). 표를 내기 전 `research/BACKTEST_DATA.md` 맨 위 체크리스트(전일 정보 결합·유니버스·지정가 체결 `pre_open`·09:00 가격·청산)와 대조.

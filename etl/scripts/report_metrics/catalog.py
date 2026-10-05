@@ -1,4 +1,4 @@
-"""리포트 문서 카탈로그 — docs/2026-09-29_095528-broker-reports-full-coverage-sector-design.md (§4, §6-2).
+"""리포트 문서 카탈로그 — docs/done/2026-09-29_095528-broker-reports-full-coverage-sector-design.md (§4, §6-2).
 
 기존 report_facts/report_api_facts/report_estimates는 이 모듈이 절대 쓰지 않는다(document_type 기준 분석 경계, 설계 §4).
 """
