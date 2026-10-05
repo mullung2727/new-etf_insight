@@ -2,6 +2,7 @@
 
 ## Skills
 
+- 코드 작성·수정 전 `skills/muse-codegen/SKILL.md`를 먼저 읽는다. 한 줄 수정도 Muse에 맡기고, 검수·테스트·실행은 호출 에이전트가 직접 수행한다.
 - When running or debugging the ETF batch pipeline, first read `skills/new-etf-insight-batch/SKILL.md`.
 - When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
 - When starting, restarting, checking, or debugging local project servers, first read `skills/new-etf-insight-server-dev/SKILL.md`.
