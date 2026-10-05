@@ -262,5 +262,22 @@ class MigrateTest(unittest.TestCase):
             self.assertEqual(api_after, 1)
 
 
+class SplitBrokerKeyTest(unittest.TestCase):
+    def test_pstatic_tail_with_underscore_broker(self):
+        self.assertEqual(mig._split_broker_key("A_B증권_20260923_company_77"),
+                         ("A_B증권", "20260923_company_77"))
+
+    def test_pstatic_tail(self):
+        self.assertEqual(mig._split_broker_key("키움증권_20260702_company_957350000"),
+                         ("키움증권", "20260702_company_957350000"))
+
+    def test_legacy_fallback(self):
+        self.assertEqual(mig._split_broker_key("키움증권_oldkey"),
+                         ("키움증권", "oldkey"))
+
+    def test_no_underscore(self):
+        self.assertIsNone(mig._split_broker_key("nounderscore"))
+
+
 if __name__ == "__main__":
     unittest.main()

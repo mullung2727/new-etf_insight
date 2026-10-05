@@ -86,7 +86,8 @@ def main(argv: list[str] | None = None) -> int:
             except Exception:
                 pass
         print(f"[swing_pick] FAILED {day}: {exc}")
-        return 1
+        # 2 = 알림 보낸 실패 — 러너는 중복 알림 안 보냄 (run-swing-pick.ps1)
+        return 2
 
     if args.dry_run:
         # 전송 안 한 대신 보낼 문구를 그대로 보여준다 — dry-run 검증용.

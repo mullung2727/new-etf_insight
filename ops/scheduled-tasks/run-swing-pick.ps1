@@ -53,6 +53,8 @@ try {
   $reason = $_.Exception.Message
   Write-Log "[$(Get-Date -Format o)] FAILED: $reason"
   # 파이썬 안에서도 실패 알림을 보내지만, import 단계에서 죽으면 그 코드까지 못 가서 러너도 보낸다.
+  # exit code 2 = 파이썬이 이미 실패 알림 보냄 — 러너 중복 알림 스킵 (run_swing_pick.py)
+  if ($reason -match "exit code 2$") { Write-Log "runner notify skipped (already notified by python)" } else {
   $message = "[스윙 후보] $target FAILED`n$reason`nlog: $log"
   try {
     $previous = $ErrorActionPreference
@@ -61,5 +63,6 @@ try {
       ForEach-Object { Write-Log ([string]$_) }
     $ErrorActionPreference = $previous
   } catch {}
+  }
   throw
 }
