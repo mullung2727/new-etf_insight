@@ -1,6 +1,6 @@
 """테마 알림 — 1단계(스키마·판정·문구) + 2단계(원문 읽기·LLM·main).
 
-설계: docs/PLAN_THEME_REEMERGENCE_ALERT.md.
+설계: docs/done/PLAN_THEME_REEMERGENCE_ALERT.md.
 시간은 전부 UTC ISO 문자열로 저장, 비교 시 datetime.fromisoformat.
 """
 from __future__ import annotations

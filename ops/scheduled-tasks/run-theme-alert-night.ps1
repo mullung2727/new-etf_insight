@@ -39,7 +39,7 @@ try {
     "[$(Get-Date -Format o)] collect telegram skipped: $($_.Exception.Message)" | Tee-Object -FilePath $log -Append | Write-Output
   }
 
-  # 2) Theme re-emergence alert (docs/PLAN_THEME_REEMERGENCE_ALERT.md). Failure fails the task.
+  # 2) Theme re-emergence alert (docs/done/PLAN_THEME_REEMERGENCE_ALERT.md). Failure fails the task.
   Invoke-Step "theme alert telegram (night, $target)" ".\.venv\Scripts\python.exe" @("scripts\run_theme_alert.py", "--source", "telegram", "--date", $target, "--session", "night")
 
   exit 0

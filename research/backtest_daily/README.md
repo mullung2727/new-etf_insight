@@ -47,4 +47,4 @@
 - `bench_daily` 는 **지수**다: 매일 전일 조건으로 종목을 다시 짜 동일가중 수익을 이어붙인다. 전략과 비교할 시장 잣대
 - "진입일에 같은 조건 종목을 아무거나 샀다면" 은 벤치가 아니라 **대조 전략** → placebo 로 잰다
 - 둘은 여러 날 보유에서 다르다 (CAP2·LIQ10 20일 약 0.24%p). 1일 보유는 거의 같다
-- 전략 모양별 호출은 `docs/PLAN_BACKTEST_DAILY.md` 2차 API 표 참조
+- 전략 모양별 호출은 `docs/done/PLAN_BACKTEST_DAILY.md` 2차 API 표 참조
