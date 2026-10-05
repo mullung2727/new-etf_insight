@@ -38,7 +38,7 @@ For execution commands see `new-etf-insight-batch` skill. For repo conventions s
 | `scripts/pdf_langgraph/external_research_schema.json` | Output schema — holdings research. |
 | `scripts/pdf_langgraph/correction_review_schema.json` | Output schema — `{needs_update, reason}`. |
 | `scripts/pdf_langgraph/correction_update_schema.json` | Output schema — updated summary. |
-| `scripts/build_db.py` | runs/ scan → DuckDB upsert. Standalone-runnable. |
+| `scripts/build_db.py` | runs/ scan → SQLite latest summary + filing history. Standalone-runnable. |
 | `scripts/collect_etf_candidates.py` | CLI wrapper for `collect_candidates`. |
 | `scripts/openclaw_llm_adapter.py` | LLM CLI shim. |
 
@@ -211,12 +211,17 @@ DEFAULT_RUNS_DIR = etl/runs
 DEFAULT_DB_PATH  = etl/db/etf_insight.sqlite3
 
 sync_to_db(runs_dir: Path, db_path: Path = DEFAULT_DB_PATH) -> int
-    # Scans runs/*/records/*.json, dedups by etf_key keeping max(rcept_dt), upserts both tables. Idempotent.
+    # Backfills all JSON filing snapshots before dedup. Latest = max(rcept_dt, rcept_no).
+    # Keeps newer DB summary/holdings and initial metadata. Idempotent.
 
 # Internal:
 _load_records(runs_dir) -> dict[etf_key, record]
-_ensure_schema(con)   # creates etf_records, etf_holdings; runs ALTER migrations for theme_* columns
+_ensure_schema(con)   # creates etf_records, etf_holdings, etf_filing_history; ALTER migrations
 _upsert_record(con, etf_key, record)
+get_history_entry(db_path, etf_key, rcept_no)  # observation and successful record snapshot
+get_db_latest_snapshot(db_path, etf_key)     # latest successful filing with DB first metadata
+write_history_observation(...)              # preserves initial observation and successful snapshot
+ensure_previous_snapshot(db_path, etf_key, previous_record)
 ```
 
 ---
@@ -262,14 +267,15 @@ DART list.json
  → download_representative_prospectus_pdf(rcept_no, pdf_dir)
  → analyze_pdf(pdf_path, source=filing, resolver)
  → write runs/{date}/records/{etf_key}.json
-       first_rcept_dt = rcept_dt, revision_count = 0
+       first_rcept_dt/no = filing dt/no, first_collected_at = collected_at (UTC), revision_count = 0
  → sync_to_db(runs_dir, db_path)
 ```
 
 ### Path B — correction filing (`[기재정정]` in report_nm)
 ```
 is_correction_source(filing) == true
- → record exists? no  → skipped/correction_without_existing_record
+ → lookup all dated JSON + DB successful snapshot; select latest (rcept_dt, rcept_no)
+ → record exists? no  → skipped/correction_without_existing_record + observed history
                   yes →
    days_between(previous.first_rcept_dt, filing.rcept_dt) ≥ 60
        → skipped/correction_after_60_days
@@ -277,9 +283,11 @@ is_correction_source(filing) == true
      review.needs_update == false → skipped/<reason>
      true →
  → updated = update_record_from_correction(existing, filing, review)
-     normalize_summary, preserve first_rcept_dt, revision_count += 1, source ← latest
- → overwrite record JSON → sync_to_db
+     normalize_summary, preserve first metadata, revision_count += 1, source ← latest
+ → archive previous snapshot → update JSON + filing snapshot → sync_to_db
 ```
+
+Candidates are sorted by `(rcept_dt, rcept_no)`. Same successful filing skips LLM; missing JSON can reuse DB snapshot. Old filings never regress the latest summary. No-update, age-cutoff, missing-parent and failures are journaled; failed retries reuse initial observation time. Missing-parent skips may retry when the parent record arrives. Unknown historic collection times stay NULL; never infer from filing date, mtime or a correction's collection time. Remote full DART history backfill is outside this change.
 
 ### Skip / fail reasons (`results[i].reason`)
 `fund_code_not_found`, `existing_record`, `correction_without_existing_record`, `correction_after_60_days`, `<LLM-supplied review reason>`, `new_record`.
@@ -334,12 +342,17 @@ LLM env var           = ETF_LLM_PROVIDER  (default "codex")
     "report_nm":"", "fund_code":"", "etf_key":"", "pdf_path":""
   },
   "first_rcept_dt": "YYYYMMDD",
+  "first_rcept_no": null,
+  "first_collected_at": null,
+  "collected_at": null,
   "revision_count": 0
 }
 ```
 
 ### Preservation invariants (DO NOT VIOLATE)
 - `first_rcept_dt`: set once on creation. Corrections must never overwrite.
+- `first_rcept_no`, `first_collected_at`: preserve original identity/time; NULL when unknown.
+- `collected_at`: per-filing first observation (UTC ISO 8601); retain on retry.
 - `revision_count`: increment only on new `rcept_no`. Same rcept_no reprocess → no increment.
 - `source`: always overwritten to latest filing.
 
@@ -365,7 +378,7 @@ theme_status, theme_bucket, structure_tags, classification_confidence, classific
 holdings_available_in_pdf, holdings_summary,
 keywords, trend_summary, missing_info,
 rcept_no, rcept_dt, corp_code, corp_name, report_nm, fund_code, pdf_path,
-first_rcept_dt, revision_count, db_updated_at
+first_rcept_dt, revision_count, first_rcept_no, first_collected_at, db_updated_at
 ```
 
 `etf_holdings` (PK `(etf_key, seq)`):
@@ -374,6 +387,8 @@ etf_key, seq, name, ticker, exchange, weight
 ```
 
 `sync_to_db` is idempotent — safe to run repeatedly.
+
+`etf_filing_history` (PK `(etf_key, rcept_no)`): `rcept_dt`, `first_collected_at`, `action`, `reason`, `filing_json`, `record_json`. `record_json` is the immutable successful snapshot; skipped/failed observations may have NULL snapshot. Available dated legacy JSON snapshots are backfilled without inventing collection times.
 
 ---
 

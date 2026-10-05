@@ -82,6 +82,9 @@ etf_key = "{corp_code}_{fund_code}"   # 예: 00104500_AL415
     "report_nm": "", "fund_code": "", "etf_key": "", "pdf_path": ""
   },
   "first_rcept_dt": "20260430",
+  "first_rcept_no": "최초 공시번호 또는 null",
+  "first_collected_at": "UTC ISO 8601 또는 null",
+  "collected_at": "이번 공시 최초 관측시각 또는 null",
   "revision_count": 0
 }
 ```
@@ -89,6 +92,8 @@ etf_key = "{corp_code}_{fund_code}"   # 예: 00104500_AL415
 ## 보존 규칙 (수정 시 필수)
 
 - `first_rcept_dt`: 최초 공시일. 정정공시로 덮어써도 **절대 변경하지 않음**
+- `first_rcept_no`, `first_collected_at`: 최초 공시번호·실제 최초 수집시각 보존. 불명인 과거 값은 null, 정정번호·공시일·mtime으로 추정 금지
+- `collected_at`: 접수번호별 최초 관측시각. 실패·원본 미도착 재시도에도 첫 관측시각 유지
 - `revision_count`: 새 `rcept_no`일 때만 증가. 동일 rcept_no 재처리 시 증가 안 함
 - `source`: 항상 최신 공시 기준으로 갱신
 
@@ -98,8 +103,9 @@ etf_key = "{corp_code}_{fund_code}"   # 예: 00104500_AL415
 
 - `etf_records`: etf_key PK, ETF 메타 + 요약 (1 row per ETF)
 - `etf_holdings`: (etf_key, seq) PK, 구성종목 목록
+- `etf_filing_history`: (etf_key, rcept_no) PK, 공시 메타·최초 관측시각·action/reason·성공 record snapshot. 성공 snapshot과 최초 관측정보 불변
 
-runs/ 전체에서 etf_key 기준 최신 rcept_dt 레코드만 upsert.
+runs/ 전체 JSON은 dedup 전에 공시별 이력으로 적재한다. 최신 요약은 `(rcept_dt, rcept_no)`로 선택하며 DB보다 오래된 JSON으로 요약·holdings를 후퇴시키지 않는다. 파이프라인은 날짜별 JSON과 DB 성공 snapshot을 함께 조회해 정정을 연결한다. 성공 공시의 JSON이 없어도 LLM 재호출 없이 snapshot을 재사용한다.
 
 ## LLM 프로바이더
 

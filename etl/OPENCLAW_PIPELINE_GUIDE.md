@@ -99,13 +99,15 @@ uv run python -c "from pathlib import Path; from new_etf_insight.daily_pipeline 
 
 ## 기재정정 처리 원칙
 
-- `[기재정정]` 공시는 먼저 기존 `records/{etf_key}.json` 존재 여부를 본다.
+- `[기재정정]` 공시는 날짜별 `runs/*/records/{etf_key}.json`과 DB 성공 snapshot에서 최신 record를 찾는다.
+- 둘 다 없으면 `correction_without_existing_record`로 skip하고 관측 이력을 남긴다.
 - 기존 record가 있으면 PDF를 다시 분석하지 않는다.
 - DART viewer 텍스트를 읽고 LLM으로 업데이트 필요 여부를 판단한다.
 - `needs_update=false`면 기존 record를 수정하지 않는다.
 - `needs_update=true`면 기존 record를 정정 내용 기준으로 갱신한다.
-- `first_rcept_dt`는 유지한다.
+- `first_rcept_dt`, `first_rcept_no`, `first_collected_at`은 유지한다. 모르는 과거 정보는 null로 남긴다.
 - `revision_count`는 새 `rcept_no`일 때만 증가한다.
+- `etf_filing_history`는 공시별 관측·성공 snapshot을 보존한다. 동일 성공 공시 재실행은 LLM을 호출하지 않으며 과거 공시 재적재로 최신 요약을 덮지 않는다.
 
 ## 금지사항
 

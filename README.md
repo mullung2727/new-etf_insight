@@ -76,7 +76,7 @@ DART / KRX / 키움 / 텔레그램 / 네이버
 
 | 파일 | 용도 | 주 writer |
 | --- | --- | --- |
-| `etf_insight.sqlite3` | ETF 분석 레코드·보유종목 | `etl` daily pipeline / `build_db.py` |
+| `etf_insight.sqlite3` | ETF 분석 레코드·보유종목·접수번호별 공시 이력 | `etl` daily pipeline / `build_db.py` |
 | `watchlist.sqlite3` | 일별 워치리스트 · llm_scores · 종가배팅 관련 | watchlist / close-bet 배치 |
 | `krx_ohlcv.duckdb` | 전종목 일봉 OHLCV 캐시 | `build_krx_ohlcv.py` 등 |
 | `telegram_public.sqlite3` | 텔레그램 공개채널 수집·인사이트 | telegram 배치 |
@@ -96,7 +96,7 @@ DART / KRX / 키움 / 텔레그램 / 네이버
 
 ### 1) ETF Insight
 - DART 후보 수집 → 투자설명서 PDF → LangGraph/LLM 분석 → JSON → SQLite
-- 기재정정은 기존 레코드 갱신 여부 LLM 판단 (`first_rcept_dt` 보존)
+- 기재정정은 날짜별 JSON·DB snapshot에서 기존 레코드를 찾아 갱신 여부 LLM 판단 (최초 공시·수집정보 및 접수번호별 이력 보존)
 - 진입: `new_etf_insight.daily_pipeline` / skill `skills/new-etf-insight-batch`
 
 ### 2) Watchlist · Rankings
