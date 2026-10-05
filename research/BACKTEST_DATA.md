@@ -554,7 +554,7 @@ t 값            mean / (pstdev / sqrt(n))
 ## 8. 공용 모듈 — `research/backtest_minute/` (분봉 전용, 2026-10-01~)
 
 새 **분봉** 리서치는 §2 `minute_bar_store`·§3 `simulate_minute_exit` 대신 이 패키지를 쓴다. 통계·가드·스팩·placebo·여러 날 보유 벤치는 §7 `backtest_daily` 를 그대로 import 한다(다시 만들지 않음). **muse 명세에도 두 패키지 사용을 지시한다.**
-설계 `docs/PLAN_BACKTEST_MINUTE.md`, 함수 목록 `research/backtest_minute/README.md`. 이식 검증: 과거 분봉 리서치 무작위 3개(시드 20261001) 원본 결과 재현.
+설계 `docs/done/PLAN_BACKTEST_MINUTE.md`, 함수 목록 `research/backtest_minute/README.md`. 이식 검증: 과거 분봉 리서치 무작위 3개(시드 20261001) 원본 결과 재현.
 
 - 전 종목 분봉은 **2025-12-01~** (그 전은 하루 ~130종목). 유니버스 기본 = 전 종목, 전일 정보로만 거름
 - 분봉 로드는 DB 읽기 전용 — 없는 날짜를 키움에서 받지 않는다
