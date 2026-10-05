@@ -29,7 +29,8 @@ git log origin/main..main
 - **검증된 유효전략은 커밋하지 않는다.** 백테스트나 실운용에서 성과가 확인된 전략의
   진입·청산 조건, 튜닝된 파라미터 값, 그 결과 문서는 `research/private/` 에 둔다
   (`.gitignore` 처리됨). 공개되면 알파가 사라진다.
-- 성과가 검증되지 않은 탐색·실패 기록은 공개해도 된다. 그대로 `research/` 에 커밋한다.
+- 리서치 결과 문서·결과 json 은 커밋하지 않는다. 기각은 `research/private/REJECTED.md`·`LEADS.md` 에 한 절로 남기고
+  원본 폴더는 지운다 (`research/BACKTEST_DATA.md` §0). 공용 도구·데이터 지침만 `research/` 에 커밋한다.
 - 유효/무효 판단이 애매하면 커밋하지 말고 사용자에게 묻는다.
 - 자격증명은 어떤 경우에도 커밋하지 않는다 (`.env` 는 루트 하나, `.gitignore` + hook 차단).
 
@@ -50,6 +51,13 @@ push 만 부탁하고 말없이 PR 을 만들면 사용자는 통보받지 못�
 ! git push -u origin <branch>
 → push 되면 PR 만들고 리뷰 감시 띄운다
 ```
+
+사용자에게 붙여넣게 할 명령은 **한 줄 100자 안팎**으로 쪼갠다. 긴 명령은 터미널에서 줄바꿈되어
+둘째 줄부터 별개 명령으로 실행된다(2026-10-06 원격 브랜치 삭제가 세 번 끊김).
+
+PR 본문: PLAN 기반 구현이면 `PLAN_<NAME>` 을 적는다. 이때 브랜치가 그 PLAN 문서를 안 고쳤으면
+`.claude/hooks/block-plan-pr.sh` 가 `gh pr create` 를 막는다 — 진행 체크·구현 차이 갱신 후 다시
+(`skills/new-etf-insight-plan-writing/SKILL.md` §9).
 
 PR 이 이미 열려 있으면 PR 을 새로 만들지 않는다. push 뒤에 리뷰를 다시 트리거한다.
 
@@ -138,3 +146,20 @@ git reset --hard origin/main
 
 `git reset --hard` 전에 로컬 전용 커밋의 트리 해시가 원격 쪽 커밋과 같은지 대조한다
 (`git rev-parse <sha>^{tree}`). 다르면 리셋하지 말고 사용자에게 알린다.
+
+### 머지한 브랜치·worktree 바로 정리
+
+머지 직후 같은 턴에 정리한다. 미루면 쌓인다(2026-10-06 로컬 17·원격 20 브랜치, worktree 3개 일괄 정리).
+
+```bash
+git cherry origin/main <branch> | grep -c '^+'   # 0 이어야 삭제 (rebase 머지라 branch -d 는 실패함)
+git worktree list                                 # 그 브랜치 worktree 있으면 status 깨끗한지 보고 remove
+git worktree remove <path> && git worktree prune
+git branch -D <branch>
+git push origin --delete <branch>                 # 에이전트 실행 가능. 막히면 사용자에게 한 줄씩 안내
+```
+
+- worktree 를 지우기 전에 스케줄 작업이 그 경로를 실행하는지 확인한다(`Get-ScheduledTask` 액션 인자).
+  참조 중이면 그 작업이 끝날 때까지 남긴다.
+- PLAN 기반 작업이었으면 PLAN 의 진행 체크·`docs/done` 이동도 확인한다(plan-writing §9).
+- `cherry` 결과가 0 이 아니면 지우지 말고 사용자에게 무엇이 남았는지 보고한다.
