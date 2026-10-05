@@ -335,14 +335,14 @@ def main():
                       "pre20": pre, "group": grp, "liq_ok": liq_ok,
                       "x_anomaly": "anomaly" in vs, "x_unverified": "unverified" in vs,
                       "공시시각": tm or "", "시각구분": cls})
-        d1 = d1_trade(df, d0, x1)
+        d1 = d1_trade(df, d0, min(xs))
         if isinstance(d1, str):
             d1skip[d1] = d1skip.get(d1, 0) + 1
         else:
             dd = mdates[d0]
             trecs.append({"acptno": ac, "유형": kind, "group": grp,
                           "liq_ok": liq_ok, "date": dd, "year": dd[:4], **d1})
-        pt = post_trade(df, d0, x1, cls)
+        pt = post_trade(df, d0, min(xs), cls)
         if not isinstance(pt, str):
             dd = mdates[d0]
             precs.append({"acptno": ac, "유형": kind, "cls": cls,

@@ -11,6 +11,8 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
+import requests
+
 from scripts.broker_client import BrokerClient, fills_by_order, quote_fresh
 from scripts.run_close_bet import (
     fetch_price_via_broker,
@@ -465,11 +467,18 @@ class TestCancelOrder(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertIn("취소 불가", result["message"])
 
-    def test_exception_is_failed(self):
+    def test_http_error_is_failed(self):
+        mock = _mock_response({}, status_code=500)
+        mock.raise_for_status.side_effect = requests.HTTPError("HTTP 500")
+        with patch("scripts.broker_client.requests.delete", return_value=mock):
+            result = _make_client().cancel("0000123", "005930")
+        self.assertEqual(result["status"], "failed")
+
+    def test_exception_is_unknown(self):
         with patch("scripts.broker_client.requests.delete",
                    side_effect=ConnectionError("refused")):
             result = _make_client().cancel("0000123", "005930")
-        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["status"], "unknown")
 
     def test_dry_run_no_http(self):
         with patch("scripts.broker_client.requests.delete") as mock_del:
