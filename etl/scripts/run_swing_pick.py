@@ -78,16 +78,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         final = build_graph(deps).invoke({"today": day})
     except Exception as exc:
-        # 죽기 전 알림 시도. 여기도 best-effort — 전송 실패해도 exit 1은 유지.
+        # 죽기 전 알림 시도. best-effort — 전송 실패하면 exit 1로 러너가 대신 알린다.
         # dry-run은 시험 실행이라 채널에 실패 알림을 보내지 않는다.
+        sent = False
         if not args.dry_run:
             try:
-                notify(f"[스윙 후보] 실패: {type(exc).__name__}", channel="batch")
+                sent = bool(notify(f"[스윙 후보] 실패: {type(exc).__name__}", channel="batch"))
             except Exception:
                 pass
         print(f"[swing_pick] FAILED {day}: {exc}")
         # 2 = 알림 보낸 실패 — 러너는 중복 알림 안 보냄 (run-swing-pick.ps1)
-        return 2
+        return 2 if sent else 1
 
     if args.dry_run:
         # 전송 안 한 대신 보낼 문구를 그대로 보여준다 — dry-run 검증용.
