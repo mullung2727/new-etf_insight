@@ -534,7 +534,7 @@ t 값            mean / (pstdev / sqrt(n))
 ## 7. 공용 모듈 — `research/backtest_daily/` (일봉 전용, 2026-09-30~)
 
 새 **일봉** 리서치는 위 §1~§6 가드를 직접 짜지 말고 이 패키지를 쓴다. **muse 명세에도 이 패키지 사용을 반드시 지시한다** (2026-09-30 사용자). 분봉은 §8 `backtest_minute`.
-설계 `docs/PLAN_BACKTEST_DAILY.md`, 함수 목록 `research/backtest_daily/README.md`. 이식 검증: ipo_drift 1·2단계 결과 51개 수치 1e-4 이내 일치.
+설계 `docs/done/PLAN_BACKTEST_DAILY.md`, 함수 목록 `research/backtest_daily/README.md`. 이식 검증: ipo_drift 1·2단계 결과 51개 수치 1e-4 이내 일치.
 
 | 이 문서의 가드 | 함수 |
 |---|---|
