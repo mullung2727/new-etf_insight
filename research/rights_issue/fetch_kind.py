@@ -300,7 +300,7 @@ def fetch_search(keyword, year, refresh):
                     "fromDate": f"{year}-01-01", "toDate": to_date, "reportNm": keyword}
             pr, total = parse_search(get(SEARCH_URL, form, SEARCH_HEADERS))
             rows.extend(pr)
-            if page >= (total + 99) // 100:
+            if not pr or page >= (total + 99) // 100:
                 break
             page += 1
     except Exception as e:

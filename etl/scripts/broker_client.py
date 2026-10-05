@@ -8,7 +8,7 @@ sources(side → 주문 source 매핑) 뿐이다. 전략 규칙·파라미터는
   submitted — broker 접수됨. order_no 보유.
   rejected  — broker가 거부함 (accepted 거짓). 사유 확인 후 판단.
   failed    — 접수 안 됨이 확정적임 (거부·형식 오류·조회 실패 등).
-  unknown   — 예외로 접수 여부를 모름. 이미 접수됐을 수 있음 → 재주문(재정정)
+  unknown   — 예외로 접수 여부를 모름. 이미 접수됐을 수 있음 → 재주문(재정정·재취소)
               금지. 미체결/체결내역으로 먼저 확인할 것.
   dry_run   — dry_run 모드. HTTP 호출 없음 (order_no는 DRY_{종목}_{HHMMSS}).
   cancelled — 취소 접수됨.
@@ -247,9 +247,12 @@ class BrokerClient:
                 return {"order_no": no, "status": "failed", "message": msg}
             print(f"[{self._tag}] {no} 취소 접수")
             return {"order_no": no, "status": "cancelled"}
-        except Exception as exc:
+        except requests.HTTPError as exc:
             print(f"[{self._tag}] {no} 취소 실패: {exc}")
             return {"order_no": no, "status": "failed", "message": str(exc)}
+        except Exception as exc:
+            print(f"[{self._tag}] {no} 취소 예외 — 접수됐을 수 있음: {exc}")
+            return {"order_no": no, "status": "unknown", "message": str(exc)}
 
     def unfilled(self, side: str) -> list[dict] | None:
         """미체결 목록. list가 아니면 None."""
