@@ -16,9 +16,23 @@ from report_metrics import catalog, storage  # noqa: E402
 
 _CODE_RE = re.compile(r"^\d{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_KEY_TAIL_RE = re.compile(r"_(\d{8}_[A-Za-z]+_\d+)$")
 
 _SOURCE = "legacy_file"
 _BATCH_COMMIT = 100
+
+
+def _split_broker_key(rest: str) -> tuple[str, str] | None:
+    """파일명 '{증권사}_{키}' → (증권사, 키).
+
+    증권사(sanitize 로 '/'→'_')와 키 모두 '_'를 품을 수 있어 첫 '_' 분할은 틀린다.
+    pstatic 키 꼬리 패턴 우선, 없으면 구 규칙(첫 '_').
+    """
+    m = _KEY_TAIL_RE.search(rest)
+    if m and m.start() > 0:
+        return rest[:m.start()], m.group(1)
+    parts = rest.split("_", 1)
+    return (parts[0], parts[1]) if len(parts) == 2 else None
 
 
 def migrate(export_base: Path, con: sqlite3.Connection, *, now: str | None = None) -> dict:
@@ -38,11 +52,11 @@ def migrate(export_base: Path, con: sqlite3.Connection, *, now: str | None = Non
             if len(stem) <= 11 or stem[10] != "_" or not _DATE_RE.match(stem[:10]):
                 stats["skipped_bad_name"] += 1
                 continue
-            parts = stem[11:].split("_", 1)
-            if len(parts) != 2:
+            split = _split_broker_key(stem[11:])
+            if split is None:
                 stats["skipped_bad_name"] += 1
                 continue
-            broker, key = parts
+            broker, key = split
             stats["scanned"] += 1
             pdf_rel = f"stock_reports/{d.name}/{pdf.name}"
             known = con.execute(

@@ -50,9 +50,10 @@ con = duckdb.connect("db/krx_ohlcv.duckdb", read_only=True)
 latest = con.execute("SELECT max(date) FROM ohlcv").fetchone()[0]
 cnt, min_t, max_t, total_tv = con.execute(
     "SELECT COUNT(*), MIN(ticker), MAX(ticker), SUM(trading_value) FROM ohlcv WHERE date=?", [latest]).fetchone()
+has_yday = con.execute("SELECT COUNT(*) FROM ohlcv WHERE date=?", [yday]).fetchone()[0] > 0
 con.close()
 print(latest)
-print("1" if latest >= yday else "0")
+print("1" if has_yday else "0")
 print(
     "[KRX OHLCV] " + latest + "\n"
     + f"- rows: {cnt}\n"
@@ -63,6 +64,7 @@ print(
 )
 '@.Replace("__YDAY__", $yday)
   $lines = @($status | .\.venv\Scripts\python.exe -)
+  if ($LASTEXITCODE -ne 0) { throw "status query failed with exit code $LASTEXITCODE" }
   $latest, $hasYday = $lines[0], $lines[1]
   $report = ($lines | Select-Object -Skip 2) -join "`n"
   "fetched=$fetched latest=$latest has_yday=$hasYday final=$isFinal" | Tee-Object -FilePath $log -Append | Out-Null
