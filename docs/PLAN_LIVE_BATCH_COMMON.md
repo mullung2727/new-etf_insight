@@ -78,8 +78,11 @@
 
 ### D. 시세 날짜
 
-- `BrokerClient.best_quote` 가 쓰는 `quote_fresh(base_tm, now, max_age_s)` 를 보유 갱신(high52 verify `update_holdings`, envelope verify)에도 적용.
-  오늘 장중·장후 시각이 아니면 그 종목 갱신 건너뜀 + 알림 1줄.
+- 보유 갱신(high52 verify `update_holdings`, envelope verify)은 시세의 **날짜 필드가 오늘인지** 먼저 확인한다.
+  날짜 필드가 없거나 형식이 이상하거나 오늘이 아니면 그 종목 갱신 건너뜀 + 알림 1줄.
+- `quote_fresh(base_tm, now, max_age_s)` 는 `HHMMSS` 만 비교하고 빈·이상 값을 신선으로 본다 — 전일 같은 시각 시세가 통과하므로
+  날짜 검사를 대신할 수 없다. 장중 경과 시간 검사로만 유지한다.
+- P4 착수 전 확인: broker 시세 응답(`/quotes` 일괄 스냅샷)에 날짜 필드가 있는지 실측. 없으면 일봉(`ka10081`) 최신 날짜로 대체.
 
 ## 4. 단계 (전략 하나씩, 장 마감 후 전환 → 다음 거래일 로그 확인)
 
@@ -101,7 +104,7 @@ P3 envelope 3개 → P4 high52 3개(+D) → P5 rights 5개(+C) → P6 jevq 6개(
 | 예외 시 알림 성공 2 / 실패 1 | notify True → 2, False·예외 → 1 |
 | 결과 불명은 완료 아님 | unknown 행 → 다음 실행 대상 포함, 미체결 잔류면 제외+알림 |
 | 재시도 이중 매도 없음 | 잔고 0 → skip_not_held |
-| 오래된 시세로 보유 갱신 안 함 | base_tm 전일 → update 0 + 알림 |
+| 오래된 시세로 보유 갱신 안 함 | 시세 날짜 전일(시각은 최근) → update 0 + 알림, 날짜 없음·형식 오류 → update 0 |
 | BrokerClient 교체 후 추격 동작 동일 | 기존 buy_ah·chase 테스트 전부 통과 (가짜 클라이언트 주입) |
 
 ## 6. 결정 출처
