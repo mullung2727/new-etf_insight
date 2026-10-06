@@ -15,6 +15,7 @@ from scripts.us_oas_alert import (
     ensure_alert_table,
     format_lines,
     main,
+    mark_reported,
     proxy,
     record,
 )
@@ -74,13 +75,43 @@ class TestRecord(unittest.TestCase):
             try:
                 ensure_alert_table(con)
                 self.assertTrue(record(con, r))
+                self.assertTrue(record(con, r))
+                self.assertTrue(mark_reported(con, r["date"]))
                 self.assertFalse(record(con, r))
                 n = con.execute("SELECT count(*) FROM oas_alert_log").fetchone()[0]
                 self.assertEqual(n, 1)
+                self.assertFalse(mark_reported(con, "19000101"))
             finally:
                 con.close()
 
     def test_a4_main_second_run_reports_already(self):
+        r = _alert_row()
+        px = pd.DataFrame({"HYG": [0.001], "IEI": [0.002]}, index=["20240102"])
+        oas = pd.Series([3.0], index=["20240102"], name="BAMLH0A0HYM2")
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "alert.duckdb")
+            with (
+                patch("scripts.us_oas_alert.load_fred", return_value=oas),
+                patch("scripts.us_oas_alert.load_etf_tr", return_value=px),
+                patch("scripts.us_oas_alert.compute", return_value=r),
+            ):
+                buf1 = io.StringIO()
+                with contextlib.redirect_stdout(buf1):
+                    rc1 = main(["--db-path", db])
+                bufm = io.StringIO()
+                with contextlib.redirect_stdout(bufm):
+                    rcm = main(["--db-path", db, "--mark-reported", r["date"]])
+                buf2 = io.StringIO()
+                with contextlib.redirect_stdout(buf2):
+                    rc2 = main(["--db-path", db])
+        self.assertEqual(rc1, 0)
+        self.assertEqual(rcm, 0)
+        self.assertEqual(rc2, 0)
+        self.assertIn("OAS ALERT", buf1.getvalue())
+        self.assertIn("already reported", buf2.getvalue())
+        self.assertNotIn("ALERT", buf2.getvalue())
+
+    def test_a4_main_rereports_without_mark(self):
         r = _alert_row()
         px = pd.DataFrame({"HYG": [0.001], "IEI": [0.002]}, index=["20240102"])
         oas = pd.Series([3.0], index=["20240102"], name="BAMLH0A0HYM2")
@@ -100,8 +131,7 @@ class TestRecord(unittest.TestCase):
         self.assertEqual(rc1, 0)
         self.assertEqual(rc2, 0)
         self.assertIn("OAS ALERT", buf1.getvalue())
-        self.assertIn("already reported", buf2.getvalue())
-        self.assertNotIn("ALERT", buf2.getvalue())
+        self.assertIn("OAS ALERT", buf2.getvalue())
 
 
 class TestFormat(unittest.TestCase):

@@ -37,7 +37,7 @@ _CREATE_ALERT_LOG = """
 CREATE TABLE IF NOT EXISTS oas_alert_log (
   date VARCHAR PRIMARY KEY, run_at TIMESTAMP, base_date VARCHAR, base DOUBLE, est DOUBLE,
   chg_bp DOUBLE, thr_bp DOUBLE, rank_pct DOUBLE, alert_fixed BOOLEAN, alert_pct BOOLEAN,
-  miss_date VARCHAR, miss_bp DOUBLE)
+  miss_date VARCHAR, miss_bp DOUBLE, reported BOOLEAN DEFAULT FALSE)
 """
 
 
@@ -132,25 +132,49 @@ def ensure_alert_table(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def record(con: duckdb.DuckDBPyConnection, r: dict) -> bool:
-    """Insert one row for r["date"]; return False if that date already exists."""
-    exists = con.execute("SELECT 1 FROM oas_alert_log WHERE date = ?", [r["date"]]).fetchone()
-    if exists is not None:
-        return False
+    """Return True if this run should report r["date"].
+
+    First run's values stay (no row update on rerun); report completion
+    is marked with mark_reported.
+    """
     con.execute(
-        "INSERT INTO oas_alert_log VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO oas_alert_log (date, run_at, base_date, base, est, chg_bp, thr_bp,"
+        " rank_pct, alert_fixed, alert_pct, miss_date, miss_bp)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (date) DO NOTHING",
         [
             r["date"], datetime.now(timezone.utc).replace(tzinfo=None),
             r["base_date"], r["base"], r["est"], r["chg_bp"], r["thr_bp"], r["rank_pct"],
             r["alert_fixed"], r["alert_pct"], r["miss_date"], r["miss_bp"],
         ],
     )
-    return True
+    row = con.execute("SELECT reported FROM oas_alert_log WHERE date = ?", [r["date"]]).fetchone()
+    return not bool(row[0])
+
+
+def mark_reported(con: duckdb.DuckDBPyConnection, date: str) -> bool:
+    """Mark date as reported; return whether a row exists for that date."""
+    con.execute("UPDATE oas_alert_log SET reported = TRUE WHERE date = ?", [date])
+    return con.execute("SELECT 1 FROM oas_alert_log WHERE date = ?", [date]).fetchone() is not None
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="OAS spike alert: estimate, log, print OAS lines")
     parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH)
+    parser.add_argument("--mark-reported", default=None)
     args = parser.parse_args(argv)
+    if args.mark_reported is not None:
+        args.db_path.parent.mkdir(parents=True, exist_ok=True)
+        con = duckdb.connect(str(args.db_path))
+        try:
+            ensure_alert_table(con)
+            ok = mark_reported(con, args.mark_reported)
+        finally:
+            con.close()
+        if ok:
+            print(f"OAS {args.mark_reported} marked reported")
+            return 0
+        print(f"OAS {args.mark_reported} not found")
+        return 1
     oas = load_fred(OAS_SERIES)
     px = load_etf_tr(["HYG", "IEI"])
     logret = np.log1p(px[["HYG", "IEI"]])
