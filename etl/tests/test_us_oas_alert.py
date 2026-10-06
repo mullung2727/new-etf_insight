@@ -36,6 +36,7 @@ def _alert_row(**kw):
         "n_prior": 252,
         "miss_date": "20240102",
         "miss_bp": 1.5,
+        "cum7_bp": 44.7,
     }
     r.update(kw)
     return r
@@ -80,6 +81,8 @@ class TestRecord(unittest.TestCase):
                 self.assertFalse(record(con, r))
                 n = con.execute("SELECT count(*) FROM oas_alert_log").fetchone()[0]
                 self.assertEqual(n, 1)
+                val = con.execute("SELECT cum7_bp FROM oas_alert_log").fetchone()[0]
+                self.assertAlmostEqual(val, r["cum7_bp"])
                 self.assertFalse(mark_reported(con, "19000101"))
             finally:
                 con.close()
@@ -166,6 +169,28 @@ class TestFormat(unittest.TestCase):
         with_miss = format_lines(_alert_row(), False)
         self.assertTrue(any("miss" in line for line in with_miss))
 
+    def test_a7b_cum7_suffix_in_base_line(self):
+        r = _alert_row(
+            alert=False, alert_fixed=False, chg_bp=5.1,
+            miss_bp=None, miss_date=None, cum7_bp=44.7,
+        )
+        lines = format_lines(r, False)
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("OAS "))
+        self.assertRegex(lines[0], r"^OAS (\d{8}) est ")
+        self.assertTrue(lines[0].endswith(", 7d +44.7bp"), lines[0])
+
+    def test_a7b_no_cum7_suffix_when_none(self):
+        r = _alert_row(
+            alert=False, alert_fixed=False, chg_bp=5.1,
+            miss_bp=None, miss_date=None, cum7_bp=None,
+        )
+        lines = format_lines(r, False)
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith("OAS "))
+        self.assertRegex(lines[0], r"^OAS (\d{8}) est ")
+        self.assertNotIn("7d", lines[0])
+
 
 class TestComputeSynthetic(unittest.TestCase):
     def test_a6_miss_and_window_equivalence(self):
@@ -194,6 +219,23 @@ class TestComputeSynthetic(unittest.TestCase):
         full_dates = [d for d in logret.index if d > oas.index[0] and d <= T]
         est_full = float(proxy.nowcast(oas, logret, full_dates).loc[T, "oas"])
         self.assertAlmostEqual(r["est"], est_full, places=9)
+
+    def test_a7_cum7_matches_grind_formula(self):
+        days = pd.bdate_range("2024-01-01", periods=400).strftime("%Y%m%d").tolist()
+        logret = pd.DataFrame(
+            np.random.default_rng(7).normal(0.0, 0.003, size=(400, 2)),
+            index=days,
+            columns=["HYG", "IEI"],
+        )
+        steps = (-180.0 * logret["HYG"] + 200.0 * logret["IEI"]) / 100.0
+        noise = np.random.default_rng(11).normal(0.0, 0.01, size=400)
+        level = 3.0 + steps.cumsum() + pd.Series(noise, index=days)
+        oas = level.loc[days[1:-1]]  # all but first day; T excluded (one day late, like real)
+        oas.name = "BAMLH0A0HYM2"
+
+        r = compute(oas, logret)
+        ref = (r["est"] - oas.iloc[list(oas.index).index(r["base_date"]) - 6]) * 100
+        self.assertAlmostEqual(r["cum7_bp"], ref, places=9)
 
 
 if __name__ == "__main__":
