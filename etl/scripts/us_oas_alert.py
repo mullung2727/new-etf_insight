@@ -31,13 +31,14 @@ FIXED_BP = 20.0
 PCT_Q = 0.02
 WIN = 252
 MIN_N = 126
+CUM_K = 7
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_macro.duckdb"
 
 _CREATE_ALERT_LOG = """
 CREATE TABLE IF NOT EXISTS oas_alert_log (
   date VARCHAR PRIMARY KEY, run_at TIMESTAMP, base_date VARCHAR, base DOUBLE, est DOUBLE,
   chg_bp DOUBLE, thr_bp DOUBLE, rank_pct DOUBLE, alert_fixed BOOLEAN, alert_pct BOOLEAN,
-  miss_date VARCHAR, miss_bp DOUBLE, reported BOOLEAN DEFAULT FALSE)
+  miss_date VARCHAR, miss_bp DOUBLE, cum7_bp DOUBLE, reported BOOLEAN DEFAULT FALSE)
 """
 
 
@@ -93,6 +94,14 @@ def compute(oas: pd.Series, etf_logret: pd.DataFrame) -> dict:
         miss_bp = float((float(oas.loc[base_date]) - float(nc.loc[base_date, "oas"])) * 100)
     else:
         miss_date, miss_bp = None, None
+    try:
+        i = list(oas.index).index(base_date)
+    except ValueError:
+        i = None
+    if i is not None and i - (CUM_K - 1) >= 0:
+        cum7_bp = (float(t["oas"]) - float(oas.iloc[i - (CUM_K - 1)])) * 100
+    else:
+        cum7_bp = None
     return {
         "date": str(T),
         "base_date": base_date,
@@ -101,6 +110,7 @@ def compute(oas: pd.Series, etf_logret: pd.DataFrame) -> dict:
         **out,
         "miss_date": miss_date,
         "miss_bp": miss_bp,
+        "cum7_bp": cum7_bp,
     }
 
 
@@ -121,6 +131,7 @@ def format_lines(r: dict, already: bool) -> list[str]:
     lines.append(
         f"OAS {r['date']} est {r['est']:.2f}% (actual {r['base_date']} {r['base']:.2f}%) "
         f"chg {chg:+.1f}bp, 1y rank {rank}"
+        + (f", 7d {r['cum7_bp']:+.1f}bp" if r["cum7_bp"] is not None else "")
     )
     if r["miss_bp"] is not None:
         lines.append(f"OAS miss {r['miss_date']}: actual - est {r['miss_bp']:+.1f}bp")
@@ -139,12 +150,12 @@ def record(con: duckdb.DuckDBPyConnection, r: dict) -> bool:
     """
     con.execute(
         "INSERT INTO oas_alert_log (date, run_at, base_date, base, est, chg_bp, thr_bp,"
-        " rank_pct, alert_fixed, alert_pct, miss_date, miss_bp)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (date) DO NOTHING",
+        " rank_pct, alert_fixed, alert_pct, miss_date, miss_bp, cum7_bp)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT (date) DO NOTHING",
         [
             r["date"], datetime.now(timezone.utc).replace(tzinfo=None),
             r["base_date"], r["base"], r["est"], r["chg_bp"], r["thr_bp"], r["rank_pct"],
-            r["alert_fixed"], r["alert_pct"], r["miss_date"], r["miss_bp"],
+            r["alert_fixed"], r["alert_pct"], r["miss_date"], r["miss_bp"], r["cum7_bp"],
         ],
     )
     row = con.execute("SELECT reported FROM oas_alert_log WHERE date = ?", [r["date"]]).fetchone()

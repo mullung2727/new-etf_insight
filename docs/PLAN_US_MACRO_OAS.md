@@ -356,6 +356,8 @@ P4 매일 스케줄 `us-daily` + OAS 급등 알림 (§8, A1~A6)   ← 2026-10-06
 - 상위 2% 기준 thr(T) = 직전 252개 chg(T 미포함)의 98% 분위수(`np.quantile` 기본). 직전 < 126개면 분위 판정 안 함(고정만).
 - 알림 = chg ≥ 20bp 또는 (thr 있음 and chg ≥ thr). 순위 표시 = 직전 252개 중 chg 보다 작은 비율.
 - 보조(추정 놓침): 마지막 실제 OAS 관측일 B 에 대해 miss = (실제 B − B 날짜 추정치) bp. 알림 조건 아님, 줄로만 표시.
+- 보조(7일 누적, 2026-10-06 추가): cum7 = 오늘 추정치 − B 기준 6관측 전 실제값(bp). 보고 줄 끝 `7d +X bp` 로만 표시, 알림 조건 아님.
+  근거 `research/us_oas/RESULTS_GRIND_ALERT.md`: 하루 알림 없이 7일 +40bp 이상(18건, 2007~2022 추정) 뒤 20일 −10% 이하 5.6%(평소 6.9%), −5% 이하 33%(평소 24%), 20일 평균 약 −0.5%, 11건은 20일 안 하루 알림으로 번짐 → 약한 부정 신호. 누적 규칙 15종도 하루 상위 2% 보다 나은 게 없어 알림은 추가 안 함(사용자 2026-10-06).
 
 | 기준 | 값 | 누가 |
 |---|---|---|
@@ -368,7 +370,7 @@ P4 매일 스케줄 `us-daily` + OAS 급등 알림 (§8, A1~A6)   ← 2026-10-06
 - `etl/scripts/us_oas_alert.py` (신규): 위 계산 → `us_macro.duckdb` `oas_alert_log` 1행 → stdout 에 `OAS ` 로 시작하는 줄 출력.
   - 데이터는 `research.backtest_daily.data_us.load_fred/load_etf_tr`(읽기 전용), 추정은 `research.us_oas.proxy.nowcast`. 재구현 금지.
   - 같은 T 가 이미 `oas_alert_log` 에 있으면(미국 휴장으로 T 가 안 바뀐 날) 행 추가·알림 없이 `OAS T 이미 보고됨` 만 출력.
-- `oas_alert_log (date VARCHAR PK, run_at TIMESTAMP UTC, base_date, base, est, chg_bp, thr_bp, rank_pct, alert_fixed BOOL, alert_pct BOOL, miss_date, miss_bp)`
+- `oas_alert_log (date VARCHAR PK, run_at TIMESTAMP UTC, base_date, base, est, chg_bp, thr_bp, rank_pct, alert_fixed BOOL, alert_pct BOOL, miss_date, miss_bp, cum7_bp, reported BOOL)` — reported 는 Discord 전송 성공 뒤 러너가 `--mark-reported` 로 표시
 - `ops/scheduled-tasks/run-us-daily.ps1`: 거시 단계 뒤 `us_oas_alert.py` 실행, `^OAS ` 줄을 보고에 넣음. 알림 줄(`OAS ALERT`)은 보고 머리 바로 아래. 실패는 `failedSteps` 에 추가(다른 단계와 동일).
 - `etl/tests/test_us_oas_alert.py` (신규, unittest).
 
