@@ -55,15 +55,22 @@ try {
   $macroLines = @($script:lastOutput | Where-Object { ($_ -match " FAILED: ") -or (($_ -match "^[^ ]+=[^ ]+$") -and ($_ -notmatch "=0$")) })
   if ($script:lastCode -ne 0) { $failedSteps += "build_us_macro.py (exit $($script:lastCode))" }
 
+  Invoke-Step "OAS spike alert" ".\.venv\Scripts\python.exe" @("scripts\us_oas_alert.py")
+  $oasLines = @($script:lastOutput | Where-Object { $_ -match "^OAS " })
+  if ($script:lastCode -ne 0) { $failedSteps += "us_oas_alert.py (exit $($script:lastCode))" }
+
   if ($failedSteps.Count -eq 0) {
     if ($ohlcvSummary.Count -eq 0) { $ohlcvSummary = @("(no summary line)") }
-    $reportLines = @("[US DAILY] " + $target, "- build_us_ohlcv: " + $ohlcvSummary[0])
+    $reportLines = @("[US DAILY] " + $target)
+    $reportLines += @($oasLines | Where-Object { $_ -match "^OAS ALERT" })
+    $reportLines += @("- build_us_ohlcv: " + $ohlcvSummary[0])
     if ($macroLines.Count -gt 0) {
       $reportLines += "- build_us_macro:"
       $reportLines += ($macroLines | ForEach-Object { "  " + $_ })
     } else {
       $reportLines += "- build_us_macro: no new rows"
     }
+    $reportLines += @($oasLines | Where-Object { $_ -notmatch "^OAS ALERT" } | ForEach-Object { "- " + $_ })
     $message = $reportLines -join "`n"
     $message | Tee-Object -FilePath $log -Append | Write-Output
     Invoke-Step "send Discord report" ".\.venv\Scripts\python.exe" @("scripts\send_report_messages.py", "--message", $message)

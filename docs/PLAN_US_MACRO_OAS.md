@@ -8,7 +8,7 @@
 
 ## 진행
 - [x] 구현·테스트 머지 (P1·P1b·P2·P3, PR #46 2026-10-04)
-- [ ] 운영 등록 (스케줄 작업·config) — `us-daily` 화~토 11:00 등록(2026-10-06). 남은 것: P4 판정 기록 `record_signal()` 이 `run-us-daily.ps1` 에 미연결
+- [ ] 운영 등록 (스케줄 작업·config) — `us-daily` 화~토 11:00 등록(2026-10-06). 남은 것: P4 를 "판정 기록"에서 **OAS 급등 알림**으로 바꿈(§8, 사용자 2026-10-06). 알림 스크립트·`oas_alert_log`·러너 연결 미구현. (`record_signal()`·`signal_log` 는 구현된 적 없음)
 - [ ] 첫 실가동 확인 (날짜) — us-daily 10-06 11:00 첫 실행 확인 예정. P0 공개 시각 측정(`us-macro-publish-probe`, worktree 경로) 10-10 종료 후 D3 확정
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
@@ -153,16 +153,7 @@ index_ohlcv (
     PRIMARY KEY (date, ticker)
 )
 
-signal_log (
-    run_at        TIMESTAMP,  -- 판정 실행 시각 (UTC)
-    rule_id       VARCHAR,    -- 예 'tqqq_oas_v1'
-    oas_date      VARCHAR,    -- 판정에 쓴 가장 최근 OAS 관측일
-    oas           DOUBLE,
-    d_oas10_bp    DOUBLE,
-    state         VARCHAR,    -- A~E
-    weights_json  VARCHAR,    -- {"TQQQ":0.7,"QQQ":0.3}
-    PRIMARY KEY (run_at, rule_id)
-)
+-- signal_log 는 취소(2026-10-06). 대신 §8 oas_alert_log
 ```
 
 - 최신값 조회 = `(series_id, date)` 별 `fetched_at` 최대 행.
@@ -179,7 +170,7 @@ signal_log (
 | 1 FRED 받기 | `fetch_fred(series_id)` | API `series/observations`, 전 구간. `value == "."`(결측)는 버림 |
 | 2 변경분만 적재 | `upsert_fred()` | DB 최신값과 값이 다르거나 새 관측일인 행만 INSERT. 같으면 건너뜀 |
 | 2b 지수 받기 | `fetch_index()` → `replace_index()` | yfinance `INDEX_TICKERS = ("^VIX", "^VIX3M")` 전 구간(1990~). 티커별 한 트랜잭션 DELETE 후 INSERT, 잘린 응답이면 기존 행 보존. 오늘 봉은 뉴욕 20:00(장후 종료) 전이면 버림 — D3 로 16:30 에서 변경 |
-| 3 판정 기록 | `record_signal()` | `research/us_oas` 규칙을 불러 최신 OAS로 상태·비중 계산 → `signal_log` 1행 |
+| ~~3 판정 기록~~ | ~~`record_signal()`~~ | **취소(2026-10-06)** — 비중 판정은 나중에 다른 지표와 복합으로. 대신 별도 스크립트 OAS 급등 알림(§8) |
 | 4 결과 출력 | — | 시리즈별 새 행 수, 실패 목록. 하나 실패해도 나머지는 적재 |
 
 ```powershell
@@ -312,7 +303,7 @@ CAGR, MDD, Sharpe(무위험 0 — BIL 차감은 참고 줄), Calmar, 연환산 �
 | E 진입·유지 | T12 OAS 8.5%·ΔOAS10 +200 → E (D 아님). 다음날 OAS 7% → E 유지 |
 | E 뒤 복귀 | T13 E 상태에서 OAS 4.4% → A. ΔOAS10 −60bp → A |
 | 5~8% 공백 | T14 prev=C, OAS 5.5%·ΔOAS10 +80 → C 유지 |
-| 판정 기록 | T15 `record_signal` → `signal_log` 1행, `oas_date` < 실행일 |
+| ~~판정 기록~~ | ~~T15~~ 취소 → §8 A1~A6 |
 | 지표 | T16 알려진 수익열의 CAGR·MDD·Sharpe 손계산 값과 일치 (공용 perf 테스트로 충족, PR #43) |
 | 볼린저 국면 | B1 OAS가 126일 평균+1σ 위 → 위험 회피, 아래 −1σ → 위험 선호, 처음 126일 → 보통 |
 | 볼린저 미래값 금지 | B2 T일 OAS를 극단값으로 바꿔도 T일 국면 불변 (T−1 까지만 사용) |
@@ -335,8 +326,8 @@ P2 리서치 틀 + 규칙 + 테스트 T7~T14, T16
    → verify: 테스트 통과
 P3 결과 실행 (비교 3종 + 스트레스 구간 + 대체치 비교)
    → verify: 결과 표 보고 (통과 판정 없음)
-P4 판정 기록 + 매일 스케줄 `us-daily` (T15)
-   → verify: 수동 1회 실행 → 주식·ETF·FRED 새 행 + signal_log 1행, 다음날 자동 실행 로그
+P4 매일 스케줄 `us-daily` + OAS 급등 알림 (§8, A1~A6)   ← 2026-10-06 판정 기록에서 변경
+   → verify: 테스트 통과, 수동 1회 실행 → oas_alert_log 1행 + Discord 보고에 OAS 줄, 다음날 자동 실행 로그
 ```
 
 ## 7. 알려진 한계
@@ -346,3 +337,50 @@ P4 판정 기록 + 매일 스케줄 `us-daily` (T15)
 - **yfinance 비공식 API** → 가끔 튀는 값. P1 샘플 대조.
 - **과거 공개 시점 기록 없음** → 3년 백테스트는 "T−1 값이 T 장 마감 전 공개"를 가정만 한다. 앞으로 쌓이는 fetched_at 으로만 확인 가능.
 - **세금 미반영 (주의).** 한국 거주자 해외주식 양도세 22%(연 250만원 공제)가 리밸런싱마다 실현 차익에 붙는다. 상태 전환이 잦을수록 TQQQ·QQQ 단순 보유 대비 세후 성과가 더 깎인다. 결과 표의 수익률은 전부 세전이다.
+
+## 8. OAS 급등 알림 (P4, 2026-10-06 판정 기록 대체)
+
+한 줄: 매일 `us-daily` 끝에 "오늘 OAS 추정 하루 변화"를 계산해 **최근 1년 상위 2% 또는 +20bp 이상**이면 Discord 보고 맨 위에 급등 알림을 띄운다. 참고용 — 주문·비중 판정 없음.
+
+### 8.1 왜·근거
+- 사용자(2026-10-06): 비중 판정은 나중에 다른 지표와 복합으로 쓰고, 지금은 OAS 급등을 알고 싶다. 기준(고정 vs 최근 흐름 대비)은 비교 후 결정.
+- 비교 결과 `research/us_oas/RESULTS_SPIKE_ALERT.md` (`run_spike_alert.py`):
+  - 알림 뒤 QQQ 5·10일 평균 수익은 평소보다 나쁘지 않음 → 하락 예고 아님.
+  - 대신 하락 구간 초입(고점 뒤 2~10일, 바닥 전)에 울림: 2008·2011·2015말·2018말·2020·2022·2025-04. 2024-08 은 상위 2% 미발생, 고정 10~20bp 는 발생 → 고정 20bp 를 OR 로 보완.
+  - 상위 2% 사건 69개(2007~2023 추정) 중 20일 안 QQQ −10% 이하 14.5%, 평소 6.9% → 약 2배지만 85% 는 큰 하락 없음. "다른 지표로 확인" 보조 알림.
+  - 고정 10~15bp 는 추정 구간 연 20~30회로 과다.
+
+### 8.2 계산 (시점 규약)
+- T = HYG·IEI 수익이 둘 다 있는 마지막 미국 거래일(한국 아침 실행 시 보통 어제 미국 장).
+- 오늘 변화 chg(T) = `proxy.nowcast` 의 T 추정치 − 마지막 실제 OAS(관측일 < T), bp. 비교 스크립트 R 구간과 같은 계산.
+- 상위 2% 기준 thr(T) = 직전 252개 chg(T 미포함)의 98% 분위수(`np.quantile` 기본). 직전 < 126개면 분위 판정 안 함(고정만).
+- 알림 = chg ≥ 20bp 또는 (thr 있음 and chg ≥ thr). 순위 표시 = 직전 252개 중 chg 보다 작은 비율.
+- 보조(추정 놓침): 마지막 실제 OAS 관측일 B 에 대해 miss = (실제 B − B 날짜 추정치) bp. 알림 조건 아님, 줄로만 표시.
+
+| 기준 | 값 | 누가 |
+|---|---|---|
+| 하루 변화 사용(10일 변화 아님) | — | 사용자 |
+| 상위 2% OR 고정 20bp | 0.98 분위 / 20bp | 내 추천, 사용자 수용 |
+| 분위 창·최소 표본 | 252 / 126 | 내 판단(비교 스크립트와 동일) |
+| 추정 놓침은 보조 표시만 | — | 사용자 |
+
+### 8.3 구현
+- `etl/scripts/us_oas_alert.py` (신규): 위 계산 → `us_macro.duckdb` `oas_alert_log` 1행 → stdout 에 `OAS ` 로 시작하는 줄 출력.
+  - 데이터는 `research.backtest_daily.data_us.load_fred/load_etf_tr`(읽기 전용), 추정은 `research.us_oas.proxy.nowcast`. 재구현 금지.
+  - 같은 T 가 이미 `oas_alert_log` 에 있으면(미국 휴장으로 T 가 안 바뀐 날) 행 추가·알림 없이 `OAS T 이미 보고됨` 만 출력.
+- `oas_alert_log (date VARCHAR PK, run_at TIMESTAMP UTC, base_date, base, est, chg_bp, thr_bp, rank_pct, alert_fixed BOOL, alert_pct BOOL, miss_date, miss_bp)`
+- `ops/scheduled-tasks/run-us-daily.ps1`: 거시 단계 뒤 `us_oas_alert.py` 실행, `^OAS ` 줄을 보고에 넣음. 알림 줄(`OAS ALERT`)은 보고 머리 바로 아래. 실패는 `failedSteps` 에 추가(다른 단계와 동일).
+- `etl/tests/test_us_oas_alert.py` (신규, unittest).
+
+### 8.4 요구사항 → 테스트
+| 요구사항 | 테스트 |
+|---|---|
+| 고정 20bp 이상이면 알림 | A1 chg 20 → alert_fixed True, 19.9 → False |
+| 상위 2% 이면 알림, 직전 값만 사용 | A2 T 값을 극단으로 바꿔도 thr 불변, chg ≥ thr → alert_pct True |
+| 직전 < 126개면 분위 판정 안 함 | A3 thr None, 고정 판정은 동작 |
+| 같은 T 두 번 실행 → 1행, 두 번째 알림 없음 | A4 임시 duckdb 로 2회 실행 |
+| 보고 줄 형식 | A5 알림/정상/이미 보고 세 경우 `OAS ` 접두 줄 |
+| 추정 놓침 계산 | A6 실제·추정 주입 → miss_bp |
+
+## 구현 차이
+- 원래 P4 `record_signal()`(명세 규칙 상태·비중을 `signal_log` 에 기록) → OAS 급등 알림 + `oas_alert_log` (사용자 2026-10-06: 비중 판정은 다른 지표와 복합으로 나중에)
