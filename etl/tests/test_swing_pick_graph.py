@@ -84,11 +84,13 @@ class _HttpResp:
 class FakeHttp:
     """URL로 분기. calls에 (url, params) 기록."""
 
-    def __init__(self, prices, investors, themes, fail_themes=()):
+    def __init__(self, prices, investors, themes, fail_themes=(),
+                 fail_investors=False):
         self.prices = prices
         self.investors = investors
         self.themes = themes
         self.fail_themes = set(fail_themes)
+        self.fail_investors = fail_investors
         self.calls = []
 
     def __call__(self, url, params=None, timeout=None):
@@ -99,6 +101,8 @@ class FakeHttp:
                               for t in codes if t in self.prices])
         ticker = url.split("/quotes/")[1].split("/")[0]
         if url.endswith("/investor-sum"):
+            if self.fail_investors:
+                raise RuntimeError("investor_down")
             return _HttpResp(self.investors[ticker])
         if url.endswith("/status"):
             return _HttpResp({"order_warning": "", "audit_info": "정상"})
@@ -464,6 +468,27 @@ class TestFailureIsolation(unittest.TestCase):
             self.assertEqual(cands["000001"]["sources"],
                              ["report", "telegram", "youtube"])
             self.assertEqual(final["picks"], ["000001", "000002", "000006"])
+
+
+    def test_investor_all_failed_warns(self):
+        with TemporaryDirectory() as tmp:
+            deps, f = _full_deps(tmp)
+            f["http"].fail_investors = True
+            final = build_graph(deps).invoke({"today": TODAY})
+            hits = [w for w in final["warnings"]
+                    if w.startswith("code_errors:investor_sum_failed:")]
+            self.assertEqual(len(hits), 1)
+            self.assertIn(hits[0], final["message"])
+            self.assertIn(hits[0], f["notify"].calls[0][0])
+            self.assertTrue(final["saved"])
+
+    def test_normal_run_no_code_error_warning(self):
+        with TemporaryDirectory() as tmp:
+            deps, f = _full_deps(tmp)
+            final = build_graph(deps).invoke({"today": TODAY})
+            self.assertEqual(
+                [w for w in final["warnings"]
+                 if w.startswith("code_errors:")], [])
 
 
 class TestFormatMessage(unittest.TestCase):
