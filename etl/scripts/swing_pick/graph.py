@@ -26,6 +26,7 @@
 """
 from __future__ import annotations
 
+import collections
 import json
 import sqlite3
 from contextlib import closing
@@ -60,6 +61,9 @@ JEV_EXCERPT_CHARS = 2000
 # 선정 목표·상태 조회 상한. 상위부터 확인하며 3개를 채우고 최대 10번만 본다.
 TOP_K = 3
 MAX_STATUS_CHECKS = 10
+
+# 같은 사유 오류가 판정 대상의 이 비율 이상이면 경고.
+CODE_ERR_WARN_RATIO = 0.5
 
 _SOURCE_LABELS = {
     "telegram": "텔레그램",
@@ -363,7 +367,17 @@ def node_judge_code(state: State, deps: Deps) -> dict:
             row[key] = res[key]
         # market_cap_prev·quarter·today_price·ma20는 저장 스키마에 없어 버린다.
         row["errors"].update(res["errors"])
-    return {"rows": rows}
+    counts = collections.Counter()
+    for res in results.values():
+        for reason in set(res["errors"].values()):
+            counts[reason] += 1
+    n = len(targets)
+    warnings = list(state.get("warnings") or [])
+    for reason in sorted(counts):
+        cnt = counts[reason]
+        if cnt >= n * CODE_ERR_WARN_RATIO:
+            warnings.append(f"code_errors:{reason}:{cnt}/{n}")
+    return {"rows": rows, "warnings": warnings}
 
 
 def _fetch_status(http_get: Callable, broker_url: str, ticker: str) -> dict | None:
