@@ -8,9 +8,9 @@
 
 ## 진행
 - [x] 구현·테스트 머지 (P1·P1b·P2·P3, PR #46 2026-10-04)
-- [ ] 운영 등록 (스케줄 작업·config) — `us-daily` 화~토 11:00 등록(2026-10-06). 남은 것: P4 를 "판정 기록"에서 **OAS 급등 알림**으로 바꿈(§8, 사용자 2026-10-06). 알림 스크립트·`oas_alert_log`·러너 연결 미구현. (`record_signal()`·`signal_log` 는 구현된 적 없음)
-- [ ] 첫 실가동 확인 (날짜) — us-daily 10-06 11:00 첫 실행 확인 예정. P0 공개 시각 측정(`us-macro-publish-probe`, worktree 경로) 10-10 종료 후 D3 확정
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [x] 운영 등록 (스케줄 작업·config) — `us-daily` 화~토 11:00 등록(2026-10-06). P4 는 "판정 기록" 대신 **OAS 급등 알림**(§8, 사용자 2026-10-06) — `us_oas_alert.py`·`oas_alert_log`·러너 연결 PR #56, 7일 누적 표시 PR #57. (`record_signal()`·`signal_log` 는 구현된 적 없음)
+- [ ] 첫 실가동 확인 (날짜) — us-daily 2026-10-07 11:00 정상: OAS 줄 Discord 보고(`est 3.08% chg -3.8bp, top 87.7%, 7d +15.2bp`, miss +3.5bp)·`marked reported`. 남은 것: P0 공개 시각 측정(`us-macro-publish-probe`, worktree 경로) 10-10 종료 후 D3 확정
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ## 구현 전 결정할 것
 
