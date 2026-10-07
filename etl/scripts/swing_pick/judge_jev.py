@@ -1,6 +1,6 @@
 """스윙 후보 Jev 판정: 1번 재료 지속성 점수 + 2번 리스크 이벤트 탈락.
 
-설계: docs/PLAN_SWING_PICK.md §0-2(1·2번 행), §0-3(Jev 전체).
+설계: docs/done/PLAN_SWING_PICK.md §0-2(1·2번 행), §0-3(Jev 전체).
 이 모듈은 Jev 판정까지만 한다. LangGraph·순위·DB 저장은 다음 단계라 여기서
 만들지 않는다.
 

@@ -1,6 +1,6 @@
 """스윙 후보 결과 저장: etl/db/swing_pick.sqlite3.
 
-설계: docs/PLAN_SWING_PICK.md §2-3 스키마 그대로 + 컬럼 2개
+설계: docs/done/PLAN_SWING_PICK.md §2-3 스키마 그대로 + 컬럼 2개
 (swing_candidates.excluded_reason, swing_runs.prev_date·warnings — warnings는
 JSON 배열).
 연결 규약·커밋 방식은 scripts/report_metrics/storage.py와 같다
