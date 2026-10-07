@@ -90,7 +90,7 @@ cd etl
 
 ## 설계
 
-- `docs/PLAN_SWING_PICK.md` (체크리스트 기준·점수·결정 이력)
+- `docs/done/PLAN_SWING_PICK.md` (체크리스트 기준·점수·결정 이력)
 
 ## 검증
 

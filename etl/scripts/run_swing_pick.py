@@ -1,7 +1,7 @@
 """스윙 후보 3종목 선정 배치 실행 스크립트.
 
 매 거래일 19:00 실행. 후보 수집 → 체크리스트 판정 → 상위 3종목 GPT 요약 →
-DB 저장 → 배치 채널 전송. 설계: docs/PLAN_SWING_PICK.md.
+DB 저장 → 배치 채널 전송. 설계: docs/done/PLAN_SWING_PICK.md.
 
 Usage (from etl/):
     uv run python scripts/run_swing_pick.py [--date YYYY-MM-DD]

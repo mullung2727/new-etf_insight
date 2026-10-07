@@ -1,6 +1,6 @@
 """스윙 후보 배치 LangGraph: 수집 → 컷 → Jev → 코드 판정 → 순위 → GPT 요약 → 저장 → 전송.
 
-설계: docs/PLAN_SWING_PICK.md §2-1(노드) 전체. 실행 순서는 직선 8노드다.
+설계: docs/done/PLAN_SWING_PICK.md §2-1(노드) 전체. 실행 순서는 직선 8노드다.
 판정 로직은 기존 모듈에 있고 (judge_code·judge_jev·rank·store) 여기서 새로
 만드는 건 조립·State 흐름·메시지뿐이다.
 
