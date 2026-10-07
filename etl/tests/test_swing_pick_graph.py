@@ -481,6 +481,8 @@ class TestFailureIsolation(unittest.TestCase):
             self.assertIn(hits[0], final["message"])
             self.assertIn(hits[0], f["notify"].calls[0][0])
             self.assertTrue(final["saved"])
+            _, run = _db_rows(deps.store_path)
+            self.assertIn(hits[0], run["warnings"])
 
     def test_normal_run_no_code_error_warning(self):
         with TemporaryDirectory() as tmp:
