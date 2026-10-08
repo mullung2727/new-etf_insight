@@ -389,6 +389,113 @@ class _ArchiveCase(unittest.TestCase):
         )
         self.assertIsNone(rows[0][1])
 
+    def test_15_negative_qty_null_ask1(self):
+        trade_rows = (
+            (1759881000000000000, "005930", "090000", 70000, -5, 100, None, 69900),
+            (1759881001000000000, "005930", "090001", 70100, 7, 107, 70200, 70000),
+            (1759881002000000000, "000660", "090002", 150000, -3, 50, 150100, 149900),
+        )
+        p = _make_sqlite(
+            self.src / "orderbook_raw_20261008.sqlite3",
+            trade_rows=trade_rows,
+            book_rows=None,
+        )
+        rc = run(self.src, self.dst, self.now, self.notify)
+        self.assertEqual(rc, 0)
+        self.assertFalse(p.exists())  # columns_check(음수 %·NULL) 통과 → 삭제
+        trade_pq = self.dst / "2026" / "10" / "trade_20261008.parquet"
+        self.assertEqual(_parquet_count(trade_pq), 3)
+        self.notify.assert_not_called()
+        # sqlite·duckdb % 부호 직접 확인
+        import duckdb
+
+        scon = sqlite3.connect(":memory:")
+        dcon = duckdb.connect()
+        try:
+            for v in (-5, 7, -3):
+                s = scon.execute(f"SELECT {v} % 1000003").fetchone()[0]
+                d = dcon.execute(f"SELECT {v} % 1000003").fetchone()[0]
+                self.assertEqual(s, d)
+        finally:
+            scon.close()
+            dcon.close()
+
+    def test_16_corrupt_bid1_detected(self):
+        p = _make_sqlite(
+            self.src / "orderbook_raw_20261008.sqlite3",
+            trade_rows=TRADE_ROWS,
+            book_rows=None,
+        )
+        self.assertEqual(run(self.src, self.dst, self.now, self.notify), 0)
+        _make_sqlite(p, trade_rows=TRADE_ROWS, book_rows=None)  # sqlite 재생성
+        trade_pq = self.dst / "2026" / "10" / "trade_20261008.parquet"
+        import duckdb
+
+        con = duckdb.connect()
+        try:
+            target = trade_pq.as_posix()
+            con.execute(f"CREATE TABLE t AS SELECT * FROM read_parquet('{target}')")
+            # rt·code·qty 그대로, bid1 1개만 +1 (기존 검사는 다 통과하는 손상)
+            con.execute("UPDATE t SET bid1 = bid1 + 1 WHERE rt = (SELECT MIN(rt) FROM t)")
+            con.execute(f"COPY t TO '{target}' (FORMAT parquet, COMPRESSION zstd)")
+        finally:
+            con.close()
+        mtime_after_corrupt = trade_pq.stat().st_mtime_ns
+        size_after_corrupt = trade_pq.stat().st_size
+        self.notify.reset_mock()
+        rc = run(self.src, self.dst, self.now, self.notify)
+        self.assertEqual(rc, 1)
+        self.assertTrue(p.exists())  # sqlite 보존
+        self.assertEqual(trade_pq.stat().st_mtime_ns, mtime_after_corrupt)  # 덮어쓰기 없음
+        self.assertEqual(trade_pq.stat().st_size, size_after_corrupt)
+        self.notify.assert_called_once()
+        msg = self.notify.call_args[0][0]
+        self.assertIn("existing parquet mismatch", msg)
+        self.assertIn("bid1", msg)
+        self.assertEqual(self.notify.call_args[1].get("channel"), "batch")
+
+    def test_17_big_rt_checksum_no_overflow(self):
+        from scripts.orderbook_archive import _sqlite_columns, _sqlite_stats
+
+        base = 1791419280964637100
+        trade_rows = tuple(
+            (base + i, "005930", "090000", 70000, 1, 100 + i, 70100, 69900)
+            for i in range(5000)
+        )
+        p = _make_sqlite(
+            self.src / "orderbook_raw_20261008.sqlite3",
+            trade_rows=trade_rows,
+            book_rows=None,
+        )
+        cols = _sqlite_columns(p, "trade")
+        stats = _sqlite_stats(p, "trade", cols)  # SUM(rt) 면 overflow — % 합이라 통과
+        self.assertEqual(stats["count"], 5000)
+        rt_entry = next(e for e in stats["columns_check"] if e[0] == "rt")
+        self.assertEqual(rt_entry[1], 5000)
+        self.assertEqual(rt_entry[2], base)
+        self.assertEqual(rt_entry[3], base + 4999)
+        self.assertEqual(rt_entry[4], sum((base + i) % 1000003 for i in range(5000)))
+
+    def test_18_parquet_varchar_minmax_full_scan(self):
+        from scripts.orderbook_archive import _parquet_stats
+
+        p = _make_sqlite(
+            self.src / "orderbook_raw_20261008.sqlite3",
+            trade_rows=None,
+            book_rows=None,
+            gaps_rows=GAPS_ROWS,
+        )
+        rc = run(self.src, self.dst, self.now, self.notify)
+        self.assertEqual(rc, 0)
+        self.assertFalse(p.exists())
+        gaps_pq = self.dst / "2026" / "10" / "gaps_20261008.parquet"
+        self.assertTrue(gaps_pq.is_file())
+        self.notify.assert_not_called()
+        stats = _parquet_stats(gaps_pq, "gaps", ["conn", "start_rt", "end_rt"])
+        conn_entry = next(e for e in stats["columns_check"] if e[0] == "conn")
+        self.assertEqual(conn_entry[2], "wss://localhost:8001")
+        self.assertEqual(conn_entry[3], "wss://localhost:8001")
+
 
 if __name__ == "__main__":
     unittest.main()

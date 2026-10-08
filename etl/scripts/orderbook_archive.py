@@ -97,8 +97,47 @@ def _sqlite_columns(sqlite_path: Path, table: str) -> list[str]:
         con.close()
 
 
-def _sqlite_stats(sqlite_path: Path, table: str, cols: list[str]) -> dict:
-    """검증용 집계: count, distinct code, rt min/max, trade 종목별 (code, sum, count)."""
+CHECKSUM_MOD = 1000003  # columns_check 정수 체크섬 나머지 — ns 시각 합 overflow 방지
+
+
+def _duckdb_type(decl: str) -> str:
+    """sqlite 선언 타입 → duckdb 생성 타입. _write_parquet DDL 과 검증 int 판정 공유."""
+    d = decl.upper()
+    if "INT" in d:
+        return "BIGINT"
+    if "CHAR" in d or "TEXT" in d or "CLOB" in d:
+        return "VARCHAR"
+    if "REAL" in d or "FLOA" in d or "DOUB" in d:
+        return "DOUBLE"
+    return "VARCHAR"
+
+
+def _sqlite_int_columns(sqlite_path: Path, table: str, cols: list[str]) -> set[str]:
+    """PRAGMA 선언 타입이 _duckdb_type 기준 BIGINT 인 컬럼 집합 — 체크섬 대상."""
+    con = sqlite3.connect(sqlite_path)
+    try:
+        decls = {r[1]: (r[2] or "") for r in con.execute(f'PRAGMA table_info("{table}")')}
+    finally:
+        con.close()
+    return {c for c in cols if _duckdb_type(decls.get(c, "")) == "BIGINT"}
+
+
+def _sqlite_varchar_columns(sqlite_path: Path, table: str, cols: list[str]) -> set[str]:
+    """PRAGMA 선언 타입이 _duckdb_type 기준 VARCHAR 인 컬럼 집합 — parquet 통계 회피 대상."""
+    con = sqlite3.connect(sqlite_path)
+    try:
+        decls = {r[1]: (r[2] or "") for r in con.execute(f'PRAGMA table_info("{table}")')}
+    finally:
+        con.close()
+    return {c for c in cols if _duckdb_type(decls.get(c, "")) == "VARCHAR"}
+
+
+def _sqlite_stats(
+    sqlite_path: Path, table: str, cols: list[str], int_cols: set[str] | None = None
+) -> dict:
+    """검증용 집계: count, distinct code, rt min/max, trade 종목별, columns_check."""
+    if int_cols is None:
+        int_cols = _sqlite_int_columns(sqlite_path, table, cols)
     con = sqlite3.connect(sqlite_path)
     try:
         stats = {
@@ -124,12 +163,37 @@ def _sqlite_stats(sqlite_path: Path, table: str, cols: list[str]) -> dict:
                     ' GROUP BY "code" ORDER BY "code"'
                 ).fetchall()
             ]
+        ordered = sorted(cols)
+        aggs = []
+        for c in ordered:
+            aggs += [f'COUNT("{c}")', f'MIN("{c}")', f'MAX("{c}")']
+        row = con.execute(f'SELECT {", ".join(aggs)} FROM "{table}"').fetchone()
+        int_ordered = sorted(int_cols)
+        chk_map: dict = {}
+        if int_ordered:
+            chk_aggs = [f'SUM("{c}" % {CHECKSUM_MOD})' for c in int_ordered]
+            chk_map = dict(
+                zip(
+                    int_ordered,
+                    con.execute(f'SELECT {", ".join(chk_aggs)} FROM "{table}"').fetchone(),
+                )
+            )
+        stats["columns_check"] = [
+            (c, row[i * 3], row[i * 3 + 1], row[i * 3 + 2], chk_map.get(c))
+            for i, c in enumerate(ordered)
+        ]
         return stats
     finally:
         con.close()
 
 
-def _parquet_stats(parquet_path: Path, table: str, cols: list[str]) -> dict:
+def _parquet_stats(
+    parquet_path: Path,
+    table: str,
+    cols: list[str],
+    int_cols: set[str] | None = None,
+    str_cols: set[str] | None = None,
+) -> dict:
     """parquet 을 다시 읽어 sqlite 와 같은 집계. 컬럼 목록도 함께."""
     target = parquet_path.as_posix().replace("'", "''")
     src = f"read_parquet('{target}')"
@@ -160,6 +224,39 @@ def _parquet_stats(parquet_path: Path, table: str, cols: list[str]) -> dict:
                     ' GROUP BY "code" ORDER BY "code"'
                 ).fetchall()
             ]
+        if int_cols is None or str_cols is None:
+            desc = {r[0]: r[1] for r in con.execute(f"DESCRIBE SELECT * FROM {src}").fetchall()}
+            if int_cols is None:
+                int_cols = {c for c in cols if "INT" in desc.get(c, "").upper()}
+            if str_cols is None:
+                str_cols = {
+                    c
+                    for c in cols
+                    if "CHAR" in desc.get(c, "").upper() or "TEXT" in desc.get(c, "").upper()
+                }
+        ordered = sorted(cols)
+        aggs = []
+        for c in ordered:
+            # parquet row-group 통계는 문자열 앞 8바이트만 저장 — || '' 로 실제 스캔 강제
+            if c in str_cols:
+                aggs += [f'COUNT("{c}")', f'MIN("{c}" || \'\')', f'MAX("{c}" || \'\')']
+            else:
+                aggs += [f'COUNT("{c}")', f'MIN("{c}")', f'MAX("{c}")']
+        row = con.execute(f'SELECT {", ".join(aggs)} FROM {src}').fetchone()
+        int_ordered = sorted(int_cols)
+        chk_map: dict = {}
+        if int_ordered:
+            chk_aggs = [f'SUM("{c}" % {CHECKSUM_MOD})' for c in int_ordered]
+            chk_map = dict(
+                zip(
+                    int_ordered,
+                    con.execute(f'SELECT {", ".join(chk_aggs)} FROM {src}').fetchone(),
+                )
+            )
+        stats["columns_check"] = [
+            (c, row[i * 3], row[i * 3 + 1], row[i * 3 + 2], chk_map.get(c))
+            for i, c in enumerate(ordered)
+        ]
         return stats
     finally:
         con.close()
@@ -179,9 +276,11 @@ def _same(a, b) -> bool:
 def verify_table(sqlite_path: Path, table: str, parquet_path: Path) -> tuple[bool, str]:
     """sqlite 테이블과 parquet 파일의 집계가 같은지. parquet 은 다시 읽어서 비교."""
     cols = _sqlite_columns(sqlite_path, table)
-    want = _sqlite_stats(sqlite_path, table, cols)
+    int_cols = _sqlite_int_columns(sqlite_path, table, cols)
+    str_cols = _sqlite_varchar_columns(sqlite_path, table, cols)
+    want = _sqlite_stats(sqlite_path, table, cols, int_cols)
     try:
-        got = _parquet_stats(parquet_path, table, cols)
+        got = _parquet_stats(parquet_path, table, cols, int_cols, str_cols)
     except Exception as exc:
         return False, f"parquet read failed: {exc}"
     if set(got["columns"]) != set(cols):
@@ -203,6 +302,9 @@ def verify_table(sqlite_path: Path, table: str, parquet_path: Path) -> tuple[boo
         for (wc, ws, wn), (gc, gs, gn) in zip(wp, gp):
             if wc != gc or wn != gn or not _same(ws, gs):
                 return False, f"per-code differ at {wc!r}: sqlite=({ws},{wn}) parquet=({gs},{gn})"
+    for w, g in zip(want["columns_check"], got["columns_check"]):
+        if w[0] != g[0] or not all(_same(x, y) for x, y in zip(w[1:], g[1:])):
+            return False, f"column {w[0]} differ: sqlite={w} parquet={g}"
     return True, "ok"
 
 
@@ -220,18 +322,7 @@ def _write_parquet(sqlite_path: Path, table: str, cols: list[str], tmp_path: Pat
                 tmpdir_sql = duck_tmpdir.as_posix().replace("'", "''")
                 con.execute(f"SET temp_directory='{tmpdir_sql}'")
                 decls = {r[1]: (r[2] or "") for r in scon.execute(f'PRAGMA table_info("{table}")')}
-                col_types = []
-                for c in cols:
-                    d = decls.get(c, "").upper()
-                    if "INT" in d:
-                        t = "BIGINT"
-                    elif "CHAR" in d or "TEXT" in d or "CLOB" in d:
-                        t = "VARCHAR"
-                    elif "REAL" in d or "FLOA" in d or "DOUB" in d:
-                        t = "DOUBLE"
-                    else:
-                        t = "VARCHAR"
-                    col_types.append((c, t))
+                col_types = [(c, _duckdb_type(decls.get(c, ""))) for c in cols]
                 defs = ", ".join(f'"{c}" {t}' for c, t in col_types)
                 con.execute(f"CREATE TABLE src_rows ({defs})")
                 bigint_cols = [c for c, t in col_types if t == "BIGINT"]
