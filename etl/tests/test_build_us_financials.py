@@ -138,6 +138,13 @@ class TestUsFinancials(unittest.TestCase):
         got = m.extract_accounts(facts, ["2023", "2024"], [])
         self.assertEqual(got[("2023", "FY")]["매출액"][0], 500)
         self.assertEqual(got[("2024", "FY")]["매출액"][0], 700)  # 1순위는 2024 fact 없음 → 2순위
+        facts2 = _facts({
+            "RevenueFromContractWithCustomerIncludingAssessedTax": [
+                _fact(900, "10-K", "2025-02-01", "2024-12-31", "2024-01-01"),
+            ],
+        })
+        got2 = m.extract_accounts(facts2, ["2024"], [])
+        self.assertEqual(got2[("2024", "FY")]["매출액"][0], 900)
 
     def test_t04_latest_filed_wins(self):
         facts = _facts({"Assets": [
