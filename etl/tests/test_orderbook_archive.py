@@ -303,6 +303,92 @@ class _ArchiveCase(unittest.TestCase):
             con.close()
         self.assertEqual(rows, sorted(rows))
 
+    def test_13_gaps_bigint_precision(self):
+        gaps_rows = (
+            ("heavy", 1791419280964637101, 1791419280964637999),
+            ("light", 1791419280964637103, None),
+        )
+        p = _make_sqlite(
+            self.src / "orderbook_raw_20261008.sqlite3",
+            trade_rows=None,
+            book_rows=None,
+            gaps_rows=gaps_rows,
+        )
+        rc = run(self.src, self.dst, self.now, self.notify)
+        self.assertEqual(rc, 0)
+        self.assertFalse(p.exists())  # sqlite 삭제
+        gaps_pq = self.dst / "2026" / "10" / "gaps_20261008.parquet"
+        self.assertTrue(gaps_pq.is_file())
+        import duckdb
+
+        con = duckdb.connect()
+        try:
+            typ = {
+                r[0]: r[1]
+                for r in con.execute(
+                    f"DESCRIBE SELECT * FROM read_parquet('{gaps_pq.as_posix()}')"
+                ).fetchall()
+            }
+            rows = con.execute(
+                f"SELECT conn, start_rt, end_rt FROM read_parquet('{gaps_pq.as_posix()}')"
+                " ORDER BY conn"
+            ).fetchall()
+        finally:
+            con.close()
+        self.assertEqual(typ["start_rt"], "BIGINT")
+        self.assertEqual(typ["end_rt"], "BIGINT")
+        self.assertEqual(
+            rows,
+            [
+                ("heavy", 1791419280964637101, 1791419280964637999),
+                ("light", 1791419280964637103, None),
+            ],
+        )
+        self.assertIsNone(rows[1][2])
+
+    def test_14_chunk_null_first_bigint(self):
+        trade_rows = (
+            (1759881000000000000, "005930", "090000", 70000, 10, 100, None, 69900),
+            (1759881001000000000, "005930", "090001", 70100, -5, 105, 70200, 70000),
+        )
+        p = _make_sqlite(
+            self.src / "orderbook_raw_20261008.sqlite3",
+            trade_rows=trade_rows,
+            book_rows=None,
+        )
+        with mock.patch("scripts.orderbook_archive.READ_CHUNK", 1):
+            rc = run(self.src, self.dst, self.now, self.notify)
+        self.assertEqual(rc, 0)
+        self.assertFalse(p.exists())  # sqlite 삭제
+        trade_pq = self.dst / "2026" / "10" / "trade_20261008.parquet"
+        self.assertTrue(trade_pq.is_file())
+        self.assertEqual(_parquet_count(trade_pq), 2)
+        import duckdb
+
+        con = duckdb.connect()
+        try:
+            typ = {
+                r[0]: r[1]
+                for r in con.execute(
+                    f"DESCRIBE SELECT * FROM read_parquet('{trade_pq.as_posix()}')"
+                ).fetchall()
+            }
+            rows = con.execute(
+                f"SELECT rt, ask1 FROM read_parquet('{trade_pq.as_posix()}')"
+                " ORDER BY rt"
+            ).fetchall()
+        finally:
+            con.close()
+        self.assertEqual(typ["ask1"], "BIGINT")
+        self.assertEqual(
+            rows,
+            [
+                (1759881000000000000, None),
+                (1759881001000000000, 70200),
+            ],
+        )
+        self.assertIsNone(rows[0][1])
+
 
 if __name__ == "__main__":
     unittest.main()

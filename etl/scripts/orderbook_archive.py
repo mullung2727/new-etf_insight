@@ -219,26 +219,35 @@ def _write_parquet(sqlite_path: Path, table: str, cols: list[str], tmp_path: Pat
                 con.execute("SET memory_limit='2GB'")
                 tmpdir_sql = duck_tmpdir.as_posix().replace("'", "''")
                 con.execute(f"SET temp_directory='{tmpdir_sql}'")
-                first = True
+                decls = {r[1]: (r[2] or "") for r in scon.execute(f'PRAGMA table_info("{table}")')}
+                col_types = []
+                for c in cols:
+                    d = decls.get(c, "").upper()
+                    if "INT" in d:
+                        t = "BIGINT"
+                    elif "CHAR" in d or "TEXT" in d or "CLOB" in d:
+                        t = "VARCHAR"
+                    elif "REAL" in d or "FLOA" in d or "DOUB" in d:
+                        t = "DOUBLE"
+                    else:
+                        t = "VARCHAR"
+                    col_types.append((c, t))
+                defs = ", ".join(f'"{c}" {t}' for c, t in col_types)
+                con.execute(f"CREATE TABLE src_rows ({defs})")
+                bigint_cols = [c for c, t in col_types if t == "BIGINT"]
+                double_cols = [c for c, t in col_types if t == "DOUBLE"]
                 while True:
                     rows = cur.fetchmany(READ_CHUNK)
                     if not rows:
-                        if first:
-                            df = pd.DataFrame(columns=cols)
-                            con.register("chunk_df", df)
-                            try:
-                                con.execute("CREATE TABLE src_rows AS SELECT * FROM chunk_df")
-                            finally:
-                                con.unregister("chunk_df")
                         break
-                    df = pd.DataFrame(rows, columns=cols)
+                    df = pd.DataFrame(rows, columns=cols, dtype=object)
+                    for c in bigint_cols:
+                        df[c] = df[c].astype("Int64")
+                    for c in double_cols:
+                        df[c] = df[c].astype("float64")
                     con.register("chunk_df", df)
                     try:
-                        if first:
-                            con.execute("CREATE TABLE src_rows AS SELECT * FROM chunk_df")
-                            first = False
-                        else:
-                            con.execute("INSERT INTO src_rows SELECT * FROM chunk_df")
+                        con.execute("INSERT INTO src_rows SELECT * FROM chunk_df")
                     finally:
                         con.unregister("chunk_df")
                 target = tmp_path.as_posix().replace("'", "''")
