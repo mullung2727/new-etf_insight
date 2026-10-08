@@ -42,15 +42,15 @@ DELAY = 0.12          # sec / 호출. SEC 공식 한도 초당 10회
 REQUEST_TIMEOUT = 30
 MAX_RETRIES = 3       # 429·403·5xx 지수 백오프
 COMMIT_EVERY = 50     # cik 단위 commit 주기
-ANNUAL_YEARS = 5
-QUARTERS = 8
+ANNUAL_YEARS = 17
+QUARTERS = 71
 ANNUAL_FORMS = ("10-K", "10-K/A")
 QUARTER_FORMS = ("10-Q", "10-Q/A")
 
 # (account_nm, sj_div, kind, concepts). kind: flow=기간 귀속 / stock=기말 잔액.
 # 개념 폴백체인은 기간마다 독립 적용 (순서대로 첫 적중).
 ACCOUNT_CHAINS = (
-    ("매출액", "IS", "flow", ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet")),
+    ("매출액", "IS", "flow", ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet", "RevenueFromContractWithCustomerIncludingAssessedTax")),
     ("영업이익", "IS", "flow", ("OperatingIncomeLoss",)),
     ("당기순이익", "IS", "flow", ("NetIncomeLoss",)),
     ("자산총계", "BS", "stock", ("Assets",)),
