@@ -4,7 +4,13 @@
 `etl/db/us_financials.sqlite3` 에 한국 지표 DB(`financial_indicators.sqlite3`)와
 동형으로 쌓는다. ETL 배치 범위고 broker-web 연동·스케줄 등록은 별도 단계.
 
-작성 2026-10-06. 구현 전 설계.
+작성 2026-10-06.
+
+## 진행
+- [ ] 구현·테스트 머지 (PR #)
+- [x] 운영 등록 (스케줄 작업·config) — 해당 없음 (일일 갱신은 D4, 범위 밖)
+- [x] 첫 실가동 확인 (2026-10-09 전체 초기 적재, 1회 작업)
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 확정됨 (사용자 선택): 소스 SEC EDGAR / 새 DB 파일 / 연간+분기.
 
@@ -19,7 +25,7 @@
 
 | # | 결정 | 추천 | 이유 |
 |---|---|---|---|
-| D1 | 대상 기간 | **연간 최근 5년 + 분기 최근 8분기** | broker-web compare가 5기간 기준. CompanyFacts는 1콜에 전 이력이라 기간을 늘려도 호출 수 동일. 조정은 CLI로 |
+| D1 | 대상 기간 | ~~연간 5년 + 분기 8분기~~ → **연간 17년(2009~) + 분기 71개(2009Q1~)** (사용자 결정 2026-10-09) | CompanyFacts는 1콜에 전 이력이라 기간을 늘려도 호출 수 동일. XBRL 의무화(대형사 2009, 전체 2011)부터. 상수 `ANNUAL_YEARS`·`QUARTERS` |
 | D2 | 유니버스 | **Nasdaq + NYSE + CBOE (OTC·거래소 미상 제외)** | 실측 7,715사. OTC 2,540사는 재무 보고가 부실해 제외 |
 | D3 | `SEC_USER_AGENT` 연락처 | **`.env` 신규 변수, 실행 전 실연락처 입력** | SEC 정책상 식별 가능한 UA 필수. 없으면 차단될 수 있음. 형식 `new-etf-insight/1.0 (contact: 실제이메일)` |
 | D4 | 일일 갱신 | 이번 범위 밖. 초기 적재 후 결정 | 한국 `run_from_filings` 대응물은 submissions 기반 설계가 필요해 별도 단계 |
@@ -181,9 +187,17 @@ CLI (한국 스크립트와 같은 모양):
 ## 5. 알려진 한계
 
 - **ADR 제외.** 20-F/6-K filers는 없음. 대상은 10-K/10-Q 제출 미국 본토 기업.
-- **비12월 결산사 Q4 라벨.** 캘린더 frame 기준이라 AAPL 같은 9월 결산사는
-  "Q4" 자리에 실제 첫 회계분기가 들어감. 연간·Q1~Q3은 캘린더 정합이라
-  종목 간 비교에는 문제없음.
+- **비12월 결산사 분기 구멍.** 캘린더 분기 기준이라 회계 Q4(10-K에만 있음)에 해당하는
+  캘린더 분기는 flow가 비고, 그 해 Q4 파생도 null (AAPL은 캘린더 Q3·Q4 flow 없음).
+  잔액은 10-Q 비교열로 채워지기도 함.
+- **6월 결산은 연도가 한 해 앞.** 기간 중간점 기준이라 MSFT FY2025(2024-07~2025-06)는 2024로 들어감
+  (SEC frame 규칙과 같음).
+- **과거 연도 표본 감소.** FY 회사 수 2009년 1,926 → 2025년 4,245. XBRL 의무화(소형사 2011)와
+  생존편향(현재 상장사만) 둘 다 원인.
+- **매출 결측.** FY2024 17.9%, 2010~2015 약 30%. 은행·BDC(이자수익)·SPAC·트러스트는 정상 null.
+  과거 연도는 옛 매출 태그(SalesRevenueGoodsNet 등) 가능성, 미확인.
+- **재무 0행 cik 재호출.** 받았지만 10-K/10-Q us-gaap 자료가 없는 약 1,400사(외국기업·펀드)는
+  이어받기 기준(accounts 행 존재)에 안 걸려 매 실행마다 다시 호출됨.
 - **생존편향.** tickers_exchange는 현재 상장만. 상폐사는 없음 (한국과 동일 조건).
 - **정정은 덮어씀.** 최신 filed 채택이라 이력 보존 안 함. `filed_dt` 컬럼으로
   어느 제출본인지 추적만 가능.
@@ -207,10 +221,13 @@ P1 스크립트 + 테스트 — 완료 (2026-10-08)
    - `.env` SEC_USER_AGENT (D3, 사용자 입력)
    → verify: T1~T14 통과, --self-check (AAPL FY2024 매출 391,035M·JPM 영업이익 null·VZ NCI),
              --limit 5 적재 후 sqlite 행·PK·뷰 검증
-P2 전체 초기 적재 (D1 기간, 약 7,700사 × 1콜 ≈ 20분)
+P2 전체 초기 적재 — 완료 (2026-10-09, 1회 스케줄 작업 00:45~01:56)
+   - 결과: 6,068사 중 수신 5,903·404 165·실패 0, 재무 있는 cik 4,501.
+     accounts 229만·indicators 31만 행, PK 중복 0, AAPL 2009·2015·2024 매출 일치
+   - 1차(5년) 적재 후 매출 결측 23.5% → 세금포함 매출 태그 4순위 추가 → 17.9%
    → verify: 종목 수·행 수·기간 커버리지, known-value 대조,
              개념별 결측률 리포트(은행 null은 정상), 무응답 cik 0건 목표
-P3 `etl/docs/DB_SCHEMA.md` 스키마 카탈로그 갱신
+P3 `etl/docs/DB_SCHEMA.md` 스키마 카탈로그 갱신 — 완료 (2026-10-09, dump_db_schema.py)
    → verify: 카탈로그가 실제 DB와 일치
 ```
 
@@ -230,3 +247,12 @@ P3 `etl/docs/DB_SCHEMA.md` 스키마 카탈로그 갱신
 - <https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json> — AAPL 실측
 - <https://data.sec.gov/api/xbrl/companyfacts/CIK0000019617.json> — JPM 실측
 - <https://data.sec.gov/api/xbrl/companyfacts/CIK0000732712.json> — VZ 실측
+
+## 구현 차이
+
+- 원래 SEC `frame` 일치로 기간 선택 → 실제 `start`/`end`로 frame 계산 (SEC frame은 같은 기간 1건에만 붙고 DEF 14A가 가져감, JPM 순이익 실측)
+- 원래 부채총계 = Liabilities → 실제 없으면 LiabilitiesAndStockholdersEquity − 자본총계 (AMZN 미태깅)
+- 원래 매출 체인 3개 → 실제 4순위 RevenueFromContractWithCustomerIncludingAssessedTax 추가 (결측 표본 40사 중 25%)
+- 원래 연간 5년·분기 8개 → 실제 17년·71개 (D1, 사용자 결정. 호출 수 동일)
+- 원래 유니버스 7,715사 → 실제 6,068 cik (같은 cik 다중 ticker는 첫 ticker만)
+- 원래 fetch 실패는 상태코드만 재시도 → 실제 타임아웃·연결오류·JSON 오류도 재시도 후 실패 cik 기록 (배치 중단 방지)

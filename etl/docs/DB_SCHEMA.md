@@ -339,6 +339,50 @@ CREATE TABLE telegram_stock_insights (
 )
 ```
 
+## `us_financials.sqlite3`
+
+테이블 3개: `accounts`, `corps`, `indicators`
+
+```sql
+CREATE TABLE accounts (
+    cik         TEXT NOT NULL,
+    bsns_year   TEXT NOT NULL,
+    reprt_code  TEXT NOT NULL,
+    sj_div      TEXT,
+    account_nm  TEXT NOT NULL,
+    amount      REAL,
+    ticker      TEXT,
+    filed_dt    TEXT,
+    currency    TEXT,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (cik, bsns_year, reprt_code, account_nm)
+)
+```
+
+```sql
+CREATE TABLE corps (
+    cik         TEXT PRIMARY KEY,
+    ticker      TEXT NOT NULL,
+    corp_name   TEXT NOT NULL,
+    exchange    TEXT,
+    updated_at  TEXT NOT NULL
+)
+```
+
+```sql
+CREATE TABLE indicators (
+    cik         TEXT NOT NULL,
+    bsns_year   TEXT NOT NULL,
+    reprt_code  TEXT NOT NULL,
+    idx_code    TEXT NOT NULL,
+    idx_nm      TEXT,
+    idx_val     REAL,
+    ticker      TEXT,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (cik, bsns_year, reprt_code, idx_code)
+)
+```
+
 ## `watchlist.sqlite3`
 
 테이블 6개: `close_bet_orders`, `intraday_ranking`, `llm_scores`, `pullback_orders`, `watchlist`, `watchlist_market_snapshots`
