@@ -5,6 +5,10 @@
 키움 `ka10080`으로 KRX 전 종목 1분봉을 최근 월부터 수집하고
 `etl/db/minute_bars.duckdb`에 검증 후 저장한다.
 
+- 대상 (종목, 날짜)는 KRX 일봉 DB 기준이다. KRX 일봉은 다음 날 08:30에 적재되므로,
+  그 뒤 어제까지의 평일은 삼성전자(005930) 분봉 1회 조회로 개장 여부를 확인하고
+  KRX 마지막 날짜의 종목 목록으로 미리 받는다(결과 json `extra_dates`). 02:00 실행이 전날 분봉까지 채운다.
+
 ## Execution
 
 - Windows 작업: `\new-etf_insight\daily-minute-bars-backfill`, 매일 02:00.

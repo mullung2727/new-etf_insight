@@ -3,6 +3,7 @@
 현재 월은 매일 우선 보충하고, 그 양이 2거래일 이하이면 이어서 가장 최근의
 미완료 과거 월 하나를 처리한다. 완료 상태는 minute_fetched, 반복 실패 상태는
 minute_backfill_failures에 남기므로 중단 뒤 그대로 재개된다.
+KRX 일봉이 아직 없는 최근 거래일은 삼성전자 분봉으로 개장 여부를 확인해 직전 KRX 종목 목록으로 미리 받는다.
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import os
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -21,6 +22,9 @@ import duckdb
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from research.watchlist_expected_return.minute_bar_cache import (  # noqa: E402
+    normalize_minute_bar,
+)
 from research.watchlist_expected_return.minute_bar_store import (  # noqa: E402
     DEFAULT_DB_PATH,
     DEFAULT_SCOPE,
@@ -31,6 +35,7 @@ from research.watchlist_expected_return.minute_bar_store import (  # noqa: E402
 )
 
 KRX_DB = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
+PROBE_TICKER = "005930"
 FAILURE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS minute_backfill_failures (
   month VARCHAR,
@@ -56,7 +61,43 @@ def recent_months(latest_month: str, count: int) -> list[str]:
     return out
 
 
-def load_month_plan(krx_db: Path, month: str) -> dict[str, list[str]]:
+def probe_extra_dates(
+    latest_date: str,
+    today: str,
+    scope: str,
+    fetch_page: Callable[..., dict[str, Any]] | None,
+    deadline: float | None = None,
+) -> list[str]:
+    """KRX 일봉 다음 날부터 어제까지 평일을 삼성전자 분봉으로 개장 확인한다."""
+    if fetch_page is None:
+        from broker.kiwoom.quotes import get_minute_chart
+
+        fetch_page = get_minute_chart
+    start = datetime.strptime(latest_date, "%Y%m%d") + timedelta(days=1)
+    end = datetime.strptime(today, "%Y%m%d")
+    extra: list[str] = []
+    day = start
+    while day < end:
+        if day.weekday() < 5:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            candidate = day.strftime("%Y%m%d")
+            result = fetch_page(PROBE_TICKER, scope, candidate, cont_yn="N", next_key="")
+            for raw_bar in result["bars"]:
+                bar = normalize_minute_bar(raw_bar)
+                if bar and bar["date"] == candidate:
+                    extra.append(candidate)
+                    break
+        day += timedelta(days=1)
+    return extra
+
+
+def load_month_plan(
+    krx_db: Path,
+    month: str,
+    extra_dates: tuple[str, ...] | list[str] = (),
+    base_tickers: tuple[str, ...] | list[str] = (),
+) -> dict[str, list[str]]:
     """KRX 일봉에 실제 상장행이 있는 종목·날짜만 수집 대상으로 삼는다."""
     with duckdb.connect(str(krx_db), read_only=True) as con:
         rows = con.execute(
@@ -66,6 +107,12 @@ def load_month_plan(krx_db: Path, month: str) -> dict[str, list[str]]:
     plan: dict[str, list[str]] = defaultdict(list)
     for ticker, date in rows:
         plan[str(ticker)].append(str(date))
+    month_extras = sorted({str(d) for d in extra_dates if str(d)[:6] == month})
+    if month_extras:
+        for ticker in base_tickers:
+            key = str(ticker)
+            plan[key] = sorted(set(plan.get(key, ())) | set(month_extras))
+        return dict(sorted(plan.items()))
     return dict(plan)
 
 
@@ -214,12 +261,34 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
     os.environ.setdefault("KIWOOM_MIN_INTERVAL", str(args.api_interval))
     with duckdb.connect(str(args.krx_db), read_only=True) as con:
         latest_date = str(con.execute("SELECT MAX(date) FROM ohlcv").fetchone()[0])
-    months = [args.month] if args.month else recent_months(latest_date[:6], args.months_back)
+        base_tickers = [
+            str(row[0])
+            for row in con.execute(
+                "SELECT ticker FROM ohlcv WHERE date=? ORDER BY ticker", [latest_date]
+            ).fetchall()
+        ]
+    today = getattr(args, "today", None) or datetime.now().strftime("%Y%m%d")
     deadline = time.monotonic() + args.max_runtime_min * 60
+    try:
+        extra = probe_extra_dates(latest_date, today, args.scope, fetch_page, deadline)
+    except Exception as exc:
+        extra = []
+        extra_error = str(exc)[:300]
+        probe_rate_limited = "HTTP 429" in str(exc)
+    else:
+        extra_error = ""
+        probe_rate_limited = False
+    target_latest = max([latest_date, *extra])
+    months = [args.month] if args.month else recent_months(target_latest[:6], args.months_back)
 
-    plans = {month: load_month_plan(args.krx_db, month) for month in months}
+
+    plans = {
+        month: load_month_plan(args.krx_db, month, extra, base_tickers) for month in months
+    }
     selected: list[str] = []
-    if args.month:
+    if probe_rate_limited:
+        selected = []
+    elif args.month:
         selected = months
     else:
         current = months[0]
@@ -235,14 +304,21 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
                     break
 
     if args.dry_run:
-        return {
+        payload = {
             "dry_run": True, "latest_date": latest_date, "selected_months": selected,
+            "extra_dates": extra,
             "plans": [
                 {"month": month, "tickers": len(plans[month]),
                  "ticker_days": sum(map(len, plans[month].values()))}
                 for month in selected
             ],
         }
+
+        if extra_error:
+            payload["extra_dates_error"] = extra_error
+        if probe_rate_limited:
+            payload["stop_reason"] = "api_rate_limit"
+        return payload
 
     results = []
     for month in selected:
@@ -265,9 +341,14 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
         "started_at": args.started_at,
         "finished_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "latest_krx_date": latest_date,
+        "extra_dates": extra,
         "selected_months": selected,
         "results": results,
     }
+    if extra_error:
+        payload["extra_dates_error"] = extra_error
+    if probe_rate_limited:
+        payload["stop_reason"] = "api_rate_limit"
     if args.report_file:
         args.report_file.parent.mkdir(parents=True, exist_ok=True)
         args.report_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -281,6 +362,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--scope", default=DEFAULT_SCOPE)
     parser.add_argument("--months-back", type=int, default=12)
     parser.add_argument("--month", help="수동 대상월 YYYYMM")
+    parser.add_argument("--today", help="기준일 YYYYMMDD(테스트·수동용)")
     parser.add_argument("--max-runtime-min", type=float, default=240)
     parser.add_argument("--api-interval", type=float, default=0.5)
     parser.add_argument("--max-attempts", type=int, default=3)
@@ -292,6 +374,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.month and (len(args.month) != 6 or not args.month.isdigit()):
         parser.error("--month는 YYYYMM 형식이어야 함")
+    if args.today and (len(args.today) != 8 or not args.today.isdigit()):
+        parser.error("--today는 YYYYMMDD 형식이어야 함")
+    if args.today:
+        try:
+            datetime.strptime(args.today, "%Y%m%d")
+        except ValueError:
+            parser.error("--today는 YYYYMMDD 형식이어야 함")
     if args.months_back < 1 or args.max_runtime_min <= 0 or args.api_interval < 0:
         parser.error("기간·실행시간·API 간격 값을 확인할 것")
     args.started_at = datetime.now().astimezone().isoformat(timespec="seconds")
