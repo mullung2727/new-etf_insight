@@ -29,7 +29,7 @@ git log origin/main..main
 - **검증된 유효전략은 커밋하지 않는다.** 백테스트나 실운용에서 성과가 확인된 전략의
   진입·청산 조건, 튜닝된 파라미터 값, 그 결과 문서는 `research/private/` 에 둔다
   (`.gitignore` 처리됨). 공개되면 알파가 사라진다.
-- 리서치 결과 문서·결과 json 은 커밋하지 않는다. 기각은 `research/private/REJECTED.md`·`LEADS.md` 에 한 절로 남기고
+- 리서치 결과 문서·결과 json 은 커밋하지 않는다. 기각은 `research/private/rejected/REJECTED.md`·`LEADS.md` 에 한 절로 남기고
   원본 폴더는 지운다 (`research/BACKTEST_DATA.md` §0). 공용 도구·데이터 지침만 `research/` 에 커밋한다.
 - 유효/무효 판단이 애매하면 커밋하지 말고 사용자에게 묻는다.
 - 자격증명은 어떤 경우에도 커밋하지 않는다 (`.env` 는 루트 하나, `.gitignore` + hook 차단).
