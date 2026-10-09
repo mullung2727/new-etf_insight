@@ -215,5 +215,47 @@ class MinuteBackfillTest(unittest.TestCase):
             self.assertIn(("20261007",), rows)
 
 
+    def test_probe_extra_dates_respects_deadline(self):
+        calls = []
+
+        def fetch(symbol, scope, base_dt, **kwargs):
+            calls.append(base_dt)
+            return {"bars": [raw(base_dt, "090000")], "cont_yn": "N", "next_key": ""}
+
+        self.assertEqual(probe_extra_dates("20261007", "20261009", "1", fetch, 0), [])
+        self.assertEqual(calls, [])
+
+    def test_run_probe_rate_limit_stops_backfill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            krx_db = Path(tmp) / "krx.duckdb"
+            minute_db = Path(tmp) / "minute.duckdb"
+            with duckdb.connect(str(krx_db)) as con:
+                con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR)")
+                con.execute("INSERT INTO ohlcv VALUES ('20261007', '000001')")
+            args = parse_args([
+                "--krx-db", str(krx_db), "--minute-db", str(minute_db),
+                "--today", "20261009", "--max-runtime-min", "1",
+            ])
+            calls = []
+
+            def fetch(symbol, scope, base_dt, **kwargs):
+                calls.append((symbol, base_dt))
+                if symbol == PROBE_TICKER:
+                    raise RuntimeError("HTTP 429")
+                return {"bars": [raw("20261006", "090000"), raw("20261007", "090000")],
+                        "cont_yn": "N", "next_key": ""}
+
+            payload = run(args, fetch_page=fetch)
+            self.assertEqual(payload["stop_reason"], "api_rate_limit")
+            self.assertEqual(payload["selected_months"], [])
+            self.assertEqual(payload["results"], [])
+            self.assertTrue(calls)
+            self.assertTrue(all(symbol == PROBE_TICKER for symbol, _ in calls))
+
+    def test_parse_args_rejects_invalid_calendar_date(self):
+        with self.assertRaises(SystemExit):
+            parse_args(["--today", "20260230"])
+
+
 if __name__ == "__main__":
     unittest.main()

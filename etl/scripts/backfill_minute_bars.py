@@ -66,6 +66,7 @@ def probe_extra_dates(
     today: str,
     scope: str,
     fetch_page: Callable[..., dict[str, Any]] | None,
+    deadline: float | None = None,
 ) -> list[str]:
     """KRX 일봉 다음 날부터 어제까지 평일을 삼성전자 분봉으로 개장 확인한다."""
     if fetch_page is None:
@@ -78,6 +79,8 @@ def probe_extra_dates(
     day = start
     while day < end:
         if day.weekday() < 5:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
             candidate = day.strftime("%Y%m%d")
             result = fetch_page(PROBE_TICKER, scope, candidate, cont_yn="N", next_key="")
             for raw_bar in result["bars"]:
@@ -265,22 +268,27 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
             ).fetchall()
         ]
     today = getattr(args, "today", None) or datetime.now().strftime("%Y%m%d")
+    deadline = time.monotonic() + args.max_runtime_min * 60
     try:
-        extra = probe_extra_dates(latest_date, today, args.scope, fetch_page)
+        extra = probe_extra_dates(latest_date, today, args.scope, fetch_page, deadline)
     except Exception as exc:
         extra = []
         extra_error = str(exc)[:300]
+        probe_rate_limited = "HTTP 429" in str(exc)
     else:
         extra_error = ""
+        probe_rate_limited = False
     target_latest = max([latest_date, *extra])
     months = [args.month] if args.month else recent_months(target_latest[:6], args.months_back)
-    deadline = time.monotonic() + args.max_runtime_min * 60
+
 
     plans = {
         month: load_month_plan(args.krx_db, month, extra, base_tickers) for month in months
     }
     selected: list[str] = []
-    if args.month:
+    if probe_rate_limited:
+        selected = []
+    elif args.month:
         selected = months
     else:
         current = months[0]
@@ -308,6 +316,8 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
 
         if extra_error:
             payload["extra_dates_error"] = extra_error
+        if probe_rate_limited:
+            payload["stop_reason"] = "api_rate_limit"
         return payload
 
     results = []
@@ -337,6 +347,8 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
     }
     if extra_error:
         payload["extra_dates_error"] = extra_error
+    if probe_rate_limited:
+        payload["stop_reason"] = "api_rate_limit"
     if args.report_file:
         args.report_file.parent.mkdir(parents=True, exist_ok=True)
         args.report_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -364,6 +376,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--month는 YYYYMM 형식이어야 함")
     if args.today and (len(args.today) != 8 or not args.today.isdigit()):
         parser.error("--today는 YYYYMMDD 형식이어야 함")
+    if args.today:
+        try:
+            datetime.strptime(args.today, "%Y%m%d")
+        except ValueError:
+            parser.error("--today는 YYYYMMDD 형식이어야 함")
     if args.months_back < 1 or args.max_runtime_min <= 0 or args.api_interval < 0:
         parser.error("기간·실행시간·API 간격 값을 확인할 것")
     args.started_at = datetime.now().astimezone().isoformat(timespec="seconds")
