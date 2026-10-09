@@ -83,7 +83,7 @@ research README 본문은 초기안일 수 있다.
 
 ## 8. 리서치 PLAN
 
-백테스트·전략 리서치는 `research/BACKTEST_DATA.md` §0 을 따른다: 시작 전 `research/private/REJECTED.md`·`LEADS.md` 확인,
+백테스트·전략 리서치는 `research/BACKTEST_DATA.md` §0 을 따른다: 시작 전 `research/private/rejected/REJECTED.md`·`LEADS.md` 확인,
 끝나면 유효(private 이동)·종결(REJECTED)·단서(LEADS) 중 하나로 정리.
 
 ## 9. 구현 완료 시 (반드시)

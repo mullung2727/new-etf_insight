@@ -30,8 +30,11 @@
 |---|---|---|
 | 데이터 지침·공용 도구 | `research/<주제>/` | O |
 | **성과가 확인된 유효전략** — 진입/청산 조건, 튜닝된 파라미터, 그 결과 문서 | `research/private/<주제>/` | X (`.gitignore`) |
-| 기각 — 종결 | `research/private/REJECTED.md` 한 절 | X |
-| 기각 — 추가 리서치 단서 있음 | `research/private/LEADS.md` 한 절 | X |
+| 기각 — 종결 | `research/private/rejected/REJECTED.md` 한 절 | X |
+| 기각 — 추가 리서치 단서 있음 | `research/private/rejected/LEADS.md` 한 절 | X |
+
+`research/private/` 바로 아래는 유효전략·진행 중 리서치만 둔다. 실패한 것은 기록·남겨둔 폴더 모두 `research/private/rejected/` 아래에 둔다
+(옮긴 폴더는 `research.private.<주제>` import 경로가 깨져 그대로는 재실행 안 됨 — 보관용).
 
 **시작 전**: `REJECTED.md`·`LEADS.md`를 먼저 읽는다. REJECTED의 "다시 하지 말 것"에 걸리면 착수하지 않고 사용자에게 알린다.
 LEADS의 단서를 이어서 하는 작업이면 그 절의 재개 조건이 충족됐는지부터 확인한다.
