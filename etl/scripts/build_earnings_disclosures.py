@@ -447,7 +447,7 @@ def parse_pending(con, stock_codes, force: bool = False) -> dict:
     """pending 원문 파싱. 실패 건은 failed로 남기고 계속."""
     codes = list(stock_codes or [])
     if not codes:
-        return {"targets": 0, "ok": 0, "failed": 0}
+        return {"targets": 0, "ok": 0, "failed": 0, "fetch_failed": 0}
     fye = load_fye_months(con)
     qmarks = ",".join("?" for _ in codes)
     sql = (f"SELECT rcept_no, rcept_dt, stock_code, kind, is_correction "
@@ -457,11 +457,24 @@ def parse_pending(con, stock_codes, force: bool = False) -> dict:
         sql += " AND parse_status='pending'"
     sql += " ORDER BY rcept_dt, rcept_no"
     rows = con.execute(sql, codes).fetchall()
-    ok = fail = 0
+    ok = fail = fetch_fail = 0
     for i, (rcept_no, rcept_dt, stock, kind, is_corr) in enumerate(rows, 1):
         try:
-            html = fetch_document_html(rcept_no)
-            time.sleep(0.5)
+            try:
+                html = fetch_document_html(rcept_no)
+            finally:
+                time.sleep(0.5)
+        except Exception as e:
+            con.execute(
+                "UPDATE earnings_disclosures SET parse_status='pending', parse_note=?, "
+                "updated_at=? WHERE rcept_no=?",
+                (("fetch: " + str(e))[:200], _now(), rcept_no))
+            fetch_fail += 1
+            if i % 50 == 0:
+                con.commit()
+                print(f"[원문] {i}/{len(rows)} ok={ok} failed={fail} fetch_failed={fetch_fail}")
+            continue
+        try:
             res = parse_document(html, kind, rcept_dt, fye.get(stock, 12))
             if res["revenue"] is None and res["op_income"] is None:
                 raise ValueError("매출액·영업이익 모두 없음")
@@ -487,10 +500,10 @@ def parse_pending(con, stock_codes, force: bool = False) -> dict:
                 fail += 1
         if i % 50 == 0:
             con.commit()
-            print(f"[원문] {i}/{len(rows)} ok={ok} failed={fail}")
+            print(f"[원문] {i}/{len(rows)} ok={ok} failed={fail} fetch_failed={fetch_fail}")
     con.commit()
-    print(f"[원문] 완료 대상={len(rows)} ok={ok} failed={fail}")
-    return {"targets": len(rows), "ok": ok, "failed": fail}
+    print(f"[원문] 완료 대상={len(rows)} ok={ok} failed={fail} fetch_failed={fetch_fail}")
+    return {"targets": len(rows), "ok": ok, "failed": fail, "fetch_failed": fetch_fail}
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

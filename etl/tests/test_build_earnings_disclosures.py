@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import _bootstrap  # noqa: F401,E402
 import build_earnings_disclosures as m  # noqa: E402
@@ -107,6 +109,32 @@ class TestEarningsDisclosures(unittest.TestCase):
             self.assertTrue(got["C1"][1].startswith("정정공시"))
             self.assertLessEqual(len(got["C1"][1]), 200)
             self.assertEqual(got["N1"][0], "failed")
+        finally:
+            con.close()
+
+    def test_parse_pending_fetch_fail_stays_pending(self):
+        con = _memdb()
+        try:
+            now = m._now()
+            con.executemany(
+                "INSERT INTO earnings_disclosures (rcept_no, rcept_dt, corp_code, "
+                "stock_code, kind, report_nm, is_correction, parse_status, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                [("C1", "20240131", "00126380", "005930", "prelim",
+                  "[기재정정]영업(잠정)실적(공정공시)", 1, "pending", now),
+                 ("N1", "20240131", "00126380", "005930", "prelim",
+                  "영업(잠정)실적(공정공시)", 0, "pending", now)])
+            with mock.patch.object(
+                    m, "fetch_document_html",
+                    side_effect=requests.ConnectionError("x")):
+                with mock.patch("time.sleep"):
+                    ret = m.parse_pending(con, ["005930"])
+            self.assertEqual(ret["fetch_failed"], 2)
+            got = {r[0]: (r[1], r[2]) for r in con.execute(
+                "SELECT rcept_no, parse_status, parse_note FROM earnings_disclosures")}
+            for rcept in ("C1", "N1"):
+                self.assertEqual(got[rcept][0], "pending")
+                self.assertTrue(got[rcept][1].startswith("fetch:"))
         finally:
             con.close()
 
