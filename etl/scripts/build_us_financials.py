@@ -88,7 +88,7 @@ def get_user_agent() -> str:
 # ── 기간·유니버스 ───────────────────────────────────────────────────────────────
 
 def plan_periods(today: date) -> tuple[list[str], list[tuple[str, int]]]:
-    """연간 5개(직전 완결 연도까지) + 분기 8개(직전 완결 분기까지). 둘 다 오름차순."""
+    """연간 ANNUAL_YEARS개(직전 완결 연도까지) + 분기 QUARTERS개(직전 완결 분기까지). 둘 다 오름차순."""
     years = [str(y) for y in range(today.year - ANNUAL_YEARS, today.year)]
     y, q = today.year, (today.month - 1) // 3  # 이번 분기 − 1 (0이면 전년 Q4)
     if q == 0:
