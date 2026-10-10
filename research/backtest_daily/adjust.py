@@ -16,17 +16,41 @@ def _blocks(tic: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return starts, ends
 
 
-def adj_returns(px: pd.DataFrame) -> np.ndarray:
+def adj_returns(px: pd.DataFrame, *, use_krx_reference: bool = False) -> np.ndarray:
     """px 행 순서 그대로 보정 일별 수익률. 필요 컬럼: ticker, ms, close, market_cap.
 
     주식수(시총/종가) ±10% 초과 변화일 j마다 같은 종목 [j-30, j+30]행에서
     |pr·sr_j - 1| < 0.05 이고 |pr - 1| > 0.03인 날 중 j에 가장 가까운 날(동점은 이른 날)
     수익률을 pr·sr_j로 바꾼다. 출력은 pr - 1을 ±30% 클립, 비연속 거래일은 NaN.
+
+    use_krx_reference=True 면 KRX 기준가 모드: 필요 컬럼 ticker, ms, close, cmp_prev
+    (market_cap 불필요, 기존 주식수 매칭 코드 실행 안 함). 행별 reference = close - cmp_prev,
+    수익률 = close / reference - 1. reference <= 0·결측·무효는 NaN. 종목 경계·비연속 ms·
+    종목 첫 행 NaN, ±30% 클립은 기존과 동일. cmp_prev 컬럼이 없으면 ValueError.
+    기본 False 는 기존 결과와 완전히 동일하다.
     """
+    if use_krx_reference and "cmp_prev" not in px.columns:
+        raise ValueError("need 'cmp_prev' column for use_krx_reference=True")
     n = len(px)
     out = np.full(n, np.nan)
     if n == 0:
         return out
+    if use_krx_reference:
+        tic = px["ticker"].to_numpy()
+        ms = np.asarray(px["ms"])
+        close = px["close"].to_numpy(dtype=float)
+        cmp_prev = pd.to_numeric(px["cmp_prev"], errors="coerce").to_numpy(dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ref = close - cmp_prev
+            r = close / ref - 1
+        bad = (~np.isfinite(close) | (close <= 0) | ~np.isfinite(ref) | (ref <= 0))
+        r[bad] = np.nan
+        same = np.zeros(n, dtype=bool)
+        same[1:] = tic[1:] == tic[:-1]
+        contig = np.zeros(n, dtype=bool)
+        contig[1:] = same[1:] & (ms[1:] == ms[:-1] + 1)
+        r[~contig] = np.nan
+        return np.clip(r, -0.30, 0.30)
     tic = px["ticker"].to_numpy()
     ms = np.asarray(px["ms"])
     close = px["close"].to_numpy(dtype=float)

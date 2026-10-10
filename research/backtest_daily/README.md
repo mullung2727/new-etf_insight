@@ -20,6 +20,8 @@
 | `portfolio.py` (시장 무관) | `run` |
 | `perf.py` (시장 무관) | `equity`, `cagr`, `vol`, `sharpe`, `max_drawdown`, `calmar`, `yearly`, `drawdowns`, `trades_per_year`, `summary`, `PERIODS` |
 
+`adjust.adj_returns(px, use_krx_reference=True)`는 `cmp_prev`로 KRX 기준가(`close - cmp_prev`)를 계산한다. 장기 후보 가격 분석은 이 옵션을 명시한다. 기본값 `False`는 기존 보정·분석 결과를 유지한다. 두 모드 모두 비연속 거래일 수익률은 NaN(보정가격에서 0으로 처리), 일별 수익률은 ±30%로 제한한다.
+
 ## portfolio · perf (비중 전략)
 
 - DB를 읽지 않는다. 수익률표·목표비중표(pandas)만 받는다 → 한국·미국 어느 데이터에도 쓴다

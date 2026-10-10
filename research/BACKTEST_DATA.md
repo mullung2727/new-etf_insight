@@ -3,11 +3,17 @@
 주제와 무관하게 이 저장소에서 백테스트를 돌릴 때 쓰는 데이터·도구 정리.
 전략별 결과는 각 `research/<주제>/README.md` 참조.
 
+## 기존 전략 재실행·파라미터 비교
+
+- 전략 README와 기존 실행 코드·함수를 먼저 확인한다. 실행 전에 사용할 파일·함수와 변경할 파라미터를 명시한다.
+- 기존 함수 호출로 가능하면 새 실행 파일이나 계산 로직을 만들지 않는다. 결과 저장·검증을 붙이기 위한 별도 실행 파일도 같은 원칙을 적용한다.
+- 기존 조건과 현재 공용 규약이 다르면 차이를 먼저 밝히고, 기존 조건의 재현 결과와 조건 변경 결과를 구분한다. 기존 비용·필터·체결·기업행위 보정 등을 조용히 바꾸지 않는다.
+
 > **수익률 표 내기 전 체크 (즉석 확인 계산 포함, 2026-10-01 누락 사건)** — 일봉 계산은 §7 `research/backtest_daily`, 분봉 계산은 §8 `research/backtest_minute` import, 재구현 금지
 > 1. 상한가 진입 불가: 일봉 `guards.limit_up_close` (종가 진입) / `guards.limit_up_open` (시가 진입), 분봉 `ticks.buyable`
 > 2. 비용: `stats.COSTS` 3단계, 기준 `0.35%` — 임의 비용 금지 (분봉도 같은 함수)
 > 3. 집계: 일별 가중 `stats.day_weighted_mean` / `day_median` / `day_win_rate` (분봉도 같은 함수)
-> 4. 기업행위일(권리락·분할) 수익률: `ohlcv.cmp_prev` 기준가(`close − cmp_prev`) 사용, 원 종가 수익률 금지 (권리락 세션 미커밋 — 공용 규약 adj_returns 와 충돌, 미정)
+> 4. 기업행위일(권리락·분할) 수익률: `ohlcv.cmp_prev` 기준가(`close − cmp_prev`) 사용, 원 종가 수익률 금지. 장기 후보 가격 분석은 `adjust.adj_returns(px, use_krx_reference=True)`를 명시한다. 기본값은 기존 분석 재현용으로 유지하며, 모드 변경은 조건 변경으로 표시한다.
 >
 > 분봉 추가 체크 (§8)
 > 4. 전일 정보는 다음 거래일에만: `prevday.attach_prev` (같은 날 붙이면 assert) · 의심 변수는 `prevday.leak_report`
