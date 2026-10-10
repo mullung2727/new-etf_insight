@@ -38,8 +38,8 @@ def adj_returns(px: pd.DataFrame, *, use_krx_reference: bool = False) -> np.ndar
     if use_krx_reference:
         tic = px["ticker"].to_numpy()
         ms = np.asarray(px["ms"])
-        close = px["close"].to_numpy(dtype=float)
-        cmp_prev = pd.to_numeric(px["cmp_prev"], errors="coerce").to_numpy(dtype=float)
+        close = pd.to_numeric(px["close"], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
+        cmp_prev = pd.to_numeric(px["cmp_prev"], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
         with np.errstate(divide="ignore", invalid="ignore"):
             ref = close - cmp_prev
             r = close / ref - 1
