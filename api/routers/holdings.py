@@ -60,15 +60,11 @@ def list_holding_events(
     limit: int = Query(200, ge=1, le=2000, description="max rows"),
 ) -> list[HoldingEvent]:
     with read_cursor() as cur:
-        cur.execute("SELECT MAX(date) FROM etf_holding_events")
-        row = cur.fetchone()
-        if not row or not row[0]:
-            return []
         cur.execute(
             "SELECT date, etf, code, name, kind, w_prev, w_cur FROM etf_holding_events "
-            "WHERE (? IS NULL OR etf = ?) AND date >= date(?, ?) "
+            "WHERE (? IS NULL OR etf = ?) AND date >= date('now', 'localtime', ?) "
             "ORDER BY date DESC, etf, kind LIMIT ?",
-            [etf, etf, row[0], f"-{days} days", limit],
+            [etf, etf, f"-{days} days", limit],
         )
         rows = rows_to_dicts(cur)
     return [HoldingEvent.model_validate(r) for r in rows]

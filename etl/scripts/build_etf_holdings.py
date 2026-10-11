@@ -161,6 +161,7 @@ def run_daily() -> tuple[int, int]:
     stored = nev = 0
     alerts: dict[str, list] = {}
     asofs: list[str] = []
+    sent = True
     try:
         for etf, idx in ETFS.items():
             asof, rows = latest_snapshot(idx)
@@ -182,7 +183,9 @@ def run_daily() -> tuple[int, int]:
     finally:
         con.close()
         if alerts:
-            notify_mod.send_etf_holdings_alert(format_alert(max(asofs), alerts))
+            sent = notify_mod.send_etf_holdings_alert(format_alert(max(asofs), alerts))
+    if not sent:
+        raise RuntimeError("ETF holdings alert delivery failed")
     return stored, nev
 
 
@@ -190,6 +193,7 @@ def run_backfill(s: str, e: str) -> tuple[int, int]:
     con = open_db()
     stored = 0
     touched: set[str] = set()
+    failed: list[str] = []
     d0, d1 = datetime.strptime(s, "%Y%m%d").date(), datetime.strptime(e, "%Y%m%d").date()
     d = d0
     while d <= d1:
@@ -203,6 +207,7 @@ def run_backfill(s: str, e: str) -> tuple[int, int]:
                     echo, rows = fetch(idx, asof)
                 except Exception as ex:
                     print(f"{etf} {asof}: fetch failed {ex}")
+                    failed.append(f"{etf} {asof}")
                     continue
                 if echo != asof or not rows:
                     continue
@@ -219,6 +224,8 @@ def run_backfill(s: str, e: str) -> tuple[int, int]:
     con.commit()
     con.close()
     print(f"backfill stored={stored} events={nev}")
+    if failed:
+        raise RuntimeError(f"backfill fetch failed {len(failed)}: {', '.join(failed[:10])}")
     return stored, nev
 
 
