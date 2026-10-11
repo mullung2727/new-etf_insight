@@ -23,11 +23,11 @@ BAL_TAGS = {
 SHARES_TAG = "EntityCommonStockSharesOutstanding"
 
 
-def _concept_ids(con) -> dict[int, str]:
+def _concept_ids(con, extra=()) -> dict[int, str]:
     """load 대상 concept_id → tag (us-gaap + dei 주식수만)."""
     gaap: list[str] = []
     bal_tags = [t for tags in BAL_TAGS.values() for t in tags]
-    for t in (*SALES_TAGS, *COGS_TAGS, *bal_tags):
+    for t in (*SALES_TAGS, *COGS_TAGS, *bal_tags, *extra):
         if t not in gaap:
             gaap.append(t)
     q = (f"SELECT concept_id, tag FROM concepts WHERE (taxonomy='us-gaap' AND tag IN "
@@ -35,13 +35,13 @@ def _concept_ids(con) -> dict[int, str]:
     return {cid: tag for cid, tag in con.execute(q, (*gaap, SHARES_TAG)).fetchall()}
 
 
-def load_facts(db_path=FACTS_DB, end_from: str = "2008-01-01") -> pd.DataFrame:
+def load_facts(db_path=FACTS_DB, end_from: str = "2008-01-01", extra_tags=()) -> pd.DataFrame:
     """us-gaap 재무 + dei 주식수 읽기."""
     cols = ["cik", "tag", "start", "end", "filed", "val"]
     p = str(Path(db_path).resolve()).replace("\\", "/")
     con = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
     try:
-        cmap = _concept_ids(con)
+        cmap = _concept_ids(con, extra=extra_tags)
         if not cmap:
             return pd.DataFrame(columns=cols)
         ids = sorted(cmap)
@@ -114,6 +114,49 @@ def _flows_with_filed(f: pd.DataFrame) -> pd.DataFrame:
         c = next((d[t] for t in COGS_TAGS if t in d), None)
         if s is not None and c is not None:
             rows.append((cik, qend, s[0], c[0], s[1], c[1]))
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(rows, columns=cols)
+
+
+def quarter_flow(f: pd.DataFrame, tags, allow_negative: bool = False) -> pd.DataFrame:
+    """분기 흐름 일반화 (_flows_with_filed 규칙, tags 앞 순서 우선)."""
+    cols = ["cik", "qend", "val", "filed"]
+    if f.empty:
+        return pd.DataFrame(columns=cols)
+    want = set(tags)
+    df = f[f["tag"].isin(want) & f["start"].notna() & f["end"].notna()].copy()
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+    df["days"] = (df["end"] - df["start"]).dt.days
+    df = df.sort_values("filed")
+    direct: dict[tuple, tuple[float, pd.Timestamp]] = {}
+    for r in df.itertuples():
+        if 80 <= r.days <= 100:
+            direct[(r.cik, r.tag, r.end)] = (float(r.val), r.filed)
+    annual: dict[tuple, tuple] = {}
+    nine: dict[tuple, tuple] = {}
+    for r in df.itertuples():
+        if 350 <= r.days <= 380:
+            annual[(r.cik, r.tag, r.start)] = (r.end, float(r.val), r.filed)
+        elif 260 <= r.days <= 285:
+            nine[(r.cik, r.tag, r.start)] = (float(r.val), r.filed)
+    vals: dict[tuple, tuple[float, pd.Timestamp]] = dict(direct)
+    for k, (qend, aval, afiled) in annual.items():
+        if k in nine:
+            nval, nfiled = nine[k]
+            diff = aval - nval
+            ck = (k[0], k[1], qend)
+            if (allow_negative or diff > 0) and ck not in vals:
+                vals[ck] = (diff, afiled if afiled >= nfiled else nfiled)
+    per: dict[tuple, dict] = {}
+    for (cik, tag, qend), (val, filed) in vals.items():
+        per.setdefault((cik, qend), {})[tag] = (val, filed)
+    rows = []
+    for (cik, qend), d in per.items():
+        hit = next((d[t] for t in tags if t in d), None)
+        if hit is not None:
+            rows.append((cik, qend, hit[0], hit[1]))
     if not rows:
         return pd.DataFrame(columns=cols)
     return pd.DataFrame(rows, columns=cols)
