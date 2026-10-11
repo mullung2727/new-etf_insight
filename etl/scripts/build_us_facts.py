@@ -60,7 +60,7 @@ def get_user_agent() -> str:
 
 
 def http_get(session, url: str, ua: str) -> bytes | None:
-    """200 → content, 404 → None. 429·403·5xx·통신오류는 지수 백오프 후 FetchError. 성공·실패 무관 호출 뒤 DELAY 휴식."""
+    """200 → content, 404·S3 AccessDenied 403 → None. 429·403·5xx·통신오류는 지수 백오프 후 FetchError. 성공·실패 무관 호출 뒤 DELAY 휴식."""
     headers = {"User-Agent": ua}
     last_err: str | None = None
     try:
@@ -75,7 +75,8 @@ def http_get(session, url: str, ua: str) -> bytes | None:
                 break
             if resp.status_code == 200:
                 return resp.content
-            if resp.status_code == 404:
+            # SEC Archives(S3)는 없는 파일에 403 AccessDenied 를 준다(2026-10-11 실측). 요청과다 403 은 HTML 이라 재시도 유지.
+            if resp.status_code == 404 or (resp.status_code == 403 and b"<Code>AccessDenied</Code>" in resp.content):
                 return None
             last_err = str(resp.status_code)
             if resp.status_code in (429, 403) or resp.status_code >= 500:
