@@ -394,6 +394,35 @@
       }
     },
     {
+      "id": "f1dcd966-8184-4c55-85ad-5134b779f6b1",
+      "name": "daily-etf-holdings",
+      "description": "Weekdays 16:30 KST TIME 4 ETF daily holdings crawl (timefolioetf PDF) + conviction events (5% in / 3% out) alert to dedicated Discord channel",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "docs/PLAN_ETF_HOLDINGS_WATCH.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-etf-holdings",
+        "xmlFile": "ops/scheduled-tasks/etf-holdings.xml",
+        "runnerScript": "ops/scheduled-tasks/run-etf-holdings.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "55e59971-07e5-400a-b9ea-1d6d0b126a43",
       "name": "daily-trading-result",
       "description": "Mon-Fri 16:20 report actual filled sells and broker-authoritative realized P/L for pullback and close-bet",

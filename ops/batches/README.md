@@ -60,6 +60,8 @@ reader before composing the Discord report.
   - Purpose: rebound target-sell worker 09:00-15:31 (market close at 15:19:20, auction retry 15:20:10).
 - `rebound-verify.md`
   - Purpose: confirm rebound fills at 16:00, record realized P/L, and warn at -20% (no orders).
+- `daily-etf-holdings` (`docs/PLAN_ETF_HOLDINGS_WATCH.md`)
+  - Purpose: crawl TIME 4 ETF daily holdings, detect entry/exit/5%/3% events, alert to dedicated Discord channel.
 
 See `openclaw-cron.registry.json` for the active schedules, Windows task
 bindings, and Discord webhook env key. Do not duplicate schedules in this README.
