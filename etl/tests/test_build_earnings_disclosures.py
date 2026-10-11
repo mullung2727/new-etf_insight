@@ -160,6 +160,57 @@ class TestEarningsDisclosures(unittest.TestCase):
         self.assertEqual(m.pnl_fiscal_year("20240815", 6), "2024")
         self.assertEqual(m.pnl_fiscal_year("20240315", 12), "2023")
 
+    def _prelim_rows(self, label):
+        return [
+            ["※ 동 정보는 잠정치", "", "", ""],
+            ["1. 연결실적내용", "", "단위 : 백만원, %", ""],
+            ["구분", "구분", "당기실적", "전기실적"],
+            ["구분", "구분", label, "(x)"],
+            ["매출액", "당해실적", "100", "90"],
+            ["매출액", "누계실적", "400", ""],
+            ["영업이익", "당해실적", "10", "9"],
+            ["영업이익", "누계실적", "40", ""],
+        ]
+
+    def test_prelim_stage4_korean_quarter(self):
+        r = m._parse_prelim(self._prelim_rows("(2022년 4분기)"), 12, "20230207")
+        self.assertEqual((r["fiscal_year"], r["period"]), ("2022", "Q4"))
+        self.assertAlmostEqual(r["revenue"], 400e6, delta=1)
+        self.assertAlmostEqual(r["op_income"], 40e6, delta=1)
+        self.assertIsNone(r["note"])
+
+    def test_prelim_stage4_dot_q(self):
+        r = m._parse_prelim(self._prelim_rows("(2024.2Q)"), 12, "20240807")
+        self.assertEqual((r["fiscal_year"], r["period"]), ("2024", "Q2"))
+
+    def test_prelim_stage4_short_year_bungi(self):
+        r = m._parse_prelim(self._prelim_rows("('23.3분기)"), 12, "20231110")
+        self.assertEqual((r["fiscal_year"], r["period"]), ("2023", "Q3"))
+
+    def test_prelim_stage4_month(self):
+        r = m._parse_prelim(self._prelim_rows("(2024년09월)"), 12, "20241105")
+        self.assertEqual((r["fiscal_year"], r["period"]), ("2024", "Q3"))
+
+    def test_prelim_stage4_estimate(self):
+        r = m._parse_prelim(self._prelim_rows("(-)"), 12, "20240807")
+        self.assertEqual((r["fiscal_year"], r["period"]), ("2024", "Q2"))
+        self.assertIn("기간 추정(공시일)", r["note"])
+
+    def test_prelim_footnote_range_value_col(self):
+        rows = self._prelim_rows("('24년1분기)")
+        note = "1) 상기자료는 2024.01.01 ~ 2024.03.31 기준"
+        rows.append([note, note, note, note])
+        r = m._parse_prelim(rows, 12, "20240429")
+        self.assertEqual((r["fiscal_year"], r["period"]), ("2024", "Q1"))
+        self.assertAlmostEqual(r["revenue"], 400e6, delta=1)
+        self.assertAlmostEqual(r["op_income"], 40e6, delta=1)
+
+    def test_prelim_period_from_rcept(self):
+        self.assertEqual(m.prelim_period_from_rcept("20240207", 12), ("2023", "Q4"))
+        self.assertEqual(m.prelim_period_from_rcept("20240515", 12), ("2024", "Q1"))
+        self.assertEqual(m.prelim_period_from_rcept("20240815", 6), ("2024", "Q4"))
+        self.assertEqual(m.prelim_period_from_rcept("20240115", 12), ("2023", "Q4"))
+
     def test_num(self):
         self.assertEqual(m._num("1,234"), 1234)
         self.assertEqual(m._num("△1,234"), -1234)

@@ -285,6 +285,18 @@ def prelim_period_from_end_date(year: int, month: int, fye_month: int) -> tuple[
     return (str(year) if month <= fye_month else str(year + 1)), f"Q{n}"
 
 
+def prelim_period_from_rcept(rcept_dt: str, fye_month: int) -> tuple[str, str]:
+    y = int(rcept_dt[0:4])
+    m = int(rcept_dt[4:6]) - 1
+    if m == 0:
+        m, y = 12, y - 1
+    while (m - fye_month) % 3 != 0:
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    return prelim_period_from_end_date(y, m, fye_month)
+
+
 def pnl_fiscal_year(rcept_dt: str, fye_month: int) -> str:
     """공시일 직전에 끝난 회계연도. fye 말일(당해) >= 공시일이면 1년 전."""
     r = date(int(rcept_dt[0:4]), int(rcept_dt[4:6]), int(rcept_dt[6:8]))
@@ -294,7 +306,15 @@ def pnl_fiscal_year(rcept_dt: str, fye_month: int) -> str:
     return str(fye_end.year)
 
 
-def _parse_prelim(rows: list[list[str]], fye_month: int) -> dict:
+def _find_cell(rows: list[list[str]], text: str) -> tuple[int, int] | None:
+    for r, cells in enumerate(rows):
+        for i, c in enumerate(cells):
+            if text in c:
+                return (r, i)
+    return None
+
+
+def _parse_prelim(rows: list[list[str]], fye_month: int, rcept_dt: str) -> dict:
     # 기간: ('24.4Q) → (4Q23) → 날짜구간 순. 첫 매치 열 = 당기실적 열.
     period_col: int | None = None
     fiscal_year: str | None = None
@@ -327,9 +347,47 @@ def _parse_prelim(rows: list[list[str]], fye_month: int) -> dict:
                     break
             if period_col is not None:
                 break
+    est_note: str | None = None
+    if period_col is None:
+        found = _find_cell(rows, "당기실적")
+        if found is None:
+            raise ValueError("잠정실적 기간 표기 없음")
+        found_r, found_i = found
+        period_col = found_i
+        _label = rows[found_r][found_i] + (
+            " " + rows[found_r + 1][found_i]
+            if found_r + 1 < len(rows) and found_i < len(rows[found_r + 1])
+            else "")
+        _m_y = re.search(r"20\d{2}", _label)
+        if _m_y:
+            _year: str | None = _m_y.group(0)
+        else:
+            _m_y2 = re.search(r"'?(\d{2})\s*[년.]", _label)
+            _year = "20" + _m_y2.group(1) if _m_y2 else None
+        _m_q = re.search(r"(\d)\s*(?:Q|분기)", _label)
+        if _m_q and 1 <= int(_m_q.group(1)) <= 4:
+            _q: str | None = "Q" + _m_q.group(1)
+        else:
+            _q = None
+        if _year is not None and _q is not None:
+            fiscal_year, period = _year, _q
+        elif _year is not None and _q is None:
+            _m_m = re.search(r"(\d{1,2})\s*월", _label)
+            if _m_m:
+                fiscal_year, period = prelim_period_from_end_date(
+                    int(_year), int(_m_m.group(1)), fye_month)
+            else:
+                fiscal_year, period = prelim_period_from_rcept(rcept_dt, fye_month)
+                est_note = "기간 추정(공시일)"
+        else:
+            fiscal_year, period = prelim_period_from_rcept(rcept_dt, fye_month)
+            est_note = "기간 추정(공시일)"
     if period_col is None or fiscal_year is None or period is None:
         raise ValueError("잠정실적 기간 표기 없음")
     unit = _table_unit(rows)
+    hdr = _find_cell(rows, "당기실적")
+    if hdr is not None:
+        period_col = hdr[1]
     # 금액: 라벨+누계실적 행의 당기실적 열. 병합셀 미전개(rowspan NaN) 대비 라벨 추적.
     vals: dict[str, dict[str, float | None]] = {
         k: {"cum": None, "cur": None} for k in PRELIM_LABELS}
@@ -362,6 +420,8 @@ def _parse_prelim(rows: list[list[str]], fye_month: int) -> dict:
             if v is not None:
                 note = "Q1 누계 없음→당해 사용"
         out[key] = v * unit if v is not None else None
+    if est_note:
+        note = est_note if note is None else note + "; " + est_note
     text = " ".join(c for row in rows for c in row)
     if "연결실적" in text:
         fs_basis = "CFS"
@@ -418,7 +478,7 @@ def parse_document(html: str, kind: str, rcept_dt: str, fye_month: int) -> dict:
     for rows in _all_tables_rows(html):
         try:
             if kind == "prelim":
-                return _parse_prelim(rows, fye_month)
+                return _parse_prelim(rows, fye_month, rcept_dt)
             return _parse_pnl(rows, rcept_dt, fye_month)
         except Exception as e:
             last_exc = e
