@@ -74,10 +74,10 @@ def cross_section(ym: int, facts: pd.DataFrame, rets: pd.DataFrame,
     rym["ticker"] = rym["ticker"].astype(str).map(ticker_key)
     rym = rym.drop_duplicates("ticker", keep="last")
     m = m.merge(sh.rename("shares"), left_on="cik", right_index=True, how="inner")
-    m = m.merge(rym[["ticker", "ret", "prev_close", "market"]], on="ticker", how="inner")
+    m = m.merge(rym[["ticker", "ret", "prev_close", "prev_raw_close", "market"]], on="ticker", how="inner")
     if m.empty:
         return pd.DataFrame(columns=cols)
-    m["me"] = m["prev_close"] * m["shares"]
+    m["me"] = m["prev_raw_close"] * m["shares"]
     m = m[(m["me"] > 0) & (m["equity"] > 0) & m["ret"].notna()]
     if m.empty:
         return pd.DataFrame(columns=cols)
