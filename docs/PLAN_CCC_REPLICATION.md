@@ -4,9 +4,9 @@
 
 ## 진행
 - [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 — 해당 없음(리서치)
-- [ ] 첫 실가동 확인 — 해당 없음(리서치)
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [x] 운영 등록 — 해당 없음(리서치)
+- [x] 첫 실가동 확인 — 해당 없음(리서치)
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ## 0. 사양 (누가 정했나)
 
@@ -70,4 +70,10 @@
 
 ## 구현 차이
 
-(구현 후 기록)
+- 원래 잔액 태그 1개씩 → 실제 항목별 대체 태그(AR: AccountsReceivableNetCurrent→ReceivablesNetCurrent→AccountsNotesAndLoansReceivableNetCurrent, AP: AccountsPayableCurrent→AccountsPayableTradeCurrent→AccountsPayableAndAccruedLiabilitiesCurrent, 자본: StockholdersEquity→…IncludingNoncontrollingInterest), 매출·원가 태그도 각 1~2개 추가 (Walmart 가 ReceivablesNetCurrent 라 통째 누락되던 것 발견)
+- 원래 시총 = 전월 종가 × 주식수 → 실제 = 전월 **분할 전 실제 가격**(close × 이후 split ratio 곱) × 주식수 (ohlcv.close 가 분할 소급 조정이라 역분할 반복 종목 시총이 1e17 로 부풀어 VW 가 전 분위 월 −3% 로 깨졌음)
+- 원래 winsorize·업종 중앙값은 분기별 → 실제 월 횡단면별 (같은 달 표본 = 거의 같은 분기 묶음, 단순화)
+- 원래 캐시 parquet → 실제 pickle (pyarrow 없음, 새 의존성 금지)
+- 원래 수익 끝 = 최신 월 → 실제 진행 중인 달 제외 (2026-10 은 10/09 까지라 제외)
+- 표본: 월평균 763종목(초소형 제외 437) — 논문의 수천 종목보다 적음. 2019-07 기준 CCC 계산 가능 1,583사 중 ~530 사가 현재 티커 없음(상폐·합병, 생존편향), ~160 가격·주식수·자본 조건 탈락
+- 결과: research/private/ccc/RESULTS.md (비공개, 2026-10-11 실행)

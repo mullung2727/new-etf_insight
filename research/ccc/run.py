@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import sqlite3
 import sys
 from pathlib import Path
@@ -151,7 +152,10 @@ def main(argv=None) -> None:
     sics = sorted(int(s) for s in companies["sic"].dropna().unique())
     ind_map = _load_ind_map(args.facts_db, sics)
     factors = load_factors()
-    end = args.end if args.end is not None else int(rets.loc[rets["ret"].notna(), "ym"].max())
+    t = datetime.date.today()
+    prev_ym = t.year * 100 + t.month - 1 if t.month > 1 else (t.year - 1) * 100 + 12
+    ret_max = int(rets.loc[rets["ret"].notna(), "ym"].max())
+    end = args.end if args.end is not None else min(ret_max, prev_ym)
     yms = _ym_range(args.start, end)
     all48, all5 = [], []
     for i, ym in enumerate(yms):
