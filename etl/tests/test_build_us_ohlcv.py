@@ -494,6 +494,16 @@ class TestBackfill(unittest.TestCase):
     def test_b5_default_from_date(self):
         self.assertEqual(DEFAULT_FROM_DATE, "20100101")
 
+    def test_b6_rejects_response_missing_recent_dates(self):
+        _insert_rows(self.con, [
+            _row("20100105", "AAA", 10), _row("20100106", "AAA", 10), _row("20100107", "AAA", 10),
+        ])
+        download = lambda tickers, start, end: _frame({"AAA": [("2010-01-04", 20), ("2010-01-05", 20), ("2010-01-06", 20)]})
+        stats = backfill_ohlcv(self.con, self.items, "20100101", "20260912", download, "20260912")
+        self.assertEqual(stats["failed_tickers"], ["AAA"])
+        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='AAA'").fetchone()[0], 3)
+        self.assertEqual(self.con.execute("SELECT close FROM ohlcv WHERE ticker='AAA' AND date='20100107'").fetchone()[0], 10)
+
 
 class TestBarCutoff(unittest.TestCase):
     def test_bar_cutoff_day(self):
