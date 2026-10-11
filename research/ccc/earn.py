@@ -143,6 +143,7 @@ def _fm(x) -> str:
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--facts-db", type=Path, default=FACTS_DB)
+    ap.add_argument("--rank", action="store_true")
     args = ap.parse_args(argv)
     facts = load_facts(db_path=args.facts_db, extra_tags=INCOME_TAGS)
     print(f"facts: {len(facts)}", flush=True)
@@ -150,11 +151,14 @@ def main(argv=None) -> None:
     companies = _load_companies(args.facts_db)
     sics = sorted(int(s) for s in companies["sic"].dropna().unique())
     ind_map = _load_ind_map(args.facts_db, sics)
-    events = build_events(facts, companies, ind_map)
+    events = build_events(facts, companies, ind_map, rank_within_ind=args.rank)
     ep = earnings_panel(f1)
     reg = build_reg(events, ep)
     print(f"events: {len(events)} reg: {len(reg)}", flush=True)
-    lines = ["# CCC 이익 예측 (Wang 2019 Table 12 간소화)", "",
+    title = "# CCC 이익 예측 (Wang 2019 Table 12 간소화)"
+    if args.rank:
+        title += " — 업종 내 순위 10분위"
+    lines = [title, "",
              "- E = 분기 순이익 / 직전 분기말 Assets",
              "- 생략 통제: Dividend, DDiv, Accruals (1차 한계, 계수 크기 직접 비교 불가)",
              "- 값: (cik,tag,start,end) 최초 공시값", ""]
@@ -188,7 +192,31 @@ def main(argv=None) -> None:
     for name, gname, my, md, n in aux_rows:
         lines.append(f"| {name} | {gname} | {_fm(my)} | {_fm(md)} | {n} |")
     lines.append("")
-    outp = ROOT / "research" / "private" / "ccc" / "EARN_RESULTS.md"
+    lines += ["## 저CCC(D1) 업종 구성 상위 5",
+              "| ind | D1 비중 | 전체 비중 |",
+              "|---|---|---|"]
+    if len(events):
+        _sic = companies.dropna(subset=["sic"]).drop_duplicates("cik").set_index("cik")["sic"]
+        def _ind_of(cik):
+            try:
+                _s = int(_sic.loc[cik])
+            except (KeyError, TypeError, ValueError):
+                return None
+            return ind_map.get((48, _s))
+        _ev = events.copy()
+        _ev["ind"] = _ev["cik"].map(_ind_of)
+        _ev = _ev[_ev["ind"].notna()]
+        if len(_ev):
+            _d1 = _ev[_ev["dec"] == 1]
+            if len(_d1):
+                _d1c = _d1["ind"].value_counts()
+                _allc = _ev["ind"].value_counts()
+                for _ind, _c in _d1c.head(5).items():
+                    _s1 = _c / len(_d1)
+                    _sa = _allc.get(_ind, 0) / len(_ev)
+                    lines.append(f"| {_ind} | {_s1 * 100:.2f}% | {_sa * 100:.2f}% |")
+    lines.append("")
+    outp = ROOT / "research" / "private" / "ccc" / ("EARN_RESULTS_RANK.md" if args.rank else "EARN_RESULTS.md")
     outp.parent.mkdir(parents=True, exist_ok=True)
     outp.write_text("\n".join(lines), encoding="utf-8")
     print(f"wrote {outp}", flush=True)

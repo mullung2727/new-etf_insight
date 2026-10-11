@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pandas as pd
 
 from research.ccc.panel import FACTS_DB, ccc_table, load_facts
@@ -31,7 +32,7 @@ def first_reported(facts: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_events(facts: pd.DataFrame, companies: pd.DataFrame, ind_map: dict,
-                 scheme: int = 48, max_lag_days: int = 120) -> pd.DataFrame:
+                 scheme: int = 48, max_lag_days: int = 120, rank_within_ind: bool = False) -> pd.DataFrame:
     """최초공시 CCC → 분기별 10분위 이벤트."""
     cols = ["event_id", "cik", "ticker", "qend", "avail", "aq", "ccc_adj", "dec"]
     ccc = ccc_table(first_reported(facts))
@@ -66,8 +67,14 @@ def build_events(facts: pd.DataFrame, companies: pd.DataFrame, ind_map: dict,
         lo1, hi99 = g["ccc"].quantile(0.01), g["ccc"].quantile(0.99)
         g["ccc"] = g["ccc"].clip(lo1, hi99)
         g["ccc_adj"] = g["ccc"] - g.groupby("ind")["ccc"].transform("median")
-        g["dec"] = pd.qcut(g["ccc_adj"].rank(method="first"), 10,
-                           labels=range(1, 11)).astype(int)
+        if rank_within_ind:  # 업종 분산 차이 제거: 업종 내 순위로 10분위
+            r = g.groupby("ind")["ccc"].rank(method="average")
+            n = g.groupby("ind")["ccc"].transform("size")
+            g["dec"] = (np.floor((r - 0.5) / n * 10) + 1).clip(1, 10).astype(int)
+        else:
+            g["dec"] = pd.qcut(g["ccc_adj"].rank(method="first"), 10,
+                               labels=range(1, 11)).astype(int)
+                           
         parts.append(g)
     if not parts:
         return pd.DataFrame(columns=cols)
