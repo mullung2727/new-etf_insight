@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -36,12 +37,14 @@ def holdings_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             ("2026-10-08", "385720", "005930", "Samsung", 10, 100, 26.0, "t"),
         ],
     )
+    today = date.today().isoformat()
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
     con.executemany(
         "INSERT INTO etf_holding_events VALUES (?,?,?,?,?,?,?)",
         [
-            ("2026-10-08", "426030", "AAA", "Alpha", "DN3", 6.0, 5.0),
-            ("2026-10-08", "426030", "CCC", "Gamma", "ENTRY", 0.0, 2.9),
-            ("2026-10-01", "385720", "005930", "Samsung", "UP5", 4.9, 26.0),
+            (today, "426030", "AAA", "Alpha", "DN3", 6.0, 5.0),
+            (today, "426030", "CCC", "Gamma", "ENTRY", 0.0, 2.9),
+            (week_ago, "385720", "005930", "Samsung", "UP5", 4.9, 26.0),
         ],
     )
     con.commit()
@@ -72,10 +75,12 @@ def test_latest_unknown_etf_empty(holdings_db: Path) -> None:
 
 
 def test_events_filter_and_order(holdings_db: Path) -> None:
+    today = date.today().isoformat()
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
     r = _client().get("/holdings/events", params={"days": 30})
     assert r.status_code == 200
     rows = r.json()
-    assert [x["date"] for x in rows] == ["2026-10-08", "2026-10-08", "2026-10-01"]
+    assert [x["date"] for x in rows] == [today, today, week_ago]
     r = _client().get("/holdings/events", params={"etf": "385720", "days": 30})
     assert [x["code"] for x in r.json()] == ["005930"]
     r = _client().get("/holdings/events", params={"days": 1})
