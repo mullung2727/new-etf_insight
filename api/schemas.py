@@ -64,6 +64,39 @@ class HoldingStat(_Base):
     etf_count: int
 
 
+class DailyHolding(_Base):
+    """TIME ETF 일별 보유 1행 + 하이라이트 플래그 (build_etf_holdings.py)."""
+
+    asof: str
+    etf: str
+    code: str
+    name: str | None = None
+    qty: float | None = None
+    amt_krw: float | None = None
+    weight_pct: float = 0.0
+    is_conviction: bool = False  # weight_pct >= 5
+    is_faded: bool = False       # weight_pct <= 3
+
+
+class HoldingEvent(_Base):
+    """편입/편출/돌파/이탈 이벤트 1건."""
+
+    date: str
+    etf: str
+    code: str
+    name: str | None = None
+    kind: str  # ENTRY | EXIT | UP5 | DN3
+    w_prev: float = 0.0
+    w_cur: float = 0.0
+
+
+class HoldingPoint(_Base):
+    """종목별 비중 시계열 1점."""
+
+    asof: str
+    weight_pct: float = 0.0
+
+
 class StatsSummary(_Base):
     total_etfs: int
     with_any_holdings: int
