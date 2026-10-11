@@ -136,6 +136,18 @@ def send_batch_report(message: str) -> bool:
     return send_discord(message, webhook_url=os.getenv("DISCORD_BATCH_WEBHOOK_URL", ""))
 
 
+def send_etf_holdings_alert(message: str) -> bool:
+    """ETF 보유 모니터링 전용 Discord 채널로 보낸다.
+
+    env: ETF_HOLDINGS_DISCORD_WEBHOOK_URL. 없으면 스킵(False) — 폴백 없음.
+    """
+    url = os.getenv("ETF_HOLDINGS_DISCORD_WEBHOOK_URL", "")
+    if not url:
+        print("[notify] ETF_HOLDINGS_DISCORD_WEBHOOK_URL not set - skip holdings notify")
+        return False
+    return send_discord(message, webhook_url=url)
+
+
 def send_rights_alert(message: str) -> bool:
     """유증 하락매수 전용 Discord 채널로 보낸다.
 
@@ -196,6 +208,7 @@ _SENDERS = {
     "telegram_report": "send_telegram_report",
     "batch": "send_batch_report",
     "theme_alert": "send_theme_alert",
+    "etf_holdings": "send_etf_holdings_alert",
 }
 
 
