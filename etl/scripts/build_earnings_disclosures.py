@@ -307,21 +307,42 @@ def pnl_fiscal_year(rcept_dt: str, fye_month: int) -> str:
 
 
 def _find_cell(rows: list[list[str]], text: str) -> tuple[int, int] | None:
+    want = "".join(text.split())
     for r, cells in enumerate(rows):
         for i, c in enumerate(cells):
-            if text in c:
+            if "".join(c.split()) == want:
                 return (r, i)
     return None
 
 
 def _parse_prelim(rows: list[list[str]], fye_month: int, rcept_dt: str) -> dict:
-    # 기간: ('24.4Q) → (4Q23) → 날짜구간 순. 첫 매치 열 = 당기실적 열.
+    # 기간·열: 당기실적 헤더 우선. 헤더 있으면 그 열 라벨로만 판정, 없으면 표 전체 탐색.
     period_col: int | None = None
     fiscal_year: str | None = None
     period: str | None = None
+    hdr = _find_cell(rows, "당기실적")
+    if hdr is not None:
+        _hr, _hi = hdr
+        _lbl = (
+            rows[_hr + 1][_hi]
+            if _hr + 1 < len(rows) and _hi < len(rows[_hr + 1])
+            else "")
+        _m0 = _PRELIM_Q_RE.search(_lbl)
+        if _m0:
+            fiscal_year, period, period_col = "20" + _m0.group(1), "Q" + _m0.group(2), _hi
+        else:
+            _m0 = _PRELIM_Q_REV_RE.search(_lbl)
+            if _m0:
+                fiscal_year, period, period_col = "20" + _m0.group(2), "Q" + _m0.group(1), _hi
+            else:
+                _m0 = _PRELIM_RANGE_RE.search(_lbl)
+                if _m0:
+                    fiscal_year, period = prelim_period_from_end_date(
+                        int(_m0.group(4)), int(_m0.group(5)), fye_month)
+                    period_col = _hi
     for cells in rows:
         for i, c in enumerate(cells):
-            mch = _PRELIM_Q_RE.search(c)
+            mch = _PRELIM_Q_RE.search(c) if hdr is None else None
             if mch:
                 fiscal_year, period, period_col = "20" + mch.group(1), "Q" + mch.group(2), i
                 break
@@ -330,7 +351,7 @@ def _parse_prelim(rows: list[list[str]], fye_month: int, rcept_dt: str) -> dict:
     if period_col is None:
         for cells in rows:
             for i, c in enumerate(cells):
-                mch = _PRELIM_Q_REV_RE.search(c)
+                mch = _PRELIM_Q_REV_RE.search(c) if hdr is None else None
                 if mch:
                     fiscal_year, period, period_col = "20" + mch.group(2), "Q" + mch.group(1), i
                     break
@@ -339,7 +360,7 @@ def _parse_prelim(rows: list[list[str]], fye_month: int, rcept_dt: str) -> dict:
     if period_col is None:
         for cells in rows:
             for i, c in enumerate(cells):
-                mch = _PRELIM_RANGE_RE.search(c)
+                mch = _PRELIM_RANGE_RE.search(c) if hdr is None else None
                 if mch:
                     fiscal_year, period = prelim_period_from_end_date(
                         int(mch.group(4)), int(mch.group(5)), fye_month)
@@ -349,10 +370,9 @@ def _parse_prelim(rows: list[list[str]], fye_month: int, rcept_dt: str) -> dict:
                 break
     est_note: str | None = None
     if period_col is None:
-        found = _find_cell(rows, "당기실적")
-        if found is None:
+        if hdr is None:
             raise ValueError("잠정실적 기간 표기 없음")
-        found_r, found_i = found
+        found_r, found_i = hdr
         period_col = found_i
         _label = rows[found_r][found_i] + (
             " " + rows[found_r + 1][found_i]
@@ -385,9 +405,6 @@ def _parse_prelim(rows: list[list[str]], fye_month: int, rcept_dt: str) -> dict:
     if period_col is None or fiscal_year is None or period is None:
         raise ValueError("잠정실적 기간 표기 없음")
     unit = _table_unit(rows)
-    hdr = _find_cell(rows, "당기실적")
-    if hdr is not None:
-        period_col = hdr[1]
     # 금액: 라벨+누계실적 행의 당기실적 열. 병합셀 미전개(rowspan NaN) 대비 라벨 추적.
     vals: dict[str, dict[str, float | None]] = {
         k: {"cum": None, "cur": None} for k in PRELIM_LABELS}
