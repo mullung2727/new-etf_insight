@@ -339,47 +339,75 @@ CREATE TABLE telegram_stock_insights (
 )
 ```
 
-## `us_financials.sqlite3`
+## `us_facts.sqlite3`
 
-테이블 3개: `accounts`, `corps`, `indicators`
-
-```sql
-CREATE TABLE accounts (
-    cik         TEXT NOT NULL,
-    bsns_year   TEXT NOT NULL,
-    reprt_code  TEXT NOT NULL,
-    sj_div      TEXT,
-    account_nm  TEXT NOT NULL,
-    amount      REAL,
-    ticker      TEXT,
-    filed_dt    TEXT,
-    currency    TEXT,
-    updated_at  TEXT NOT NULL,
-    PRIMARY KEY (cik, bsns_year, reprt_code, account_nm)
-)
-```
+테이블 6개: `companies`, `concepts`, `facts`, `state`, `ff_industries`, `ff_sic_ranges`
 
 ```sql
-CREATE TABLE corps (
+CREATE TABLE companies (
     cik         TEXT PRIMARY KEY,
-    ticker      TEXT NOT NULL,
-    corp_name   TEXT NOT NULL,
+    entity_name TEXT,
+    ticker      TEXT,
     exchange    TEXT,
-    updated_at  TEXT NOT NULL
+    is_listed   INTEGER NOT NULL,
+    raw_updated TEXT,
+    updated_at  TEXT,
+    sic         INTEGER,   -- SEC 현재 SIC (과거 이력 없음)
+    sic_desc    TEXT
 )
 ```
 
 ```sql
-CREATE TABLE indicators (
+CREATE TABLE ff_industries (       -- 파마프렌치 업종 (scheme 5·10·12·17·30·38·48·49)
+    scheme    INTEGER NOT NULL,
+    ind_no    INTEGER NOT NULL,
+    ind_short TEXT NOT NULL,
+    ind_name  TEXT,
+    PRIMARY KEY (scheme, ind_no)
+)
+CREATE TABLE ff_sic_ranges (
+    scheme    INTEGER NOT NULL,
+    ind_no    INTEGER NOT NULL,
+    sic_lo    INTEGER NOT NULL,
+    sic_hi    INTEGER NOT NULL,
+    sic_desc  TEXT,
+    PRIMARY KEY (scheme, sic_lo, sic_hi)
+)
+```
+
+업종 조회는 `build_us_facts.ff_industry(con, scheme, sic)` — 범위 밖 SIC 는 범위 없는 업종(Other)이 있는 분류만 그 업종, 나머지 NULL.
+
+```sql
+CREATE TABLE concepts (
+    concept_id  INTEGER PRIMARY KEY,
+    taxonomy    TEXT NOT NULL,
+    tag         TEXT NOT NULL,
+    label       TEXT,
+    UNIQUE (taxonomy, tag)
+)
+```
+
+```sql
+CREATE TABLE facts (
     cik         TEXT NOT NULL,
-    bsns_year   TEXT NOT NULL,
-    reprt_code  TEXT NOT NULL,
-    idx_code    TEXT NOT NULL,
-    idx_nm      TEXT,
-    idx_val     REAL,
-    ticker      TEXT,
-    updated_at  TEXT NOT NULL,
-    PRIMARY KEY (cik, bsns_year, reprt_code, idx_code)
+    concept_id  INTEGER NOT NULL,
+    unit        TEXT NOT NULL,
+    start       TEXT NOT NULL,
+    end         TEXT NOT NULL,
+    filed       TEXT NOT NULL,
+    val         REAL NOT NULL,
+    accn        TEXT NOT NULL,
+    form        TEXT NOT NULL,
+    fy          INTEGER,
+    fp          TEXT,
+    PRIMARY KEY (cik, concept_id, unit, start, end, filed)
+) WITHOUT ROWID
+```
+
+```sql
+CREATE TABLE state (
+    key   TEXT PRIMARY KEY,
+    value TEXT
 )
 ```
 

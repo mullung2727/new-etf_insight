@@ -1,5 +1,7 @@
 # PLAN — 미국 재무지표 DB (us_financials.sqlite3)
 
+> **대체됨 (2026-10-11)**: 이 PLAN 의 9계정 DB(`us_financials.sqlite3`)·`build_us_financials.py` 는 폐기. 재무제표 전체 보관은 `docs/PLAN_US_FACTS.md`.
+
 한 줄: SEC EDGAR CompanyFacts로 미국 상장사 재무제표를 받아
 `etl/db/us_financials.sqlite3` 에 한국 지표 DB(`financial_indicators.sqlite3`)와
 동형으로 쌓는다. ETL 배치 범위고 broker-web 연동·스케줄 등록은 별도 단계.
