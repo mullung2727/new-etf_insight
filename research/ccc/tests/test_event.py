@@ -150,6 +150,27 @@ class TestEvent(unittest.TestCase):
         self.assertEqual(int(row["nq"]), 3)
         self.assertEqual(int(row["n_ev"]), 6)
 
+    def test_e8_rank_within_ind(self) -> None:
+        rows, cs = [], []
+        for i in range(10):
+            cik = f"{i + 1:010d}"
+            rows += _cik_rows(cik, inv=100.0 + i * 200.0)
+            cs.append({"cik": cik, "ticker": f"A{i:02d}", "sic": 3000})
+        for i in range(10):
+            cik = f"{i + 11:010d}"
+            rows += _cik_rows(cik, inv=100.0 + i * 2.0)
+            cs.append({"cik": cik, "ticker": f"B{i:02d}", "sic": 4000})
+        out = build_events(_df(rows), pd.DataFrame(cs), {(48, 3000): 1, (48, 4000): 2},
+                           rank_within_ind=True)
+        self.assertEqual(len(out), 20)
+        ind_of = {c["cik"]: (1 if c["sic"] == 3000 else 2) for c in cs}
+        d1 = out[out["dec"] == 1]
+        d10 = out[out["dec"] == 10]
+        self.assertEqual(len(d1), 2)
+        self.assertEqual(len(d10), 2)
+        self.assertEqual(set(d1["cik"].map(ind_of)), {1, 2})
+        self.assertEqual(set(d10["cik"].map(ind_of)), {1, 2})
+
 
 if __name__ == "__main__":
     unittest.main()
