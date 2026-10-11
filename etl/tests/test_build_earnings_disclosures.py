@@ -205,6 +205,22 @@ class TestEarningsDisclosures(unittest.TestCase):
         self.assertAlmostEqual(r["revenue"], 400e6, delta=1)
         self.assertAlmostEqual(r["op_income"], 40e6, delta=1)
 
+    def test_prelim_header_label_priority_over_footnote(self):
+        rows = self._prelim_rows("('24년1분기)")
+        note = "주) 2023.10.01 ~ 2023.12.31 비교"
+        rows.append([note, note, note, note])
+        r = m._parse_prelim(rows, 12, "20240429")
+        self.assertEqual((r["fiscal_year"], r["period"]), ("2024", "Q1"))
+        self.assertAlmostEqual(r["revenue"], 400e6, delta=1)
+
+    def test_prelim_header_exact_match(self):
+        rows = self._prelim_rows("(2024.2Q)")
+        rows.insert(1, ["당기실적은 잠정치임", "", "", ""])
+        r = m._parse_prelim(rows, 12, "20240807")
+        self.assertEqual((r["fiscal_year"], r["period"]), ("2024", "Q2"))
+        self.assertAlmostEqual(r["revenue"], 400e6, delta=1)
+        self.assertAlmostEqual(r["op_income"], 40e6, delta=1)
+
     def test_prelim_period_from_rcept(self):
         self.assertEqual(m.prelim_period_from_rcept("20240207", 12), ("2023", "Q4"))
         self.assertEqual(m.prelim_period_from_rcept("20240515", 12), ("2024", "Q1"))
