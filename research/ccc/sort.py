@@ -30,7 +30,7 @@ def formation_window(ym: int) -> tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]
 def cross_section(ym: int, facts: pd.DataFrame, rets: pd.DataFrame,
                   companies: pd.DataFrame, ind_map: dict, scheme: int = 48) -> pd.DataFrame:
     """한 달 표본."""
-    cols = ["ym", "cik", "ticker", "qend", "ccc", "ccc_adj", "ind", "ret", "me", "market", "microcap"]
+    cols = ["ym", "cik", "ticker", "qend", "ccc", "ccc_adj", "ind", "ret", "me", "market", "microcap", "size_q"]
     if facts.empty or rets.empty or companies.empty:
         return pd.DataFrame(columns=cols)
     d, lo, hi = formation_window(ym)
@@ -73,6 +73,19 @@ def cross_section(ym: int, facts: pd.DataFrame, rets: pd.DataFrame,
         return pd.DataFrame(columns=cols)
     rym["ticker"] = rym["ticker"].astype(str).map(ticker_key)
     rym = rym.drop_duplicates("ticker", keep="last")
+    all_comp = companies[["cik", "ticker"]].copy()
+    all_comp = all_comp[all_comp["ticker"].notna()].copy()
+    all_comp["ticker"] = all_comp["ticker"].astype(str).map(ticker_key)
+    uni = all_comp.merge(sh.rename("shares"), left_on="cik", right_index=True, how="inner")
+    uni = uni.merge(rym[["ticker", "prev_raw_close", "market"]], on="ticker", how="inner")
+    uni["me_all"] = uni["prev_raw_close"] * uni["shares"]
+    ny_all = uni[(uni["me_all"] > 0) & (uni["market"] == "NYSE")]["me_all"]
+    if len(ny_all) > 0:
+        qs = [float(ny_all.quantile(q)) for q in (0.2, 0.4, 0.6, 0.8)]
+        if any(not np.isfinite(v) for v in qs):
+            qs = None
+    else:
+        qs = None
     m = m.merge(sh.rename("shares"), left_on="cik", right_index=True, how="inner")
     m = m.merge(rym[["ticker", "ret", "prev_close", "prev_raw_close", "market"]], on="ticker", how="inner")
     if m.empty:
@@ -84,11 +97,12 @@ def cross_section(ym: int, facts: pd.DataFrame, rets: pd.DataFrame,
     lo1, hi99 = m["ccc"].quantile(0.01), m["ccc"].quantile(0.99)
     m["ccc"] = m["ccc"].clip(lo1, hi99)
     m["ccc_adj"] = m["ccc"] - m.groupby("ind")["ccc"].transform("median")
-    ny = m[m["market"] == "NYSE"]["me"]
-    if len(ny) > 0 and ny.notna().any():
-        m["microcap"] = m["me"] < ny.quantile(0.2)
-    else:
+    if qs is None:
+        m["size_q"] = 0
         m["microcap"] = False
+    else:
+        m["size_q"] = np.searchsorted(np.asarray(qs), m["me"].to_numpy(float), side="right") + 1
+        m["microcap"] = m["size_q"] == 1
     m["ym"] = ym
     m["microcap"] = m["microcap"].astype(bool)
     return m[cols].reset_index(drop=True)
@@ -167,13 +181,7 @@ def spread_stats(spread: pd.Series, factors: pd.DataFrame) -> dict:
 def size_double_sort(cs: pd.DataFrame, col: str) -> pd.Series:
     """사이즈×CCC 이중정렬 스프레드."""
     out = {g: float("nan") for g in range(1, 6)}
-    ny = cs[cs["market"] == "NYSE"]["me"].dropna()
-    if len(ny) == 0:
-        return pd.Series(out).sort_index().rename(None)
-    qs = [float(ny.quantile(q)) for q in (0.2, 0.4, 0.6, 0.8)]
-    if any(not np.isfinite(v) for v in qs):
-        return pd.Series(out).sort_index().rename(None)
-    size = pd.cut(cs["me"], [-float("inf"), *qs, float("inf")], labels=[1, 2, 3, 4, 5])
+    size = cs["size_q"]
     for g in range(1, 6):
         sub = cs[size == g]
         if len(sub) < 5:

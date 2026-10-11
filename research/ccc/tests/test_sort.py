@@ -114,6 +114,25 @@ class TestSort(unittest.TestCase):
         out = cross_section(202007, facts, rets, comp, {(48, 3000): 1}, 48)
         self.assertAlmostEqual(out.loc[0, "me"], 10000.0)
 
+    def test_microcap_breakpoint_uses_all_nyse(self) -> None:
+        rows = _cik_rows("0000000001", shares=10.0)
+        for i in range(5):
+            cik = f"{i + 2:010d}"
+            rows.append((cik, "EntityCommonStockSharesOutstanding", "", "2020-03-31", "2020-05-01", 10000.0))
+        facts = _df(rows)
+        cs = [{"cik": "0000000001", "ticker": "AAA", "sic": 3000}]
+        rs = [{"ticker": "AAA", "ym": 202007, "ret": 0.01,
+               "prev_close": 10.0, "prev_raw_close": 10.0, "market": "NYSE"}]
+        for i in range(5):
+            cik = f"{i + 2:010d}"
+            cs.append({"cik": cik, "ticker": f"BIG{i}", "sic": 3000})
+            rs.append({"ticker": f"BIG{i}", "ym": 202007, "ret": 0.01,
+                       "prev_close": 100.0, "prev_raw_close": 100.0 * (i + 1), "market": "NYSE"})
+        out = cross_section(202007, facts, pd.DataFrame(rs), pd.DataFrame(cs), {(48, 3000): 1}, 48)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(bool(out.loc[0, "microcap"]))
+        self.assertEqual(int(out.loc[0, "size_q"]), 1)
+
     def test_c11_nw_lag0(self) -> None:
         y = np.arange(1, 51, dtype=float)
         b, t = nw_tstat(y, lags=0)
