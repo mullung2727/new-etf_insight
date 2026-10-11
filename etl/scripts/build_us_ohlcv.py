@@ -276,14 +276,19 @@ def _replace_split_history(
     """Atomically replace one ticker after a split-triggered full refetch."""
     con.execute("BEGIN TRANSACTION")
     try:
-        stored_first = con.execute(
-            "SELECT min(date) FROM ohlcv WHERE ticker=?", [ticker]
-        ).fetchone()[0]
+        stored_first, stored_last = con.execute(
+            "SELECT min(date), max(date) FROM ohlcv WHERE ticker=?", [ticker]
+        ).fetchone()
         first = min((row[0] for row in rows), default=None)
-        # 잘린 재조회(응답이 비어있지만 않으면 통과)로 과거 구간을 통째로 날리는 걸 막는다.
+        last = max((row[0] for row in rows), default=None)
+        # 잘린 재조회(응답이 비어있지만 않으면 통과)로 과거·최근 구간을 통째로 날리는 걸 막는다.
         if stored_first is not None and (first is None or first > stored_first):
             raise RuntimeError(
                 f"{ticker} 재조회가 기존 구간을 못 덮는다 (저장 {stored_first} < 응답 {first})"
+            )
+        if stored_last is not None and last < stored_last:
+            raise RuntimeError(
+                f"{ticker} 재조회가 최근 구간을 못 덮는다 (저장 {stored_last} > 응답 {last})"
             )
         con.execute("DELETE FROM ohlcv WHERE ticker=?", [ticker])
         con.execute("DELETE FROM splits WHERE ticker=?", [ticker])
