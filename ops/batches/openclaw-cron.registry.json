@@ -365,6 +365,35 @@
       }
     },
     {
+      "id": "d1085a5a-ea42-48a5-b39e-dc0a8ab1596b",
+      "name": "daily-us-facts",
+      "description": "Daily 04:00 KST SEC XBRL companyfacts raw archive (D:/sec_edgar) + us_facts.sqlite3 update for companies with new periodic filings",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 4 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-us-facts.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-us-facts",
+        "xmlFile": "ops/scheduled-tasks/us-facts.xml",
+        "runnerScript": "ops/scheduled-tasks/run-us-facts.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "55e59971-07e5-400a-b9ea-1d6d0b126a43",
       "name": "daily-trading-result",
       "description": "Mon-Fri 16:20 report actual filled sells and broker-authoritative realized P/L for pullback and close-bet",
@@ -663,8 +692,8 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
-    }
-    ,{
+    },
+    {
       "id": "7e3a1f52-9c4d-4b6e-a8f2-5d0c7e1b9a33",
       "name": "daily-swing-pick",
       "description": "Weekdays 19:00 KST swing candidate top-3 (telegram/youtube/report/high52 → Jev + code checklist), report to Discord batch channel",
