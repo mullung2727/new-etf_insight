@@ -7,8 +7,8 @@
 작성 2026-10-11.
 
 ## 진행
-- [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (스케줄 작업 `daily-us-facts` 04:00)
+- [x] 구현·테스트 머지 (PR #70)
+- [x] 운영 등록 (스케줄 작업 `daily-us-facts` 04:00, 2026-10-11 등록)
 - [ ] 첫 실가동 확인 (날짜)
 - [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
@@ -117,7 +117,7 @@ state (key TEXT PRIMARY KEY, value TEXT)   -- last_index_date
 | 원본 저장 | `save_raw(cik, bytes)` | `.tmp` 에 gzip 쓰고 `os.replace` (쓰다 죽어도 이전 파일 유지) |
 | 첫 적재 | `init_from_zip(zip_path)` | zip 각 파일 → `save_raw` + `replace_company`. 끝나면 `last_index_date` = zip Last-Modified 날짜 − 3일 |
 | 목록 파싱 | `parse_daily_index(text)` | form 이 D10 목록인 행의 CIK 집합 |
-| 일일 갱신 | `update()` | `last_index_date`+1 ~ 어제까지 날짜별로 목록 수신·D: 저장. 404 이면: 주말 또는 오늘−4일 이전이면 휴일로 보고 넘어감, 아니면 아직 미게시로 보고 중단(미국 평일 휴일은 며칠 늦게 넘어감). 받은 날짜들 + 그 직전 3일(D12) 저장 목록의 CIK 를 companyfacts 로 재수집 → `save_raw` + `replace_company`. 전부 성공해야 `last_index_date` 전진 |
+| 일일 갱신 | `update()` | `last_index_date`+1 ~ 어제까지 날짜별로 목록 수신·D: 저장. 404(또는 S3 AccessDenied 403) 이면: 주말 또는 오늘−4일 이전이면 휴일로 보고 넘어감, 아니면 아직 미게시로 보고 중단(미국 평일 휴일은 며칠 늦게 넘어감). 받은 날짜들 + 그 직전 3일(D12) 저장 목록의 CIK 를 companyfacts 로 재수집 → `save_raw` + `replace_company`. 전부 성공해야 `last_index_date` 전진 |
 | 상장 매핑 | `refresh_companies()` | 매 실행 `company_tickers_exchange.json` 으로 ticker·exchange·is_listed 갱신 |
 | 스키마 이전 | `ensure_schema()` | 기존 DB 에 `companies.sic`·`sic_desc` 없으면 `ALTER TABLE ADD COLUMN` |
 | FF 분류 파싱 | `parse_ff_siccodes(scheme, text)` | `^ *N Short  Name` 줄 = 업종, `NNNN-NNNN 설명` 줄 = 범위 |
@@ -184,3 +184,4 @@ state (key TEXT PRIMARY KEY, value TEXT)   -- last_index_date
 - 원래 업종 없음 → 실제 SIC·파마프렌치 8종 추가(D14~D19) (CCC 업종 비교용, 사용자 요청)
 - 원래 첫 적재 수동 실행 → 실제 1회용 스케줄 작업으로 실행 (세션 종료와 무관하게 돌리려고)
 - 실측: 첫 적재 회사 20,454·행 7,203만·10.7GB, 약 2시간 40분. SIC 회사 21,455 중 17,708 보유(상장 8,028 중 6,937, 없는 건 대부분 펀드·ETF)
+- 원래 목록 없는 날 404 → 실제 SEC Archives 는 403 + S3 `AccessDenied` XML (2026-10-11 수동 실가동에서 주말 날짜로 실패, `http_get` 이 이 403 만 "없음" 처리, 요청과다 403 HTML 은 재시도 유지, T20)

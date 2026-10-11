@@ -351,6 +351,35 @@ class TestUsFacts(unittest.TestCase):
             self.assertIn("CIK0000000111", sub_calls[0])
             self.assertEqual(r["sic"], 1)
 
+    def test_t20_http_get_s3_403_is_missing(self):
+        from unittest.mock import patch
+
+        class _Resp:
+            def __init__(self, status_code, content):
+                self.status_code = status_code
+                self.content = content
+
+        class _Session:
+            def __init__(self, resp):
+                self._resp = resp
+                self.calls = 0
+
+            def get(self, url, headers=None, timeout=None):
+                self.calls += 1
+                return self._resp
+
+        xml = b'<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>'
+        s1 = _Session(_Resp(403, xml))
+        with patch.object(m.time, "sleep"), patch.object(m, "DELAY", 0):
+            self.assertIsNone(m.http_get(s1, "http://x", "ua"))
+        self.assertEqual(s1.calls, 1)
+
+        html = b"<html>Request Rate Threshold Exceeded</html>"
+        s2 = _Session(_Resp(403, html))
+        with patch.object(m.time, "sleep"), patch.object(m, "DELAY", 0):
+            with self.assertRaises(m.FetchError):
+                m.http_get(s2, "http://x", "ua")
+
 
 if __name__ == "__main__":
     unittest.main()
