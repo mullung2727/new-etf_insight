@@ -106,3 +106,22 @@ def test_latest_deltas(holdings_db: Path) -> None:
     for row in rows.values():
         assert row["d7"] is None
         assert row["d30"] is None
+
+
+def test_latest_deltas_week_month(holdings_db: Path) -> None:
+    con = sqlite3.connect(str(holdings_db))
+    con.executemany(
+        "INSERT INTO etf_holdings_daily VALUES (?,?,?,?,?,?,?,?)",
+        [
+            ("2026-10-02", "426030", "AAA", "Alpha", 10, 100, 9.0, "t"),  # 7일 이내라 d7 기준 아님
+            ("2026-09-30", "426030", "AAA", "Alpha", 10, 100, 4.0, "t"),
+            ("2026-09-30", "426030", "BBB", "Beta", 10, 100, 3.5, "t"),
+            ("2026-09-01", "426030", "AAA", "Alpha", 10, 100, 2.0, "t"),
+        ],
+    )
+    con.commit()
+    con.close()
+    r = _client().get("/holdings/latest", params={"etf": "426030"})
+    rows = {row["code"]: row for row in r.json()}
+    assert (rows["AAA"]["d7"], rows["BBB"]["d7"], rows["CCC"]["d7"]) == (1.0, -0.5, 2.9)
+    assert (rows["AAA"]["d30"], rows["BBB"]["d30"], rows["CCC"]["d30"]) == (3.0, 3.0, 2.9)
