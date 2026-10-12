@@ -94,3 +94,15 @@ def test_history_ascending(holdings_db: Path) -> None:
         ("2026-10-07", 6.0),
         ("2026-10-08", 5.0),
     ]
+
+
+def test_latest_deltas(holdings_db: Path) -> None:
+    r = _client().get("/holdings/latest", params={"etf": "426030"})
+    assert r.status_code == 200
+    rows = {row["code"]: row for row in r.json()}
+    assert rows["AAA"]["d1"] == -1.0
+    assert rows["BBB"]["d1"] == -1.0
+    assert rows["CCC"]["d1"] == 2.9
+    for row in rows.values():
+        assert row["d7"] is None
+        assert row["d30"] is None

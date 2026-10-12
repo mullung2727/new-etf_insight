@@ -76,6 +76,9 @@ class DailyHolding(_Base):
     weight_pct: float = 0.0
     is_conviction: bool = False  # weight_pct >= 5
     is_faded: bool = False       # weight_pct <= 3
+    d1: float | None = None   # 직전 스냅샷 대비 비중 증감(%p)
+    d7: float | None = None   # 7일 전(이하 가장 가까운) 스냅샷 대비
+    d30: float | None = None  # 30일 전(이하 가장 가까운) 스냅샷 대비
 
 
 class HoldingEvent(_Base):
