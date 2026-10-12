@@ -403,7 +403,7 @@
         "expr": "30 16 * * 1-5",
         "tz": "Asia/Seoul"
       },
-      "instructionFile": "docs/PLAN_ETF_HOLDINGS_WATCH.md",
+      "instructionFile": "docs/done/PLAN_ETF_HOLDINGS_WATCH.md",
       "timeoutSeconds": 3600,
       "windowsTask": {
         "enabled": true,
