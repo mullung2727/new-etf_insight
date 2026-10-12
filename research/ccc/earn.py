@@ -103,6 +103,8 @@ def fama_macbeth(reg: pd.DataFrame, cols=COLS) -> pd.DataFrame:
             X, y = X[ok], y[ok]
             if len(y) < 30:
                 continue
+            if np.linalg.matrix_rank(X) < X.shape[1]:
+                continue
             beta, *_ = np.linalg.lstsq(X, y, rcond=None)
             for j, c in enumerate(cols):
                 coefs[c].append(float(beta[j + 1]))
