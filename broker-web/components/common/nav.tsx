@@ -7,7 +7,7 @@ import { BrokerStatus } from "./broker-status";
 
 const links = [
   { href: "/etfs", label: "ETF 분석" },
-  { href: "/holdings", label: "보유현황" },
+  { href: "/holdings", label: "ETF 추적" },
   { href: "/trading", label: "트레이딩" },
   { href: "/notes", label: "투자노트" },
   { href: "/stock", label: "종목 분석" },

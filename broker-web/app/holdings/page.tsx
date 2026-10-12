@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { WeightHistoryChart } from "@/components/holdings/weight-history-chart";
 
 interface DailyHolding {
   asof: string;
@@ -21,6 +22,14 @@ interface DailyHolding {
   weight_pct: number;
   is_conviction: boolean;
   is_faded: boolean;
+  d1: number | null;
+  d7: number | null;
+  d30: number | null;
+}
+
+interface HoldingPoint {
+  asof: string;
+  weight_pct: number;
 }
 
 interface HoldingEvent {
@@ -34,7 +43,7 @@ interface HoldingEvent {
 }
 
 interface PageProps {
-  searchParams: Promise<{ etf?: string }>;
+  searchParams: Promise<{ etf?: string; code?: string }>;
 }
 
 const ETFS = [
@@ -68,20 +77,35 @@ function formatPct(w: number | null): string {
   return `${w.toFixed(2)}%`;
 }
 
+function formatDelta(v: number | null): string {
+  if (v === null || v === undefined) return "-";
+  if (v === 0) return "0.00";
+  return `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
+}
+
+function deltaClass(v: number | null): string | undefined {
+  if (v === null || v === undefined || v === 0) return undefined;
+  return v > 0 ? "text-status-profit" : "text-status-loss";
+}
+
 export default async function HoldingsPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const raw = params.etf;
   const etf = raw !== undefined && ETFS.some((e) => e.code === raw) ? raw : DEFAULT_ETF;
+  const code = params.code;
 
-  const [latest, events] = await Promise.all([
+  const [latest, events, history] = await Promise.all([
     apiGet<DailyHolding[]>("/holdings/latest", { etf }),
     apiGet<HoldingEvent[]>("/holdings/events", { etf, days: 30 }),
+    code ? apiGet<HoldingPoint[]>("/holdings/history", { etf, code }) : Promise.resolve([] as HoldingPoint[]),
   ]);
+
+  const selectedName = code ? (latest.find((h) => h.code === code)?.name ?? code) : null;
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">ETF 보유현황</h1>
+        <h1 className="text-2xl font-semibold">ETF 추적</h1>
         <p className="text-sm text-muted-foreground mt-1">TIME ETF 편입종목 보유 비중과 최근 편입·편출 이벤트를 봅니다.</p>
       </div>
 
@@ -102,6 +126,18 @@ export default async function HoldingsPage({ searchParams }: PageProps) {
         ))}
       </div>
 
+      {code && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">{selectedName} 비중 추이</h2>
+            <Link href={`/holdings?etf=${etf}`} className="text-sm text-muted-foreground hover:text-foreground">
+              닫기
+            </Link>
+          </div>
+          <WeightHistoryChart data={history} />
+        </section>
+      )}
+
       {latest.length > 0 ? (
         <>
           <p className="text-xs text-muted-foreground">기준일: {latest[0].asof}</p>
@@ -113,6 +149,9 @@ export default async function HoldingsPage({ searchParams }: PageProps) {
                   <TableHead className="text-right">수량</TableHead>
                   <TableHead className="text-right">평가금액(억원)</TableHead>
                   <TableHead className="text-right">비중</TableHead>
+                  <TableHead className="text-right">전일</TableHead>
+                  <TableHead className="text-right">1주</TableHead>
+                  <TableHead className="text-right">1개월</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -122,7 +161,9 @@ export default async function HoldingsPage({ searchParams }: PageProps) {
                     className={cn(h.is_conviction && "bg-secondary/40", h.is_faded && "text-muted-foreground")}
                   >
                     <TableCell>
-                      <div>{h.name ?? h.code}</div>
+                      <Link href={`/holdings?etf=${etf}&code=${encodeURIComponent(h.code)}`} className="hover:underline">
+                        <div>{h.name ?? h.code}</div>
+                      </Link>
                       <div className="text-xs text-muted-foreground">{h.code}</div>
                     </TableCell>
                     <TableCell className="text-right font-mono">{formatQty(h.qty)}</TableCell>
@@ -131,6 +172,9 @@ export default async function HoldingsPage({ searchParams }: PageProps) {
                       {formatPct(h.weight_pct)}
                       {h.is_conviction && <Badge className="ml-2">확신</Badge>}
                     </TableCell>
+                    <TableCell className={cn("text-right font-mono", deltaClass(h.d1))}>{formatDelta(h.d1)}</TableCell>
+                    <TableCell className={cn("text-right font-mono", deltaClass(h.d7))}>{formatDelta(h.d7)}</TableCell>
+                    <TableCell className={cn("text-right font-mono", deltaClass(h.d30))}>{formatDelta(h.d30)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
