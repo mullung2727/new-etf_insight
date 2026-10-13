@@ -30,6 +30,9 @@ from scripts.run_orderbook_research_recorder import (
 
 KST = ZoneInfo("Asia/Seoul")
 
+FIXED_NOW = datetime(2026, 10, 13, 10, 0, tzinfo=KST)
+_fixed_now = lambda: FIXED_NOW
+
 LOGIN_OK = {"trnm": "LOGIN", "return_code": 0, "return_msg": "ok"}
 REG_OK = {"trnm": "REG", "return_code": 0, "return_msg": "ok"}
 REMOVE_OK = {"trnm": "REMOVE", "return_code": 0, "return_msg": "ok"}
@@ -294,6 +297,7 @@ class CloseBackoffCase(unittest.TestCase):
 class LoopCase(_TmpCase):
     def _run(self, **kw):
         kw.setdefault("sleep_fn", _no_sleep)
+        kw.setdefault("now_fn", _fixed_now)
         with mock.patch("asyncio.sleep", _no_sleep):
             return asyncio.run(run_recording(**kw))
 
@@ -442,7 +446,7 @@ class StoreCase(_TmpCase):
                     date="20261013", codes=["005930"], db_path=db, watch=watch,
                     connect_fn=_connect,
                     load_token_fn=lambda: ("ws://fake", "tok", "ok"),
-                    notify_fn=mock.Mock(), out_dir=self.tmp, sleep_fn=_no_sleep))
+                    notify_fn=mock.Mock(), out_dir=self.tmp, sleep_fn=_no_sleep, now_fn=_fixed_now))
             self.assertEqual(res["reason"], "broker_disconnected")
         con = sqlite3.connect(db)
         try:
