@@ -1,6 +1,6 @@
 """SEC XBRL 재무 원본(companyfacts) 전체 보관 + us_facts.sqlite3 적재 배치.
 
-상세 설계는 docs/PLAN_US_FACTS.md. 정기보고서(10-K·10-Q 등) 전 계정을 "값이 바뀐 공시만" 버전으로 쌓는다.
+상세 설계는 docs/done/PLAN_US_FACTS.md. 정기보고서(10-K·10-Q 등) 전 계정을 "값이 바뀐 공시만" 버전으로 쌓는다.
 
 Usage (from etl/):
     uv run python scripts/build_us_facts.py                                                    # 일일 갱신
