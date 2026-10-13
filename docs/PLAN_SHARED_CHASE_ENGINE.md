@@ -199,3 +199,6 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 ## 구현 차이
 - P1 원래 `run_live_batch(..., notify_channel="batch")` → 실제 `notify_fn: Callable[[str], bool]`(기본 = batch 채널 notify) (전략마다 쓰던 알림 함수를 그대로 넘겨 전환 시 알림 채널이 안 바뀌게)
 - P1 원래 결과 불명 "공통 규칙"만 → 실제 함수 `classify_unknown(order_no, 미체결, 체결내역) -> (lookup_failed|no_order_no|open|filled|not_found, 체결수량)` + `retry_qty` (전략 전환 단계에서 호출)
+- P2 원래 "목표가 유지 동작"을 별도 기능으로 → 실제 state 의 `price_fn`(고정 가격, 같으면 정정 안 함) + `on_step(states, api, now)` 훅(스텝마다 state 추가·수량 조정)으로 일반화. rebound 가 어떻게 쓸지는 P4 에서 확정
+- P2 broker 호출을 매도/매수 메서드 쌍 → side 인자 하나의 프로토콜(`price/place_limit/place_market/modify/cancel/unfilled/fills`) + `ClientEngineApi`(BrokerClient 어댑터). 무상증자의 "실패 → 불명" 변환은 엔진이 아니라 어댑터 책임(P3)
+- P2 `dry_run` 결과도 접수로 취급 (BrokerClient 모의 모드)
