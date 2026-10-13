@@ -14,6 +14,7 @@ $ErrorActionPreference = "Continue"
 & ".venv\Scripts\python.exe" "scripts\run_orderbook_research_recorder.py" `
   *> (Join-Path $logDir "orderbook-research-recorder-$date.log")
 $code = $LASTEXITCODE
+if ($null -eq $code) { exit 1 }
 $ErrorActionPreference = "Stop"
 
 exit $code
