@@ -7,6 +7,8 @@ import duckdb
 
 from scripts.backfill_minute_bars import (
     PROBE_TICKER,
+    _etf_base_tickers,
+    _load_base_tickers,
     load_month_plan,
     month_progress,
     parse_args,
@@ -255,6 +257,110 @@ class MinuteBackfillTest(unittest.TestCase):
     def test_parse_args_rejects_invalid_calendar_date(self):
         with self.assertRaises(SystemExit):
             parse_args(["--today", "20260230"])
+
+
+def _seed_etf_krx(krx_db: Path) -> None:
+    with duckdb.connect(str(krx_db)) as con:
+        con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR)")
+        con.execute("INSERT INTO ohlcv VALUES ('20261007', '005930')")
+        con.execute(
+            "CREATE TABLE etf_ohlcv(date VARCHAR, ticker VARCHAR, idx_name VARCHAR)"
+        )
+        con.executemany("INSERT INTO etf_ohlcv VALUES (?, ?, ?)", [
+            ("20261007", "069500", "코스피 200"),
+            ("20261007", "233740", "코스피 200 TR"),
+            ("20261007", "111111", "코스피 200 정보기술"),
+            ("20261007", "252670", "코스피 200 선물지수"),
+            ("20261007", "426030", "뭔가다른지수"),
+        ])
+
+
+class TestEtfMinutePlan(unittest.TestCase):
+    def test_load_month_plan_selects_index_and_tracked_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            krx_db = Path(tmp) / "krx.duckdb"
+            _seed_etf_krx(krx_db)
+            plan = load_month_plan(krx_db, "202610")
+        for ticker in ("005930", "069500", "252670", "426030"):
+            self.assertIn(ticker, plan)
+        self.assertNotIn("233740", plan)
+        self.assertNotIn("111111", plan)
+
+    def test_load_month_plan_without_etf_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            krx_db = Path(tmp) / "krx.duckdb"
+            with duckdb.connect(str(krx_db)) as con:
+                con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR)")
+                con.executemany("INSERT INTO ohlcv VALUES (?, ?)", [
+                    ("20261007", "AAA"), ("20261007", "BBB"),
+                ])
+            plan = load_month_plan(krx_db, "202610")
+            self.assertEqual(plan, {"AAA": ["20261007"], "BBB": ["20261007"]})
+
+    def test_load_base_tickers_adds_etf_sorted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            krx_db = Path(tmp) / "krx.duckdb"
+            with duckdb.connect(str(krx_db)) as con:
+                con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR)")
+                con.executemany("INSERT INTO ohlcv VALUES (?, ?)", [
+                    ("20261007", "BBB"), ("20261007", "AAA"),
+                ])
+                con.execute(
+                    "CREATE TABLE etf_ohlcv(date VARCHAR, ticker VARCHAR, idx_name VARCHAR)"
+                )
+                con.executemany("INSERT INTO etf_ohlcv VALUES (?, ?, ?)", [
+                    ("20261007", "069500", "코스피 200"),
+                    ("20261007", "233740", "코스피 200 TR"),
+                ])
+                self.assertEqual(
+                    _load_base_tickers(con, "20261007"), ["069500", "AAA", "BBB"]
+                )
+                self.assertEqual(_etf_base_tickers(con, "20261007"), ["069500"])
+
+    def test_load_month_plan_extra_includes_etf_base(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            krx_db = Path(tmp) / "krx.duckdb"
+            with duckdb.connect(str(krx_db)) as con:
+                con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR)")
+                con.execute("INSERT INTO ohlcv VALUES ('20261007', 'AAA')")
+            plan = load_month_plan(
+                krx_db, "202610",
+                extra_dates=["20261008"],
+                base_tickers=["AAA", "069500"],
+            )
+            self.assertEqual(plan["AAA"], ["20261007", "20261008"])
+            self.assertEqual(plan["069500"], ["20261008"])
+
+    def test_run_backfills_probed_extra_date_for_etf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            krx_db = Path(tmp) / "krx.duckdb"
+            minute_db = Path(tmp) / "minute.duckdb"
+            with duckdb.connect(str(krx_db)) as con:
+                con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR)")
+                con.execute("INSERT INTO ohlcv VALUES ('20261007', '000001')")
+                con.execute(
+                    "CREATE TABLE etf_ohlcv(date VARCHAR, ticker VARCHAR, idx_name VARCHAR)"
+                )
+                con.execute(
+                    "INSERT INTO etf_ohlcv VALUES ('20261007', '069500', '코스피 200')"
+                )
+            args = parse_args([
+                "--krx-db", str(krx_db), "--minute-db", str(minute_db),
+                "--today", "20261009", "--max-runtime-min", "1",
+            ])
+
+            def fetch(symbol, scope, base_dt, **kwargs):
+                return {"bars": [raw("20261006", "090000"), raw("20261007", "090000"),
+                                 raw("20261008", "090000")],
+                        "cont_yn": "N", "next_key": ""}
+
+            payload = run(args, fetch_page=fetch)
+            self.assertEqual(payload["extra_dates"], ["20261008"])
+            with duckdb.connect(str(minute_db), read_only=True) as con:
+                rows = con.execute(
+                    "SELECT ticker FROM minute_fetched WHERE date='20261008'"
+                ).fetchall()
+            self.assertIn("069500", {row[0] for row in rows})
 
 
 if __name__ == "__main__":

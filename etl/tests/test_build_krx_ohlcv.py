@@ -13,16 +13,25 @@ import duckdb
 import requests
 
 from scripts.build_krx_ohlcv import (
+    _parse_float,
     _parse_int,
+    ensure_etf_ohlcv,
     ensure_ohlcv,
     fetch_day,
+    fetch_etf_day,
     get_trading_calendar,
     holiday_dates,
+    run_etf_step,
 )
 
 
 def _row(date: str, ticker: str, market: str = "KOSPI") -> tuple:
     return (date, ticker, market, 100, 110, 90, 105, 1000, 105000, 999, 10, 5)
+
+
+def _etf_row(date: str, ticker: str) -> tuple:
+    return (date, ticker, "NAME", "코스피 200", 100, 110, 90, 105,
+            1000, 105000, 999, 10, 100.5, 777)
 
 
 class TestParseInt(unittest.TestCase):
@@ -274,6 +283,132 @@ class TestEnsureOhlcv(unittest.TestCase):
             "SELECT cmp_prev FROM ohlcv WHERE date='20250102' AND ticker='005930'"
         ).fetchone()[0]
         self.assertEqual(val, _row("20250102", "005930")[-1])
+
+
+class TestFetchEtfDay(unittest.TestCase):
+    def _resp(self, json_body):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = json_body
+        resp.text = str(json_body)
+        return resp
+
+    def _etf_body(self):
+        return {"OutBlock_1": [{
+            "BAS_DD": "20250102", "ISU_CD": "069500",
+            "ISU_NM": " KODEX 200 ", "IDX_IND_NM": " 코스피 200 ",
+            "TDD_OPNPRC": "10,000", "TDD_HGPRC": "10,100",
+            "TDD_LWPRC": "9,900", "TDD_CLSPRC": "10,050",
+            "ACC_TRDVOL": "1,000", "ACC_TRDVAL": "10,000,000",
+            "MKTCAP": "999", "LIST_SHRS": "10",
+            "NAV": "10,055.12",
+            "INVSTASST_NETASST_TOTAMT": "1,000,000",
+        }]}
+
+    def test_field_mapping(self):
+        session = MagicMock()
+        session.get.return_value = self._resp(self._etf_body())
+        with patch("scripts.build_krx_ohlcv.time.sleep"):
+            rows = fetch_etf_day("20250102", "k", session=session)
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(len(row), 14)
+        (date, ticker, name, idx_name, o, h, low, close,
+         vol, val, cap, shrs, nav, net_asset) = row
+        self.assertEqual(name, "KODEX 200")
+        self.assertEqual(idx_name, "코스피 200")
+        self.assertEqual(close, 10050)
+        self.assertAlmostEqual(nav, 10055.12)
+        self.assertEqual(net_asset, 1000000)
+
+    def test_nav_dash_is_none(self):
+        self.assertIsNone(_parse_float("-"))
+        self.assertIsNone(_parse_float(""))
+        self.assertIsNone(_parse_float(None))
+
+    def test_missing_outblock_raises(self):
+        session = MagicMock()
+        session.get.return_value = self._resp({"respMsg": "oops"})
+        with self.assertRaises(RuntimeError):
+            fetch_etf_day("20250102", "k", session=session)
+
+
+class TestEnsureEtfOhlcv(unittest.TestCase):
+    def setUp(self):
+        self.con = duckdb.connect(":memory:")
+
+    def tearDown(self):
+        self.con.close()
+
+    def _seed(self, stock_dates, etf_dates):
+        self.con.execute(
+            "CREATE TABLE ohlcv (date VARCHAR, ticker VARCHAR, "
+            "market VARCHAR, open INTEGER)"
+        )
+        for d in stock_dates:
+            self.con.execute("INSERT INTO ohlcv VALUES (?, '005930', 'KOSPI', 1)", [d])
+        if etf_dates:
+            self.con.execute(
+                "CREATE TABLE etf_ohlcv (date VARCHAR, ticker VARCHAR, name VARCHAR, "
+                "idx_name VARCHAR, open INTEGER, high INTEGER, low INTEGER, close INTEGER, "
+                "volume BIGINT, trading_value BIGINT, market_cap BIGINT, list_shrs BIGINT, "
+                "nav DOUBLE, net_asset BIGINT, PRIMARY KEY (date, ticker))"
+            )
+            for d in etf_dates:
+                self.con.execute(
+                    "INSERT INTO etf_ohlcv VALUES (?, '069500', 'n', '코스피 200', "
+                    "1, 1, 1, 1, 1, 1, 1, 1, 1.0, 1)", [d])
+
+    def test_only_missing_dates_fetched(self):
+        self._seed(["20250102", "20250103", "20250106"], ["20250102"])
+        calls = []
+
+        def fake_fetch(date, key, session=None):
+            calls.append(date)
+            return [_etf_row(date, "069500")]
+
+        with patch("scripts.build_krx_ohlcv.fetch_etf_day", side_effect=fake_fetch):
+            stats = ensure_etf_ohlcv(self.con, "20250102", "20250106", "k")
+        self.assertEqual(sorted(calls), ["20250103", "20250106"])
+        self.assertEqual(stats["missing_days"], 2)
+        self.assertEqual(stats["fetched_days"], 2)
+        self.assertEqual(stats["inserted_rows"], 2)
+
+    def test_fetch_error_counts_failed_and_continues(self):
+        self._seed(["20250102", "20250103"], [])
+        def fake_fetch(date, key, session=None):
+            if date == "20250102":
+                raise RuntimeError("boom")
+            return [_etf_row(date, "069500")]
+
+        with patch("scripts.build_krx_ohlcv.fetch_etf_day", side_effect=fake_fetch):
+            stats = ensure_etf_ohlcv(self.con, "20250102", "20250103", "k")
+        self.assertEqual(stats["failed_days"], 1)
+        self.assertEqual(stats["fetched_days"], 1)
+        n = self.con.execute("SELECT count(*) FROM etf_ohlcv").fetchone()[0]
+        self.assertEqual(n, 1)
+
+
+class TestRunEtfStep(unittest.TestCase):
+    def setUp(self):
+        self.con = duckdb.connect(":memory:")
+
+    def tearDown(self):
+        self.con.close()
+
+    def test_error_returns_string_without_raise(self):
+        with patch("scripts.build_krx_ohlcv.ensure_etf_ohlcv",
+                   side_effect=RuntimeError("boom")):
+            s = run_etf_step(self.con, "20250102", "20250103", "k")
+        self.assertTrue(s.startswith("etf_error="))
+
+    def test_success_format(self):
+        with patch("scripts.build_krx_ohlcv.ensure_etf_ohlcv",
+                   return_value={"missing_days": 2, "fetched_days": 2,
+                                 "inserted_rows": 5, "failed_days": 0}):
+            s = run_etf_step(self.con, "20250102", "20250103", "k")
+        self.assertEqual(s, "etf=fetched 2d/5rows failed=0")
 
 
 if __name__ == "__main__":
