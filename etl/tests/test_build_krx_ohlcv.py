@@ -389,6 +389,31 @@ class TestEnsureEtfOhlcv(unittest.TestCase):
         n = self.con.execute("SELECT count(*) FROM etf_ohlcv").fetchone()[0]
         self.assertEqual(n, 1)
 
+    def test_insert_error_counts_failed_and_continues(self):
+        import scripts.build_krx_ohlcv as mod
+        self._seed(["20250102", "20250103", "20250106"], [])
+        real_insert = mod._insert_etf_ohlcv_rows
+        calls: list = []
+
+        def fake_insert(con, rows):
+            calls.append(rows[0][0])
+            if len(calls) == 2:
+                raise RuntimeError("boom")
+            return real_insert(con, rows)
+
+        def fake_fetch(date, key, session=None):
+            return [_etf_row(date, "069500")]
+
+        with patch("scripts.build_krx_ohlcv.fetch_etf_day", side_effect=fake_fetch):
+            with patch("scripts.build_krx_ohlcv._insert_etf_ohlcv_rows",
+                       side_effect=fake_insert):
+                stats = ensure_etf_ohlcv(self.con, "20250102", "20250106", "k")
+        self.assertEqual(stats["failed_days"], 1)
+        dates = sorted(
+            r[0] for r in self.con.execute(
+                "SELECT DISTINCT date FROM etf_ohlcv").fetchall())
+        self.assertEqual(dates, ["20250102", "20250106"])
+
 
 class TestRunEtfStep(unittest.TestCase):
     def setUp(self):
@@ -409,6 +434,10 @@ class TestRunEtfStep(unittest.TestCase):
                                  "inserted_rows": 5, "failed_days": 0}):
             s = run_etf_step(self.con, "20250102", "20250103", "k")
         self.assertEqual(s, "etf=fetched 2d/5rows failed=0")
+
+    def test_missing_ohlcv_table_returns_etf_error(self):
+        s = run_etf_step(self.con, "20250102", "20250103", "k")
+        self.assertTrue(s.startswith("etf_error="))
 
 
 if __name__ == "__main__":

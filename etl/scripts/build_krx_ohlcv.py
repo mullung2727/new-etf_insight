@@ -297,15 +297,12 @@ def ensure_etf_ohlcv(
     Returns: 통계 dict (missing_days/fetched_days/inserted_rows/failed_days).
     """
     con.execute(_CREATE_ETF_OHLCV)
-    try:
-        targets = [
-            r[0] for r in con.execute(
-                "SELECT DISTINCT date FROM ohlcv WHERE date BETWEEN ? AND ? ORDER BY date",
-                [from_date, to_date],
-            ).fetchall()
-        ]
-    except Exception:
-        return {"missing_days": 0, "fetched_days": 0, "inserted_rows": 0, "failed_days": 0}
+    targets = [
+        r[0] for r in con.execute(
+            "SELECT DISTINCT date FROM ohlcv WHERE date BETWEEN ? AND ? ORDER BY date",
+            [from_date, to_date],
+        ).fetchall()
+    ]
     if not force:
         held = {
             r[0] for r in con.execute(
@@ -322,15 +319,15 @@ def ensure_etf_ohlcv(
     for date in targets:
         try:
             rows = fetch_etf_day(date, key, session=session)
+            if rows:
+                _insert_etf_ohlcv_rows(con, rows)
+                fetched_days += 1
+                inserted_rows += len(rows)
+                print(f"  {date}: {len(rows)} etf rows")
         except Exception as exc:
-            print(f"  {date}: etf fetch failed - {exc} (retry next run)")
+            print(f"  {date}: etf fetch/insert failed - {exc} (retry next run)")
             failed_days += 1
             continue
-        if rows:
-            _insert_etf_ohlcv_rows(con, rows)
-            fetched_days += 1
-            inserted_rows += len(rows)
-            print(f"  {date}: {len(rows)} etf rows")
 
     return {
         "missing_days": len(targets),
