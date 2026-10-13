@@ -49,6 +49,40 @@ CREATE TABLE IF NOT EXISTS minute_backfill_failures (
 )
 """
 
+# build_etf_holdings.ETFS 와 같은 목록(import 시 dotenv·notify 부작용이라 복사)
+TRACKED_ETFS = ("426030", "385720", "495060", "456600")
+ETF_INDEX_NAMES = ("코스피 200", "코스피 200 선물지수", "코스닥 150", "F-코스닥150 지수")
+
+
+def _has_etf_table(con: duckdb.DuckDBPyConnection) -> bool:
+    return (
+        con.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name='etf_ohlcv'"
+        ).fetchone()[0]
+        > 0
+    )
+
+
+def _etf_base_tickers(con: duckdb.DuckDBPyConnection, latest_date: str) -> list[str]:
+    """latest_date 기준 선정 ETF ticker (지수명 일치 또는 추적 ETF)."""
+    if not _has_etf_table(con):
+        return []
+    rows = con.execute(
+        "SELECT DISTINCT ticker FROM etf_ohlcv WHERE date=? "
+        "AND (idx_name IN (?,?,?,?) OR ticker IN (?,?,?,?))",
+        [latest_date, *ETF_INDEX_NAMES, *TRACKED_ETFS],
+    ).fetchall()
+    return sorted({str(r[0]) for r in rows})
+
+
+def _load_base_tickers(con: duckdb.DuckDBPyConnection, latest_date: str) -> list[str]:
+    """미리받기용 기준 종목 — 주식 + 선정 ETF, 중복 제거·정렬."""
+    rows = con.execute(
+        "SELECT ticker FROM ohlcv WHERE date=? ORDER BY ticker", [latest_date]
+    ).fetchall()
+    base = [str(row[0]) for row in rows]
+    return sorted(set(base) | set(_etf_base_tickers(con, latest_date)))
+
 
 def recent_months(latest_month: str, count: int) -> list[str]:
     year, month = int(latest_month[:4]), int(latest_month[4:])
@@ -100,10 +134,18 @@ def load_month_plan(
 ) -> dict[str, list[str]]:
     """KRX 일봉에 실제 상장행이 있는 종목·날짜만 수집 대상으로 삼는다."""
     with duckdb.connect(str(krx_db), read_only=True) as con:
-        rows = con.execute(
-            "SELECT ticker, date FROM ohlcv WHERE substr(date, 1, 6)=? ORDER BY ticker, date",
-            [month],
-        ).fetchall()
+        rows = list(
+            con.execute(
+                "SELECT ticker, date FROM ohlcv WHERE substr(date, 1, 6)=? ORDER BY ticker, date",
+                [month],
+            ).fetchall()
+        )
+        if _has_etf_table(con):
+            rows += con.execute(
+                "SELECT ticker, date FROM etf_ohlcv WHERE substr(date,1,6)=? "
+                "AND (idx_name IN (?,?,?,?) OR ticker IN (?,?,?,?))",
+                [month, *ETF_INDEX_NAMES, *TRACKED_ETFS],
+            ).fetchall()
     plan: dict[str, list[str]] = defaultdict(list)
     for ticker, date in rows:
         plan[str(ticker)].append(str(date))
@@ -261,12 +303,7 @@ def run(args: argparse.Namespace, fetch_page: Callable[..., dict[str, Any]] | No
     os.environ.setdefault("KIWOOM_MIN_INTERVAL", str(args.api_interval))
     with duckdb.connect(str(args.krx_db), read_only=True) as con:
         latest_date = str(con.execute("SELECT MAX(date) FROM ohlcv").fetchone()[0])
-        base_tickers = [
-            str(row[0])
-            for row in con.execute(
-                "SELECT ticker FROM ohlcv WHERE date=? ORDER BY ticker", [latest_date]
-            ).fetchall()
-        ]
+        base_tickers = _load_base_tickers(con, latest_date)
     today = getattr(args, "today", None) or datetime.now().strftime("%Y%m%d")
     deadline = time.monotonic() + args.max_runtime_min * 60
     try:
