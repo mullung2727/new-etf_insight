@@ -11,7 +11,7 @@ import pandas as pd
 
 from research.afa.fair import mispricing, ols_fair
 from research.afa.items import winsorize_by_assets
-from research.afa.run import _quintile
+from research.afa.run import _cache_ok, _quintile, _write_meta
 from research.backtest_daily.adjust import adj_returns
 from research.backtest_daily.data import DB, load_px, stock_names
 from research.backtest_daily.guards import AVAIL, FIN_DB
@@ -489,7 +489,11 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
     cache_dir = ROOT / "research" / "private" / "afa" / "cache"
     cs_path = cache_dir / ("cs_kr_old.pkl" if args.old_filter else "cs_kr.pkl")
-    if (not args.no_cache) and cs_path.exists():
+    meta_path = cache_dir / ("meta_kr_old.json" if args.old_filter else "meta_kr.json")
+    meta = {"start": args.start, "end": args.end, "old_filter": bool(args.old_filter),
+            "px_db": str(Path(args.px_db).resolve()),
+            "fin_db": str(Path(args.fin_db).resolve())}
+    if (not args.no_cache) and cs_path.exists() and _cache_ok(meta_path, meta):
         cs = pd.read_pickle(cs_path)
         names = stock_names(db=args.px_db)
     else:
@@ -564,6 +568,7 @@ def main(argv=None) -> None:
         cs = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=CS_COLS)
         cache_dir.mkdir(parents=True, exist_ok=True)
         cs.to_pickle(cs_path)
+        _write_meta(meta_path, meta)
     agg = _aggregate_kr(cs)
     outp = ROOT / "research" / "private" / "afa" / (
         "RESULTS_KR_old.md" if args.old_filter else "RESULTS_KR.md")

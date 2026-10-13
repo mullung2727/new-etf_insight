@@ -46,6 +46,7 @@ GROUPS: dict[str, dict] = {
     "discontinued_ops": {"tags": ["IncomeLossFromDiscontinuedOperationsNetOfTax",
                                    "IncomeLossFromDiscontinuedOperationsNetOfTaxAttributableToReportingEntity"],
                          "kind": "flow", "zero": True},
+    # ProfitLoss 는 비지배지분 포함(범위 다름) — NetIncomeLoss 없을 때만 쓰는 의도된 예외, 비지배지분 없는 회사는 같은 값
     "net_income": {"tags": ["NetIncomeLoss", "ProfitLoss"], "kind": "flow", "zero": False},
     "preferred_dividends": {"tags": ["DividendsPreferredStock",
                                       "PreferredStockDividendsIncomeStatementImpact"],

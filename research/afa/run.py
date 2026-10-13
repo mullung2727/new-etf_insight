@@ -38,6 +38,22 @@ WAVG_TAG = "WeightedAverageNumberOfSharesOutstandingBasic"
 CSO_TAG = "CommonStockSharesOutstanding"
 
 
+def _cache_ok(meta_path, meta: dict) -> bool:
+    """캐시 meta 일치 여부 (파일 있고 json 내용 == meta 이면 True)."""
+    try:
+        p = Path(meta_path)
+        if not p.exists():
+            return False
+        return json.loads(p.read_text(encoding="utf-8")) == meta
+    except Exception:
+        return False
+
+
+def _write_meta(meta_path, meta) -> None:
+    """캐시 meta 저장."""
+    Path(meta_path).write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+
+
 def load_share_tag(db_path=FACTS_DB, tag=WAVG_TAG) -> pd.DataFrame:
     """us-gaap 주식수 태그 읽기 (unit='shares')."""
     cols = ["cik", "end", "filed", "val"]
@@ -335,7 +351,12 @@ def main(argv=None) -> None:
     cache_dir = ROOT / "research" / "private" / "afa" / "cache"
     cs_path = cache_dir / "cs.pkl"
     items_path = cache_dir / "items.json"
-    if (not args.no_cache) and cs_path.exists() and items_path.exists():
+    meta_path = cache_dir / "meta.json"
+    meta = {"start": args.start, "end": args.end, "draws": args.draws,
+            "facts_db": str(Path(args.facts_db).resolve()),
+            "ohlcv_db": str(Path(args.ohlcv_db).resolve())}
+    if ((not args.no_cache) and cs_path.exists() and items_path.exists()
+            and _cache_ok(meta_path, meta)):
         cs = pd.read_pickle(cs_path)
         items_map = {int(k): v for k, v in
                      json.loads(items_path.read_text(encoding="utf-8")).items()}
@@ -440,6 +461,7 @@ def main(argv=None) -> None:
         cs.to_pickle(cs_path)
         items_path.write_text(json.dumps({str(k): v for k, v in items_map.items()},
                                          ensure_ascii=False), encoding="utf-8")
+        _write_meta(meta_path, meta)
     rows = _aggregate(cs, factors)
     outp = ROOT / "research" / "private" / "afa" / "RESULTS.md"
     outp.parent.mkdir(parents=True, exist_ok=True)

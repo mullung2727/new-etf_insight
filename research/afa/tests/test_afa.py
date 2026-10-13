@@ -5,13 +5,14 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from research.afa.fair import mispricing, ols_fair, ts_fair
 from research.afa.items import bal_obs, select_items, snapshot, ttm_obs, winsorize_by_assets
-from research.afa.run import AFA_ITEMS, _aggregate, afa_matrix, pick_shares
+from research.afa.run import AFA_ITEMS, _aggregate, _cache_ok, _write_meta, afa_matrix, pick_shares
 from research.ccc.panel import load_facts
 
 
@@ -313,6 +314,19 @@ class TestAggregateNoTs(unittest.TestCase):
         self.assertTrue(rows)
         self.assertFalse(any(r["signal"] == "ts" for r in rows))
         self.assertTrue(any(r["signal"] == "ols" for r in rows))
+
+
+class TestCacheOk(unittest.TestCase):
+    def test_meta_match(self):
+        """meta 같으면 True, draws 다르면 False, 파일 없으면 False."""
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "meta.json"
+            meta = {"start": 201007, "end": None, "draws": 5000,
+                    "facts_db": "a", "ohlcv_db": "b"}
+            self.assertFalse(_cache_ok(p, meta))
+            _write_meta(p, meta)
+            self.assertTrue(_cache_ok(p, meta))
+            self.assertFalse(_cache_ok(p, {**meta, "draws": 0}))
 
 
 if __name__ == "__main__":
