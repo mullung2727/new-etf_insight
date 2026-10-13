@@ -4,7 +4,7 @@
 
 SEC XBRL 재무 원본(companyfacts)을 `D:/sec_edgar/` 에 회사별로 보관하고,
 정기보고서(10-K·10-Q·20-F·40-F 등) 전 계정을 "값이 바뀐 공시만" 버전으로 `etl/db/us_facts.sqlite3` 에 쌓는다.
-상장폐지 회사 포함. 설계 `docs/PLAN_US_FACTS.md`.
+상장폐지 회사 포함. 설계 `docs/done/PLAN_US_FACTS.md`.
 
 ## Execution
 
