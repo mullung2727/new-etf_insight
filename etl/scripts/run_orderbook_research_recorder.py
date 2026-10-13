@@ -719,6 +719,7 @@ async def run_recording(
                     _flush()
                     last_flush = time.monotonic()
                 if sess.server_closed:
+                    _flush()
                     break
             if term is not None:
                 if gap_start is not None:
