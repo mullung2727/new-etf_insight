@@ -35,7 +35,7 @@ DEFAULT_SRC = ETL_ROOT / "db" / "orderbook_research"
 DEFAULT_DST = Path("D:/orderbook")
 
 KST = ZoneInfo("Asia/Seoul")
-RECORDING_CUTOFF = time(15, 40)  # 오늘 파일은 이 시각 전이면 녹화 중이라 건너뜀
+RECORDING_CUTOFF = time(20, 10)  # 오늘 파일은 이 시각 전이면 녹화 중이라 건너뜀 (녹화 08:30~20:00)
 SPACE_FACTOR = 3  # D: 여유 공간이 sqlite 크기의 3배 미만이면 보류
 BACKLOG_WARN = 3  # C: 잔류 파일이 이 개수 이상이면 경고
 READ_CHUNK = 200_000  # sqlite fetchmany 행 수
