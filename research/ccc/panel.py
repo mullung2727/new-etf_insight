@@ -58,9 +58,13 @@ def load_facts(db_path=FACTS_DB, end_from: str = "2008-01-01", extra_tags=()) ->
     df = df[keep].copy()
     if df.empty:
         return pd.DataFrame(columns=cols)
-    df["start"] = pd.to_datetime(df["start"].where(df["start"] != "", None))
-    df["end"] = pd.to_datetime(df["end"])
-    df["filed"] = pd.to_datetime(df["filed"])
+    has_start = df["start"].notna() & (df["start"] != "")
+    df["start"] = pd.to_datetime(df["start"].where(df["start"] != "", None), errors="coerce")
+    df["end"] = pd.to_datetime(df["end"], errors="coerce")
+    df["filed"] = pd.to_datetime(df["filed"], errors="coerce")
+    df = df[~((has_start & df["start"].isna()) | df["end"].isna() | df["filed"].isna())].copy()
+    if df.empty:
+        return pd.DataFrame(columns=cols)
     df["val"] = df["val"].astype(float)
     return df[cols].reset_index(drop=True)
 
