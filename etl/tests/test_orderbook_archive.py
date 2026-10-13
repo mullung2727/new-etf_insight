@@ -219,8 +219,15 @@ class _ArchiveCase(unittest.TestCase):
         self.assertFalse(self.dst.exists())
         self.assertEqual(list(self.src.iterdir()), [p])
         self.notify.assert_not_called()
-        # 같은 날 15:41 → 처리
-        rc = run(self.src, self.dst, datetime(2026, 10, 8, 15, 41, tzinfo=KST), self.notify)
+        # 같은 날 19:59 → 녹화 중(건너뜀), 아무것도 안 바뀜
+        rc = run(self.src, self.dst, datetime(2026, 10, 8, 19, 59, tzinfo=KST), self.notify)
+        self.assertEqual(rc, 0)
+        self.assertTrue(p.exists())
+        self.assertFalse(self.dst.exists())
+        self.assertEqual(list(self.src.iterdir()), [p])
+        self.notify.assert_not_called()
+        # 같은 날 20:11 → 처리
+        rc = run(self.src, self.dst, datetime(2026, 10, 8, 20, 11, tzinfo=KST), self.notify)
         self.assertEqual(rc, 0)
         self.assertFalse(p.exists())
         self.assertTrue((self.dst / "2026" / "10" / "trade_20261008.parquet").is_file())
