@@ -325,3 +325,146 @@ class CashReservationTest(unittest.TestCase):
         self.assertEqual(leftovers, [])
         data = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(data["127.0.0.1:8002"]["reserve"], 100)
+
+
+class RunLiveBatchTest(unittest.TestCase):
+    """공용 시작 절차 run_live_batch — 거래일 → 계좌 → body → 알림/종료코드."""
+
+    TAG = "LIVEBATCH"
+    TODAY = "20260105"
+
+    def _call(self, body, alert, *, trading=True, profile_ok=True, **kwargs):
+        """load_dotenv·거래일·계좌를 patch하고 run_live_batch 실행 → (code, trading, require)."""
+        kwargs.setdefault("broker_url", "http://127.0.0.1:8001")
+        kwargs.setdefault("profile", "HIGH52")
+        kwargs.setdefault("today", self.TODAY)
+        with patch("dotenv.load_dotenv"), \
+                patch("scripts.check_krx_trading_day.is_krx_trading_day") as trading_day, \
+                patch("scripts.trading_batch_common.require_profile") as require:
+            trading_day.return_value = trading
+            require.return_value = profile_ok
+            code = tbc.run_live_batch(self.TAG, body, notify_fn=alert, **kwargs)
+        return code, trading_day, require
+
+    def test_holiday_returns_zero_without_side_effects(self):
+        body, alert = Mock(), Mock(return_value=True)
+        with patch("builtins.print"):
+            code, _trading, require = self._call(body, alert, trading=False)
+        self.assertEqual(code, 0)
+        body.assert_not_called()
+        alert.assert_not_called()
+        require.assert_not_called()
+
+    def test_profile_mismatch_returns_one_without_body(self):
+        body, alert = Mock(), Mock(return_value=True)
+        code, _trading, _require = self._call(body, alert, profile_ok=False)
+        self.assertEqual(code, 1)
+        body.assert_not_called()
+        self.assertEqual(alert.call_count, 1)
+        self.assertIn(self.TAG, alert.call_args.args[0])
+
+    def test_success_with_lines_notifies_once(self):
+        alert = Mock(return_value=True)
+        body = Mock(return_value={"lines": ["매수 005930 10주", "매도 000660 5주"], "code": 0})
+        code, _trading, _require = self._call(body, alert)
+        self.assertEqual(code, 0)
+        self.assertEqual(alert.call_count, 1)
+        message = alert.call_args.args[0]
+        self.assertIn(self.TAG, message)
+        self.assertIn("매수 005930 10주", message)
+        self.assertIn("매도 000660 5주", message)
+
+    def test_success_without_lines_stays_silent(self):
+        alert = Mock(return_value=True)
+        code, _trading, _require = self._call(
+            Mock(return_value={"lines": [], "code": 0}), alert)
+        self.assertEqual(code, 0)
+        alert.assert_not_called()
+
+    def test_body_none_returns_zero_silently(self):
+        alert = Mock(return_value=True)
+        code, _trading, _require = self._call(Mock(return_value=None), alert)
+        self.assertEqual(code, 0)
+        alert.assert_not_called()
+
+    def test_nonzero_code_passes_through(self):
+        alert = Mock(return_value=True)
+        code, _trading, _require = self._call(Mock(return_value={"code": 1}), alert)
+        self.assertEqual(code, 1)
+        alert.assert_not_called()
+
+    def test_body_error_with_alert_returns_two(self):
+        alert = Mock(return_value=True)
+        with patch("traceback.print_exc"):
+            code, _trading, _require = self._call(
+                Mock(side_effect=ValueError("폭락")), alert)
+        self.assertEqual(code, 2)
+        self.assertEqual(alert.call_count, 1)
+        message = alert.call_args.args[0]
+        self.assertIn("실패", message)
+        self.assertIn("ValueError", message)
+
+    def test_body_error_without_alert_returns_one(self):
+        alert = Mock(return_value=False)
+        with patch("traceback.print_exc"):
+            code, _trading, _require = self._call(
+                Mock(side_effect=ValueError("폭락")), alert)
+        self.assertEqual(code, 1)
+        self.assertEqual(alert.call_count, 1)
+
+    def test_body_error_with_alert_failure_returns_one(self):
+        alert = Mock(side_effect=RuntimeError("끊김"))
+        with patch("traceback.print_exc"), patch("builtins.print"):
+            code, _trading, _require = self._call(
+                Mock(side_effect=ValueError("폭락")), alert)
+        self.assertEqual(code, 1)
+
+    def test_no_broker_url_skips_profile_check(self):
+        body = Mock(return_value=None)
+        alert = Mock(return_value=True)
+        code, _trading, require = self._call(body, alert, broker_url=None)
+        self.assertEqual(code, 0)
+        require.assert_not_called()
+        body.assert_called_once_with()
+
+    def test_trading_day_false_skips_calendar(self):
+        body = Mock(return_value=None)
+        alert = Mock(return_value=True)
+        code, trading, _require = self._call(body, alert, trading_day=False)
+        self.assertEqual(code, 0)
+        trading.assert_not_called()
+        body.assert_called_once_with()
+
+
+class UnknownRecheckTest(unittest.TestCase):
+    """불명 주문 재판정 classify_unknown + 재주문 수량 retry_qty."""
+
+    def test_lookup_none_is_lookup_failed(self):
+        self.assertEqual(tbc.classify_unknown("0024530", None, []), ("lookup_failed", 0))
+        self.assertEqual(tbc.classify_unknown("0024530", [], None), ("lookup_failed", 0))
+
+    def test_zero_order_no_is_distinct_from_lookup_failed(self):
+        self.assertEqual(tbc.classify_unknown("0000000", [], []), ("no_order_no", 0))
+
+    def test_open_absorbs_zero_padding(self):
+        self.assertEqual(tbc.classify_unknown("0024530", [{"order_no": "24530"}], []),
+                         ("open", 0))
+
+    def test_open_reports_filled_qty(self):
+        fills = [{"order_no": "0024530", "cntr_qty": 30}]
+        self.assertEqual(tbc.classify_unknown("0024530", [{"order_no": "24530"}], fills),
+                         ("open", 30))
+
+    def test_filled_sums_across_padded_rows(self):
+        fills = [{"order_no": "24530", "cntr_qty": 10},
+                 {"order_no": "0024530", "cntr_qty": 20}]
+        self.assertEqual(tbc.classify_unknown("0024530", [], fills), ("filled", 30))
+
+    def test_not_found(self):
+        self.assertEqual(tbc.classify_unknown("0024530", [], []), ("not_found", 0))
+
+    def test_retry_qty(self):
+        self.assertEqual(tbc.retry_qty(10, 7), 7)
+        self.assertEqual(tbc.retry_qty(10, None), 0)
+        self.assertEqual(tbc.retry_qty(10, 0), 0)
+        self.assertEqual(tbc.retry_qty(5, 9), 5)
