@@ -202,3 +202,6 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P2 원래 "목표가 유지 동작"을 별도 기능으로 → 실제 state 의 `price_fn`(고정 가격, 같으면 정정 안 함) + `on_step(states, api, now)` 훅(스텝마다 state 추가·수량 조정)으로 일반화. rebound 가 어떻게 쓸지는 P4 에서 확정
 - P2 broker 호출을 매도/매수 메서드 쌍 → side 인자 하나의 프로토콜(`price/place_limit/place_market/modify/cancel/unfilled/fills`) + `ClientEngineApi`(BrokerClient 어댑터). 무상증자의 "실패 → 불명" 변환은 엔진이 아니라 어댑터 책임(P3)
 - P2 `dry_run` 결과도 접수로 취급 (BrokerClient 모의 모드)
+- P3 원래 "broker 호출 → BrokerClient + 추격 → chase_engine" → 실제 추격 엔진만 교체(`chase.py` = 원장·문구·시각 상수 + `_EngineApi` 어댑터 래퍼). rights 의 broker 호출(`expire.BrokerApi`, Jev `BrokerApi` 의존)은 그대로 — `place_sell_via_broker` 의 "실패 = 불명" 의미·거래소 지정 등 HTTP 동작을 바꾸지 않으려고. BrokerClient 교체는 Jev 이전(P5) 때 Jev 의존 제거와 함께
+- P3 state 처리 순서: 원래 매도 전부 → 매수 전부, 엔진은 states 목록 순서. `expire.py` 가 매도 → 매수 순으로 states 를 만들어 실동작 동일(382개 테스트 통과)
+- 스테이징 위치: 원래 `research/private/_staging/<전략>/` → 실제 이 worktree 의 `research/private/`(gitignore) 사본. 테스트가 `research.private.*` 경로로 import 하므로 같은 경로 구조가 필요. worktree 에 `etl/db` 빈 폴더 필요(테스트가 sqlite 파일 생성)
