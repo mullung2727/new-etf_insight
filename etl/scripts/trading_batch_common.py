@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -282,3 +283,105 @@ def held_quantities(balance: dict) -> dict[str, int] | None:
     if not isinstance(rows, list):
         return None
     return {_strip_ticker(r.get("stk_cd", "")): _padint(r.get("trde_able_qty")) for r in rows}
+
+
+def run_live_batch(
+    tag: str,
+    body: Callable[[], dict | None],
+    *,
+    broker_url: str | None,
+    profile: str | None,
+    notify_fn: Callable[[str], bool] | None = None,
+    trading_day: bool = True,
+    today: str | None = None,
+) -> int:
+    """실매매 배치 공용 시작 절차: 거래일 확인 → 계좌 확인 → body → 결과 알림.
+
+    종료 코드: 0 정상(휴장일 포함), 1 중단(계좌 불일치·body 실패·body가 nonzero 반환),
+    2 body 실패 + 알림 성공(러너는 중복 알림 생략 — run_swing_pick.py와 같은 규약).
+    """
+    try:
+        from scripts.check_krx_trading_day import is_krx_trading_day
+    except ImportError:  # etl/scripts 직접 실행 시
+        from check_krx_trading_day import is_krx_trading_day  # noqa: E402
+    try:
+        from scripts.notify import notify
+    except ImportError:  # etl/scripts 직접 실행 시
+        from notify import notify  # noqa: E402
+    import traceback
+
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    if today is None:
+        today = now_seoul().strftime("%Y%m%d")
+    if notify_fn is None:
+        def notify_fn(message: str) -> bool:
+            return notify(message, channel="batch")
+    if trading_day and not is_krx_trading_day(today):
+        print(f"{tag} {today} 거래일 아님 — 종료")
+        return 0
+    if broker_url and not require_profile(broker_url, profile):
+        try:
+            notify_fn(f"{tag} {today} {broker_url} 계좌 확인 실패 — 중단")
+        except Exception as error:
+            print(f"[{tag}] 계좌 확인 실패 알림 실패: {error}")
+        return 1
+    try:
+        res = body()
+    except Exception as error:
+        traceback.print_exc()
+        try:
+            alerted = notify_fn(f"{tag} {today} 실패: {type(error).__name__}: {error}")
+        except Exception as notify_error:
+            print(f"[{tag}] 실패 알림 실패: {notify_error}")
+            return 1
+        return 2 if alerted else 1
+    if isinstance(res, dict):
+        lines = res.get("lines")
+        if lines:
+            try:
+                notify_fn(f"{tag} {today}\n" + "\n".join(lines))
+            except Exception as error:
+                print(f"[{tag}] 결과 알림 실패: {error}")
+        return int(res.get("code", 0))
+    return 0
+
+
+def classify_unknown(
+    order_no: object,
+    unfilled_rows: list[dict] | None,
+    fill_rows: list[dict] | None,
+) -> tuple[str, int]:
+    """broker 결과 불명(unknown) 주문의 다음 실행 재판정 → (상태, 체결수량).
+
+    lookup_failed = 조회 실패(완료 아님, 손대지 말 것), no_order_no = 주문번호 없음,
+    open = 미체결에 살아 있음, filled = 체결 반영, not_found = 접수 안 됨(재시도 대상).
+    """
+    try:
+        from scripts.run_verify import normalize_order_no
+    except ImportError:  # etl/scripts 직접 실행 시
+        from run_verify import normalize_order_no  # noqa: E402
+    if unfilled_rows is None or fill_rows is None:
+        return ("lookup_failed", 0)
+    key = normalize_order_no(order_no)
+    if not key:
+        return ("no_order_no", 0)
+    filled = 0
+    for row in fill_rows:
+        if normalize_order_no(row.get("order_no")) != key:
+            continue
+        filled += int(row.get("cntr_qty") or 0)
+    for row in unfilled_rows:
+        if normalize_order_no(row.get("order_no")) == key:
+            return ("open", filled)
+    if filled > 0:
+        return ("filled", filled)
+    return ("not_found", 0)
+
+
+def retry_qty(ledger_qty: int, held_qty: int | None) -> int:
+    """재주문 수량 = min(원장수량, 보유수량). 잔고 조회 실패(None)·음수는 0."""
+    if held_qty is None:
+        return 0
+    return max(0, min(ledger_qty, held_qty))
