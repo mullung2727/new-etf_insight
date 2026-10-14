@@ -25,6 +25,7 @@ from scripts.trading_batch_common import (
     quote_snapshot,
     quantity_for_budget,
     read_reservation,
+    read_reservations,
     require_profile,
     write_reservation,
 )
@@ -241,7 +242,7 @@ class CashReservationTest(unittest.TestCase):
         write_reservation(self.URL, 8_000_000, 8_000_000, "rights_dip")
         data = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(data["127.0.0.1:8002"]["reserve"], 100)
-        entry = data[_broker_key(self.URL)]
+        entry = data[_broker_key(self.URL)]["rights_dip"]
         self.assertEqual((entry["reserve"], entry["capital_total"], entry["strategy"]),
                          (8_000_000, 8_000_000, "rights_dip"))
         self.assertIn("updated", entry)
@@ -325,6 +326,69 @@ class CashReservationTest(unittest.TestCase):
         self.assertEqual(leftovers, [])
         data = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(data["127.0.0.1:8002"]["reserve"], 100)
+
+
+    def _new_entry(self, reserve, capital, strategy):
+        return {"reserve": reserve, "capital_total": capital,
+                "strategy": strategy, "updated": "2026-10-02T00:00:00+09:00"}
+
+    def test_legacy_flat_file_read_as_single_strategy(self):
+        entry = self._entry()
+        self._write({_broker_key(self.URL): entry})
+        self.assertEqual(read_reservation(self.URL), entry)
+        self.assertEqual(read_reservations(self.URL), {"rights_dip": entry})
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_only_other_strategies_subtracted(self, get: Mock):
+        get.return_value = self._deposit("4000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": self._new_entry(500_000, 8_000_000, "rights_dip"),
+            "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+        }})
+        self.assertEqual(available_cash(self.URL), 530_000)
+        self.assertEqual(available_cash(self.URL, strategy="envelope"), 530_000)
+        self.assertEqual(available_cash(self.URL, strategy="rebound"), 3_500_000)
+        self.assertEqual(available_cash(self.URL, strategy="rights_dip"), 1_030_000)
+        self.assertEqual(available_cash(self.URL, exclude_reserve=False), 4_000_000)
+
+    def test_write_to_legacy_file_preserves_existing_strategy(self):
+        self._write({_broker_key(self.URL): self._entry()})
+        write_reservation(self.URL, 100, 6_000_000, "rebound")
+        entries = read_reservations(self.URL)
+        self.assertEqual(set(entries), {"rights_dip", "rebound"})
+        self.assertEqual(entries["rights_dip"], self._entry())
+        self.assertEqual(entries["rebound"]["reserve"], 100)
+        self.assertEqual(entries["rebound"]["capital_total"], 6_000_000)
+
+    def test_write_same_strategy_twice_keeps_last(self):
+        write_reservation(self.URL, 500_000, 8_000_000, "rights_dip")
+        write_reservation(self.URL, 2_970_000, 6_000_000, "rebound")
+        write_reservation(self.URL, 100, 6_000_000, "rights_dip")
+        entries = read_reservations(self.URL)
+        self.assertEqual(entries["rights_dip"]["reserve"], 100)
+        self.assertEqual(entries["rebound"]["reserve"], 2_970_000)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_invalid_other_strategy_fails_closed(self, get: Mock):
+        for bad in (-1, "abc"):
+            with self.subTest(bad=bad):
+                get.return_value = self._deposit("4000000")
+                self._write({_broker_key(self.URL): {
+                    "rights_dip": self._new_entry(bad, 8_000_000, "rights_dip"),
+                    "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+                }})
+                with patch("builtins.print") as warned:
+                    self.assertEqual(available_cash(self.URL, strategy="rebound"), 0)
+                self.assertTrue(warned.called)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_invalid_self_strategy_not_subtracted(self, get: Mock):
+        get.return_value = self._deposit("4000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": self._new_entry("bad", 8_000_000, "rights_dip"),
+            "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+        }})
+        self.assertEqual(available_cash(self.URL, strategy="rights_dip"), 1_030_000)
 
 
 class RunLiveBatchTest(unittest.TestCase):
