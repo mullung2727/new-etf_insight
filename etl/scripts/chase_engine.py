@@ -29,13 +29,18 @@ api 프로토콜:
 
 on_event(state, kind, **fields) -> str | None — 기록·문구 콜백. 반환 문자열은
 notes에 append하고, None이면 무시한다. kind와 fields:
-  first_order(no, price, qty) / first_unknown(qty) / limit_given_up(market_at)
-  modified(no, price, qty) / modify_unknown(qty)
+  first_order(no, price, qty) / first_unknown(qty, message)
+  first_rejected(status, message, rejects) / limit_given_up(market_at)
+  modified(no, price, qty, old_price) / modify_unknown(qty)
   market_qty_unknown() / market_lookup_failed() / market_all_filled()
   market_not_in_unfilled() / market_zero_remaining()
   market_cancel_failed() / market_cancel_unconfirmed() / market_past_end()
-  market_order(no, qty) / market_unknown(qty) / market_rejected(message)
+  market_order(no, qty) / market_unknown(qty, message)
+  market_rejected(status, message)
   late_start() — state 대신 None 전달. modifies_summary(count).
+
+place_first_orders는 첫 주문만 1회 내고 끝난다(대기·정정·시장가 없음).
+이후 추격이 필요하면 같은 state를 run_chase에 넘긴다(working이면 정정부터).
 
 접수로 취급하는 결과: status가 submitted 또는 dry_run이고 order_no가 있음.
 unknown이면 상태를 unknown으로 바꾸고 손을 뗀다(재주문 금지).
@@ -67,7 +72,7 @@ try:
 except ImportError:  # 다른 실행 경로 대비
     from trading_batch_common import now_seoul
 
-__all__ = ["Clock", "at", "run_chase", "ClientEngineApi"]
+__all__ = ["Clock", "at", "run_chase", "place_first_orders", "ClientEngineApi"]
 
 
 class Clock:
@@ -152,9 +157,13 @@ def _try_first_order(today: str, s: dict, u: dict, hist: dict | None,
         return
     if res.get("status") == "unknown":  # 나갔을 수 있음 — 수동 확인, 재주문 금지
         s["status"] = "unknown"
-        _emit(on_event, s, "first_unknown", notes, qty=qty)
+        _emit(on_event, s, "first_unknown", notes, qty=qty,
+              message=str(res.get("message", "")))
         return
     s["rejects"] += 1
+    _emit(on_event, s, "first_rejected", notes,
+          status=str(res.get("status")), message=str(res.get("message", "")),
+          rejects=s["rejects"])
     if s["rejects"] >= max_rejects:  # 지정가 포기 — 시장가는 시도
         s["status"] = "failed"
         _emit(on_event, s, "limit_given_up", notes,
@@ -235,7 +244,8 @@ def _chase_step(today: str, states: list[dict], api, clock, notes: list[str],
             s["nos"].append(no)
             s["order_no"] = no
             s["modifies"] += 1
-            _emit(on_event, s, "modified", notes, no=no, price=price, qty=oso)
+            _emit(on_event, s, "modified", notes, no=no, price=price, qty=oso,
+                  old_price=oprice)
         elif res.get("status") == "unknown":  # 새 번호를 모름 — 중단·수동 확인
             s["status"] = "unknown"
             _emit(on_event, s, "modify_unknown", notes, qty=oso)
@@ -311,10 +321,40 @@ def _market_step(today: str, states: list[dict], api, clock, end: datetime,
             _emit(on_event, s, "market_order", notes, no=no, qty=mqty)
         elif res.get("status") == "unknown":
             s["status"] = "unknown"
-            _emit(on_event, s, "market_unknown", notes, qty=mqty)
+            _emit(on_event, s, "market_unknown", notes, qty=mqty,
+                  message=str(res.get("message", "")))
         else:
             _emit(on_event, s, "market_rejected", notes,
+                  status=str(res.get("status")),
                   message=str(res.get("message", "")))
+
+
+def place_first_orders(today: str, states: list[dict], api, *, max_rejects: int = 3,
+                       on_event: Callable | None = None) -> list[str]:
+    """첫 주문만 1회 낸다. 대기·정정·시장가 없음. 반환 = notes.
+
+    같은 state를 run_chase에 넘기면 추격이 이어진다(working이면 정정부터).
+    미체결·체결 조회가 실패(None)하면 그 쪽은 주문 안 함(fail closed).
+    """
+    notes: list[str] = []
+    targets = [s for s in states
+               if s.get("status") == "pending" and s.get("qty") is not None]
+    for s in targets:
+        s.setdefault("side", "sell")
+    sides = []
+    for s in targets:
+        if s["side"] not in sides:
+            sides.append(s["side"])
+    u = {side: api.unfilled(side) for side in sides}
+    hist = {side: api.fills(today, side) for side in sides}
+    for s in targets:
+        side = s["side"]
+        if u[side] is None:  # 조회 실패한 쪽은 주문 금지
+            continue
+        _try_first_order(today, s, u[side], hist[side], api, notes,
+                         market_at=s.get("market_at") or "",
+                         max_rejects=max_rejects, on_event=on_event)
+    return notes
 
 
 def run_chase(today: str, states: list[dict], api, clock, *, first_at: str,

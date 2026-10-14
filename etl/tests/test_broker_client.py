@@ -551,5 +551,59 @@ class TestFillsByOrder(unittest.TestCase):
         self.assertEqual(fills_by_order([]), {})
 
 
+# ── base_price ───────────────────────────────────────────────────────────────
+
+class TestBasePrice(unittest.TestCase):
+    def test_signed_value_and_url(self):
+        with patch("scripts.broker_client.requests.get",
+                   return_value=_mock_response(
+                       {"raw": {"base_pric": "-123100"}})) as mock_get:
+            self.assertEqual(_make_client().base_price("005930"), 123100)
+        mock_get.assert_called_once_with(
+            f"{_BROKER}/quotes/005930", timeout=15)
+
+    def test_plus_sign(self):
+        with patch("scripts.broker_client.requests.get",
+                   return_value=_mock_response(
+                       {"raw": {"base_pric": "+90000"}})):
+            self.assertEqual(_make_client().base_price("005930"), 90000)
+
+    def test_missing_value_returns_none(self):
+        with patch("scripts.broker_client.requests.get",
+                   return_value=_mock_response({"raw": {}})):
+            self.assertIsNone(_make_client().base_price("005930"))
+
+    def test_zero_returns_none(self):
+        with patch("scripts.broker_client.requests.get",
+                   return_value=_mock_response(
+                       {"raw": {"base_pric": "0"}})):
+            self.assertIsNone(_make_client().base_price("005930"))
+
+    def test_raw_not_dict_returns_none(self):
+        with patch("scripts.broker_client.requests.get",
+                   return_value=_mock_response({"raw": ["x"]})):
+            self.assertIsNone(_make_client().base_price("005930"))
+
+    def test_http_error_returns_none(self):
+        mock = _mock_response({}, status_code=500)
+        mock.raise_for_status.side_effect = Exception("HTTP 500")
+        with patch("scripts.broker_client.requests.get", return_value=mock):
+            self.assertIsNone(_make_client().base_price("005930"))
+
+    def test_connection_error_returns_none(self):
+        with patch("scripts.broker_client.requests.get",
+                   side_effect=ConnectionError("refused")):
+            self.assertIsNone(_make_client().base_price("005930"))
+
+    def test_dry_run_still_gets(self):
+        with patch("scripts.broker_client.requests.get",
+                   return_value=_mock_response(
+                       {"raw": {"base_pric": "-123100"}})) as mock_get:
+            self.assertEqual(
+                _make_client(dry_run=True).base_price("005930"), 123100)
+        mock_get.assert_called_once_with(
+            f"{_BROKER}/quotes/005930", timeout=15)
+
+
 if __name__ == "__main__":
     unittest.main()

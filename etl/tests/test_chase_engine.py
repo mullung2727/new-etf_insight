@@ -249,7 +249,8 @@ class BuyChaseTest(unittest.TestCase):
         _step(TODAY, [s], self.api, clock, [], self.ev)
         self.assertEqual(self.api.modified, [(first, 9700, 100)])
         self.assertEqual(self.ev.fields_of("modified"),
-                         [{"no": s["order_no"], "price": 9700, "qty": 100}])
+                         [{"no": s["order_no"], "price": 9700, "qty": 100,
+                           "old_price": 9875}])
 
     def test_market_leftover(self):
         s = mkbuy(status="working", order_no="1001", nos=["1001"])
@@ -313,7 +314,8 @@ class BuyFailClosedTest(unittest.TestCase):
         ev = EventLog()
         _step(TODAY, [s], self.api, self.clock, notes, ev)
         self.assertEqual(s["status"], "unknown")
-        self.assertEqual(ev.fields_of("first_unknown"), [{"qty": 100}])
+        self.assertEqual(ev.fields_of("first_unknown"),
+                         [{"qty": 100, "message": "timeout"}])
         _step(TODAY, [s], self.api, self.clock, notes, ev)
         self.assertEqual(self.api.placed, [])
         self.assertEqual([c for c in self.api.calls if c[0] == "place_limit"],
@@ -412,7 +414,8 @@ class SellChaseTest(unittest.TestCase):
         ev = EventLog()
         _step(TODAY, [s], self.api, self.clock, [], ev)
         self.assertEqual(s["status"], "unknown")
-        self.assertEqual(ev.fields_of("first_unknown"), [{"qty": 400}])
+        self.assertEqual(ev.fields_of("first_unknown"),
+                         [{"qty": 400, "message": "timeout"}])
         _step(TODAY, [s], self.api, self.clock, [], ev)
         self.assertEqual(self.api.placed, [])
         self.assertEqual(len([c for c in self.api.calls
@@ -555,7 +558,8 @@ class MarketFlowTest(unittest.TestCase):
         ev = EventLog()
         _market(TODAY, [s], self.api, self.clock, [], ev)
         self.assertEqual(s["status"], "working")
-        self.assertEqual(ev.fields_of("market_rejected"), [{"message": "nope"}])
+        self.assertEqual(ev.fields_of("market_rejected"),
+                         [{"message": "nope", "status": "rejected"}])
 
     def test_qty_unknown_skipped(self):
         s = mkstate(qty=None)
@@ -694,6 +698,142 @@ class ClientEngineApiTest(unittest.TestCase):
         client.modify.return_value = res
         self.assertEqual(api.modify("1", "005930", 100, 400), res)
         client.modify.assert_called_once_with("1", "005930", 100, 400)
+
+
+class PlaceFirstOrdersTest(unittest.TestCase):
+    """place_first_orders — 첫 주문만 1회, 대기·정정·시장가 없음."""
+
+    def setUp(self):
+        self.api = FakeApi()
+        self.ev = EventLog()
+
+    def test_two_pending_sell_places_two(self):
+        a = mkstate(price_fn=lambda t: 10100)
+        b = mkstate(price_fn=lambda t: 10200, p={"ticker": "000660"})
+        notes = ch.place_first_orders(TODAY, [a, b], self.api,
+                                      on_event=self.ev)
+        self.assertEqual(len(self.api.placed), 2)
+        self.assertTrue(all(p[0] == "place_limit" for p in self.api.placed))
+        for s in (a, b):
+            self.assertEqual(s["status"], "working")
+            self.assertNotEqual(s["order_no"], "")
+        self.assertEqual(len(self.ev.fields_of("first_order")), 2)
+        self.assertEqual(self.api.modified, [])
+        self.assertEqual(self.api.cancelled, [])
+        self.assertEqual([p for p in self.api.placed
+                          if p[0] == "place_market"], [])
+        self.assertIsInstance(notes, list)
+
+    def test_unfilled_none_no_orders(self):
+        self.api.fail.add("unfilled")
+        s = mkstate(price_fn=lambda t: 10100)
+        ch.place_first_orders(TODAY, [s], self.api, on_event=self.ev)
+        self.assertEqual(self.api.placed, [])
+        self.assertEqual(s["status"], "pending")
+        self.assertEqual(self.ev.records, [])
+
+    def test_fills_none_no_orders(self):
+        self.api.fail.add("fills")
+        s = mkstate(price_fn=lambda t: 10100)
+        ch.place_first_orders(TODAY, [s], self.api, on_event=self.ev)
+        self.assertEqual(self.api.placed, [])
+        self.assertEqual(s["status"], "pending")
+
+    def test_already_filled_goes_done(self):
+        s = mkstate(nos=["1001"], price_fn=lambda t: 10100)
+        self.api.fill_map["sell"] = {"1001": {"cntr_qty": 400}}
+        ch.place_first_orders(TODAY, [s], self.api, on_event=self.ev)
+        self.assertEqual(self.api.placed, [])
+        self.assertEqual(s["status"], "done")
+
+    def test_unknown_no_reorder(self):
+        self.api.place_result = {"order_no": "", "status": "unknown",
+                                 "message": "timeout"}
+        s = mkstate(price_fn=lambda t: 10100)
+        ev = EventLog()
+        ch.place_first_orders(TODAY, [s], self.api, on_event=ev)
+        self.assertEqual(s["status"], "unknown")
+        self.assertEqual(ev.fields_of("first_unknown"),
+                         [{"qty": 400, "message": "timeout"}])
+        ch.place_first_orders(TODAY, [s], self.api, on_event=ev)
+        self.assertEqual([c for c in self.api.calls if c[0] == "place_limit"],
+                         [("place_limit", "sell", "005930", 400, 10100)])
+
+    def test_explicit_reject_emits_first_rejected(self):
+        self.api.place_result = {"order_no": "", "status": "rejected",
+                                 "message": "stop"}
+        s = mkstate(price_fn=lambda t: 10100)
+        ev = EventLog()
+        ch.place_first_orders(TODAY, [s], self.api, on_event=ev)
+        self.assertEqual(s["status"], "pending")
+        self.assertEqual(s["rejects"], 1)
+        self.assertEqual(ev.fields_of("first_rejected"),
+                         [{"status": "rejected", "message": "stop",
+                           "rejects": 1}])
+
+    def test_non_pending_or_sizer_states_untouched(self):
+        w = mkstate(status="working", order_no="1001", nos=["1001"],
+                    price_fn=lambda t: 10100)
+        d = mkstate(status="done", order_no="1002", nos=["1002"],
+                    price_fn=lambda t: 10100)
+        n = mkstate(qty=None, price_fn=lambda t: 10100)
+        ch.place_first_orders(TODAY, [w, d, n], self.api, on_event=self.ev)
+        self.assertEqual(self.api.placed, [])
+        self.assertEqual(self.api.calls, [])
+        self.assertEqual((w["status"], d["status"], n["status"]),
+                         ("working", "done", "pending"))
+        self.assertIsNone(n["qty"])
+
+    def test_mixed_sides_queried_once_each(self):
+        a = mkstate(price_fn=lambda t: 10100)
+        b = mkstate(side="buy", qty=100, price_fn=lambda t: 9875,
+                    p={"ticker": "000660"})
+        ch.place_first_orders(TODAY, [a, b], self.api, on_event=self.ev)
+        unf = sorted(c for c in self.api.calls if c[0] == "unfilled")
+        fil = sorted(c for c in self.api.calls if c[0] == "fills")
+        self.assertEqual(unf, [("unfilled", "buy"), ("unfilled", "sell")])
+        self.assertEqual(fil, [("fills", "buy"), ("fills", "sell")])
+        self.assertEqual([(p[0], p[1]) for p in self.api.placed],
+                         [("place_limit", "sell"), ("place_limit", "buy")])
+
+
+class FirstOrderEventFieldsTest(unittest.TestCase):
+    """on_event 새 필드 — 정정 old_price, 시장가 message/status."""
+
+    def setUp(self):
+        self.api = FakeApi()
+        self.clock = FakeClock(ch.at(TODAY, FIRST))
+        self.ev = EventLog()
+
+    def test_modified_has_old_price(self):
+        s = mkstate(status="working", order_no="1001", nos=["1001"],
+                    price_fn=lambda t: 9900)
+        self.api.books["sell"] = unfilled(("1001", "005930", 400, 10050))
+        _step(TODAY, [s], self.api, self.clock, [], self.ev)
+        self.assertEqual(self.ev.fields_of("modified"),
+                         [{"no": s["order_no"], "price": 9900, "qty": 400,
+                           "old_price": 10050}])
+
+    def test_market_unknown_has_message(self):
+        s = mkstate(status="working", order_no="1001", nos=["1001"])
+        self.api.books["sell"] = unfilled(("1001", "005930"))
+        self.api.place_result = {"order_no": "", "status": "unknown",
+                                 "message": "boom"}
+        ev = EventLog()
+        _market(TODAY, [s], self.api, self.clock, [], ev)
+        self.assertEqual(s["status"], "unknown")
+        self.assertEqual(ev.fields_of("market_unknown"),
+                         [{"qty": 400, "message": "boom"}])
+
+    def test_market_rejected_has_status(self):
+        s = mkstate(status="working", order_no="1001", nos=["1001"])
+        self.api.books["sell"] = unfilled(("1001", "005930"))
+        self.api.place_result = {"order_no": "", "status": "rejected",
+                                 "message": "nope"}
+        ev = EventLog()
+        _market(TODAY, [s], self.api, self.clock, [], ev)
+        self.assertEqual(ev.fields_of("market_rejected"),
+                         [{"status": "rejected", "message": "nope"}])
 
 
 if __name__ == "__main__":
