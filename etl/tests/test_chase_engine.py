@@ -855,6 +855,29 @@ class ResumePendingTest(unittest.TestCase):
         self.assertEqual(s["order_no"], "A1")
         self.assertEqual(self.ev.fields_of("resumed"), [{"no": "A1"}])
 
+    def test_place_first_orders_ambiguous_live_orders_unknown(self):
+        s = mkstate(nos=["A1", "A2"], price_fn=lambda t: 10100)
+        self.api.books["sell"] = unfilled(("A1", "005930"), ("A2", "005930"))
+        ch.place_first_orders(TODAY, [s], self.api, on_event=self.ev)
+        self.assertEqual([c for c in self.api.calls
+                          if c[0] == "place_limit"], [])
+        self.assertEqual(s["status"], "unknown")
+        self.assertEqual(self.ev.fields_of("resume_ambiguous"),
+                         [{"nos": ["A1", "A2"]}])
+        self.assertEqual(self.ev.fields_of("resumed"), [])
+
+    def test_run_chase_ambiguous_live_orders_no_orders(self):
+        s = mkstate(nos=["A1", "A2"], price_fn=lambda t: 10100)
+        self.api.books["sell"] = unfilled(("A1", "005930"), ("A2", "005930"))
+        clock = FakeClock(ch.at(TODAY, "09:59:00"))
+        ev = EventLog()
+        _run(TODAY, [s], self.api, clock, ev)
+        self.assertEqual([c for c in self.api.calls
+                          if c[0] == "place_limit"], [])
+        self.assertEqual(self.api.modified, [])
+        self.assertEqual([c for c in self.api.calls
+                          if c[0] == "place_market"], [])
+
     def test_run_chase_first_step_resumes_then_modifies(self):
         s = mkstate(nos=["A1"], price_fn=lambda t: 9900)
         self.api.books["sell"] = unfilled(("A1", "005930", 400, 10050))
