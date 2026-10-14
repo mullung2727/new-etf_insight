@@ -12,6 +12,7 @@
 - 분봉 계산도 즉석 확인용 한 줄 계산이라도 `research/backtest_minute` 를 import 한다(재구현 금지, 통계·비용·가드는 `research/backtest_daily`). 표를 내기 전 `research/BACKTEST_DATA.md` 맨 위 체크리스트(전일 정보 결합·유니버스·지정가 체결 `pre_open`·09:00 가격·청산)와 대조.
 - 어떤 종목 매수·매도가 어느 전략 주문인지 물으면 `skills/new-etf-insight-order-lookup/SKILL.md` 를 먼저 읽는다(로그 grep 금지, 원장 DB 조회).
 - When committing, branching, opening a PR, merging, or handling CodeRabbit review comments, first read `skills/new-etf-insight-git-workflow/SKILL.md`.
+- 같은 계좌 전략별 예산을 보거나 리셋할 때("8001 예산 리셋", "되돌림 예산 600만으로") `skills/new-etf-insight-strategy-budget/SKILL.md` 를 먼저 읽는다.
 
 ## 코드 탐색
 
