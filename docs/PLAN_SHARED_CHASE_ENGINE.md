@@ -159,7 +159,7 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
   - 진입 함수 `buy_ah.run_chase(con, cfg, today, api, clock, side)` 시그니처 유지, 안의 루프(`_step`·`_try_first_order`·`_market_step`)를 `chase_engine.run_chase` 로 교체.
     Jev `BrokerApi` 는 엔진 프로토콜 어댑터로 감싸 그대로 씀(호가 신선도 `BID_MAX_AGE_S` 포함). BrokerClient 교체·rights 의 Jev 의존 제거는 P5b.
   - 원장 상태·로그: 엔진 `on_event` 콜백에서 기존 `_save` 로 같은 상태값(`pending_ah/working_ah/failed_ah/unknown_ah`)·같은 로그 문구로 기록.
-  - 재시작 이어받기(이미 낸 번호가 미체결이면 그 주문을 이어감): 엔진 `on_step` 훅에서.
+  - 재시작 이어받기(이미 낸 번호가 미체결이면 그 주문을 이어감): 엔진 첫 주문 가드(`resumed`).
   - 체결 확정: 엔진 뒤에 기존 `_finalize`(30초 간격 3회 재조회) 그대로 — 엔진 안 체결 수량은 쓰지 않음.
   - 추가 매수 `add_ah.py`(16:00 고정가 지정가, 추격 아님)는 이번 범위 밖.
 - P5 매도 모드 `auction` (동작 변경, 사용자 2026-10-14). `config.json` `sell_mode` = `"chase"` | `"auction"` 로 갈아끼움:
@@ -216,7 +216,7 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | D11 | 한 전략만 쓰는 매매 동작도 공용 함수로 두고 전략은 갈아끼우기만 | 사용자 (2026-10-14) |
 | D12 | P5 Jev 는 매수·매도 추격 함께 이전(같은 루프라 쪼개지 않음), 추가 매수는 범위 밖 | 사용자 (2026-10-14) |
 | D13 | Jev 매도 `auction` 모드 채택 (하한·시각 값과 근거는 비공개 문서) | 사용자 (2026-10-14) |
-| D14 | P5 체결 확정은 Jev `_finalize` 유지, 원장 기록은 `on_event`, 이어받기는 `on_step` | Claude 판단 (동작 변경 없음) |
+| D14 | P5 체결 확정은 Jev `_finalize` 유지, 원장 기록은 `on_event`, 이어받기는 엔진 첫 주문 가드 | Claude 판단 (동작 변경 없음) |
 
 ## 7. 운영 체크
 - 스케줄 작업·config 변경 없음(import·진입 함수만 바뀜). 러너 종료 코드 규약(2 = 알림 완료)은 P1 반영 시 러너와 대조.
@@ -239,5 +239,5 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - 반영 단위: 원래 "한 번 반영에 전략 하나" → 실제 P3·P4 를 2026-10-13 같은 밤에 반영 (10-13 되돌림 마감 시장가가 동시호가로 넘어간 문제를 다음 거래일 전에 고치려고). 두 전략 첫 실가동을 10-14 함께 확인
 - P5 엔진 이벤트: 원래 기존 kind·필드 그대로 → 실제 `first_rejected(status, message, rejects)` 추가, `first_unknown`·`market_unknown` 에 message, `modified` 에 old_price, `market_rejected` 에 status (Jev 로그 문구를 그대로 재현하려고). 엔진 테스트 4개는 이벤트 결과 비교라 새 필드만 기대값에 추가
 - P5 부분 체결 뒤 첫 주문 수량: 원래(Jev) 원장 수량 전량 → 실제 엔진 규칙대로 잔량(qty − 체결)만 (초과 매도 방지 쪽, 기존 테스트 밖 모서리)
-- P5 재시작 이어받기: on_step 훅에서 이어받은 스텝은 정정하지 않도록 어댑터가 그 스텝 가격을 미체결 주문가로 돌려줌 (기존 "이어받은 스텝은 저장만" 순서 유지)
+- P5 재시작 이어받기: 원래 Jev on_step 훅 → 실제 엔진 `_try_first_order` 가드(PR #88 리뷰). nos 중 살아 있는 주문이 있으면 `resumed` 이벤트 후 그 호출은 주문·정정 없음 — 모든 엔진 사용 전략의 재시작 중복 주문 방지, Jev 우회 코드 제거
 - P5 대상 0건일 때: 엔진은 state 가 없으면 시장가 시각까지 안 기다림 → Jev `run_chase` 가 엔진 뒤에 market_at 대기를 직접 유지 (기존 시각 테스트 그대로)
