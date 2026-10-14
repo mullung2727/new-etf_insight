@@ -836,5 +836,73 @@ class FirstOrderEventFieldsTest(unittest.TestCase):
                          [{"status": "rejected", "message": "nope"}])
 
 
+class ResumePendingTest(unittest.TestCase):
+    """복원된 pending 이어받기 — 살아 있는 우리 주문이 있으면 새 첫 주문 안 함."""
+
+    def setUp(self):
+        self.api = FakeApi()
+        self.api.quotes = {"sell": 10100}
+        self.clock = FakeClock(ch.at(TODAY, FIRST))
+        self.ev = EventLog()
+
+    def test_place_first_orders_resumes_live_order(self):
+        s = mkstate(nos=["A1"], price_fn=lambda t: 10100)
+        self.api.books["sell"] = unfilled(("A1", "005930"))
+        ch.place_first_orders(TODAY, [s], self.api, on_event=self.ev)
+        self.assertEqual([c for c in self.api.calls
+                          if c[0] == "place_limit"], [])
+        self.assertEqual(s["status"], "working")
+        self.assertEqual(s["order_no"], "A1")
+        self.assertEqual(self.ev.fields_of("resumed"), [{"no": "A1"}])
+
+    def test_run_chase_first_step_resumes_then_modifies(self):
+        s = mkstate(nos=["A1"], price_fn=lambda t: 9900)
+        self.api.books["sell"] = unfilled(("A1", "005930", 400, 10050))
+        clock = FakeClock(ch.at(TODAY, "09:59:00"))
+        ev = EventLog()
+        snaps = []
+
+        def hook(states, api, now):
+            snaps.append((len([c for c in self.api.calls
+                               if c[0] == "place_limit"]),
+                          len(self.api.modified)))
+
+        _run(TODAY, [s], self.api, clock, ev, on_step=hook)
+        self.assertEqual(snaps[1], (0, 0))  # 첫 스텝: 주문·정정 없음
+        self.assertEqual(self.api.modified, [("A1", 9900, 400)])
+        self.assertEqual(ev.fields_of("resumed"), [{"no": "A1"}])
+
+    def test_unknown_nos_places_first_order(self):
+        s = mkstate(nos=["ZZZ"], price_fn=lambda t: 10100)
+        ev = EventLog()
+        ch.place_first_orders(TODAY, [s], self.api, on_event=ev)
+        self.assertEqual(len([c for c in self.api.calls
+                              if c[0] == "place_limit"]), 1)
+        self.assertEqual(s["status"], "working")
+        self.assertEqual(ev.fields_of("resumed"), [])
+        self.assertEqual(len(ev.fields_of("first_order")), 1)
+
+    def test_limit_given_up_uses_caller_market_at(self):
+        self.api.place_result = {"order_no": "", "status": "rejected",
+                                 "message": "stop"}
+        s = mkstate(price_fn=lambda t: 10100)
+        ev = EventLog()
+        ch.place_first_orders(TODAY, [s], self.api, max_rejects=1,
+                              market_at="10:09:00", on_event=ev)
+        self.assertEqual(s["status"], "failed")
+        self.assertEqual(ev.fields_of("limit_given_up"),
+                         [{"market_at": "10:09:00"}])
+
+    def test_limit_given_up_prefers_state_market_at(self):
+        self.api.place_result = {"order_no": "", "status": "rejected",
+                                 "message": "stop"}
+        s = mkstate(price_fn=lambda t: 10100, market_at="10:08:00")
+        ev = EventLog()
+        ch.place_first_orders(TODAY, [s], self.api, max_rejects=1,
+                              market_at="10:09:00", on_event=ev)
+        self.assertEqual(ev.fields_of("limit_given_up"),
+                         [{"market_at": "10:08:00"}])
+
+
 if __name__ == "__main__":
     unittest.main()

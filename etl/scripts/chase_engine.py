@@ -31,6 +31,7 @@ on_event(state, kind, **fields) -> str | None — 기록·문구 콜백. 반환 
 notes에 append하고, None이면 무시한다. kind와 fields:
   first_order(no, price, qty) / first_unknown(qty, message)
   first_rejected(status, message, rejects) / limit_given_up(market_at)
+  resumed(no) — 첫 주문 전, 살아 있는 우리 주문을 이어받음
   modified(no, price, qty, old_price) / modify_unknown(qty)
   market_qty_unknown() / market_lookup_failed() / market_all_filled()
   market_not_in_unfilled() / market_zero_remaining()
@@ -52,6 +53,7 @@ fail closed 불변식:
   - 현재가와 같은 가격으로는 정정 안 함.
   - 종료 시각 이후에는 시장가 금지.
   - 넘겨받은 state의 주문번호만 취소·정정하고, 남의 미체결은 건드리지 않음.
+  - 살아 있는 우리 주문이 있으면 새 첫 주문 안 함.
 """
 from __future__ import annotations
 
@@ -141,6 +143,14 @@ def _try_first_order(today: str, s: dict, u: dict, hist: dict | None,
     if filled >= s["qty"]:  # 이미 다 채웠으면 주문 금지
         s["status"] = "done"
         return
+    if u is None:  # 미체결 모르면 주문 금지 (호출부가 걸러 오지만 fail closed)
+        return
+    for n in s["nos"]:  # 복원된 pending — 살아 있는 우리 주문이 있으면 이어받음
+        if _entry(u, n) is not None:
+            s["order_no"] = n
+            s["status"] = "working"
+            _emit(on_event, s, "resumed", notes, no=n)
+            return
     price_fn = s.get("price_fn")
     price = price_fn(t) if price_fn is not None else api.price(t, side)
     if not price:  # 호가 없음은 포기 사유 아님 — 다음 스텝 재시도
@@ -330,11 +340,13 @@ def _market_step(today: str, states: list[dict], api, clock, end: datetime,
 
 
 def place_first_orders(today: str, states: list[dict], api, *, max_rejects: int = 3,
+                       market_at: str = "",
                        on_event: Callable | None = None) -> list[str]:
     """첫 주문만 1회 낸다. 대기·정정·시장가 없음. 반환 = notes.
 
     같은 state를 run_chase에 넘기면 추격이 이어진다(working이면 정정부터).
     미체결·체결 조회가 실패(None)하면 그 쪽은 주문 안 함(fail closed).
+    market_at: limit_given_up 이벤트에 실을 예정 시장가 시각.
     """
     notes: list[str] = []
     targets = [s for s in states
@@ -352,7 +364,7 @@ def place_first_orders(today: str, states: list[dict], api, *, max_rejects: int 
         if u[side] is None:  # 조회 실패한 쪽은 주문 금지
             continue
         _try_first_order(today, s, u[side], hist[side], api, notes,
-                         market_at=s.get("market_at") or "",
+                         market_at=s.get("market_at") or market_at,
                          max_rejects=max_rejects, on_event=on_event)
     return notes
 
