@@ -8,6 +8,7 @@ import _bootstrap  # noqa: F401
 손익 반영)를 둔다. 각 전략이 매매 배치에서 `예산 = capital + since 이후 손익` 을
 계산하고 안 쓴 몫을 예약 파일에 쓴다. 이 도구는 사람이(스킬로) 예산을 보고,
 시드를 다시 정하는(리셋) 용도다. 리셋은 예약 파일을 건드리지 않는다.
+예산은 각 전략 배치가 마지막으로 계산한 값(예약 파일) — 리셋 직후엔 다음 배치 전까지 옛 값.
 
 Usage (from etl/):
     uv run python scripts/strategy_budget.py status
@@ -132,6 +133,40 @@ def write_config(path: str | Path, capital: int, since: str) -> int:
     return old
 
 
+def _restore(path: str | Path, text: str) -> None:
+    """원문 텍스트로 config 원자적 복구 (임시파일+os.replace)."""
+    cfg_path = Path(path)
+    tmp: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=str(cfg_path.parent),
+            prefix=cfg_path.name + ".", delete=False,
+        ) as handle:
+            tmp = handle.name
+            handle.write(text)
+        os.replace(tmp, cfg_path)
+    except BaseException:
+        if tmp is not None:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        raise
+
+
+def _rollback(originals: list[tuple[Path, str]]) -> str | None:
+    """쓴 config들을 원문으로 되돌린다. 전부 성공 시 None, 실패 시 실패 경로."""
+    failed: str | None = None
+    for cfg_path, text in reversed(originals):
+        try:
+            _restore(cfg_path, text)
+        except OSError as error:
+            print(f"⚠️ 되돌리기 실패 — 수동 확인: {cfg_path} ({error})")
+            if failed is None:
+                failed = str(cfg_path)
+    return failed
+
+
 def record_reset(db: str | Path, rows) -> None:
     """리셋 이력 1건씩 적재. 행은 dict(date/strategy/old_capital/new_capital/since/note/created_at) 또는 동순 7-tuple."""
     normalized = []
@@ -184,6 +219,18 @@ def _extra_sum(config: dict | None) -> int:
     return total
 
 
+def _fmt_num(value) -> str:
+    """숫자면 천 단위 콤마, 아니면 원값 그대로 문자열로."""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return f"{value:,}"
+    try:
+        return f"{int(str(value).replace(',', '').strip()):,}"
+    except (ValueError, TypeError, AttributeError):
+        return str(value)
+
+
 def status_lines(strategies=None, balance_fn=None, db_path=None) -> list[str]:
     """status 출력 한 줄씩. 전략별 capital/since/extra/예약 → 계좌별 총자산·시드합 → 최근 리셋 5건."""
     strategies = STRATEGIES if strategies is None else strategies
@@ -203,23 +250,24 @@ def status_lines(strategies=None, balance_fn=None, db_path=None) -> list[str]:
             continue
         capital = config.get("capital")
         since = config.get("capital_since")
-        parts = [f"{name}: capital={capital} since={since}"]
+        line = f"{name}: 시드 {_fmt_num(capital)} (since {since})"
         extra = _extra_sum(config) if name == "rights_dip" else 0
         if name == "rights_dip":
-            parts.append(f"extra={extra}")
+            line += f" · extra {_fmt_num(extra)}"
         try:
             all_reservations = read_reservations(url) or {}
         except Exception:
             all_reservations = {}
         slot = all_reservations.get(name)
         if isinstance(slot, dict) and "reserve" in slot:
-            parts.append(
-                f"예약 reserve={slot.get('reserve')} "
-                f"capital_total={slot.get('capital_total')} updated={slot.get('updated')}",
+            line += (
+                f" · 예산 {_fmt_num(slot.get('capital_total'))}"
+                f" · 안 쓴 몫 {_fmt_num(slot.get('reserve'))}"
+                f" (마지막 배치 {slot.get('updated')})"
             )
         else:
-            parts.append("예약 없음")
-        lines.append(" · ".join(parts))
+            line += " · 예산 미기록 (다음 배치 후 표시)"
+        lines.append(line)
         account = per_account.setdefault(url, {"seed": 0, "extra": 0})
         try:
             account["seed"] += int(capital)
@@ -271,14 +319,27 @@ def _cmd_reset(assignments: list[str], note: str) -> int:
     except RuntimeError as error:
         print(str(error))
         return 2
+    paths = {name: _resolve_config(STRATEGIES[name][1]) for name in mapping}
+    originals: dict[str, str] = {}
+    for name, cfg_path in paths.items():
+        try:
+            raw = cfg_path.read_text(encoding="utf-8")
+            json.loads(raw)
+        except (OSError, ValueError) as error:
+            print(f"{name} config 읽기 실패 ({cfg_path}: {error})")
+            return 2
+        originals[name] = raw
     rows = []
+    written: list[tuple[Path, str]] = []
     for name, amount in mapping.items():
-        cfg_path = _resolve_config(STRATEGIES[name][1])
+        cfg_path = paths[name]
         try:
             old = write_config(cfg_path, amount, since)
         except (OSError, ValueError) as error:
             print(f"{name} config 저장 실패 ({cfg_path}: {error})")
+            _rollback(written)
             return 2
+        written.append((cfg_path, originals[name]))
         rows.append({
             "date": today, "strategy": name, "old_capital": old,
             "new_capital": amount, "since": since, "note": note or "",
@@ -288,6 +349,7 @@ def _cmd_reset(assignments: list[str], note: str) -> int:
         record_reset(DB, rows)
     except sqlite3.Error as error:
         print(f"이력 저장 실패: {error}")
+        _rollback(written)
         return 2
     print(f"리셋 완료: since={since} ({', '.join(f'{k}={v}' for k, v in mapping.items())})")
     print("예약은 각 전략 다음 배치에서 갱신")

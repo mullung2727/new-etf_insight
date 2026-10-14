@@ -182,8 +182,146 @@ class StatusWarningTest(unittest.TestCase):
                 db_path=str(Path(tmp) / "watchlist.sqlite3"),
             )
             self.assertTrue(any("rebound" in line for line in lines))
-            self.assertTrue(any("예약 없음" in line for line in lines))
+            self.assertTrue(any("예산 미기록" in line for line in lines))
             self.assertIn("⚠️ 전략 시드 합이 총자산 초과", lines)
+
+
+class ResetAtomicityTest(unittest.TestCase):
+    def _two(self, tmp: str):
+        strategies = {}
+        for name in ("rebound", "envelope"):
+            cfg = Path(tmp) / name / "config.json"
+            cfg.parent.mkdir(parents=True, exist_ok=True)
+            _write_json(cfg, {"capital": 1000000, "capital_since": "20260101", "keep": name})
+            strategies[name] = ("http://127.0.0.1:8001", str(cfg))
+        return strategies
+
+    def _history_rows(self, db: str) -> list:
+        if not Path(db).exists():
+            return []
+        con = sqlite3.connect(db)
+        try:
+            try:
+                return con.execute("SELECT * FROM strategy_budget_resets").fetchall()
+            except sqlite3.Error:
+                return []
+        finally:
+            con.close()
+
+    def _base_patches(self, strategies, db):
+        return (
+            patch.object(sb, "STRATEGIES", strategies),
+            patch.object(sb, "DB", Path(db)),
+            patch.object(sb, "now_seoul", return_value=_at(20, 0, "20261014")),
+            patch.object(sb, "is_krx_trading_day", return_value=True),
+            patch.object(sb, "fetch_total_assets", return_value=10 ** 12),
+        )
+
+    def test_second_write_failure_restores_first(self):
+        from scripts.strategy_budget import write_config as real_write
+        with tempfile.TemporaryDirectory() as tmp:
+            strategies = self._two(tmp)
+            before = {n: Path(p[1]).read_bytes() for n, p in strategies.items()}
+            db = str(Path(tmp) / "watchlist.sqlite3")
+            calls: list[str] = []
+
+            def flaky(path, capital, since):
+                calls.append(str(path))
+                if len(calls) == 2:
+                    raise OSError("disk full")
+                return real_write(path, capital, since)
+
+            patches = self._base_patches(strategies, db)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], \
+                    patch.object(sb, "write_config", side_effect=flaky):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    code = sb.main(["reset", "rebound=6000000", "envelope=1000000"])
+                self.assertEqual(code, 2)
+            self.assertEqual(Path(strategies["rebound"][1]).read_bytes(), before["rebound"])
+            self.assertEqual(Path(strategies["envelope"][1]).read_bytes(), before["envelope"])
+            self.assertEqual(self._history_rows(db), [])
+
+    def test_record_reset_failure_restores_all(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            strategies = self._two(tmp)
+            before = {n: Path(p[1]).read_bytes() for n, p in strategies.items()}
+            db = str(Path(tmp) / "watchlist.sqlite3")
+            patches = self._base_patches(strategies, db)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], \
+                    patch.object(sb, "record_reset", side_effect=sqlite3.Error("boom")):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    code = sb.main(["reset", "rebound=6000000", "envelope=1000000"])
+                self.assertEqual(code, 2)
+            self.assertEqual(Path(strategies["rebound"][1]).read_bytes(), before["rebound"])
+            self.assertEqual(Path(strategies["envelope"][1]).read_bytes(), before["envelope"])
+            self.assertEqual(self._history_rows(db), [])
+
+    def test_broken_config_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            strategies = self._two(tmp)
+            rebound_before = Path(strategies["rebound"][1]).read_bytes()
+            Path(strategies["envelope"][1]).write_text("{깨짐", encoding="utf-8")
+            envelope_broken = Path(strategies["envelope"][1]).read_bytes()
+            db = str(Path(tmp) / "watchlist.sqlite3")
+            patches = self._base_patches(strategies, db)
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    code = sb.main(["reset", "rebound=6000000", "envelope=1000000"])
+                self.assertEqual(code, 2)
+            self.assertEqual(Path(strategies["rebound"][1]).read_bytes(), rebound_before)
+            self.assertEqual(Path(strategies["envelope"][1]).read_bytes(), envelope_broken)
+            self.assertEqual(self._history_rows(db), [])
+
+
+class StatusBudgetLineTest(unittest.TestCase):
+    def test_budget_present_and_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            strategies = {}
+            cfgs = {
+                "rebound": {"capital": 6000000, "capital_since": "20261015"},
+                "envelope": {"capital": 1000000, "capital_since": "20261015"},
+                "rights_dip": {
+                    "capital": 2000000, "capital_since": "20261015",
+                    "extra": {"a": {"amount": 30000}, "b": {"amount": 20000}},
+                },
+                "jevq": {"capital": "보류", "capital_since": "20261015"},
+            }
+            for name, payload in cfgs.items():
+                cfg = Path(tmp) / f"{name}.json"
+                _write_json(cfg, payload)
+                strategies[name] = ("http://127.0.0.1:8001", str(cfg))
+            slots = {
+                "rebound": {
+                    "reserve": 5000000, "capital_total": 6100000,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+                "rights_dip": {
+                    "reserve": 1500000, "capital_total": 2050000,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+            }
+            with patch.object(sb, "read_reservations", return_value=slots):
+                lines = status_lines(
+                    strategies=strategies,
+                    balance_fn=lambda url: 10 ** 12,
+                    db_path=str(Path(tmp) / "watchlist.sqlite3"),
+                )
+            by_name = {}
+            for line in lines:
+                for name in cfgs:
+                    if line.startswith(f"{name}:"):
+                        by_name[name] = line
+            self.assertIn("예산 6,100,000", by_name["rebound"])
+            self.assertIn("안 쓴 몫 5,000,000", by_name["rebound"])
+            self.assertIn("시드 6,000,000 (since 20261015)", by_name["rebound"])
+            self.assertIn("extra 50,000", by_name["rights_dip"])
+            self.assertIn("예산 2,050,000", by_name["rights_dip"])
+            self.assertIn("안 쓴 몫 1,500,000", by_name["rights_dip"])
+            self.assertIn("예산 미기록", by_name["envelope"])
+            self.assertIn("시드 보류", by_name["jevq"])
 
 
 if __name__ == "__main__":
