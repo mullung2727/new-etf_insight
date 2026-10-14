@@ -47,10 +47,14 @@
 - [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P5 Jev 이전
-- [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
+- [x] 구현·테스트 머지 (PR #88)
+- [x] 운영 등록 (스케줄 작업·config) — 아침 매도 작업 실행 제한 연장, 2026-10-14 반영
 - [ ] 첫 실가동 확인 (날짜)
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+
+### P5b Jev 매수 마감 단일가 넘김
+- [ ] 구현·테스트 머지 (PR #)
+- [ ] 첫 실가동 확인 (날짜)
 
 ### P6 high52 · 엔벌로프 이전
 - [ ] 구현·테스트 머지 (PR #)
@@ -170,6 +174,10 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
   - 값·근거: `research/private/jev_quant_live/PLAN_AUCTION_SELL.md` (비공개).
   - 공용 추가: `chase_engine.place_first_orders`(시각 고정 첫 주문 1회 — 동시호가 주문용, 엔진 첫 주문과 같은 fail closed 규칙),
     `BrokerClient.base_price(t)`(`GET /quotes/{t}` 의 `base_pric`, 실패·0 이면 None). 하한 가격 계산(호가단위 올림)은 전략 쪽 `price_fn`.
+- P5b (2026-10-14 사용자): Jev 매수 추격 창이 끝난 뒤 못 산 수량은 마감 단일가 시간에 시장가 1회로 넘긴다(시각은 비공개 config).
+  - 공용 추가: `chase_engine.place_market_orders(today, states, api, clock, *, end_at, on_event)` — 기존 시장가 단계(`_market_step`)를 그 시각에 1회만 실행.
+    미주문은 바로 잔량 시장가, 살아 있는 지정가는 취소·재조회 확인 후 잔량 시장가, 조회 실패·취소 미확인·전량 체결·`end_at` 이후면 안 냄.
+  - 전략 쪽: 매수 실행기가 주문 단계 완료를 기다린 뒤 대상을 읽음(같은 분에 시작해 대상 행을 놓칠 수 있던 경쟁 제거), 주문 단계 후보 시세 조회 1회 재시도.
   - jevq-report 는 그 시각 체결내역으로 확정하므로 시가 체결분은 그대로 보고, 추격 구간 체결분은 다음 보고에 반영.
 - P7 은 git 코드라 worktree 브랜치로만 작업, 머지 = 반영.
 
@@ -197,6 +205,7 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | P5 `auction`: 시가 전량 체결 | 추격 구간 정정·시장가 0건, `_finalize` 가 체결가 기록 |
 | P5 `auction`: 미체결·부분 체결 | 추격 정정은 미체결 잔량만, 시장가 = 남은 잔량 |
 | `place_first_orders` fail closed | 미체결/체결 조회 None → 주문 0, 이미 전량 체결 → done·주문 0, 불명 → unknown·재주문 0 |
+| `place_market_orders` | 미주문 → 잔량 시장가, 살아 있는 지정가 → 취소 확인 후 잔량, 전량 체결·조회 실패·`end_at` 이후 → 0건 |
 | `BrokerClient.base_price` | 정상 응답 → 부호 뗀 int, HTTP 실패·값 없음·0 → None |
 
 ## 6. 결정

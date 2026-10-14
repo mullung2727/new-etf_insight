@@ -43,6 +43,7 @@ notes에 append하고, None이면 무시한다. kind와 fields:
 
 place_first_orders는 첫 주문만 1회 내고 끝난다(대기·정정·시장가 없음).
 이후 추격이 필요하면 같은 state를 run_chase에 넘긴다(working이면 정정부터).
+place_market_orders는 시장가만 1회 낸다(정정·대기 없음).
 
 접수로 취급하는 결과: status가 submitted 또는 dry_run이고 order_no가 있음.
 unknown이면 상태를 unknown으로 바꾸고 손을 뗀다(재주문 금지).
@@ -372,6 +373,19 @@ def place_first_orders(today: str, states: list[dict], api, *, max_rejects: int 
         _try_first_order(today, s, u[side], hist[side], api, notes,
                          market_at=s.get("market_at") or market_at,
                          max_rejects=max_rejects, on_event=on_event)
+    return notes
+
+
+def place_market_orders(today: str, states: list[dict], api, clock, *, end_at: str,
+                        on_event: Callable | None = None) -> list[str]:
+    """시장가만 1회 낸다(정정·대기 없음). 미주문(pending)은 바로 잔량 시장가, 살아 있는 지정가(working)는 취소·재조회 확인 후 잔량 시장가. 조회 실패·취소 미확인·이미 다 체결·end_at 이후면 내지 않음(fail closed). 예: 추격 창이 끝난 뒤 남은 수량을 단일가 시간에 시장가로 넘길 때. 반환 = notes."""
+    notes: list[str] = []
+    end = at(today, end_at)
+    if clock.now() >= end:
+        _emit(on_event, None, "late_start", notes)
+        return notes
+    _market_step(today, states, api, clock, end, notes, first_at=end_at,
+                 market_at=end_at, on_event=on_event)
     return notes
 
 

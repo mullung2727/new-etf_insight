@@ -927,5 +927,74 @@ class ResumePendingTest(unittest.TestCase):
                          [{"market_at": "10:08:00"}])
 
 
+class PlaceMarketOrdersTest(unittest.TestCase):
+
+    def setUp(self):
+        self.api = FakeApi()
+        self.ev = EventLog()
+
+    def test_pending_goes_market_once(self):
+        s = mkstate()
+        clock = FakeClock(ch.at(TODAY, FIRST))
+        ev = EventLog()
+        notes = ch.place_market_orders(TODAY, [s], self.api, clock,
+                                       end_at=END, on_event=ev)
+        self.assertEqual(self.api.placed,
+                         [("place_market", "sell", s["p"]["ticker"],
+                           s["qty"], None)])
+        self.assertEqual(s["status"], "done")
+        self.assertEqual(ev.fields_of("market_order"),
+                         [{"no": s["order_no"], "qty": s["qty"]}])
+        self.assertIsInstance(notes, list)
+
+    def test_working_live_order_cancelled_then_market(self):
+        s = mkstate(status="working", order_no="1001", nos=["1001"])
+        self.api.books["sell"] = unfilled(("1001", s["p"]["ticker"], 100))
+        clock = FakeClock(ch.at(TODAY, FIRST))
+        ev = EventLog()
+        ch.place_market_orders(TODAY, [s], self.api, clock,
+                               end_at=END, on_event=ev)
+        self.assertEqual(self.api.cancelled, ["1001"])
+        self.assertEqual(self.api.placed,
+                         [("place_market", "sell", s["p"]["ticker"], 100, None)])
+        self.assertEqual(ev.fields_of("market_order"),
+                         [{"no": s["order_no"], "qty": 100}])
+
+    def test_already_filled_no_market(self):
+        s = mkstate(status="working", order_no="1001", nos=["1001"])
+        self.api.fill_map["sell"] = {"1001": {"cntr_qty": s["qty"]}}
+        clock = FakeClock(ch.at(TODAY, FIRST))
+        ev = EventLog()
+        ch.place_market_orders(TODAY, [s], self.api, clock,
+                               end_at=END, on_event=ev)
+        self.assertEqual([c for c in self.api.calls
+                          if c[0] == "place_market"], [])
+        self.assertEqual(ev.kinds(), ["market_all_filled"])
+
+    def test_fills_lookup_failed_no_market(self):
+        self.api.fail.add("fills")
+        s = mkstate()
+        clock = FakeClock(ch.at(TODAY, FIRST))
+        ev = EventLog()
+        ch.place_market_orders(TODAY, [s], self.api, clock,
+                               end_at=END, on_event=ev)
+        self.assertEqual([c for c in self.api.calls
+                          if c[0] == "place_market"], [])
+        self.assertEqual(ev.kinds(), ["market_lookup_failed"])
+
+    def test_late_start_no_market(self):
+        s = mkstate()
+        clock = FakeClock(ch.at(TODAY, END))
+        ev = EventLog()
+        ch.place_market_orders(TODAY, [s], self.api, clock,
+                               end_at=MARKET, on_event=ev)
+        self.assertEqual([c for c in self.api.calls
+                          if c[0] == "place_market"], [])
+        self.assertEqual(len(ev.records), 1)
+        state, kind, _ = ev.records[0]
+        self.assertIsNone(state)
+        self.assertEqual(kind, "late_start")
+
+
 if __name__ == "__main__":
     unittest.main()
