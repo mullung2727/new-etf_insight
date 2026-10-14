@@ -322,7 +322,8 @@ class CashReservationTest(unittest.TestCase):
     def test_write_leaves_no_temp_files(self):
         self._write({"127.0.0.1:8002": self._entry(reserve=100)})
         write_reservation(self.URL, 8_000_000, 8_000_000, "rights_dip")
-        leftovers = [p.name for p in self.path.parent.iterdir() if p.name != self.path.name]
+        leftovers = [p.name for p in self.path.parent.iterdir()
+                     if p.name not in (self.path.name, self.path.name + ".lock")]
         self.assertEqual(leftovers, [])
         data = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(data["127.0.0.1:8002"]["reserve"], 100)
@@ -389,6 +390,83 @@ class CashReservationTest(unittest.TestCase):
             "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
         }})
         self.assertEqual(available_cash(self.URL, strategy="rights_dip"), 1_030_000)
+
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_malformed_strategy_entry_fails_closed(self, get: Mock):
+        """새 형식에서 값이 dict 아님 → 차감 0, 쓰기 거부, 파일 불변."""
+        get.return_value = self._deposit("10000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": self._new_entry(500_000, 8_000_000, "rights_dip"),
+            "rebound": "x",
+        }})
+        before = self.path.read_text(encoding="utf-8")
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL, strategy="rights_dip"), 0)
+        self.assertTrue(warned.called)
+        with self.assertRaises(RuntimeError) as ctx:
+            write_reservation(self.URL, 1, 1, "envelope")
+        self.assertIn("형식 오류", str(ctx.exception))
+        self.assertEqual(self.path.read_text(encoding="utf-8"), before)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_list_account_value_fails_closed(self, get: Mock):
+        """계좌 값이 리스트 → 형식 오류로 보고 0."""
+        get.return_value = self._deposit("10000000")
+        self._write({_broker_key(self.URL): [1, 2]})
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL), 0)
+        self.assertTrue(warned.called)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_missing_reserve_fails_closed(self, get: Mock):
+        """다른 전략 항목에 reserve 키 없음 → 0."""
+        get.return_value = self._deposit("4000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": {"capital_total": 100},
+            "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+        }})
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL, strategy="rebound"), 0)
+        self.assertTrue(warned.called)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_missing_capital_total_fails_closed(self, get: Mock):
+        """다른 전략 항목에 capital_total 키 없음 → 0."""
+        get.return_value = self._deposit("4000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": {"reserve": 100},
+            "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+        }})
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL, strategy="rebound"), 0)
+        self.assertTrue(warned.called)
+
+    def test_write_creates_lock_file(self):
+        """쓰기 후 잠금 파일이 남는다."""
+        write_reservation(self.URL, 100, 8_000_000, "rights_dip")
+        self.assertTrue(self.path.with_name(self.path.name + ".lock").exists())
+
+    def test_concurrent_writes_keep_both_strategies(self):
+        """스레드 2개가 서로 다른 전략으로 각 20회 쓰기 → 두 항목 모두 존재."""
+        import threading
+        errors: list = []
+
+        def worker(strategy: str):
+            try:
+                for _ in range(20):
+                    write_reservation(self.URL, 100, 8_000_000, strategy)
+            except Exception as error:
+                errors.append(error)
+
+        threads = [threading.Thread(target=worker, args=(name,))
+                   for name in ("rights_dip", "rebound")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(set(read_reservations(self.URL)), {"rights_dip", "rebound"})
 
 
 class RunLiveBatchTest(unittest.TestCase):
