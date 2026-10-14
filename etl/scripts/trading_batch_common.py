@@ -15,8 +15,8 @@ import requests
 
 REQUEST_TIMEOUT = 15
 
-# 유증 전략 자금 분리 예약 (R2b). {"host:port": {"reserve", "capital_total", ...}}.
-# 유증 verify·order 가 갱신, 다른 전략 available_cash 가 차감. 파일 없으면 기존 동작 그대로.
+# 전략별 자금 예약. {"host:port": {"strategy": {"reserve", "capital_total", ...}}}.
+# 각 전략 order·verify 가 자기 항목 갱신, available_cash 는 남의 reserve 합 차감. 파일 없으면 기존 동작 그대로.
 RESERVATION_PATH = Path(__file__).resolve().parents[1] / "db" / "cash_reservations.json"
 
 # 청산이 끝난 것으로 간주하는 sell_status. 청산 워커의 미청산 조회와 주문 배치의
@@ -117,18 +117,37 @@ def _valid_amount(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def read_reservation(broker_url: str) -> dict | None:
-    """계좌 예약 1건. 파일 없음·읽기 실패·깨짐·키 없음 → None (예외 없음, 깨짐은 경고)."""
+def _account_entries(account_value: object) -> dict[str, dict]:
+    if not isinstance(account_value, dict):
+        return {}
+    if "reserve" in account_value:
+        name = account_value.get("strategy") or "rights_dip"
+        return {name: account_value}
+    return {k: v for k, v in account_value.items() if isinstance(v, dict)}
+
+
+def read_reservation(broker_url: str, strategy: str = "rights_dip") -> dict | None:
+    """그 전략 예약 1건(기본 rights_dip). 파일 없음·읽기 실패·깨짐·키 없음 → None."""
     data, _ = _load_reservation_file()
     if data is None:
         return None
-    entry = data.get(_broker_key(broker_url))
+    entries = _account_entries(data.get(_broker_key(broker_url)))
+    entry = entries.get(strategy)
     return entry if isinstance(entry, dict) else None
 
 
-def available_cash(broker_url: str, exclude_reserve: bool = True) -> int | None:
-    """주문가능금액 — exclude_reserve 면 유증 예약 차감 (없으면 기존값 그대로).
-    예약 파일이 존재하는데 깨지거나 예약값이 이상하면 0 (fail closed, A-10)."""
+def read_reservations(broker_url: str) -> dict[str, dict]:
+    """그 계좌의 전략별 예약 전부. 파일 없음·깨짐·키 없음 → {}."""
+    data, _ = _load_reservation_file()
+    if data is None:
+        return {}
+    return _account_entries(data.get(_broker_key(broker_url)))
+
+
+def available_cash(broker_url: str, exclude_reserve: bool = True, strategy: str | None = None) -> int | None:
+    """주문가능금액 — exclude_reserve 면 자기 제외 다른 전략 reserve 합 차감.
+    strategy=None 이면 전부 차감(보수적). 파일 없음·계좌 키 없음 → 원값.
+    파일이 깨지거나 차감 대상 예약값이 이상하면 0 (fail closed, A-10)."""
     cash = _deposit_cash(broker_url)
     if cash is None or not exclude_reserve:
         return cash
@@ -137,15 +156,20 @@ def available_cash(broker_url: str, exclude_reserve: bool = True) -> int | None:
         return 0
     if data is None:
         return cash
-    reservation = data.get(_broker_key(broker_url))
-    if not isinstance(reservation, dict):
+    entries = _account_entries(data.get(_broker_key(broker_url)))
+    if not entries:
         return cash
-    reserve = reservation.get("reserve", 0)
-    capital_total = reservation.get("capital_total", 0)
-    if not _valid_amount(reserve) or not _valid_amount(capital_total):
-        print(f"[reserve] 예약값 오류 — fail closed ({RESERVATION_PATH})")
-        return 0
-    return max(0, cash - reserve)
+    total = 0
+    others = {k: v for k, v in entries.items() if k != strategy}
+
+    for item in others.values():
+        reserve = item.get("reserve", 0)
+        capital_total = item.get("capital_total", 0)
+        if not _valid_amount(reserve) or not _valid_amount(capital_total):
+            print(f"[reserve] 예약값 오류 — fail closed ({RESERVATION_PATH})")
+            return 0
+        total += reserve
+    return max(0, cash - total)
 
 
 def _deposit_cash(broker_url: str) -> int | None:
@@ -182,12 +206,12 @@ def write_reservation(broker_url: str, reserve: int, capital_total: int, strateg
                 f"예약 파일 깨짐 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
         if not isinstance(data, dict):
             raise RuntimeError(f"예약 파일 형식 오류 — 덮어쓰지 않음 ({RESERVATION_PATH})")
-    data[_broker_key(broker_url)] = {
-        "reserve": reserve, "capital_total": capital_total,
-        "strategy": strategy, "updated": now_seoul().isoformat(),
-    }
+    entries = _account_entries(data.get(_broker_key(broker_url)))
+    entries[strategy] = {"reserve": reserve, "capital_total": capital_total,
+        "strategy": strategy, "updated": now_seoul().isoformat()}
+    data[_broker_key(broker_url)] = entries
     RESERVATION_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # 쓰는 쪽이 08:50 order·16:00 verify 뿐이라 동시 실행 없음 — 프로세스 간 잠금 없음.
+    # 각 전략 배치가 서로 다른 시각에 쓴다 — 프로세스 간 잠금 없음.
     tmp: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
