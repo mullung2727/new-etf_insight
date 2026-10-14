@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from scripts.notify import notify, send_discord, send_rights_alert, send_telegram, send_telegram_report, send_theme_alert
+from scripts.notify import HEADLINE_FAIL, HEADLINE_OK, HEADLINE_WARN, headline, notify, send_discord, send_rights_alert, send_strategy_alert, send_telegram, send_telegram_report, send_theme_alert
 
 
 def _http_error(status: int) -> requests.exceptions.HTTPError:
@@ -288,6 +288,51 @@ class TestSendRightsAlert(unittest.TestCase):
         ), patch("scripts.notify.requests.post", return_value=_ok_resp()) as post:
             self.assertTrue(send_rights_alert("hi"))
         self.assertEqual(post.call_args[0][0], "https://main/hook")
+
+
+class TestSendStrategyAlert(unittest.TestCase):
+    """전략 공용 채널: env 있음 → 그 웹훅, 없음/공백 → 기본 채널 폴백."""
+
+    def test_posts_to_strategy_webhook(self):
+        with patch.dict(
+            "os.environ", {"TEST_ALERT_WEBHOOK_URL": "https://test-alert/hook"}, clear=True
+        ), patch("scripts.notify.requests.post", return_value=_ok_resp()) as post:
+            self.assertTrue(send_strategy_alert("hello", "TEST_ALERT_WEBHOOK_URL"))
+        self.assertEqual(post.call_args[0][0], "https://test-alert/hook")
+
+    def test_falls_back_to_default_when_unset(self):
+        with patch.dict(
+            "os.environ", {"DISCORD_WEBHOOK_URL": "https://main/hook"}, clear=True
+        ), patch("scripts.notify.requests.post", return_value=_ok_resp()) as post:
+            self.assertTrue(send_strategy_alert("hi", "TEST_ALERT_WEBHOOK_URL"))
+        self.assertEqual(post.call_args[0][0], "https://main/hook")
+
+    def test_blank_env_falls_back_to_default(self):
+        with patch.dict(
+            "os.environ",
+            {"TEST_ALERT_WEBHOOK_URL": "   ", "DISCORD_WEBHOOK_URL": "https://main/hook"},
+            clear=True,
+        ), patch("scripts.notify.requests.post", return_value=_ok_resp()) as post:
+            self.assertTrue(send_strategy_alert("hi", "TEST_ALERT_WEBHOOK_URL"))
+        self.assertEqual(post.call_args[0][0], "https://main/hook")
+
+
+class TestHeadline(unittest.TestCase):
+    """첫 줄 규격: "<mark> <label> <stage> — <result>" + (body 있으면) 줄바꿈 + body."""
+
+    def test_constants(self):
+        self.assertEqual(HEADLINE_OK, "✅")
+        self.assertEqual(HEADLINE_WARN, "⚠")
+        self.assertEqual(HEADLINE_FAIL, "❌")
+
+    def test_without_body(self):
+        self.assertEqual(headline("✅", "LBL", "STAGE", "RESULT"), "✅ LBL STAGE — RESULT")
+
+    def test_with_body(self):
+        self.assertEqual(
+            headline("⚠", "LBL", "STAGE", "RESULT", "d1\nd2"),
+            "⚠ LBL STAGE — RESULT\nd1\nd2",
+        )
 
 
 if __name__ == "__main__":
