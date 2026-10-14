@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 from collections.abc import Callable
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -117,13 +118,50 @@ def _valid_amount(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def _account_entries(account_value: object) -> dict[str, dict]:
-    if not isinstance(account_value, dict):
+def _account_entries(account_value: object) -> dict[str, dict] | None:
+    """계좌 값 → {전략: 항목}. 계좌 키 없음(None) → {}. 모양이 이상하면 None (fail closed)."""
+    if account_value is None:
         return {}
+    if not isinstance(account_value, dict):
+        return None
     if "reserve" in account_value:
         name = account_value.get("strategy") or "rights_dip"
         return {name: account_value}
-    return {k: v for k, v in account_value.items() if isinstance(v, dict)}
+    for value in account_value.values():
+        if not isinstance(value, dict):
+            return None
+    return dict(account_value)
+
+
+@contextmanager
+def _reservation_lock():
+    """예약 파일 읽기→수정→교체를 직렬화하는 프로세스 간 잠금.
+
+    잠금 파일은 RESERVATION_PATH 옆 ``cash_reservations.json.lock`` —
+    매번 RESERVATION_PATH 로부터 계산하므로 테스트의 임시 경로 패치가 그대로 적용된다.
+    """
+    lock_path = RESERVATION_PATH.with_name(RESERVATION_PATH.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
 
 
 def read_reservation(broker_url: str, strategy: str = "rights_dip") -> dict | None:
@@ -132,6 +170,9 @@ def read_reservation(broker_url: str, strategy: str = "rights_dip") -> dict | No
     if data is None:
         return None
     entries = _account_entries(data.get(_broker_key(broker_url)))
+    if entries is None:
+        print(f"[reserve] 예약 파일 형식 오류 — fail closed ({RESERVATION_PATH})")
+        return None
     entry = entries.get(strategy)
     return entry if isinstance(entry, dict) else None
 
@@ -141,7 +182,11 @@ def read_reservations(broker_url: str) -> dict[str, dict]:
     data, _ = _load_reservation_file()
     if data is None:
         return {}
-    return _account_entries(data.get(_broker_key(broker_url)))
+    entries = _account_entries(data.get(_broker_key(broker_url)))
+    if entries is None:
+        print(f"[reserve] 예약 파일 형식 오류 — fail closed ({RESERVATION_PATH})")
+        return {}
+    return entries
 
 
 def available_cash(broker_url: str, exclude_reserve: bool = True, strategy: str | None = None) -> int | None:
@@ -157,14 +202,17 @@ def available_cash(broker_url: str, exclude_reserve: bool = True, strategy: str 
     if data is None:
         return cash
     entries = _account_entries(data.get(_broker_key(broker_url)))
+    if entries is None:
+        print(f"[reserve] 예약 파일 형식 오류 — fail closed ({RESERVATION_PATH})")
+        return 0
     if not entries:
         return cash
     total = 0
     others = {k: v for k, v in entries.items() if k != strategy}
 
     for item in others.values():
-        reserve = item.get("reserve", 0)
-        capital_total = item.get("capital_total", 0)
+        reserve = item.get("reserve")
+        capital_total = item.get("capital_total")
         if not _valid_amount(reserve) or not _valid_amount(capital_total):
             print(f"[reserve] 예약값 오류 — fail closed ({RESERVATION_PATH})")
             return 0
@@ -191,43 +239,46 @@ def write_reservation(broker_url: str, reserve: int, capital_total: int, strateg
     """
     if not _valid_amount(reserve) or not _valid_amount(capital_total):
         raise ValueError(f"예약값 오류: reserve={reserve!r} capital_total={capital_total!r}")
-    try:
-        raw = RESERVATION_PATH.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        data = {}
-    except OSError as error:
-        raise RuntimeError(
-            f"예약 파일 읽기 실패 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
-    else:
+    with _reservation_lock():
         try:
-            data = json.loads(raw)
-        except ValueError as error:
+            raw = RESERVATION_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            data = {}
+        except OSError as error:
             raise RuntimeError(
-                f"예약 파일 깨짐 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
-        if not isinstance(data, dict):
-            raise RuntimeError(f"예약 파일 형식 오류 — 덮어쓰지 않음 ({RESERVATION_PATH})")
-    entries = _account_entries(data.get(_broker_key(broker_url)))
-    entries[strategy] = {"reserve": reserve, "capital_total": capital_total,
-        "strategy": strategy, "updated": now_seoul().isoformat()}
-    data[_broker_key(broker_url)] = entries
-    RESERVATION_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # 각 전략 배치가 서로 다른 시각에 쓴다 — 프로세스 간 잠금 없음.
-    tmp: str | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=str(RESERVATION_PATH.parent),
-            prefix=RESERVATION_PATH.name + ".", delete=False,
-        ) as handle:
-            tmp = handle.name
-            handle.write(json.dumps(data, ensure_ascii=False))
-        os.replace(tmp, RESERVATION_PATH)
-    except BaseException:
-        if tmp is not None:
+                f"예약 파일 읽기 실패 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
+        else:
             try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-        raise
+                data = json.loads(raw)
+            except ValueError as error:
+                raise RuntimeError(
+                    f"예약 파일 깨짐 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
+            if not isinstance(data, dict):
+                raise RuntimeError(f"예약 파일 형식 오류 — 덮어쓰지 않음 ({RESERVATION_PATH})")
+        entries = _account_entries(data.get(_broker_key(broker_url)))
+        if entries is None:
+            raise RuntimeError(f"예약 파일 형식 오류 — 덮어쓰지 않음 ({RESERVATION_PATH})")
+        entries[strategy] = {"reserve": reserve, "capital_total": capital_total,
+            "strategy": strategy, "updated": now_seoul().isoformat()}
+        data[_broker_key(broker_url)] = entries
+        RESERVATION_PATH.parent.mkdir(parents=True, exist_ok=True)
+        # 여러 전략이 같은 시각에 쓸 수 있다 — 읽기~교체를 잠금 파일로 직렬화
+        tmp: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=str(RESERVATION_PATH.parent),
+                prefix=RESERVATION_PATH.name + ".", delete=False,
+            ) as handle:
+                tmp = handle.name
+                handle.write(json.dumps(data, ensure_ascii=False))
+            os.replace(tmp, RESERVATION_PATH)
+        except BaseException:
+            if tmp is not None:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            raise
 
 
 def fetch_realized(broker_url: str, ticker: str) -> dict | None:
