@@ -32,6 +32,7 @@ notes에 append하고, None이면 무시한다. kind와 fields:
   first_order(no, price, qty) / first_unknown(qty, message)
   first_rejected(status, message, rejects) / limit_given_up(market_at)
   resumed(no) — 첫 주문 전, 살아 있는 우리 주문을 이어받음
+  resume_ambiguous(nos) — 살아 있는 우리 주문이 2건 이상, unknown 으로 중단
   modified(no, price, qty, old_price) / modify_unknown(qty)
   market_qty_unknown() / market_lookup_failed() / market_all_filled()
   market_not_in_unfilled() / market_zero_remaining()
@@ -54,6 +55,7 @@ fail closed 불변식:
   - 종료 시각 이후에는 시장가 금지.
   - 넘겨받은 state의 주문번호만 취소·정정하고, 남의 미체결은 건드리지 않음.
   - 살아 있는 우리 주문이 있으면 새 첫 주문 안 함.
+  - 살아 있는 우리 주문이 2건 이상이면 unknown 으로 손 뗌.
 """
 from __future__ import annotations
 
@@ -145,12 +147,16 @@ def _try_first_order(today: str, s: dict, u: dict, hist: dict | None,
         return
     if u is None:  # 미체결 모르면 주문 금지 (호출부가 걸러 오지만 fail closed)
         return
-    for n in s["nos"]:  # 복원된 pending — 살아 있는 우리 주문이 있으면 이어받음
-        if _entry(u, n) is not None:
-            s["order_no"] = n
-            s["status"] = "working"
-            _emit(on_event, s, "resumed", notes, no=n)
-            return
+    live = [n for n in s["nos"] if _entry(u, n) is not None]
+    if len(live) > 1:  # 살아 있는 우리 주문이 2건 이상 — 수동 확인, 주문·정정 없음
+        s["status"] = "unknown"
+        _emit(on_event, s, "resume_ambiguous", notes, nos=live)
+        return
+    if len(live) == 1:  # 복원된 pending — 살아 있는 우리 주문이 있으면 이어받음
+        s["order_no"] = live[0]
+        s["status"] = "working"
+        _emit(on_event, s, "resumed", notes, no=live[0])
+        return
     price_fn = s.get("price_fn")
     price = price_fn(t) if price_fn is not None else api.price(t, side)
     if not price:  # 호가 없음은 포기 사유 아님 — 다음 스텝 재시도
