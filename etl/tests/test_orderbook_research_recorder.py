@@ -519,8 +519,16 @@ class BrokerWatchCase(unittest.TestCase):
         self.assertTrue(w.sse_lost())
 
     def test_disconnected_event(self):
-        w = self._start(['data: {"type":"disconnected"}'], lambda: {"connected": True})
+        w = self._start(['data: {"channel": "system", "payload": {"type": "disconnected"}}'], lambda: {"connected": True})
         self.assertTrue(w.has_disconnected())
+
+    def test_connected_event_ignored(self):
+        w = self._start(['data: {"channel": "system", "payload": {"type": "connected"}}'], lambda: {"connected": True})
+        self.assertFalse(w.has_disconnected())
+
+    def test_bare_type_ignored(self):
+        w = self._start(['data: {"type":"disconnected"}'], lambda: {"connected": True})
+        self.assertFalse(w.has_disconnected())
 
     def test_stream_end_marks_lost(self):
         w = self._start([], lambda: {"connected": True})
