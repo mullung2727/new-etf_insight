@@ -154,7 +154,23 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - 각 전략: broker 호출 → `BrokerClient`, 추격·마감 → `chase_engine`, `main()` → `run_live_batch`, 원장 기록 → `on_event` 콜백.
 - **동작 변경 없음**이 원칙. 예외는 이 문서에 적은 것만:
   - P4 rebound: 마감 시장가를 한 바퀴 처리로(10-13 지연 수정) + 시장가 금지 시각 추가.
-- P5 jevq 의 두 엔진 차이(체결 확정을 마감 뒤 재조회 `FINALIZE_RETRIES` vs 엔진 안 체결 수량, DB 문자열 상태 vs state dict)는 착수 전 사용자와 결정.
+  - P5 jevq: 매도 모드 `auction` 추가(아래). 기존 `chase` 모드는 동작 그대로.
+- P5 jevq (2026-10-14 확정):
+  - 진입 함수 `buy_ah.run_chase(con, cfg, today, api, clock, side)` 시그니처 유지, 안의 루프(`_step`·`_try_first_order`·`_market_step`)를 `chase_engine.run_chase` 로 교체.
+    Jev `BrokerApi` 는 엔진 프로토콜 어댑터로 감싸 그대로 씀(호가 신선도 `BID_MAX_AGE_S` 포함). BrokerClient 교체·rights 의 Jev 의존 제거는 P5b.
+  - 원장 상태·로그: 엔진 `on_event` 콜백에서 기존 `_save` 로 같은 상태값(`pending_ah/working_ah/failed_ah/unknown_ah`)·같은 로그 문구로 기록.
+  - 재시작 이어받기(이미 낸 번호가 미체결이면 그 주문을 이어감): 엔진 `on_step` 훅에서.
+  - 체결 확정: 엔진 뒤에 기존 `_finalize`(30초 간격 3회 재조회) 그대로 — 엔진 안 체결 수량은 쓰지 않음.
+  - 추가 매수 `add_ah.py`(16:00 고정가 지정가, 추격 아님)는 이번 범위 밖.
+- P5 매도 모드 `auction` (동작 변경, 사용자 2026-10-14). `config.json` `sell_mode` = `"chase"` | `"auction"` 로 갈아끼움:
+  1. `exit.run_exit` 직후(개장 동시호가 시간), 매도 행마다 하한 지정가 1회 주문: 가격 = 기준가(전일 종가) × (1 − `floor_pct`) 를 호가단위로 **올림**. 값은 비공개 config `sell_auction`.
+     시가 ≥ 하한이면 개장 동시호가에서 시가 체결(백테스트 가정과 같음), 시가 < 하한이면 미체결로 남음.
+  2. 미체결 잔량: `sell_auction` 의 `start` 부터 기존 추격 지정가(정정) → `market_at` 시장가 → `end` 이후 시장가 금지 → `final_at` 체결 확정.
+  3. 기준가 조회 실패 → 그 종목 하한 주문 안 함(행은 `pending_ah` 그대로) → 추격 시작 시각에 첫 주문.
+  - 값·근거: `research/private/jev_quant_live/PLAN_AUCTION_SELL.md` (비공개).
+  - 공용 추가: `chase_engine.place_first_orders`(시각 고정 첫 주문 1회 — 동시호가 주문용, 엔진 첫 주문과 같은 fail closed 규칙),
+    `BrokerClient.base_price(t)`(`GET /quotes/{t}` 의 `base_pric`, 실패·0 이면 None). 하한 가격 계산(호가단위 올림)은 전략 쪽 `price_fn`.
+  - jevq-report 는 그 시각 체결내역으로 확정하므로 시가 체결분은 그대로 보고, 추격 구간 체결분은 다음 보고에 반영.
 - P7 은 git 코드라 worktree 브랜치로만 작업, 머지 = 반영.
 
 ## 5. 요구사항 → 테스트
@@ -175,6 +191,13 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | 오래된 시세로 보유 갱신 안 함 | 시세 날짜 전일 → update 0 + 알림, 날짜 없음 → update 0 |
 | 공용 코드에 전략 정보 없음 | PR 전 `grep -nE "1[45]:[0-9]{2}\|budget\|acptno\|jev\|rebound" etl/scripts/chase_engine.py` 결과 0 |
 | 작업·반영 시간 | PR·작업 기록에 반영 시각 기재 |
+| P5 jevq `chase` 모드 동작 그대로 | jevq 기존 테스트 204개 기대값 수정 없이 통과 |
+| P5 `auction`: 개장 전 하한 지정가 1회 | 기준가 × (1 − 하한 비율) 을 호가단위 올림한 지정가 1건 (경계값 단위 테스트) |
+| P5 `auction`: 기준가 조회 실패 | base_price None → 하한 주문 0건, 행 `pending_ah` 유지, 추격 시작 시각 첫 주문 1건 |
+| P5 `auction`: 시가 전량 체결 | 추격 구간 정정·시장가 0건, `_finalize` 가 체결가 기록 |
+| P5 `auction`: 미체결·부분 체결 | 추격 정정은 미체결 잔량만, 시장가 = 남은 잔량 |
+| `place_first_orders` fail closed | 미체결/체결 조회 None → 주문 0, 이미 전량 체결 → done·주문 0, 불명 → unknown·재주문 0 |
+| `BrokerClient.base_price` | 정상 응답 → 부호 뗀 int, HTTP 실패·값 없음·0 → None |
 
 ## 6. 결정
 
@@ -190,11 +213,16 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | D8 | 동작 변경 없음, 예외는 4절 명시분만 | Claude 판단 |
 | D9 | `run_live_batch` 함수 1개, 종료 코드 0/1/2 | Claude 판단 (구 LIVE_BATCH_COMMON) |
 | D10 | 시세 날짜 검증 포함 | Claude 판단 (10-05 high52 원인) |
+| D11 | 한 전략만 쓰는 매매 동작도 공용 함수로 두고 전략은 갈아끼우기만 | 사용자 (2026-10-14) |
+| D12 | P5 Jev 는 매수·매도 추격 함께 이전(같은 루프라 쪼개지 않음), 추가 매수는 범위 밖 | 사용자 (2026-10-14) |
+| D13 | Jev 매도 `auction` 모드 채택 (하한·시각 값과 근거는 비공개 문서) | 사용자 (2026-10-14) |
+| D14 | P5 체결 확정은 Jev `_finalize` 유지, 원장 기록은 `on_event`, 이어받기는 `on_step` | Claude 판단 (동작 변경 없음) |
 
 ## 7. 운영 체크
 - 스케줄 작업·config 변경 없음(import·진입 함수만 바뀜). 러너 종료 코드 규약(2 = 알림 완료)은 P1 반영 시 러너와 대조.
 - 공개 저장소: 공용 모듈 주석·테스트에 private 설계 번호·수익 수치·전략 시각 값 금지(테스트 시각은 임의 값).
 - 같은 계좌 타 전략: 예약금·가용현금 규칙은 전략 쪽 그대로, 1회 주문 한도 분할은 전략 sizer.
+- P5 auction 모드: `\OpenClaw\jevq-exit`(08:55 시작) 실행 제한이 10분(PT10M)이라 09:05 에 강제 종료됨 → 반영 시 `openclaw-cron.registry.json` 먼저 PT45M 으로 고치고 작업 재등록.
 
 ## 구현 차이
 - P1 원래 `run_live_batch(..., notify_channel="batch")` → 실제 `notify_fn: Callable[[str], bool]`(기본 = batch 채널 notify) (전략마다 쓰던 알림 함수를 그대로 넘겨 전환 시 알림 채널이 안 바뀌게)
@@ -209,3 +237,7 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P4 SOR 시장가 실패(빈 주문번호) 처리: 원래 즉시 `close_ordered`(→ 15:20:10 KRX 재시도만) → 실제 원장 그대로 두고 다음 바퀴에 SOR 재시도, 15:20:00 넘으면 `close_ordered` 로 KRX 재시도에 넘김
 - P4 마감 시작 시각: 원래 15:19:20 → 실제 15:18:00 (사용자 결정). 백테스트(77건, 300만) 손익 종가 가정 +124.8만 · 15:18 +117.8만 · 15:19 +120.0만 — 차이 작고, 15:18 은 실패해도 15:20:10 KRX 재시도가 남음
 - 반영 단위: 원래 "한 번 반영에 전략 하나" → 실제 P3·P4 를 2026-10-13 같은 밤에 반영 (10-13 되돌림 마감 시장가가 동시호가로 넘어간 문제를 다음 거래일 전에 고치려고). 두 전략 첫 실가동을 10-14 함께 확인
+- P5 엔진 이벤트: 원래 기존 kind·필드 그대로 → 실제 `first_rejected(status, message, rejects)` 추가, `first_unknown`·`market_unknown` 에 message, `modified` 에 old_price, `market_rejected` 에 status (Jev 로그 문구를 그대로 재현하려고). 엔진 테스트 4개는 이벤트 결과 비교라 새 필드만 기대값에 추가
+- P5 부분 체결 뒤 첫 주문 수량: 원래(Jev) 원장 수량 전량 → 실제 엔진 규칙대로 잔량(qty − 체결)만 (초과 매도 방지 쪽, 기존 테스트 밖 모서리)
+- P5 재시작 이어받기: on_step 훅에서 이어받은 스텝은 정정하지 않도록 어댑터가 그 스텝 가격을 미체결 주문가로 돌려줌 (기존 "이어받은 스텝은 저장만" 순서 유지)
+- P5 대상 0건일 때: 엔진은 state 가 없으면 시장가 시각까지 안 기다림 → Jev `run_chase` 가 엔진 뒤에 market_at 대기를 직접 유지 (기존 시각 테스트 그대로)
