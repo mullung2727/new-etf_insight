@@ -323,8 +323,9 @@ class BrokerWatch(threading.Thread):
                             continue
                         if not isinstance(data, dict):
                             continue
-                        t = data.get("type")
-                        # {"type":"connected"} 무시 (시작 시 상태 조회로 이미 판정)
+                        payload = data.get("payload")
+                        t = payload.get("type") if isinstance(payload, dict) else None
+                        # {"channel":"system","payload":{"type":"connected"}} 무시 (시작 시 상태 조회로 이미 판정)
                         if t == "disconnected":
                             self._mark_disconnected()
                 # 붙은 뒤 스트림이 끝나면 broker 상태를 모름 → 양보
