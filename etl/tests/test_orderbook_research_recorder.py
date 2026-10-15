@@ -11,7 +11,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from pathlib import Path
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -26,12 +26,26 @@ from scripts.run_orderbook_research_recorder import (
     parse_real,
     pick_codes,
     run_recording,
+    _wait_backoff,
 )
 
 KST = ZoneInfo("Asia/Seoul")
 
 FIXED_NOW = datetime(2026, 10, 13, 10, 0, tzinfo=KST)
 _fixed_now = lambda: FIXED_NOW
+
+
+def _ticking_now(after_calls):
+    """호출 after_calls 번째까지는 FIXED_NOW, 그 뒤부터는 20:00(녹화 창 종료)."""
+    calls = {"n": 0}
+
+    def _now():
+        calls["n"] += 1
+        if calls["n"] > after_calls:
+            return datetime(2026, 10, 13, 20, 0, tzinfo=KST)
+        return FIXED_NOW
+
+    return _now
 
 LOGIN_OK = {"trnm": "LOGIN", "return_code": 0, "return_msg": "ok"}
 REG_OK = {"trnm": "REG", "return_code": 0, "return_msg": "ok"}
@@ -121,9 +135,10 @@ class FakeWs:
 
 
 class FakeWatch:
-    def __init__(self, connected=True, disconnect_after=None):
+    def __init__(self, connected=True, lost_after=None, drops=0):
         self._connected = connected
-        self.disconnect_after = disconnect_after
+        self.lost_after = lost_after
+        self.drops = drops
         self.forced = False
         self._calls = 0
         self.stopped = False
@@ -134,16 +149,14 @@ class FakeWatch:
     def wait_connected(self, timeout):
         return self._connected
 
-    def has_disconnected(self):
+    def disconnect_count(self):
+        return self.drops
+
+    def sse_lost(self):
         self._calls += 1
         if self.forced:
             return True
-        if self.disconnect_after is not None and self._calls > self.disconnect_after:
-            return True
-        return False
-
-    def sse_lost(self):
-        return False
+        return self.lost_after is not None and self._calls > self.lost_after
 
     def stop(self):
         self.stopped = True
@@ -311,23 +324,24 @@ class LoopCase(_TmpCase):
             con.close()
         return t, b, g
 
-    def test_a_broker_disconnected(self):
+    def test_a_broker_disconnected_keeps_recording(self):
         ws = FakeWs(frames=[LOGIN_OK, REG_OK], hang=True)
         connects = []
         async def _connect(url):
             connects.append(url)
             return ws
-        watch = FakeWatch(connected=True, disconnect_after=2)
+        watch = FakeWatch(connected=True, drops=2)
         notify_m = mock.Mock()
         db = self.tmp / "day.sqlite3"
         res = self._run(date="20261013", codes=["005930"], db_path=db, watch=watch,
                         connect_fn=_connect,
                         load_token_fn=lambda: ("ws://fake", "tok", "ok"),
-                        notify_fn=notify_m, out_dir=self.tmp)
-        self.assertEqual(len(connects), 1)  # 추가 접속 0
-        self.assertTrue(ws.close_called)  # 키움 close 호출
-        self.assertEqual(res["reason"], "broker_disconnected")
-        notify_m.assert_called_once()
+                        notify_fn=notify_m, out_dir=self.tmp,
+                        now_fn=_ticking_now(5))
+        self.assertEqual(len(connects), 1)  # 키움 재접속 0
+        self.assertEqual(res["reason"], "window_end")  # broker 끊김은 종료 사유가 아님
+        self.assertEqual(res["broker_drops"], 2)
+        notify_m.assert_not_called()
 
     def test_b_kicked_1000(self):
         ws = FakeWs(frames=[LOGIN_OK, REG_OK], close_code=1000, close_reason="Bye")
@@ -394,7 +408,7 @@ class LoopCase(_TmpCase):
         rows = [g for g in gaps if g[3] == "close_1006"]
         self.assertEqual(len(rows), 1)
         self.assertLess(rows[0][1], rows[0][2])  # start_rt < end_rt
-        self.assertEqual(res["reason"], "broker_disconnected")
+        self.assertEqual(res["reason"], "broker_sse_lost")
         notify_m.assert_called_once()
 
     def test_e_no_broker_no_connect(self):
@@ -427,6 +441,13 @@ class LoopCase(_TmpCase):
         self.assertEqual(res["reason"], "disk_low")
 
 
+class WaitBackoffCase(unittest.TestCase):
+    def test_broker_disconnect_does_not_stop_backoff(self):
+        watch = FakeWatch(connected=True, drops=3)
+        stop = asyncio.run(_wait_backoff(3, watch, _no_sleep, _fixed_now, dt_time(20, 0)))
+        self.assertIsNone(stop)
+
+
 class StoreCase(_TmpCase):
     def test_append_same_day(self):
         real_t = {"trnm": "REAL", "data": [{"type": "0B", "item": "005930", "values": dict(TRADE_VALUES)}]}
@@ -439,7 +460,7 @@ class StoreCase(_TmpCase):
         async def _connect(url):
             return _factory()
         for _ in range(2):  # 같은 날 재실행
-            watch = FakeWatch(connected=True, disconnect_after=3)
+            watch = FakeWatch(connected=True, lost_after=3)
             db = self.tmp / "orderbook_raw_20261013.sqlite3"
             with mock.patch("asyncio.sleep", _no_sleep):
                 res = asyncio.run(run_recording(
@@ -447,7 +468,7 @@ class StoreCase(_TmpCase):
                     connect_fn=_connect,
                     load_token_fn=lambda: ("ws://fake", "tok", "ok"),
                     notify_fn=mock.Mock(), out_dir=self.tmp, sleep_fn=_no_sleep, now_fn=_fixed_now))
-            self.assertEqual(res["reason"], "broker_disconnected")
+            self.assertEqual(res["reason"], "broker_sse_lost")
         con = sqlite3.connect(db)
         try:
             t = con.execute("SELECT COUNT(*) FROM trade").fetchone()[0]
@@ -520,15 +541,22 @@ class BrokerWatchCase(unittest.TestCase):
 
     def test_disconnected_event(self):
         w = self._start(['data: {"channel": "system", "payload": {"type": "disconnected"}}'], lambda: {"connected": True})
-        self.assertTrue(w.has_disconnected())
+        self.assertEqual(w.disconnect_count(), 1)
+
+    def test_disconnected_events_counted(self):
+        w = self._start([
+            'data: {"channel": "system", "payload": {"type": "disconnected"}}',
+            'data: {"channel": "system", "payload": {"type": "disconnected"}}',
+        ], lambda: {"connected": True})
+        self.assertEqual(w.disconnect_count(), 2)
 
     def test_connected_event_ignored(self):
         w = self._start(['data: {"channel": "system", "payload": {"type": "connected"}}'], lambda: {"connected": True})
-        self.assertFalse(w.has_disconnected())
+        self.assertEqual(w.disconnect_count(), 0)
 
     def test_bare_type_ignored(self):
         w = self._start(['data: {"type":"disconnected"}'], lambda: {"connected": True})
-        self.assertFalse(w.has_disconnected())
+        self.assertEqual(w.disconnect_count(), 0)
 
     def test_stream_end_marks_lost(self):
         w = self._start([], lambda: {"connected": True})

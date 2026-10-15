@@ -5,7 +5,7 @@
 
 실매매 보호 (어떤 경우에도 지킨다):
 1. broker SSE connected를 모르면 키움 웹소켓을 열지 않는다.
-2. broker SSE에서 disconnected를 1번이라도 받거나 SSE가 끊기면 키움 연결을 닫고 그날 녹화 종료(재접속 금지).
+2. broker SSE가 끊기면(broker 상태를 모름) 키움 연결을 닫고 그날 녹화 종료. broker의 키움 연결 끊김(disconnected)은 횟수만 세고 녹화는 계속한다 — 실매매 전략은 broker 실시간 연결을 쓰지 않기 때문(2026-10-15). ⚠ 실매매가 broker 실시간 연결(/events·/realtime·체결통보 구독)을 쓰기 시작하면 이 규칙을 다시 검토할 것. etl/tests/test_realtime_users.py 가 그 순간 실패한다.
 3. 녹화 연결이 close 1000으로 닫히면 충돌로 보고 그날 녹화 종료(재접속 금지).
 4. 토큰은 broker/.token_cache.json 읽기만. 토큰 발급·REST 호출 없음. HTTP 요청은 로컬 broker(:8001) SSE 와 시작 시 상태 조회 1회뿐, 키움 REST 호출 없음.
 """
@@ -231,7 +231,8 @@ def open_day_db(path: Path) -> sqlite3.Connection:
 # ── broker 감시 ────────────────────────────────────────────────────────
 
 class BrokerWatch(threading.Thread):
-    """broker system SSE 감시. 한번 붙은 뒤 끊기면 재연결 없이 sse_lost 기록 후 종료."""
+    """broker system SSE 감시. disconnected 는 횟수만 세고 녹화는 멈추지 않는다.
+    SSE 스트림 자체가 끊기면 재연결 없이 sse_lost 기록 후 종료(녹화기는 그날 종료)."""
 
     def __init__(self, url: str = BROKER_URL, state_fn=None) -> None:
         super().__init__(daemon=True, name="research-broker-watch")
@@ -250,7 +251,7 @@ class BrokerWatch(threading.Thread):
         self._stop_evt = threading.Event()
         self._connected_evt = threading.Event()
         self._connected = False
-        self.disconnected_at: float | None = None
+        self._disconnects: int = 0
         self.sse_lost_at: float | None = None
         self._ever_opened = False
 
@@ -261,9 +262,9 @@ class BrokerWatch(threading.Thread):
     def wait_connected(self, timeout: float) -> bool:
         return self._connected_evt.wait(timeout)
 
-    def has_disconnected(self) -> bool:
+    def disconnect_count(self) -> int:
         with self._lock:
-            return self.disconnected_at is not None
+            return self._disconnects
 
     def sse_lost(self) -> bool:
         with self._lock:
@@ -279,8 +280,7 @@ class BrokerWatch(threading.Thread):
 
     def _mark_disconnected(self) -> None:
         with self._lock:
-            if self.disconnected_at is None:
-                self.disconnected_at = time.time()
+            self._disconnects += 1
 
     def _mark_lost(self) -> None:
         with self._lock:
@@ -518,8 +518,6 @@ async def _wait_backoff(secs: int, watch, sleep, now_fn, wend) -> str | None:
     """backoff 대기. 1초마다 broker·시각 확인. 중단 사유 있으면 반환."""
     for _ in range(int(secs)):
         await sleep(1.0)
-        if watch.has_disconnected():
-            return "broker_disconnected"
         if watch.sse_lost():
             return "broker_sse_lost"
         if now_fn().time() >= wend:
@@ -556,15 +554,17 @@ async def run_recording(
     now_f = now_fn or (lambda: datetime.now(KST))
     now_ns = now_ns_fn or time.time_ns
     sleep = sleep_fn or asyncio.sleep
-    res = {"reason": "", "trade": 0, "book": 0, "reconnects": 0}
+    res = {"reason": "", "trade": 0, "book": 0, "reconnects": 0, "broker_drops": 0}
 
     def _finish(reason: str) -> dict:
         res["reason"] = reason
+        res["broker_drops"] = watch.disconnect_count()
         if reason != "window_end":
             try:
                 notify_f(
                     f"[orderbook_research] {date} 녹화 중단: {reason}"
-                    f" (trade {res['trade']}, book {res['book']}, 재접속 {res['reconnects']})",
+                    f" (trade {res['trade']}, book {res['book']}, 재접속 {res['reconnects']},"
+                    f" broker 끊김 {res['broker_drops']})",
                     channel="batch",
                 )
             except Exception:
@@ -698,9 +698,6 @@ async def run_recording(
             term = None
             while True:
                 await sleep(1.0)
-                if watch.has_disconnected():
-                    term = "broker_disconnected"
-                    break
                 if watch.sse_lost():
                     term = "broker_sse_lost"
                     break
@@ -865,8 +862,6 @@ def _run(date: str, today: str) -> int:
     start_dt = datetime.combine(now.date(), WINDOW_START).replace(tzinfo=KST)
     while datetime.now(KST) < start_dt:
         time.sleep(1)
-        if watch.has_disconnected():
-            return _pre_stop(watch, date, "broker_disconnected")
         if watch.sse_lost():
             return _pre_stop(watch, date, "broker_sse_lost")
     deadline = time.monotonic() + 30 * 60
@@ -885,8 +880,6 @@ def _run(date: str, today: str) -> int:
             return 3
         for _ in range(60):
             time.sleep(1)
-            if watch.has_disconnected():
-                return _pre_stop(watch, date, "broker_disconnected")
             if watch.sse_lost():
                 return _pre_stop(watch, date, "broker_sse_lost")
             if datetime.now(KST).time() >= WINDOW_END:
@@ -898,7 +891,8 @@ def _run(date: str, today: str) -> int:
     except Exception:
         pass
     print(f"[orderbook_research] {date} done reason={res['reason']}"
-          f" trade={res['trade']} book={res['book']} reconnects={res['reconnects']}")
+          f" trade={res['trade']} book={res['book']} reconnects={res['reconnects']}"
+          f" broker_drops={res['broker_drops']}")
     return 0 if res["reason"] == "window_end" else 3
 
 
