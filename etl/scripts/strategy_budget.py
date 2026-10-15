@@ -35,6 +35,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STRATEGIES = {
+    "msig":       ("http://127.0.0.1:8001", "research/private/afa/live/config.json"),
     "rights_dip": ("http://127.0.0.1:8001", "research/private/rights_issue/live/config.json"),
     "rebound":    ("http://127.0.0.1:8001", "research/private/intraday_rebound/live/config.json"),
     "envelope":   ("http://127.0.0.1:8001", "research/private/envelope/live/config.json"),
