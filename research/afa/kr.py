@@ -247,6 +247,74 @@ def monthly_frame(px: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols)
 
 
+def universe_mask(frame: pd.DataFrame, names: dict, corps: set[str], *,
+                  old_filter: bool = False) -> pd.Series:
+    mask = ~frame["market"].astype(str).str.contains("KONEX", na=False)
+    mask &= frame["ticker"].str.endswith("0")
+    mask &= frame["ticker"].map(
+        lambda t: not SPAC_RE.search(str(names.get(str(t), ""))))
+    mask &= ~frame["ticker"].isin(corps)
+    if old_filter:
+        mask &= frame["me"] > 1e9
+        mask &= frame["tv"] > 1e7
+    else:
+        mask &= frame["close"] >= MIN_PRICE
+    mask &= frame["me"] > 0
+    return mask
+
+
+def formation_rows(px: pd.DataFrame, f0: str) -> pd.DataFrame:
+    cols = ["ticker", "close", "me", "market", "tv"]
+    g0 = px[px["date"].astype(str) == str(f0)].drop_duplicates(
+        "ticker", keep="last")
+    return pd.DataFrame({"ticker": g0["ticker"].astype(str).to_numpy(),
+                         "close": g0["close"].to_numpy(float),
+                         "me": g0["market_cap"].to_numpy(float),
+                         "market": g0["market"].to_numpy(),
+                         "tv": g0["trading_value"].to_numpy(float)},
+                        columns=cols).assign(ym=int(str(f0)[:6]))
+
+
+def form_month(g: pd.DataFrame, fin: pd.DataFrame, t, *,
+               old_filter: bool = False) -> tuple[pd.DataFrame | None, int]:
+    ym = int(pd.Timestamp(t).strftime("%Y%m"))
+    g = g.copy()
+    if "ym" not in g:
+        g["ym"] = ym
+    if "ret_ym" not in g:
+        g["ret_ym"] = -1
+    if "ret" not in g:
+        g["ret"] = np.nan
+    snap = kr_snapshot(fin, t)
+    pre = snap.index.intersection(g["ticker"].astype(str).unique())
+    sub = snap.loc[pre].dropna(subset=ITEMS) if len(pre) else snap.iloc[0:0]
+    sub = sub[sub["자산총계"] > 0]
+    if old_filter:
+        sub = sub[(sub["당기순이익(손실)"] > 0) & (sub["매출액"] > 0)]
+    N = len(sub)
+    if N < MIN_N:
+        return None, N
+    X = winsorize_by_assets(sub[ITEMS], sub["자산총계"]).to_numpy(float)
+    gi = g.drop_duplicates("ticker", keep="last").set_index("ticker")
+    v = gi.reindex(sub.index)["me"].to_numpy(float)
+    okv = np.isfinite(v) & (v > 0)
+    sub = sub[okv]
+    if len(sub) < MIN_N:
+        return None, len(sub)
+    X = X[okv]
+    v = v[okv]
+    N = len(sub)
+    m = mispricing(ols_fair(X, v), v)
+    q = _quintile(pd.Series(m, index=sub.index)).to_numpy(int)
+    out = pd.DataFrame({"ym": int(ym),
+                        "ret_ym": gi.reindex(sub.index)["ret_ym"].to_numpy(int),
+                        "ticker": sub.index.astype(str).to_numpy(),
+                        "me": v,
+                        "ret": gi.reindex(sub.index)["ret"].to_numpy(float),
+                        "m": m, "q": q, "N": int(N)})
+    return out[CS_COLS], N
+
+
 def _turnover(prev_set, cur_set) -> float:
     """전월 대비 새로 들어온 종목 비율."""
     cur = set(cur_set)
@@ -512,17 +580,7 @@ def main(argv=None) -> None:
             print(f"[incomplete] dmax={dmax.date()} < 월말영업일={last_bday.date()}"
                   f" → ym/ret_ym={ym_last} {n0 - len(frame)}행 제외", flush=True)
         fmap = _formation_map(px)
-        mask = (~frame["market"].astype(str).str.contains("KONEX", na=False))
-        mask &= frame["ticker"].str.endswith("0")
-        mask &= frame["ticker"].map(
-            lambda t: not SPAC_RE.search(str(names.get(str(t), ""))))
-        mask &= ~frame["ticker"].isin(corps)
-        if args.old_filter:
-            mask &= frame["me"] > 1e9
-            mask &= frame["tv"] > 1e7
-        else:
-            mask &= frame["close"] >= MIN_PRICE
-        mask &= frame["me"] > 0
+        mask = universe_mask(frame, names, corps, old_filter=args.old_filter)
         frame = frame[mask].copy()
         yms = sorted(frame["ym"].unique())
         end = args.end if args.end is not None else (max(yms) if yms else None)
@@ -533,36 +591,11 @@ def main(argv=None) -> None:
             if g.empty:
                 continue
             t = pd.Timestamp(str(fmap[ym]))
-            snap = kr_snapshot(fin, t)
-            pre = snap.index.intersection(g["ticker"].astype(str).unique())
-            sub = snap.loc[pre].dropna(subset=ITEMS) if len(pre) else snap.iloc[0:0]
-            sub = sub[sub["자산총계"] > 0]
-            if args.old_filter:
-                sub = sub[(sub["당기순이익(손실)"] > 0) & (sub["매출액"] > 0)]
-            N = len(sub)
-            if N < MIN_N:
+            out, N = form_month(g, fin, t, old_filter=args.old_filter)
+            if out is None:
                 print(f"[{ym}] skip: N={N}", flush=True)
                 continue
-            X = winsorize_by_assets(sub[ITEMS], sub["자산총계"]).to_numpy(float)
-            gi = g.drop_duplicates("ticker", keep="last").set_index("ticker")
-            v = gi.reindex(sub.index)["me"].to_numpy(float)
-            okv = np.isfinite(v) & (v > 0)
-            sub = sub[okv]
-            if len(sub) < MIN_N:
-                print(f"[{ym}] skip: N={len(sub)}", flush=True)
-                continue
-            X = X[okv]
-            v = v[okv]
-            N = len(sub)
-            m = mispricing(ols_fair(X, v), v)
-            q = _quintile(pd.Series(m, index=sub.index)).to_numpy(int)
-            out = pd.DataFrame({"ym": int(ym),
-                                "ret_ym": gi.reindex(sub.index)["ret_ym"].to_numpy(int),
-                                "ticker": sub.index.astype(str).to_numpy(),
-                                "me": v,
-                                "ret": gi.reindex(sub.index)["ret"].to_numpy(float),
-                                "m": m, "q": q, "N": int(N)})
-            parts.append(out[CS_COLS])
+            parts.append(out)
             if i % 12 == 0:
                 print(f"[{ym}] N={N}", flush=True)
         cs = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=CS_COLS)
