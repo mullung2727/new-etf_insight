@@ -359,10 +359,12 @@ def _cancel_only_step(today: str, states: list[dict], api, notes: list[str],
     unfilled = {side: api.unfilled(side) for side in sides}
     for s in live:
         side, ticker = s.get("side", "sell"), s["p"]["ticker"]
+        order_no = s.get("order_no", "")
         if unfilled[side] is None:
             s["status"] = "unknown"
             continue
-        ent = _entry(unfilled[side], s.get("order_no", "")) if s.get("order_no") else None
+        ent = _entry(unfilled[side], order_no) if order_no else None
+        oso = None
         if ent is not None:
             try:
                 oso = int(ent.get("oso_qty") or 0)
@@ -382,7 +384,10 @@ def _cancel_only_step(today: str, states: list[dict], api, notes: list[str],
             s["status"] = "unknown"
             continue
         remaining = max(0, s["qty"] - _fills(s["nos"], fills))
-        s["carry_qty"] = remaining
+        if order_no and ent is None and remaining > 0:
+            s["status"] = "unknown"
+            continue
+        s["carry_qty"] = min(oso, remaining) if oso is not None else remaining
         s["status"] = "carried"
 
 

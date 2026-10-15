@@ -91,6 +91,52 @@ class SlicedRunTest(unittest.TestCase):
         self.assertFalse(any(call[0] == "place_market" for call in api.calls))
         self.assertIn("123", api.cancelled)
 
+    def test_cancel_only_vanished_order_lagging_history_unknown(self):
+        class VanishedApi(SlicedApi):
+            def place_limit(self, ticker, side, qty, price):
+                result = super().place_limit(ticker, side, qty, price)
+                self.books[side].pop(result["order_no"], None)
+                return result
+
+        api = VanishedApi()
+        result = run_sliced(TODAY, [order(qty=6)], api, self.clock,
+                            slices=("09:30:00", "09:32:00"), last_cut="09:33:00",
+                            step_seconds=30)
+        self.assertEqual(result["A"], 6)
+        self.assertEqual(len([x for x in api.placed if x[0] == "place_limit"]), 1)
+
+    def test_cancel_only_vanished_order_fully_filled_carries_zero(self):
+        class FilledVanishedApi(SlicedApi):
+            def place_limit(self, ticker, side, qty, price):
+                result = super().place_limit(ticker, side, qty, price)
+                self.books[side].pop(result["order_no"], None)
+                self.fill_map[side][result["order_no"]] = {"cntr_qty": qty}
+                return result
+
+        api = FilledVanishedApi()
+        result = run_sliced(TODAY, [order(qty=3)], api, self.clock,
+                            slices=("09:30:00",), last_cut="09:31:00")
+        self.assertEqual(result["A"], 0)
+
+    def test_cancel_only_carry_uses_min_of_oso_and_history(self):
+        class LaggingCancelApi(SlicedApi):
+            def cancel(self, no, ticker):
+                self.books["sell"].pop(no, None)
+                self.fill_map["sell"][no] = {"cntr_qty": 1}
+                self.cancelled.append(no)
+                return True
+
+        api = LaggingCancelApi()
+        api.books["sell"]["123"] = {"ticker": "005930", "oso_qty": 3,
+                                     "ord_price": 99, "order_no": "123"}
+        state = {"p": {"ticker": "005930"}, "qty": 6, "nos": ["123"],
+                 "order_no": "123", "status": "working", "side": "sell",
+                 "rejects": 0, "modifies": 0, "start_at": "10:00:00",
+                 "market_at": "10:05:00", "cancel_only_at": "10:04:00"}
+        ch._cancel_only_step(TODAY, [state], api, [], first_at="10:00:00",
+                             market_at="10:05:00")
+        self.assertEqual(state["carry_qty"], 3)
+
     def test_cancel_only_no_market(self):
         self.api.quotes["sell"] = 99
         result = run_sliced(TODAY, [order(qty=3)], self.api, self.clock,
