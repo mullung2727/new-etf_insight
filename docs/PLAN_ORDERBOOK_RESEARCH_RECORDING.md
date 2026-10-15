@@ -203,4 +203,4 @@ P1 녹화 구현
 ## 구현 차이
 
 - 변환·이동: 테이블이 하나도 없는 일 파일은 실패로 보고 C: 보존(설계에 없던 경우). sqlite 는 20만 행 청크로 읽고 duckdb 메모리 2GB·임시폴더로 정렬(장 전체 book 수백만 행 대비).
-- 장치 1 변경(2026-10-15): `_run` 의 시작 전 대기·토큰 대기 루프에 있던 broker `disconnected` 종료 분기도 같이 삭제(설계엔 녹화 루프만 적었음). 가드 테스트는 `test_*.py` 파일과 `tests`·`.venv`·`rejected`·`_backup*` 폴더를 검사에서 뺀다(broker 루트 테스트 파일이 패턴에 걸림). `research/private` 는 gitignore 라 **메인 폴더에서 테스트를 돌릴 때만** 실매매 코드까지 검사된다.
+- 장치 1 변경(2026-10-15): `_run` 의 시작 전 대기·토큰 대기 루프에 있던 broker `disconnected` 종료 분기도 같이 삭제(설계엔 녹화 루프만 적었음). 가드 테스트는 `test_*.py` 파일과 `tests`·`.venv`·`rejected`·`_backup*` 폴더를 검사에서 뺀다(broker 루트 테스트 파일이 패턴에 걸림). `research/private` 는 gitignore 라 테스트 파일이 속한 체크아웃(`REPO_ROOT`) 아래에 그 폴더가 있을 때만 실매매 코드까지 검사된다 — 사실상 메인 폴더 체크아웃(worktree 엔 없음), 실행 작업 디렉터리와는 무관.
