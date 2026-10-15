@@ -5,12 +5,17 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
-from research.afa.kr import (_aggregate_kr, _turnover, fin_corps, kr_snapshot,
-                             load_kr_fin, monthly_frame)
+from research.afa.kr import (CS_COLS, ITEMS, MIN_N, _aggregate_kr, _quintile,
+                             _turnover, fin_corps, form_month, formation_rows,
+                             kr_snapshot, load_kr_fin, monthly_frame,
+                             universe_mask)
+from research.afa.fair import mispricing, ols_fair
+from research.afa.items import winsorize_by_assets
 from research.backtest_daily.stats import COSTS
 
 SCHEMA = ("CREATE TABLE accounts (corp_code TEXT, bsns_year TEXT, reprt_code TEXT, "
@@ -156,6 +161,92 @@ class TurnoverTest(unittest.TestCase):
         for key in ("ext_lo", "ext_hi"):
             self.assertAlmostEqual(agg[key]["to"], 0.0)
             self.assertAlmostEqual(agg[key]["net"], agg[key]["mean"])
+
+
+def form_inputs(n=MIN_N):
+    tickers = [f"{i:06d}" for i in range(1000, 1000 + n)]
+    g = pd.DataFrame({"ticker": tickers, "me": np.linspace(1e9, 2e9, n),
+                      "ym": 202401, "ret_ym": 202402,
+                      "ret": np.linspace(-0.1, 0.1, n)})
+    snap = pd.DataFrame({c: np.linspace(100 + j, 1000 + j, n)
+                         for j, c in enumerate(ITEMS)}, index=tickers)
+    snap["자산총계"] = np.linspace(1e8, 1e9, n)
+    return g, snap
+
+
+class FormationFunctionsTest(unittest.TestCase):
+    def test_K8_form_month_matches_loop(self):
+        g, snap = form_inputs()
+        t = pd.Timestamp("2024-01-31")
+        with patch("research.afa.kr.kr_snapshot", return_value=snap):
+            actual, count = form_month(g, None, t)
+        sub = snap.loc[snap.index.intersection(g["ticker"].astype(str).unique())]
+        sub = sub.dropna(subset=ITEMS)
+        sub = sub[sub["자산총계"] > 0]
+        X = winsorize_by_assets(sub[ITEMS], sub["자산총계"]).to_numpy(float)
+        gi = g.drop_duplicates("ticker", keep="last").set_index("ticker")
+        v = gi.reindex(sub.index)["me"].to_numpy(float)
+        okv = np.isfinite(v) & (v > 0)
+        sub, X, v = sub[okv], X[okv], v[okv]
+        m = mispricing(ols_fair(X, v), v)
+        q = _quintile(pd.Series(m, index=sub.index)).to_numpy(int)
+        expected = pd.DataFrame({"ym": 202401,
+                                 "ret_ym": gi.reindex(sub.index)["ret_ym"].to_numpy(int),
+                                 "ticker": sub.index.astype(str).to_numpy(),
+                                 "me": v,
+                                 "ret": gi.reindex(sub.index)["ret"].to_numpy(float),
+                                 "m": m, "q": q, "N": int(len(sub))})[CS_COLS]
+        self.assertEqual(count, len(sub))
+        pd.testing.assert_frame_equal(actual, expected)
+
+    def test_K9_form_month_without_ret(self):
+        g, snap = form_inputs()
+        g = g.drop(columns=["ym", "ret_ym", "ret"])
+        t = pd.Timestamp("2024-01-31")
+        with patch("research.afa.kr.kr_snapshot", return_value=snap):
+            actual, _ = form_month(g, None, t)
+            with_ret, _ = form_month(
+                form_inputs()[0], None, t)
+        self.assertTrue(actual["ret"].isna().all())
+        self.assertTrue((actual["ret_ym"] == -1).all())
+        self.assertTrue((actual["ym"] == 202401).all())
+        np.testing.assert_allclose(actual["m"], with_ret["m"])
+
+    def test_K10_form_month_min_n_skip(self):
+        g, snap = form_inputs(MIN_N - 1)
+        with patch("research.afa.kr.kr_snapshot", return_value=snap):
+            result, count = form_month(g, None, pd.Timestamp("2024-01-31"))
+        self.assertIsNone(result)
+        self.assertEqual((result, count), (None, MIN_N - 1))
+
+    def test_K11_universe_mask(self):
+        f = pd.DataFrame({"ticker": ["000010", "000011", "000020", "000030",
+                                       "000040", "000050"],
+                          "market": ["KOSPI", "KOSPI", "KOSPI", "KOSPI",
+                                     "KOSPI", "KONEX"],
+                          "me": [2e9, 2e9, 2e9, 2e9, 0, 2e9],
+                          "tv": [2e7] * 6, "close": [2000] * 6})
+        names = {"000020": "테스트스팩"}
+        normal = universe_mask(f, names, {"000030"})
+        self.assertEqual(list(f.loc[normal, "ticker"]), ["000010"])
+        old = universe_mask(f, names, set(), old_filter=True)
+        self.assertEqual(list(f.loc[old, "ticker"]), ["000010", "000030"])
+
+    def test_K12_formation_rows(self):
+        px = pd.DataFrame([
+            {"date": "20240131", "ticker": "000001", "close": 10,
+             "market_cap": 100, "market": "KOSPI", "trading_value": 20},
+            {"date": "20240131", "ticker": "000001", "close": 11,
+             "market_cap": 110, "market": "KOSDAQ", "trading_value": 21},
+            {"date": "20240201", "ticker": "000002", "close": 12,
+             "market_cap": 120, "market": "KOSPI", "trading_value": 22},
+        ])
+        rows = formation_rows(px, "20240131")
+        self.assertEqual(list(rows.columns), ["ticker", "close", "me", "market", "tv", "ym"])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows.iloc[0].to_dict(),
+                         {"ticker": "000001", "close": 11.0, "me": 110.0,
+                          "market": "KOSDAQ", "tv": 21.0, "ym": 202401})
 
 
 if __name__ == "__main__":
