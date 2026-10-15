@@ -120,7 +120,9 @@ def _bounds(s: dict, today: str, first_at: str, market_at: str) -> None:
     s.setdefault("side", "sell")
     if "start_dt" not in s:
         s["start_dt"] = at(today, s.get("start_at") or first_at)
-    if "market_dt" not in s:
+    if s.get("cancel_only_at"):
+        s["market_dt"] = at(today, s["cancel_only_at"])
+    elif "market_dt" not in s:
         s["market_dt"] = at(today, s.get("market_at") or market_at)
 
 
@@ -346,6 +348,44 @@ def _market_step(today: str, states: list[dict], api, clock, end: datetime,
                   message=str(res.get("message", "")))
 
 
+def _cancel_only_step(today: str, states: list[dict], api, notes: list[str],
+                      *, first_at: str, market_at: str,
+                      on_event: Callable | None = None) -> None:
+    """취소 후 확인만 하고 잔량을 carry_qty로 보존한다."""
+    live = [s for s in states if s["status"] in ("pending", "working")]
+    for s in live:
+        _bounds(s, today, first_at, market_at)
+    sides = list(dict.fromkeys(s.get("side", "sell") for s in live))
+    unfilled = {side: api.unfilled(side) for side in sides}
+    for s in live:
+        side, ticker = s.get("side", "sell"), s["p"]["ticker"]
+        if unfilled[side] is None:
+            s["status"] = "unknown"
+            continue
+        ent = _entry(unfilled[side], s.get("order_no", "")) if s.get("order_no") else None
+        if ent is not None:
+            try:
+                oso = int(ent.get("oso_qty") or 0)
+            except (TypeError, ValueError):
+                s["status"] = "unknown"
+                continue
+            if oso > 0:
+                if not api.cancel(s["order_no"], ticker):
+                    s["status"] = "unknown"
+                    continue
+                check = api.unfilled(side)
+                if check is None or _entry(check, s["order_no"]) is not None:
+                    s["status"] = "unknown"
+                    continue
+        fills = api.fills(today, side)
+        if fills is None:
+            s["status"] = "unknown"
+            continue
+        remaining = max(0, s["qty"] - _fills(s["nos"], fills))
+        s["carry_qty"] = remaining
+        s["status"] = "carried"
+
+
 def place_first_orders(today: str, states: list[dict], api, *, max_rejects: int = 3,
                        market_at: str = "",
                        on_event: Callable | None = None) -> list[str]:
@@ -408,8 +448,15 @@ def run_chase(today: str, states: list[dict], api, clock, *, first_at: str,
         for mkt in sorted({s["market_dt"] for s in states
                            if not s.get("mkt_done") and s["market_dt"] <= clock.now()}):
             grp = [s for s in states if s["market_dt"] == mkt and not s.get("mkt_done")]
-            _market_step(today, grp, api, clock, end, notes,
-                         first_at=first_at, market_at=market_at, on_event=on_event)
+            cutoff = [s for s in grp if s.get("cancel_only_at")]
+            ordinary = [s for s in grp if s not in cutoff]
+            if cutoff:
+                _cancel_only_step(today, cutoff, api, notes,
+                                  first_at=first_at, market_at=market_at,
+                                  on_event=on_event)
+            if ordinary:
+                _market_step(today, ordinary, api, clock, end, notes,
+                             first_at=first_at, market_at=market_at, on_event=on_event)
             for s in grp:
                 s["mkt_done"] = True
 
@@ -439,10 +486,16 @@ def run_chase(today: str, states: list[dict], api, clock, *, first_at: str,
                        if not s.get("mkt_done")}):
         if clock.now() < mkt:
             clock.sleep_until(mkt)
-        _market_step(today, [s for s in states if s["market_dt"] == mkt
-                             and not s.get("mkt_done")],
-                     api, clock, end, notes,
-                     first_at=first_at, market_at=market_at, on_event=on_event)
+        grp = [s for s in states if s["market_dt"] == mkt and not s.get("mkt_done")]
+        cutoff = [s for s in grp if s.get("cancel_only_at")]
+        ordinary = [s for s in grp if s not in cutoff]
+        if cutoff:
+            _cancel_only_step(today, cutoff, api, notes,
+                              first_at=first_at, market_at=market_at,
+                              on_event=on_event)
+        if ordinary:
+            _market_step(today, ordinary, api, clock, end, notes,
+                         first_at=first_at, market_at=market_at, on_event=on_event)
     for s in states:
         if s["modifies"]:
             _emit(on_event, s, "modifies_summary", notes, count=s["modifies"])
@@ -457,6 +510,9 @@ class ClientEngineApi:
 
     def price(self, t: str, side: str) -> int | None:
         return self._client.limit_price(t, side)
+
+    def best_quote(self, t: str, side: str) -> int | None:
+        return self._client.best_quote(t, side)
 
     def place_limit(self, t: str, side: str, qty: int, price: int) -> dict:
         return self._client.place_limit(t, side, qty, price)
