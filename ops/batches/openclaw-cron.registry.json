@@ -810,6 +810,64 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "f1986f85-9725-4e1a-bd83-3b137210c5a1",
+      "name": "msig-select",
+      "description": "Mon-Fri 08:40 and 09:15 KST Msig select batch",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": ["40 8 * * 1-5", "15 9 * * 1-5"],
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/msig-select.md",
+      "timeoutSeconds": 1800,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "msig-select",
+        "xmlFile": "ops/scheduled-tasks/msig-select.xml",
+        "runnerScript": "ops/scheduled-tasks/run-msig-select.ps1",
+        "delivery": {"kind": "discordWebhook", "env": "DISCORD_WEBHOOK_URL"}
+      },
+      "delivery": {"mode": "announce", "channel": "discord", "to": "1513799139715190854"}
+    },
+    {
+      "id": "41b27ab1-8d0d-4a08-9e19-2a4b82d1e366",
+      "name": "msig-exec",
+      "description": "Mon-Fri 09:25 KST Msig execution batch",
+      "enabled": true,
+      "schedule": {"kind": "cron", "expr": "25 9 * * 1-5", "tz": "Asia/Seoul"},
+      "instructionFile": "ops/batches/msig-exec.md",
+      "timeoutSeconds": 25200,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "msig-exec",
+        "xmlFile": "ops/scheduled-tasks/msig-exec.xml",
+        "runnerScript": "ops/scheduled-tasks/run-msig-exec.ps1",
+        "delivery": {"kind": "discordWebhook", "env": "DISCORD_WEBHOOK_URL"}
+      },
+      "delivery": {"mode": "announce", "channel": "discord", "to": "1513799139715190854"}
+    },
+    {
+      "id": "aa293fb9-3d40-48a2-bf87-1a810d056e0a",
+      "name": "msig-monitor",
+      "description": "Mon-Fri 16:00 KST Msig monitor batch",
+      "enabled": true,
+      "schedule": {"kind": "cron", "expr": "0 16 * * 1-5", "tz": "Asia/Seoul"},
+      "instructionFile": "ops/batches/msig-monitor.md",
+      "timeoutSeconds": 1800,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "msig-monitor",
+        "xmlFile": "ops/scheduled-tasks/msig-monitor.xml",
+        "runnerScript": "ops/scheduled-tasks/run-msig-monitor.ps1",
+        "delivery": {"kind": "discordWebhook", "env": "DISCORD_WEBHOOK_URL"}
+      },
+      "delivery": {"mode": "announce", "channel": "discord", "to": "1513799139715190854"}
     }
   ]
 }
