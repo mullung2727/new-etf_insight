@@ -607,5 +607,56 @@ class RunnerHistoryTest(unittest.TestCase):
         self.assertEqual(a, 0)
 
 
+class HistoryLookupIndexTest(unittest.TestCase):
+    def _old_db(self):
+        con = sqlite3.connect(":memory:")
+        con.executescript(OLD_SCHEMA)
+        return con
+
+    def _plan(self, con, sql, params):
+        rows = con.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()
+        return " ".join(str(r[3]) for r in rows)
+
+    def test_upsert_lookups_use_lookup_index(self):
+        con = sqlite3.connect(":memory:")
+        try:
+            bfi.ensure_schema(con)
+            indicator_sql = (
+                "SELECT history_id, payload_hash, first_payload_collected_at"
+                " FROM financial_response_history"
+                " WHERE source='indicators' AND corp_code=? AND bsns_year=?"
+                " AND reprt_code=? AND idx_cl_code=? ORDER BY history_id DESC LIMIT 1"
+            )
+            account_sql = (
+                "SELECT history_id, first_payload_collected_at FROM financial_response_history"
+                " WHERE source='accounts' AND corp_code=? AND bsns_year=? AND reprt_code=?"
+                " AND idx_cl_code='' AND COALESCE(rcept_no,'')=COALESCE(?,'')"
+                " AND payload_hash=?"
+            )
+            for sql, params in (
+                (indicator_sql, (CORP, "2024", "11011", "M210000")),
+                (account_sql, (CORP, "2024", "11011", RA, "hash")),
+            ):
+                with self.subTest(sql=sql):
+                    plan = self._plan(con, sql, params)
+                    self.assertIn("ix_financial_response_history_lookup", plan)
+                    self.assertNotIn("SCAN financial_response_history", plan)
+        finally:
+            con.close()
+
+    def test_ensure_schema_twice_on_old_db_no_error(self):
+        con = self._old_db()
+        try:
+            bfi.ensure_schema(con)
+            bfi.ensure_schema(con)
+            row = con.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+                " AND name='ix_financial_response_history_lookup'"
+            ).fetchone()
+            self.assertIsNotNone(row)
+        finally:
+            con.close()
+
+
 if __name__ == "__main__":
     unittest.main()

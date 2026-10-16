@@ -193,6 +193,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_financial_response_history ON financial_res
     source, corp_code, bsns_year, reprt_code, idx_cl_code,
     COALESCE(rcept_no, ''), payload_hash
 ) WHERE source <> 'indicators';
+CREATE INDEX IF NOT EXISTS ix_financial_response_history_lookup ON financial_response_history(
+    source, corp_code, bsns_year, reprt_code, idx_cl_code, history_id
+);
 """
 
 
