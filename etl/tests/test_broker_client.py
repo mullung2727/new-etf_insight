@@ -278,6 +278,7 @@ class TestLimitPrice(unittest.TestCase):
         self.assertIsNone(self._price({"sel_fpr_bid": "1"}, "buy"))
 
 
+
 # ── place ────────────────────────────────────────────────────────────────────
 
 class TestPlaceOrders(unittest.TestCase):
@@ -383,6 +384,20 @@ class TestPlaceOrders(unittest.TestCase):
 # ── modify ───────────────────────────────────────────────────────────────────
 
 class TestModifyOrder(unittest.TestCase):
+    def test_422_is_failed(self):
+        body = {"detail": "[2000](505564:정정가능수량을 초과합니다)"}
+        with patch("scripts.broker_client.requests.patch",
+                   return_value=_mock_response(body, status_code=422)):
+            result = _make_client().modify("0000123", "005930", 70100, 3)
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("정정가능수량", result["message"])
+
+    def test_422_bad_json_is_failed(self):
+        m = _mock_response({}, status_code=422)
+        m.json.side_effect = ValueError()
+        with patch("scripts.broker_client.requests.patch", return_value=m):
+            result = _make_client().modify("0000123", "005930", 70100, 3)
+        self.assertEqual(result["status"], "failed")
     def test_new_number_submitted(self):
         body = {"accepted": True, "order_no": "0000456", "message": ""}
         with patch("scripts.broker_client.requests.patch",
@@ -483,6 +498,7 @@ class TestCancelOrder(unittest.TestCase):
     def test_dry_run_no_http(self):
         with patch("scripts.broker_client.requests.delete") as mock_del:
             result = _make_client(dry_run=True).cancel("0000123", "005930")
+        mock_del.assert_not_called()
         mock_del.assert_not_called()
         self.assertEqual(result["status"], "dry_run")
 
