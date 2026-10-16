@@ -11,6 +11,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "requests>=2.34.1",
     "yt-dlp>=2024.1.0",
+    "curl-cffi>=0.15,<0.16",  # 0.16.x 는 yt-dlp 유튜브 오디오 다운로드 403 (2026-10-17 실측). yfinance 는 >=0.15 요구
     "youtube-transcript-api>=1.2.0,<2",
     "holidays>=0.100",
     "yfinance>=1.7.0,<2",
