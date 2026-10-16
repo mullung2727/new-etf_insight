@@ -541,5 +541,22 @@ class BuildDbHistoryTest(unittest.TestCase):
         self.assertEqual(json.loads(history[0][7])["summary"]["fund_name"], "성공")
 
 
+    def test_same_rcept_no_json_dup_picks_last_sorted_path(self):
+        front = _record("00200000_B301", rcept_dt="20260601", fund_name="앞폴더")
+        back = _record("00200000_B301", rcept_dt="20260601", fund_name="뒤폴더")
+        _write_record(self.runs, front, range_dir="20260601_20260601")
+        _write_record(self.runs, back, range_dir="20260602_20260602")
+
+        sync_to_db(self.runs, self.db)
+        history = self._history_full_rows()
+
+        self.assertEqual(len(history), 1)
+        self.assertEqual(json.loads(history[0][7])["summary"]["fund_name"], "뒤폴더")
+        self.assertEqual(
+            self._query("SELECT fund_name FROM etf_records WHERE etf_key=?", ("00200000_B301",))[0][0],
+            "뒤폴더",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

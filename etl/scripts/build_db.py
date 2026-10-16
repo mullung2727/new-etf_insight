@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS etf_holdings (
 def _load_records(runs_dir: Path) -> dict[str, dict]:
     """Scan all runs/*/records/*.json; dedup by etf_key keeping latest (rcept_dt, rcept_no)."""
     best: dict[str, dict] = {}
-    for json_path in runs_dir.glob("*/records/*.json"):
+    for json_path in sorted(runs_dir.glob("*/records/*.json")):
         try:
             record = json.loads(json_path.read_text(encoding="utf-8"))
         except Exception:
@@ -98,16 +98,18 @@ def _load_records(runs_dir: Path) -> dict[str, dict]:
 
 
 def _load_all_records(runs_dir: Path) -> list[tuple[str, dict]]:
-    """Scan all runs/*/records/*.json without dedup; each file is one filing snapshot."""
-    entries: list[tuple[str, dict]] = []
-    for json_path in runs_dir.glob("*/records/*.json"):
+    """Scan sorted runs/*/records/*.json; keep last snapshot per (etf_key, rcept_no), all unnumbered."""
+    entries: dict[tuple, tuple[str, dict]] = {}
+    for seq, json_path in enumerate(sorted(runs_dir.glob("*/records/*.json"))):
         try:
             record = json.loads(json_path.read_text(encoding="utf-8"))
         except Exception:
             continue
         etf_key = record.get("source", {}).get("etf_key") or json_path.stem
-        entries.append((etf_key, record))
-    return entries
+        rcept_no = str(record.get("source", {}).get("rcept_no") or "")
+        key = (etf_key, rcept_no) if rcept_no else (etf_key, seq)
+        entries[key] = (etf_key, record)
+    return list(entries.values())
 
 
 def _ensure_schema(con: sqlite3.Connection) -> None:
