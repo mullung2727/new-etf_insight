@@ -108,6 +108,75 @@ class UpsertTest(unittest.TestCase):
         self.assertEqual(rows[0][1], "updated")
 
 
+class TranscriptPreserveTest(unittest.TestCase):
+    """자막 실패 재수집이 기존 자막을 지우지 않음."""
+
+    def _seed(self, con):
+        row = {
+            "channel_id": CH,
+            "video_id": VID_A,
+            "title": "old title",
+            "published_at_utc": "2026-07-09T03:30:23+00:00",
+            "date_kst": "2026-07-09",
+            "url": f"https://www.youtube.com/watch?v={VID_A}",
+            "transcript": "A",
+            "transcript_lang": "ko",
+            "transcript_source": "manual",
+            "raw_json": "{}",
+        }
+        upsert_videos(con, [row])
+        con.commit()
+        return row
+
+    def _read_tr(self, con):
+        return con.execute(
+            "SELECT transcript, transcript_lang, transcript_source, title"
+            " FROM youtube_videos WHERE channel_id=? AND video_id=?",
+            (CH, VID_A),
+        ).fetchone()
+
+    def test_none_transcript_keeps_existing(self):
+        con = sqlite3.connect(":memory:")
+        ensure_schema(con)
+        row = self._seed(con)
+        upsert_videos(con, [{**row, "title": "new title",
+                             "transcript": None, "transcript_lang": None,
+                             "transcript_source": None}])
+        con.commit()
+        tr, lang, source, title = self._read_tr(con)
+        self.assertEqual(tr, "A")
+        self.assertEqual(lang, "ko")
+        self.assertEqual(source, "manual")
+        self.assertEqual(title, "new title")
+
+    def test_empty_transcript_keeps_existing(self):
+        con = sqlite3.connect(":memory:")
+        ensure_schema(con)
+        row = self._seed(con)
+        for blank in ("", "   "):
+            upsert_videos(con, [{**row, "transcript": blank,
+                                 "transcript_lang": "en",
+                                 "transcript_source": "auto"}])
+            con.commit()
+            tr, lang, source, _ = self._read_tr(con)
+            self.assertEqual(tr, "A")
+            self.assertEqual(lang, "ko")
+            self.assertEqual(source, "manual")
+
+    def test_new_transcript_replaces(self):
+        con = sqlite3.connect(":memory:")
+        ensure_schema(con)
+        row = self._seed(con)
+        upsert_videos(con, [{**row, "transcript": "B",
+                             "transcript_lang": "en",
+                             "transcript_source": "auto"}])
+        con.commit()
+        tr, lang, source, _ = self._read_tr(con)
+        self.assertEqual(tr, "B")
+        self.assertEqual(lang, "en")
+        self.assertEqual(source, "auto")
+
+
 class DateFilterTest(unittest.TestCase):
     """D3: date 필터 — 다른 날짜 published 제외."""
 

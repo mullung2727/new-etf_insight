@@ -535,9 +535,9 @@ def upsert_videos(con: sqlite3.Connection, rows: list[dict]) -> tuple[int, int]:
                 published_at_utc=excluded.published_at_utc,
                 date_kst=excluded.date_kst,
                 url=excluded.url,
-                transcript=excluded.transcript,
-                transcript_lang=excluded.transcript_lang,
-                transcript_source=excluded.transcript_source,
+                transcript=COALESCE(NULLIF(TRIM(excluded.transcript), ''), youtube_videos.transcript),
+                transcript_lang=CASE WHEN NULLIF(TRIM(excluded.transcript), '') IS NULL THEN youtube_videos.transcript_lang ELSE excluded.transcript_lang END,
+                transcript_source=CASE WHEN NULLIF(TRIM(excluded.transcript), '') IS NULL THEN youtube_videos.transcript_source ELSE excluded.transcript_source END,
                 raw_json=excluded.raw_json,
                 updated_at=excluded.updated_at
             """,
