@@ -79,6 +79,17 @@ def _parse_quote(raw: object) -> int:
     return abs(int(str(raw).replace(",", "").strip()))
 
 
+def _reject_detail(resp) -> str:
+    """422 detail 추출 — 파싱 실패해도 rejected 판정은 유지."""
+    try:
+        data = resp.json()
+        if isinstance(data, dict) and "detail" in data:
+            return str(data["detail"])
+    except Exception:
+        pass
+    return "rejected (HTTP 422)"
+
+
 class BrokerClient:
     """broker REST 공용 클라이언트.
 
@@ -235,6 +246,11 @@ class BrokerClient:
                       "exchange": self._exchange},
                 timeout=self._timeout,
             )
+            # 422 = broker 명시 거절(미접수 확실) — unknown 아님
+            if resp.status_code == 422:
+                msg = _reject_detail(resp)
+                print(f"[{self._tag}] {no} 정정 거절(422): {msg}")
+                return {"order_no": no, "status": "failed", "message": msg}
             resp.raise_for_status()
             data = resp.json()
             if data.get("accepted") is False:
