@@ -103,13 +103,13 @@ class FakeApi:
         if self.modify_result is not None:
             return dict(self.modify_result)
         new = self._no()
-        side = "sell"
+        side, old = "sell", None
         for name, book in self.books.items():
             if norm(no) in book:
-                side = name
+                side, old = name, book[norm(no)]
         for book in self.books.values():
             book.pop(norm(no), None)
-        self.books[side][norm(new)] = {"ticker": t, "oso_qty": qty,
+        self.books[side][norm(new)] = {"ticker": t, "oso_qty": qty if qty != 0 else (old["oso_qty"] if old else 0),
                                        "ord_price": price, "order_no": new}
         self.modified.append((no, price, qty))
         return {"order_no": new, "status": "submitted", "message": ""}
@@ -247,7 +247,7 @@ class BuyChaseTest(unittest.TestCase):
         self.api.quotes["buy"] = 9700
         clock = FakeClock(ch.at(TODAY, "10:03:10"))
         _step(TODAY, [s], self.api, clock, [], self.ev)
-        self.assertEqual(self.api.modified, [(first, 9700, 100)])
+        self.assertEqual(self.api.modified, [(first, 9700, 0)])
         self.assertEqual(self.ev.fields_of("modified"),
                          [{"no": s["order_no"], "price": 9700, "qty": 100,
                            "old_price": 9875}])
@@ -403,7 +403,7 @@ class SellChaseTest(unittest.TestCase):
         first = s["order_no"]
         self.api.quotes["sell"] = 9900
         _step(TODAY, [s], self.api, self.clock, [], self.ev)
-        self.assertEqual(self.api.modified, [(first, 9900, 400)])
+        self.assertEqual(self.api.modified, [(first, 9900, 0)])
         _step(TODAY, [s], self.api, self.clock, [], self.ev)
         self.assertEqual(len(self.api.modified), 1)
 
@@ -892,7 +892,7 @@ class ResumePendingTest(unittest.TestCase):
 
         _run(TODAY, [s], self.api, clock, ev, on_step=hook)
         self.assertEqual(snaps[1], (0, 0))  # 첫 스텝: 주문·정정 없음
-        self.assertEqual(self.api.modified, [("A1", 9900, 400)])
+        self.assertEqual(self.api.modified, [("A1", 9900, 0)])
         self.assertEqual(ev.fields_of("resumed"), [{"no": "A1"}])
 
     def test_unknown_nos_places_first_order(self):
@@ -994,6 +994,43 @@ class PlaceMarketOrdersTest(unittest.TestCase):
         state, kind, _ = ev.records[0]
         self.assertIsNone(state)
         self.assertEqual(kind, "late_start")
+
+
+class OnEventRequiredTest(unittest.TestCase):
+    """on_event 없으면 세 진입점 모두 주문 전에 ValueError."""
+
+    def test_none_on_event_rejected_before_any_call(self):
+        api = FakeApi()
+        api.quotes = {"sell": 10100}
+        with self.assertRaises(ValueError):
+            ch.place_first_orders(TODAY, [mkstate()], api)
+        self.assertEqual(api.calls, [])
+        api = FakeApi()
+        api.quotes = {"sell": 10100}
+        clock = FakeClock(ch.at(TODAY, FIRST))
+        with self.assertRaises(ValueError):
+            ch.place_market_orders(TODAY, [mkstate()], api, clock, end_at=END)
+        self.assertEqual(api.calls, [])
+        api = FakeApi()
+        api.quotes = {"sell": 10100}
+        clock = FakeClock(ch.at(TODAY, "09:59:00"))
+        with self.assertRaises(ValueError):
+            ch.run_chase(TODAY, [mkstate()], api, clock,
+                         first_at=FIRST, market_at=MARKET, end_at=END)
+        self.assertEqual(api.calls, [])
+
+    def test_modify_qty_zero_event_qty_oso(self):
+        api = FakeApi()
+        api.quotes = {"sell": 9900}
+        clock = FakeClock(ch.at(TODAY, FIRST))
+        s = mkstate(status="working", order_no="1001", nos=["1001"])
+        api.books["sell"] = unfilled(("1001", "005930", 250, 10050))
+        ev = EventLog()
+        _step(TODAY, [s], api, clock, [], ev)
+        self.assertEqual(api.modified, [("1001", 9900, 0)])
+        self.assertEqual(ev.fields_of("modified"),
+                         [{"no": s["order_no"], "price": 9900, "qty": 250,
+                           "old_price": 10050}])
 
 
 if __name__ == "__main__":

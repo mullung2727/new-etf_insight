@@ -22,7 +22,7 @@ api 프로토콜:
   price(t, side) -> int | None — 추격 지정가.
   place_limit(t, side, qty, price) -> dict — {"order_no", "status"}.
   place_market(t, side, qty) -> dict.
-  modify(no, t, price, qty) -> dict.
+  modify(no, t, price, qty) -> dict — 엔진은 qty=0(잔량 전부)으로 호출.
   cancel(no, t) -> bool.
   unfilled(side) -> {정규 주문번호: entry} | None.
   fills(date, side) -> {정규 주문번호: {"cntr_qty": int}} | None.
@@ -57,6 +57,7 @@ fail closed 불변식:
   - 넘겨받은 state의 주문번호만 취소·정정하고, 남의 미체결은 건드리지 않음.
   - 살아 있는 우리 주문이 있으면 새 첫 주문 안 함.
   - 살아 있는 우리 주문이 2건 이상이면 unknown 으로 손 뗌.
+  - on_event 없으면 실행 거부(기록 없는 주문 금지).
 """
 from __future__ import annotations
 
@@ -257,7 +258,8 @@ def _chase_step(today: str, states: list[dict], api, clock, notes: list[str],
         price = price_fn(t) if price_fn is not None else api.price(t, side)
         if not price or price == oprice:
             continue
-        res = api.modify(s["order_no"], t, price, oso)
+        # qty 0 = 잔량 전부 (kt10002) — 조회~정정 사이 체결돼도 '정정가능수량 초과' 안 남
+        res = api.modify(s["order_no"], t, price, 0)
         if _submitted(res):
             no = str(res["order_no"])
             s["nos"].append(no)
@@ -401,6 +403,8 @@ def place_first_orders(today: str, states: list[dict], api, *, max_rejects: int 
     market_at: limit_given_up 이벤트에 실을 예정 시장가 시각.
     """
     notes: list[str] = []
+    if on_event is None:
+        raise ValueError("on_event 필수 — 주문 기록 없는 실행 금지")
     targets = [s for s in states
                if s.get("status") == "pending" and s.get("qty") is not None]
     for s in targets:
@@ -424,6 +428,8 @@ def place_first_orders(today: str, states: list[dict], api, *, max_rejects: int 
 def place_market_orders(today: str, states: list[dict], api, clock, *, end_at: str,
                         on_event: Callable | None = None) -> list[str]:
     """시장가만 1회 낸다(정정·대기 없음). 미주문(pending)은 바로 잔량 시장가, 살아 있는 지정가(working)는 취소·재조회 확인 후 잔량 시장가. 조회 실패·취소 미확인·이미 다 체결·end_at 이후면 내지 않음(fail closed). 예: 추격 창이 끝난 뒤 남은 수량을 단일가 시간에 시장가로 넘길 때. 반환 = notes."""
+    if on_event is None:
+        raise ValueError("on_event 필수 — 주문 기록 없는 실행 금지")
     notes: list[str] = []
     end = at(today, end_at)
     if clock.now() >= end:
@@ -439,6 +445,8 @@ def run_chase(today: str, states: list[dict], api, clock, *, first_at: str,
               max_rejects: int = 3, on_event: Callable | None = None,
               on_step: Callable | None = None) -> list[str]:
     """추격 본체 — broker·시계는 주입 객체로만. 여러 side의 state 혼합 1루프."""
+    if on_event is None:
+        raise ValueError("on_event 필수 — 주문 기록 없는 실행 금지")
     notes: list[str] = []
     end = at(today, end_at)
     if clock.now() >= end:  # 창 끝 이후 — 아무것도 안 함
