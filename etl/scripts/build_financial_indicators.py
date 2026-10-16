@@ -319,12 +319,14 @@ def _snapshot_legacy(con, now: str) -> None:
 def ensure_schema(con) -> None:
     """기존 스키마 + §12 이력 표·current 출처 컬럼 + legacy snapshot. 전체 원자적.
 
-    executescript를 쓰지 않아 implicit commit이 없고, 실패하면 전체 rollback된다.
+    legacy 모드에서 DDL이 즉시 확정되므로 BEGIN을 직접 열어 전체를 한 transaction으로 묶고, 실패하면 전체 rollback된다.
     history 표가 새로 생긴 경우에만 legacy snapshot을 같은 transaction에서 적재한다.
     재실행은 snapshot을 만들지 않으므로(표 존재) 바뀐 current가 새 legacy가 되지 않는다.
     commit은 호출자가 유지한다.
     """
     try:
+        if not con.in_transaction:
+            con.execute("BEGIN")
         _exec_schema_statements(con, _SCHEMA)
         existed = con.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -339,7 +341,7 @@ def ensure_schema(con) -> None:
         _ensure_column(con, "indicators", "history_id", "INTEGER")
         if not existed:
             _snapshot_legacy(con, _now())
-    except Exception:
+    except BaseException:
         con.rollback()
         raise
 

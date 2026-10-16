@@ -182,6 +182,59 @@ class LegacyMigrationTest(unittest.TestCase):
             con.close()
 
 
+    def test_snapshot_failure_rolls_back_schema_and_retry_snapshots(self):
+        con = self._old_db()
+        try:
+            con.execute(
+                "INSERT INTO accounts VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (CORP, "2024", "11011", "CFS", "BS", "매출액", 100.0,
+                 "005930", "KRW", "2020-01-01T00:00:00+00:00"))
+            con.commit()
+            orig = bfi._snapshot_legacy
+
+            def _fail_after_partial(c, now):
+                orig(c, now)
+                raise RuntimeError("boom")
+
+            with patch.object(bfi, "_snapshot_legacy", side_effect=_fail_after_partial):
+                with self.assertRaises(RuntimeError):
+                    bfi.ensure_schema(con)
+            self.assertIsNone(con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+                " AND name='financial_response_history'"
+            ).fetchone())
+            cols = {row[1] for row in con.execute("PRAGMA table_info(accounts)")}
+            self.assertNotIn("rcept_no", cols)
+            bfi.ensure_schema(con)
+            self.assertEqual(hist_count(con, "legacy_accounts"), 1)
+        finally:
+            con.close()
+
+    def test_keyboard_interrupt_rolls_back_schema(self):
+        con = self._old_db()
+        try:
+            con.execute(
+                "INSERT INTO accounts VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (CORP, "2024", "11011", "CFS", "BS", "매출액", 100.0,
+                 "005930", "KRW", "2020-01-01T00:00:00+00:00"))
+            con.commit()
+            orig = bfi._snapshot_legacy
+
+            def _interrupt(c, now):
+                orig(c, now)
+                raise KeyboardInterrupt
+
+            with patch.object(bfi, "_snapshot_legacy", side_effect=_interrupt):
+                with self.assertRaises(KeyboardInterrupt):
+                    bfi.ensure_schema(con)
+            self.assertIsNone(con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+                " AND name='financial_response_history'"
+            ).fetchone())
+        finally:
+            con.close()
+
+
 class AccountsHistoryTest(MemDB):
     def test_abc_three_ids_latest_c(self):
         con = self.con
