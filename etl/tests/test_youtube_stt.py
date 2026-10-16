@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from scripts.youtube_stt import (
     STT_SOURCE,
+    _yt_dlp_cmd,
     backfill,
+    download_audio,
     fetch_transcript_stt,
     list_missing,
 )
@@ -116,6 +121,54 @@ class BackfillTest(unittest.TestCase):
         stats = backfill(con, rows, stt_fn=flaky)
         self.assertEqual(stats["errors"], 1)
         self.assertEqual(stats["filled"], 1)
+
+
+class YtDlpCmdTest(unittest.TestCase):
+    def test_prefers_sibling_of_sys_executable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe_name = "yt-dlp.exe" if sys.platform == "win32" else "yt-dlp"
+            sibling = Path(tmp) / exe_name
+            sibling.touch()
+            fake_py = str(Path(tmp) / "python.exe")
+            with patch.object(sys, "executable", fake_py):
+                self.assertEqual(_yt_dlp_cmd(), [str(sibling)])
+
+    def test_falls_back_to_path_lookup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_py = str(Path(tmp) / "python.exe")
+            with patch.object(sys, "executable", fake_py), patch(
+                "scripts.youtube_stt.shutil.which", return_value="C:/bin/yt-dlp"
+            ):
+                self.assertEqual(_yt_dlp_cmd(), ["C:/bin/yt-dlp"])
+
+    def test_falls_back_to_module(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_py = str(Path(tmp) / "python.exe")
+            with patch.object(sys, "executable", fake_py), patch(
+                "scripts.youtube_stt.shutil.which", return_value=None
+            ):
+                self.assertEqual(_yt_dlp_cmd(), [fake_py, "-m", "yt_dlp"])
+
+    def test_download_audio_uses_resolved_cmd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            captured: dict = {}
+
+            def fake_run(cmd, capture_output=True, text=True):
+                captured["cmd"] = cmd
+                (Path(tmp) / "vid123.mp3").touch()
+                m = MagicMock()
+                m.returncode = 0
+                m.stderr = ""
+                return m
+
+            with patch(
+                "scripts.youtube_stt._yt_dlp_cmd",
+                return_value=["C:/fake/yt-dlp.exe"],
+            ):
+                out = download_audio("vid123", tmp, run=fake_run)
+            self.assertEqual(captured["cmd"][0], "C:/fake/yt-dlp.exe")
+            self.assertEqual(captured["cmd"][1], "-x")
+            self.assertTrue(out.exists())
 
 
 if __name__ == "__main__":

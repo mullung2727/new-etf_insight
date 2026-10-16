@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import os
+import shutil
 import subprocess
 import sqlite3
 import sys
@@ -42,12 +43,27 @@ TRANSCRIBE_PROMPT = (
 )
 
 
+def _yt_dlp_cmd() -> list[str]:
+    """yt-dlp 실행 접두사. 예약 작업(PATH 미설정)에서도 venv 것을 찾는다.
+
+    1. `sys.executable` 옆 yt-dlp(.exe) 2. PATH의 yt-dlp 3. `python -m yt_dlp`.
+    """
+    exe_name = "yt-dlp.exe" if sys.platform == "win32" else "yt-dlp"
+    sibling = Path(sys.executable).parent / exe_name
+    if sibling.exists():
+        return [str(sibling)]
+    found = shutil.which("yt-dlp")
+    if found:
+        return [found]
+    return [sys.executable, "-m", "yt_dlp"]
+
+
 def download_audio(video_id: str, out_dir: str | Path, *, run=subprocess.run) -> Path:
     """yt-dlp로 bestaudio → mp3. 실패 시 RuntimeError."""
     out_dir = Path(out_dir)
     out = out_dir / f"{video_id}.mp3"
-    cmd = [
-        "yt-dlp",
+    cmd = _yt_dlp_cmd() + [
+
         "-x",
         "--audio-format",
         "mp3",
