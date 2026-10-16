@@ -12,22 +12,26 @@
 # 예외: 없음(ALLOW 키워드 없음) — 링크만 먼저 제거(디렉터리 rmdir·파일 del) 후 다시 remove.
 # 차단 3: `.claude/worktrees` 경로 재귀 삭제 — rm -r[f], Remove-Item -Recurse, rmdir|rd /s(같은 명령 구간 어디든).
 # 예외: 없음 — git worktree remove 로(차단 2 검사 통과 후).
+# PR #99: tool_input.command 값만 검사(description 오탐 방지), 추출 실패 시 전체 검사(fail closed).
+# PR #99: find 링크 검사 실패 시 remove 차단(fail closed).
 input=$(cat)
 [ -z "$input" ] && exit 0
+cmd=$(printf '%s' "$input" | sed -nE 's#.*"command" *: *"(([^"\\]|\\.)*)".*#\1#p')
+[ -z "$cmd" ] && cmd="$input"
 
 # 1. 링크 생성 차단
-if ! printf '%s' "$input" | grep -q 'ALLOW_LINK=1'; then
+if ! printf '%s' "$cmd" | grep -q 'ALLOW_LINK=1'; then
   link_cmd=0
-  if printf '%s' "$input" | grep -qi 'mklink' \
-    && printf '%s' "$input" | grep -qE '/[JjDd]([[:space:]"'"'"']|$)'; then
+  if printf '%s' "$cmd" | grep -qi 'mklink' \
+    && printf '%s' "$cmd" | grep -qE '/[JjDd]([[:space:]"'"'"']|$)'; then
     link_cmd=1
   fi
-  if printf '%s' "$input" | grep -qi 'new-item' \
-    && printf '%s' "$input" | grep -qiE '\-itemtype[:[:space:]]+["'"'"']?(junction|symboliclink)'; then
+  if printf '%s' "$cmd" | grep -qi 'new-item' \
+    && printf '%s' "$cmd" | grep -qiE '\-itemtype[:[:space:]]+["'"'"']?(junction|symboliclink)'; then
     link_cmd=1
   fi
-  printf '%s' "$input" | grep -qE '\<ln[[:space:]]+-[A-Za-z]*s' && link_cmd=1
-  printf '%s' "$input" | grep -qE '\<ln([[:space:]]+-[A-Za-z-]+)*[[:space:]]+--symbolic' && link_cmd=1
+  printf '%s' "$cmd" | grep -qE '\<ln[[:space:]]+-[A-Za-z]*s' && link_cmd=1
+  printf '%s' "$cmd" | grep -qE '\<ln([[:space:]]+-[A-Za-z-]+)*[[:space:]]+--symbolic' && link_cmd=1
   if [ "$link_cmd" = 1 ]; then
     printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"junction/심볼릭 링크 생성 금지 — worktree 정리 시 링크 너머 실데이터 삭제 사고(2026-10-16). DB 경로는 환경변수·인자로 넘길 것. 사용자 승인 시 ALLOW_LINK=1 을 명령에 붙일 것."}}'
     exit 0
@@ -35,8 +39,8 @@ if ! printf '%s' "$input" | grep -q 'ALLOW_LINK=1'; then
 fi
 
 # 2. worktree remove 전 링크 검사
-if printf '%s' "$input" | grep -qE 'worktree[[:space:]]+remove([[:space:]]|$)'; then
-  rest=$(printf '%s' "$input" | sed -E 's#.*worktree[[:space:]]+remove##')
+if printf '%s' "$cmd" | grep -qE 'worktree[[:space:]]+remove([[:space:]]|$)'; then
+  rest=$(printf '%s' "$cmd" | sed -E 's#.*worktree[[:space:]]+remove##')
   # remove 뒤 인자 중 -로 시작하지 않는 첫 토큰이 경로. 플래그(--force 등)는 건너뛴다.
   rest=$(printf '%s' "$rest" | sed -E ':a; s#^[[:space:]]+##; s#^-[^[:space:]"'"'"']+##; ta')
   rest=$(printf '%s' "$rest" | sed 's#\\"#"#g')
@@ -63,7 +67,10 @@ if printf '%s' "$input" | grep -qE 'worktree[[:space:]]+remove([[:space:]]|$)'; 
     printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"worktree 경로 확인 불가: '"$ppath"' — 절대경로로 다시 실행(hook 이 안의 링크를 검사해야 함)"}}'
     exit 0
   fi
-  link=$(find "$full" -type l -print -quit 2>/dev/null)
+  if ! link=$(find "$full" -type l -print -quit 2>/dev/null); then
+    printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"worktree 링크 검사 실패 — 결과를 확인할 수 없어 remove 차단(권한·경로 문제 확인 후 다시)"}}'
+    exit 0
+  fi
   if [ -n "$link" ]; then
     jpath=$(printf '%s' "$link" | sed -e 's#\\#\\\\#g' -e 's#"#\\"#g')
     printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"worktree 안에 링크 있음: '"$jpath"' — 먼저 링크만 제거(디렉터리 링크·junction 은 cmd /c rmdir \"'"$jpath"'\"(/s 금지), 파일 링크는 del(또는 rm)) 후 다시 remove. --force 는 링크 너머를 지운다(2026-10-16 사고)."}}'
@@ -72,15 +79,15 @@ if printf '%s' "$input" | grep -qE 'worktree[[:space:]]+remove([[:space:]]|$)'; 
 fi
 
 # 3. worktree 폴더 재귀 삭제 차단
-if printf '%s' "$input" | grep -qE '\.claude[/\\][\\/]*worktrees'; then
+if printf '%s' "$cmd" | grep -qE '\.claude[/\\][\\/]*worktrees'; then
   rec_del=0
-  printf '%s' "$input" | grep -qE '\<rm([[:space:]]+-[A-Za-z]+)*[[:space:]]+-[A-Za-z]*[rR]' && rec_del=1
-  if printf '%s' "$input" | grep -qi 'remove-item' \
-    && printf '%s' "$input" | grep -qiE '\-recurse'; then
+  printf '%s' "$cmd" | grep -qE '\<rm([[:space:]]+-[A-Za-z]+)*[[:space:]]+-[A-Za-z]*[rR]' && rec_del=1
+  if printf '%s' "$cmd" | grep -qi 'remove-item' \
+    && printf '%s' "$cmd" | grep -qiE '\-recurse'; then
     rec_del=1
   fi
   # /s 가 같은 명령 구간(;, &&, |, 줄바꿈 전까지) 어디든 있으면 재귀.
-  printf '%s' "$input" | grep -qiE '\<(rmdir|rd)[[:space:]]+([^;|&]*[[:space:]])?/s([[:space:]"'"'"']|$)' && rec_del=1
+  printf '%s' "$cmd" | grep -qiE '\<(rmdir|rd)[[:space:]]+([^;|&]*[[:space:]])?/s([[:space:]"'"'"']|$)' && rec_del=1
   if [ "$rec_del" = 1 ]; then
     printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"worktree 폴더 재귀 삭제 금지 — git worktree remove 로(링크 검사 hook 통과 후)."}}'
     exit 0
