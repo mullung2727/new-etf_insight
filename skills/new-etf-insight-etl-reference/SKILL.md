@@ -290,7 +290,7 @@ is_correction_source(filing) == true
 Candidates are sorted by `(rcept_dt, rcept_no)`. Same successful filing skips LLM; missing JSON can reuse DB snapshot. Old filings never regress the latest summary. No-update, age-cutoff, missing-parent and failures are journaled; failed retries reuse initial observation time. Missing-parent skips may retry when the parent record arrives. Unknown historic collection times stay NULL; never infer from filing date, mtime or a correction's collection time. Remote full DART history backfill is outside this change.
 
 ### Skip / fail reasons (`results[i].reason`)
-`fund_code_not_found`, `existing_record`, `correction_without_existing_record`, `correction_after_60_days`, `<LLM-supplied review reason>`, `new_record`.
+`fund_code_not_found`, `existing_record`, `correction_without_existing_record`, `correction_after_60_days`, `stale_filing`, `correction_review_failed`, `correction_update_failed`, `snapshot_restore_failed`, `pdf_analysis_failed`, `<LLM-supplied review reason>`, `new_record`.
 
 ---
 
