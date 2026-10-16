@@ -51,6 +51,16 @@
             "shell": "bash"
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-worktree-link.sh",
+            "shell": "bash"
+          }
+        ]
       }
     ]
   }

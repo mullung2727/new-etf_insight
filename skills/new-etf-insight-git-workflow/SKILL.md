@@ -160,6 +160,7 @@ git push origin --delete <branch>                 # 에이전트 실행 가능. 
 ```
 
 - worktree 를 지우기 전에 스케줄 작업이 그 경로를 실행하는지 확인한다(`Get-ScheduledTask` 액션 인자).
+- worktree 안 junction·심볼릭 링크를 먼저 찾아(`find <wt> -type l`) 링크만 지운다(`cmd /c rmdir <링크>`, /s 금지). Windows git 은 junction 을 일반 폴더로 보고 `--force` 로 링크 너머를 지운다 — 2026-10-16 `etl/db` junction 으로 메인 실DB 삭제. `.claude/hooks/block-worktree-link.sh` 가 링크 생성·링크 남은 remove·worktree 재귀 삭제를 막는다(사용자 `!` 명령엔 hook 이 안 걸릴 수 있음 — 안내 전 직접 검사).
   참조 중이면 그 작업이 끝날 때까지 남긴다.
 - PLAN 기반 작업이었으면 PLAN 의 진행 체크·`docs/done` 이동도 확인한다(plan-writing §9).
 - `cherry` 결과가 0 이 아니면 지우지 말고 사용자에게 무엇이 남았는지 보고한다.
