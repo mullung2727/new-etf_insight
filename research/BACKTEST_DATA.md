@@ -3,11 +3,17 @@
 주제와 무관하게 이 저장소에서 백테스트를 돌릴 때 쓰는 데이터·도구 정리.
 전략별 결과는 각 `research/<주제>/README.md` 참조.
 
+## 기존 전략 재실행·파라미터 비교
+
+- 전략 README와 기존 실행 코드·함수를 먼저 확인한다. 실행 전에 사용할 파일·함수와 변경할 파라미터를 명시한다.
+- 기존 함수 호출로 가능하면 새 실행 파일이나 계산 로직을 만들지 않는다. 결과 저장·검증을 붙이기 위한 별도 실행 파일도 같은 원칙을 적용한다.
+- 기존 조건과 현재 공용 규약이 다르면 차이를 먼저 밝히고, 기존 조건의 재현 결과와 조건 변경 결과를 구분한다. 기존 비용·필터·체결·기업행위 보정 등을 조용히 바꾸지 않는다.
+
 > **수익률 표 내기 전 체크 (즉석 확인 계산 포함, 2026-10-01 누락 사건)** — 일봉 계산은 §7 `research/backtest_daily`, 분봉 계산은 §8 `research/backtest_minute` import, 재구현 금지
 > 1. 상한가 진입 불가: 일봉 `guards.limit_up_close` (종가 진입) / `guards.limit_up_open` (시가 진입), 분봉 `ticks.buyable`
 > 2. 비용: `stats.COSTS` 3단계, 기준 `0.35%` — 임의 비용 금지 (분봉도 같은 함수)
 > 3. 집계: 일별 가중 `stats.day_weighted_mean` / `day_median` / `day_win_rate` (분봉도 같은 함수)
-> 4. 기업행위일(권리락·분할) 수익률: `ohlcv.cmp_prev` 기준가(`close − cmp_prev`) 사용, 원 종가 수익률 금지 (권리락 세션 미커밋 — 공용 규약 adj_returns 와 충돌, 미정)
+> 4. 기업행위일(권리락·분할) 수익률: `ohlcv.cmp_prev` 기준가(`close − cmp_prev`) 사용, 원 종가 수익률 금지. 장기 후보 가격 분석은 `adjust.adj_returns(px, use_krx_reference=True)`를 명시한다. 기본값은 기존 분석 재현용으로 유지하며, 모드 변경은 조건 변경으로 표시한다.
 >
 > 분봉 추가 체크 (§8)
 > 4. 전일 정보는 다음 거래일에만: `prevday.attach_prev` (같은 날 붙이면 assert) · 의심 변수는 `prevday.leak_report`
@@ -16,14 +22,32 @@
 > 7. 09:00 가격은 09:00 봉이 있을 때만 (`data.snapshot`). 첫 봉이 늦으면 NaN
 > 8. 청산: `exits.tp_sl_exit` — 체결 다음 봉부터, 갭 우선, 같은 봉 TP·SL 동시면 SL, 하한가 매도 불가, 장중 정지 → 다음날 시가
 
-## 0. 결과 문서 저장 위치
+## 0. 결과 문서 저장 위치·리서치 시작/종료
 
 이 저장소는 공개(public) 전제다. 백테스트 결과를 쓰기 전에 저장 위치부터 정한다.
 
 | 성격 | 위치 | 커밋 |
 |---|---|---|
-| 성과 검증 안 된 탐색·실패 기록·데이터 지침 | `research/<주제>/` | O |
+| 데이터 지침·공용 도구 | `research/<주제>/` | O |
 | **성과가 확인된 유효전략** — 진입/청산 조건, 튜닝된 파라미터, 그 결과 문서 | `research/private/<주제>/` | X (`.gitignore`) |
+| 기각 — 종결 | `research/private/rejected/REJECTED.md` 한 절 | X |
+| 기각 — 추가 리서치 단서 있음 | `research/private/rejected/LEADS.md` 한 절 | X |
+
+`research/private/` 바로 아래는 유효전략·진행 중 리서치만 둔다. 실패한 것은 기록·남겨둔 폴더 모두 `research/private/rejected/` 아래에 둔다
+(옮긴 폴더는 `research.private.<주제>` import 경로가 깨져 그대로는 재실행 안 됨 — 보관용).
+
+**시작 전**: `REJECTED.md`·`LEADS.md`를 먼저 읽는다. REJECTED의 "다시 하지 말 것"에 걸리면 착수하지 않고 사용자에게 알린다.
+LEADS의 단서를 이어서 하는 작업이면 그 절의 재개 조건이 충족됐는지부터 확인한다.
+
+**끝나면** 결론에 따라 셋 중 하나로 정리하고 원본 폴더(결과 json 등)는 지운다. 어느 쪽인지 의견을 붙여 사용자에게 묻는다.
+
+| 결론 | 처리 |
+|---|---|
+| 유효 | `research/private/<주제>/`로 이동(README에 규칙·결과). LEADS에서 왔으면 그 절 삭제 |
+| 기각, 볼 단서 없음 | `REJECTED.md`에 절 추가(결론 한 줄 · 다시 하지 말 것). LEADS에서 왔으면 그 절을 옮기고 삭제 |
+| 기각, 단서 남음 / 미결 | `LEADS.md`에 절 추가 또는 기존 절 갱신(날짜·새 수치·바뀐 재개 조건) |
+
+진행 중으로 남겨둘 때만 폴더를 유지하고, 그 README 첫 줄에 상태(진행 중·다음 할 일)를 적는다.
 
 유효/무효 판단이 애매하면 커밋하지 말고 사용자에게 묻는다.
 운용 파라미터 JSON(`etl/scripts/*.json`)도 유효전략이 확정되면 값 자체는 공개 대상이 아니다 —
@@ -155,6 +179,8 @@ WHERE n52 >= 200 AND ms - old_ms >= 240      -- 실거래일 하한 + 달력 길
   └ 보정대상 3.14% 의 평균     +145.1%  →   +22.2%
 52주 신고가 표본의 승률           33.6%  →    45.0%    ← 결론이 뒤집힘
 ```
+
+> 장기 후보 가격 분석은 이 밴드 보정 대신 §7 `adjust.adj_returns(px, use_krx_reference=True)` 를 쓴다. 두 방식 결과를 같은 조건으로 비교하지 않는다.
 
 `list_shrs` 비율로 보정한다. 밴드 밖일 때만 — 작은 변동(CB 전환·소액 증자)은 실제 희석이라
 건드리면 안 된다:
@@ -534,7 +560,7 @@ t 값            mean / (pstdev / sqrt(n))
 ## 7. 공용 모듈 — `research/backtest_daily/` (일봉 전용, 2026-09-30~)
 
 새 **일봉** 리서치는 위 §1~§6 가드를 직접 짜지 말고 이 패키지를 쓴다. **muse 명세에도 이 패키지 사용을 반드시 지시한다** (2026-09-30 사용자). 분봉은 §8 `backtest_minute`.
-설계 `docs/PLAN_BACKTEST_DAILY.md`, 함수 목록 `research/backtest_daily/README.md`. 이식 검증: ipo_drift 1·2단계 결과 51개 수치 1e-4 이내 일치.
+설계 `docs/done/PLAN_BACKTEST_DAILY.md`, 함수 목록 `research/backtest_daily/README.md`. 이식 검증: ipo_drift 1·2단계 결과 51개 수치 1e-4 이내 일치.
 
 | 이 문서의 가드 | 함수 |
 |---|---|

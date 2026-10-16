@@ -38,8 +38,27 @@ ENV_PATH = ROOT / ".env"
 
 KRX_BASE = "https://data-dbg.krx.co.kr/svc/apis/sto/"
 MARKET_ENDPOINTS = {"KOSPI": "stk_bydd_trd", "KOSDAQ": "ksq_bydd_trd"}
+ETF_ENDPOINT = "https://data-dbg.krx.co.kr/svc/apis/etp/etf_bydd_trd"
 REQUEST_SLEEP = 0.1               # KRX rate-limit 완충 (콜 사이)
 REQUEST_TIMEOUT = 30
+RETRY_ATTEMPTS = 3                # 순간 지연 대비 (2026-09-29 08:00 단발 read timeout 사고)
+RETRY_WAIT = 30                   # 초. 길게 막히는 점검은 스케줄 재시도(22:00/07:00/08:00/08:30)가 맡는다
+
+
+def _get_with_retry(http, url: str, **kwargs):
+    """시간초과·연결오류·5xx 만 재시도. 4xx(인증 등)는 바로 올린다."""
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            resp = http.get(url, **kwargs)
+            if resp.status_code < 500:
+                return resp
+            err: Exception = requests.HTTPError(f"HTTP {resp.status_code}", response=resp)
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            err = exc
+        if attempt == RETRY_ATTEMPTS:
+            raise err
+        print(f"  retry {attempt}/{RETRY_ATTEMPTS - 1} after {RETRY_WAIT}s: {err}")
+        time.sleep(RETRY_WAIT)
 
 _CREATE_OHLCV = """
 CREATE TABLE IF NOT EXISTS ohlcv (
@@ -62,6 +81,16 @@ CREATE TABLE IF NOT EXISTS ohlcv (
 _CREATE_HOLIDAYS = """
 CREATE TABLE IF NOT EXISTS holidays (
     date VARCHAR PRIMARY KEY
+)
+"""
+
+_CREATE_ETF_OHLCV = """
+CREATE TABLE IF NOT EXISTS etf_ohlcv (
+    date VARCHAR, ticker VARCHAR, name VARCHAR, idx_name VARCHAR,
+    open INTEGER, high INTEGER, low INTEGER, close INTEGER,
+    volume BIGINT, trading_value BIGINT, market_cap BIGINT, list_shrs BIGINT,
+    nav DOUBLE, net_asset BIGINT,
+    PRIMARY KEY (date, ticker)
 )
 """
 
@@ -122,6 +151,19 @@ def _parse_int(value: str | None) -> int | None:
         return None
 
 
+def _parse_float(value: str | None) -> float | None:
+    """KRX 문자열 숫자 → float. 콤마 제거, 빈값·'-' → None."""
+    if value is None:
+        return None
+    s = value.replace(",", "").strip()
+    if s in ("", "-"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def fetch_day(
     date: str,
     key: str,
@@ -141,7 +183,8 @@ def fetch_day(
     rows: list[tuple] = []
     headers = {"AUTH_KEY": key}
     for market, endpoint in MARKET_ENDPOINTS.items():
-        resp = http.get(
+        resp = _get_with_retry(
+            http,
             KRX_BASE + endpoint,
             headers=headers,
             params={"basDd": date},
@@ -179,12 +222,134 @@ def fetch_day(
     return rows
 
 
+def fetch_etf_day(
+    date: str,
+    key: str,
+    session: requests.Session | None = None,
+) -> list[tuple]:
+    """그날 ETF 전종목 일별시세 → etf_ohlcv 행 튜플 리스트 (거래일당 1콜)."""
+    http = session or requests
+    headers = {"AUTH_KEY": key}
+    resp = _get_with_retry(
+        http,
+        ETF_ENDPOINT,
+        headers=headers,
+        params={"basDd": date},
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if "OutBlock_1" not in data:
+        raise RuntimeError(
+            f"KRX unexpected response (ETF {date}): {resp.text[:200]}"
+        )
+    rows: list[tuple] = []
+    for x in data["OutBlock_1"]:
+        rows.append(
+            (
+                x["BAS_DD"],
+                x["ISU_CD"],
+                str(x.get("ISU_NM", "") or "").strip(),
+                str(x.get("IDX_IND_NM", "") or "").strip(),
+                _parse_int(x.get("TDD_OPNPRC")),
+                _parse_int(x.get("TDD_HGPRC")),
+                _parse_int(x.get("TDD_LWPRC")),
+                _parse_int(x.get("TDD_CLSPRC")),
+                _parse_int(x.get("ACC_TRDVOL")),
+                _parse_int(x.get("ACC_TRDVAL")),
+                _parse_int(x.get("MKTCAP")),
+                _parse_int(x.get("LIST_SHRS")),
+                _parse_float(x.get("NAV")),
+                _parse_int(x.get("INVSTASST_NETASST_TOTAMT")),
+            )
+        )
+    time.sleep(REQUEST_SLEEP)
+    return rows
+
+
 def _insert_ohlcv_rows(con: duckdb.DuckDBPyConnection, rows: list) -> None:
     """PK 인덱스가 걸린 테이블에 executemany 하면 행마다 인덱스를 갱신해 느리다.
     PK 없는 임시테이블에 모아 넣고 한 번에 upsert 한다(거래일당 10.4초 → 1초 미만)."""
     con.execute("CREATE OR REPLACE TEMP TABLE _ohlcv_staging AS SELECT * FROM ohlcv LIMIT 0")
     con.executemany("INSERT INTO _ohlcv_staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
     con.execute("INSERT OR REPLACE INTO ohlcv SELECT * FROM _ohlcv_staging")
+
+
+def _insert_etf_ohlcv_rows(con: duckdb.DuckDBPyConnection, rows: list) -> None:
+    """etf_ohlcv 일괄 upsert — PK 없는 temp 스테이징 후 일괄."""
+    con.execute("CREATE OR REPLACE TEMP TABLE _etf_ohlcv_staging AS SELECT * FROM etf_ohlcv LIMIT 0")
+    con.executemany("INSERT INTO _etf_ohlcv_staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    con.execute("INSERT OR REPLACE INTO etf_ohlcv SELECT * FROM _etf_ohlcv_staging")
+
+
+def ensure_etf_ohlcv(
+    con: duckdb.DuckDBPyConnection,
+    from_date: str,
+    to_date: str,
+    key: str,
+    force: bool = False,
+) -> dict:
+    """주식 ohlcv 에 행이 있는 날짜만 ETF 일별시세로 채운다.
+
+    force=True 면 etf_ohlcv 에 이미 있는 날짜도 다시 받아 덮어쓴다.
+    날짜 단위 오류는 해당 날짜만 건너뛰고 계속 진행(다음 실행에서 재시도).
+
+    Returns: 통계 dict (missing_days/fetched_days/inserted_rows/failed_days).
+    """
+    con.execute(_CREATE_ETF_OHLCV)
+    targets = [
+        r[0] for r in con.execute(
+            "SELECT DISTINCT date FROM ohlcv WHERE date BETWEEN ? AND ? ORDER BY date",
+            [from_date, to_date],
+        ).fetchall()
+    ]
+    if not force:
+        held = {
+            r[0] for r in con.execute(
+                "SELECT DISTINCT date FROM etf_ohlcv WHERE date BETWEEN ? AND ?",
+                [from_date, to_date],
+            ).fetchall()
+        }
+        targets = [d for d in targets if d not in held]
+
+    session = requests.Session()
+    fetched_days = 0
+    inserted_rows = 0
+    failed_days = 0
+    for date in targets:
+        try:
+            rows = fetch_etf_day(date, key, session=session)
+            if rows:
+                _insert_etf_ohlcv_rows(con, rows)
+                fetched_days += 1
+                inserted_rows += len(rows)
+                print(f"  {date}: {len(rows)} etf rows")
+        except Exception as exc:
+            print(f"  {date}: etf fetch/insert failed - {exc} (retry next run)")
+            failed_days += 1
+            continue
+
+    return {
+        "missing_days": len(targets),
+        "fetched_days": fetched_days,
+        "inserted_rows": inserted_rows,
+        "failed_days": failed_days,
+    }
+
+
+def run_etf_step(
+    con: duckdb.DuckDBPyConnection,
+    from_date: str,
+    to_date: str,
+    key: str,
+    force: bool = False,
+) -> str:
+    """ETF 일봉 단계를 주식 결과와 분리 — 예외를 문자열로만 반환한다."""
+    try:
+        stats = ensure_etf_ohlcv(con, from_date, to_date, key, force=force)
+    except Exception as exc:
+        return f"etf_error={str(exc)[:200]}"
+    return f"etf=fetched {stats['fetched_days']}d/{stats['inserted_rows']}rows failed={stats['failed_days']}"
 
 
 def ensure_ohlcv(
@@ -309,6 +474,7 @@ def main() -> None:
     con = duckdb.connect(str(args.db_path))
     try:
         stats = ensure_ohlcv(con, from_date, to_date, key, force=args.force)
+        etf_str = run_etf_step(con, from_date, to_date, key, args.force)
     finally:
         con.close()
 
@@ -317,7 +483,7 @@ def main() -> None:
         f"held={stats['held_days']} missing={stats['missing_days']} "
         f"fetched={stats['fetched_days']}d/{stats['inserted_rows']}rows "
         f"holidays+{stats['holiday_days']} failed={stats['failed_days']} "
-        f"→ {args.db_path}"
+        f"→ {args.db_path} {etf_str}"
     )
 
 

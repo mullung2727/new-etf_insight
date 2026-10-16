@@ -30,7 +30,7 @@ import pandas as pd
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_ohlcv.duckdb"
 UNIVERSE_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt"
-DEFAULT_FROM_DATE = "20240101"
+DEFAULT_FROM_DATE = "20100101"
 BATCH_SIZE = 200
 ETF_TICKERS = ("SPY", "QQQ", "IWM", "TQQQ", "BIL", "HYG", "JNK", "IEI", "IEF")
 ETF_FROM_DATE = "19900101"  # 상장일부터 전부. 매 실행 전 구간 재수신
@@ -259,7 +259,11 @@ def _insert_rows(con: duckdb.DuckDBPyConnection, rows: list[tuple]) -> None:
     if not rows:
         return
     con.execute("CREATE OR REPLACE TEMP TABLE _us_staging AS SELECT * FROM ohlcv LIMIT 0")
-    con.executemany("INSERT INTO _us_staging VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+    # executemany 는 행당 ~1ms(4천 행 3초 실측) → DataFrame 일괄 삽입.
+    frame = pd.DataFrame(rows, columns=[c[0] for c in con.execute("DESCRIBE _us_staging").fetchall()])
+    con.register("_us_rows", frame)
+    con.execute("INSERT INTO _us_staging SELECT * FROM _us_rows")
+    con.unregister("_us_rows")
     con.execute("INSERT OR REPLACE INTO ohlcv SELECT * FROM _us_staging")
 
 
@@ -272,14 +276,19 @@ def _replace_split_history(
     """Atomically replace one ticker after a split-triggered full refetch."""
     con.execute("BEGIN TRANSACTION")
     try:
-        stored_first = con.execute(
-            "SELECT min(date) FROM ohlcv WHERE ticker=?", [ticker]
-        ).fetchone()[0]
+        stored_first, stored_last = con.execute(
+            "SELECT min(date), max(date) FROM ohlcv WHERE ticker=?", [ticker]
+        ).fetchone()
         first = min((row[0] for row in rows), default=None)
-        # 잘린 재조회(응답이 비어있지만 않으면 통과)로 과거 구간을 통째로 날리는 걸 막는다.
+        last = max((row[0] for row in rows), default=None)
+        # 잘린 재조회(응답이 비어있지만 않으면 통과)로 과거·최근 구간을 통째로 날리는 걸 막는다.
         if stored_first is not None and (first is None or first > stored_first):
             raise RuntimeError(
                 f"{ticker} 재조회가 기존 구간을 못 덮는다 (저장 {stored_first} < 응답 {first})"
+            )
+        if stored_last is not None and last < stored_last:
+            raise RuntimeError(
+                f"{ticker} 재조회가 최근 구간을 못 덮는다 (저장 {stored_last} > 응답 {last})"
             )
         con.execute("DELETE FROM ohlcv WHERE ticker=?", [ticker])
         con.execute("DELETE FROM splits WHERE ticker=?", [ticker])
@@ -326,9 +335,14 @@ def apply_share_history(
         market_cap = float(close) * _split_factor(day, split_rows) * count
         updates.append((count, market_cap, ticker, day))
     if updates:
-        con.executemany(
-            "UPDATE ohlcv SET list_shrs=?, market_cap=? WHERE ticker=? AND date=?", updates
+        # executemany UPDATE 는 행당 ~5ms(1,500만 행 테이블 실측) → DataFrame 일괄 UPDATE.
+        frame = pd.DataFrame(updates, columns=["list_shrs", "market_cap", "ticker", "date"])
+        con.register("_us_share_rows", frame)
+        con.execute(
+            "UPDATE ohlcv SET list_shrs=s.list_shrs, market_cap=s.market_cap "
+            "FROM _us_share_rows AS s WHERE ohlcv.ticker=s.ticker AND ohlcv.date=s.date"
         )
+        con.unregister("_us_share_rows")
     return len(updates)
 
 
@@ -583,6 +597,72 @@ def ensure_ohlcv(
     }
 
 
+def backfill_ohlcv(
+    con: duckdb.DuckDBPyConnection,
+    universe: list[UniverseItem],
+    from_date: str,
+    end_date: str,
+    download: Callable[[list[str], str, str], pd.DataFrame] = _default_download,
+    today_ny: str | None = None,
+) -> dict[str, object]:
+    ensure_schema(con)
+    upsert_names(con, universe)
+    today_ny = today_ny or datetime.now(NEW_YORK).strftime("%Y%m%d")
+    markets = {item.ticker: item.market for item in universe}
+    tickers = sorted({item.ticker for item in universe})
+    failed: list[str] = []
+    replaced: list[str] = []
+    inserted = 0
+    total_batches = (len(tickers) + BATCH_SIZE - 1) // BATCH_SIZE if tickers else 0
+    batch_no = 0
+    for offset in range(0, len(tickers), BATCH_SIZE):
+        batch = tickers[offset:offset + BATCH_SIZE]
+        batch_no += 1
+        started_at = time.perf_counter()
+        print(
+            f"[backfill {batch_no}/{total_batches}] start={from_date} "
+            f"end={end_date} tickers={len(batch)}",
+            flush=True,
+        )
+        try:
+            frames, missing = fetch_batch(batch, from_date, end_date, download)
+        except Exception as exc:
+            failed.extend(batch)
+            print(
+                f"[backfill {batch_no}/{total_batches}] failed "
+                f"elapsed={time.perf_counter() - started_at:.1f}s error={exc}",
+                flush=True,
+            )
+            continue
+        failed.extend(missing)
+        batch_rows = 0
+        for ticker in sorted(frames):
+            try:
+                rows, splits = to_rows({ticker: frames[ticker]}, markets, today_ny)
+                if not rows:
+                    failed.append(ticker)
+                    continue
+                _replace_split_history(con, ticker, rows, splits)
+                replaced.append(ticker)
+                inserted += len(rows)
+                batch_rows += len(rows)
+            except Exception:
+                failed.append(ticker)
+        print(
+            f"[backfill {batch_no}/{total_batches}] done "
+            f"elapsed={time.perf_counter() - started_at:.1f}s "
+            f"received={len(batch) - len(missing)} missing={len(missing)} "
+            f"rows={batch_rows} cumulative_rows={inserted}",
+            flush=True,
+        )
+    return {
+        "tickers": len(tickers),
+        "replaced": replaced,
+        "failed_tickers": sorted(set(failed)),
+        "inserted_rows": inserted,
+    }
+
+
 def ensure_etf(
     con: duckdb.DuckDBPyConnection,
     end_date: str,
@@ -689,6 +769,7 @@ def main() -> None:
     parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument("--refresh-shares", action="store_true")
     parser.add_argument("--etf-only", action="store_true")
+    parser.add_argument("--backfill", action="store_true")
     args = parser.parse_args()
     cutoff = bar_cutoff_day(datetime.now(NEW_YORK))
     to_date = args.to_date or cutoff
@@ -704,6 +785,26 @@ def main() -> None:
             f"etf_rows={etf_stats['inserted_rows']} "
             f"etf_div={etf_stats['dividend_rows']} "
             f"etf_failed={len(etf_stats['failed_tickers'])} -> {args.db_path}"
+        )
+        return
+    if args.backfill:
+        universe = load_universe()
+        args.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with duckdb.connect(str(args.db_path)) as con:
+            stats = backfill_ohlcv(con, universe, args.from_date, to_date, today_ny=cutoff)
+            share_stats = ensure_shares(
+                con,
+                (item.ticker for item in universe),
+                args.from_date,
+            )
+        print(
+            f"backfill tickers={stats['tickers']} "
+            f"replaced={len(stats['replaced'])} "
+            f"failed={len(stats['failed_tickers'])} "
+            f"rows={stats['inserted_rows']} "
+            f"shares_updated={share_stats['updated_rows']} "
+            f"shares_empty={len(share_stats['empty_tickers'])} "
+            f"shares_failed={len(share_stats['failed_tickers'])} -> {args.db_path}"
         )
         return
     universe = load_universe()

@@ -1,4 +1,4 @@
-"""증권사 리포트 목표주가/추정치 지표화 (PLAN docs/PLAN_REPORT_TARGET_METRICS.md)."""
+"""증권사 리포트 목표주가/추정치 지표화 (PLAN docs/done/PLAN_REPORT_TARGET_METRICS.md)."""
 from .models import (
     PARSER_VERSION,
     STATUS_IMAGE_PDF,

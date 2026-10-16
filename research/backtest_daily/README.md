@@ -20,6 +20,8 @@
 | `portfolio.py` (시장 무관) | `run` |
 | `perf.py` (시장 무관) | `equity`, `cagr`, `vol`, `sharpe`, `max_drawdown`, `calmar`, `yearly`, `drawdowns`, `trades_per_year`, `summary`, `PERIODS` |
 
+`adjust.adj_returns(px, use_krx_reference=True)`는 `cmp_prev`로 KRX 기준가(`close - cmp_prev`)를 계산한다. 장기 후보 가격 분석은 이 옵션을 명시한다. 기본값 `False`는 기존 보정·분석 결과를 유지한다. 두 모드 모두 비연속 거래일 수익률은 NaN(보정가격에서 0으로 처리), 일별 수익률은 ±30%로 제한한다.
+
 ## portfolio · perf (비중 전략)
 
 - DB를 읽지 않는다. 수익률표·목표비중표(pandas)만 받는다 → 한국·미국 어느 데이터에도 쓴다
@@ -47,4 +49,4 @@
 - `bench_daily` 는 **지수**다: 매일 전일 조건으로 종목을 다시 짜 동일가중 수익을 이어붙인다. 전략과 비교할 시장 잣대
 - "진입일에 같은 조건 종목을 아무거나 샀다면" 은 벤치가 아니라 **대조 전략** → placebo 로 잰다
 - 둘은 여러 날 보유에서 다르다 (CAP2·LIQ10 20일 약 0.24%p). 1일 보유는 거의 같다
-- 전략 모양별 호출은 `docs/PLAN_BACKTEST_DAILY.md` 2차 API 표 참조
+- 전략 모양별 호출은 `docs/done/PLAN_BACKTEST_DAILY.md` 2차 API 표 참조

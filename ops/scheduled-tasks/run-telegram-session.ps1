@@ -57,7 +57,7 @@ try {
   Invoke-Step "telegram session pipeline ($Session, $collectStart~$target, discover->analyze->digest)" `
     ".\.venv\Scripts\python.exe" $pipelineArgs
 
-  # 2b) Theme re-emergence alert (docs/PLAN_THEME_REEMERGENCE_ALERT.md). Never fails the session.
+  # 2b) Theme re-emergence alert (docs/done/PLAN_THEME_REEMERGENCE_ALERT.md). Never fails the session.
   $themeArgs = @("scripts\run_theme_alert.py", "--source", "telegram", "--date", $target, "--session", $Session)
   if ($collectStart -ne $target) { $themeArgs += @("--start-date", $collectStart) }
   try {

@@ -24,6 +24,11 @@
             "type": "command",
             "command": "bash .claude/hooks/warn-inline-backtest.sh",
             "shell": "bash"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-plan-pr.sh",
+            "shell": "bash"
           }
         ]
       },
@@ -43,6 +48,16 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/warn-inline-backtest.sh",
+            "shell": "bash"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-worktree-link.sh",
             "shell": "bash"
           }
         ]

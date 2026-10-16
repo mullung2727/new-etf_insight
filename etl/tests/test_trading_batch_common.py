@@ -25,6 +25,7 @@ from scripts.trading_batch_common import (
     quote_snapshot,
     quantity_for_budget,
     read_reservation,
+    read_reservations,
     require_profile,
     write_reservation,
 )
@@ -241,7 +242,7 @@ class CashReservationTest(unittest.TestCase):
         write_reservation(self.URL, 8_000_000, 8_000_000, "rights_dip")
         data = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(data["127.0.0.1:8002"]["reserve"], 100)
-        entry = data[_broker_key(self.URL)]
+        entry = data[_broker_key(self.URL)]["rights_dip"]
         self.assertEqual((entry["reserve"], entry["capital_total"], entry["strategy"]),
                          (8_000_000, 8_000_000, "rights_dip"))
         self.assertIn("updated", entry)
@@ -321,7 +322,291 @@ class CashReservationTest(unittest.TestCase):
     def test_write_leaves_no_temp_files(self):
         self._write({"127.0.0.1:8002": self._entry(reserve=100)})
         write_reservation(self.URL, 8_000_000, 8_000_000, "rights_dip")
-        leftovers = [p.name for p in self.path.parent.iterdir() if p.name != self.path.name]
+        leftovers = [p.name for p in self.path.parent.iterdir()
+                     if p.name not in (self.path.name, self.path.name + ".lock")]
         self.assertEqual(leftovers, [])
         data = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(data["127.0.0.1:8002"]["reserve"], 100)
+
+
+    def _new_entry(self, reserve, capital, strategy):
+        return {"reserve": reserve, "capital_total": capital,
+                "strategy": strategy, "updated": "2026-10-02T00:00:00+09:00"}
+
+    def test_legacy_flat_file_read_as_single_strategy(self):
+        entry = self._entry()
+        self._write({_broker_key(self.URL): entry})
+        self.assertEqual(read_reservation(self.URL), entry)
+        self.assertEqual(read_reservations(self.URL), {"rights_dip": entry})
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_only_other_strategies_subtracted(self, get: Mock):
+        get.return_value = self._deposit("4000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": self._new_entry(500_000, 8_000_000, "rights_dip"),
+            "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+        }})
+        self.assertEqual(available_cash(self.URL), 530_000)
+        self.assertEqual(available_cash(self.URL, strategy="envelope"), 530_000)
+        self.assertEqual(available_cash(self.URL, strategy="rebound"), 3_500_000)
+        self.assertEqual(available_cash(self.URL, strategy="rights_dip"), 1_030_000)
+        self.assertEqual(available_cash(self.URL, exclude_reserve=False), 4_000_000)
+
+    def test_write_to_legacy_file_preserves_existing_strategy(self):
+        self._write({_broker_key(self.URL): self._entry()})
+        write_reservation(self.URL, 100, 6_000_000, "rebound")
+        entries = read_reservations(self.URL)
+        self.assertEqual(set(entries), {"rights_dip", "rebound"})
+        self.assertEqual(entries["rights_dip"], self._entry())
+        self.assertEqual(entries["rebound"]["reserve"], 100)
+        self.assertEqual(entries["rebound"]["capital_total"], 6_000_000)
+
+    def test_write_same_strategy_twice_keeps_last(self):
+        write_reservation(self.URL, 500_000, 8_000_000, "rights_dip")
+        write_reservation(self.URL, 2_970_000, 6_000_000, "rebound")
+        write_reservation(self.URL, 100, 6_000_000, "rights_dip")
+        entries = read_reservations(self.URL)
+        self.assertEqual(entries["rights_dip"]["reserve"], 100)
+        self.assertEqual(entries["rebound"]["reserve"], 2_970_000)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_invalid_other_strategy_fails_closed(self, get: Mock):
+        for bad in (-1, "abc"):
+            with self.subTest(bad=bad):
+                get.return_value = self._deposit("4000000")
+                self._write({_broker_key(self.URL): {
+                    "rights_dip": self._new_entry(bad, 8_000_000, "rights_dip"),
+                    "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+                }})
+                with patch("builtins.print") as warned:
+                    self.assertEqual(available_cash(self.URL, strategy="rebound"), 0)
+                self.assertTrue(warned.called)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_invalid_self_strategy_not_subtracted(self, get: Mock):
+        get.return_value = self._deposit("4000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": self._new_entry("bad", 8_000_000, "rights_dip"),
+            "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+        }})
+        self.assertEqual(available_cash(self.URL, strategy="rights_dip"), 1_030_000)
+
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_malformed_strategy_entry_fails_closed(self, get: Mock):
+        """새 형식에서 값이 dict 아님 → 차감 0, 쓰기 거부, 파일 불변."""
+        get.return_value = self._deposit("10000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": self._new_entry(500_000, 8_000_000, "rights_dip"),
+            "rebound": "x",
+        }})
+        before = self.path.read_text(encoding="utf-8")
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL, strategy="rights_dip"), 0)
+        self.assertTrue(warned.called)
+        with self.assertRaises(RuntimeError) as ctx:
+            write_reservation(self.URL, 1, 1, "envelope")
+        self.assertIn("형식 오류", str(ctx.exception))
+        self.assertEqual(self.path.read_text(encoding="utf-8"), before)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_list_account_value_fails_closed(self, get: Mock):
+        """계좌 값이 리스트 → 형식 오류로 보고 0."""
+        get.return_value = self._deposit("10000000")
+        self._write({_broker_key(self.URL): [1, 2]})
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL), 0)
+        self.assertTrue(warned.called)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_missing_reserve_fails_closed(self, get: Mock):
+        """다른 전략 항목에 reserve 키 없음 → 0."""
+        get.return_value = self._deposit("4000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": {"capital_total": 100},
+            "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+        }})
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL, strategy="rebound"), 0)
+        self.assertTrue(warned.called)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_missing_capital_total_fails_closed(self, get: Mock):
+        """다른 전략 항목에 capital_total 키 없음 → 0."""
+        get.return_value = self._deposit("4000000")
+        self._write({_broker_key(self.URL): {
+            "rights_dip": {"reserve": 100},
+            "rebound": self._new_entry(2_970_000, 6_000_000, "rebound"),
+        }})
+        with patch("builtins.print") as warned:
+            self.assertEqual(available_cash(self.URL, strategy="rebound"), 0)
+        self.assertTrue(warned.called)
+
+    def test_write_creates_lock_file(self):
+        """쓰기 후 잠금 파일이 남는다."""
+        write_reservation(self.URL, 100, 8_000_000, "rights_dip")
+        self.assertTrue(self.path.with_name(self.path.name + ".lock").exists())
+
+    def test_concurrent_writes_keep_both_strategies(self):
+        """스레드 2개가 서로 다른 전략으로 각 20회 쓰기 → 두 항목 모두 존재."""
+        import threading
+        errors: list = []
+
+        def worker(strategy: str):
+            try:
+                for _ in range(20):
+                    write_reservation(self.URL, 100, 8_000_000, strategy)
+            except Exception as error:
+                errors.append(error)
+
+        threads = [threading.Thread(target=worker, args=(name,))
+                   for name in ("rights_dip", "rebound")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(set(read_reservations(self.URL)), {"rights_dip", "rebound"})
+
+
+class RunLiveBatchTest(unittest.TestCase):
+    """공용 시작 절차 run_live_batch — 거래일 → 계좌 → body → 알림/종료코드."""
+
+    TAG = "LIVEBATCH"
+    TODAY = "20260105"
+
+    def _call(self, body, alert, *, trading=True, profile_ok=True, **kwargs):
+        """load_dotenv·거래일·계좌를 patch하고 run_live_batch 실행 → (code, trading, require)."""
+        kwargs.setdefault("broker_url", "http://127.0.0.1:8001")
+        kwargs.setdefault("profile", "HIGH52")
+        kwargs.setdefault("today", self.TODAY)
+        with patch("dotenv.load_dotenv"), \
+                patch("scripts.check_krx_trading_day.is_krx_trading_day") as trading_day, \
+                patch("scripts.trading_batch_common.require_profile") as require:
+            trading_day.return_value = trading
+            require.return_value = profile_ok
+            code = tbc.run_live_batch(self.TAG, body, notify_fn=alert, **kwargs)
+        return code, trading_day, require
+
+    def test_holiday_returns_zero_without_side_effects(self):
+        body, alert = Mock(), Mock(return_value=True)
+        with patch("builtins.print"):
+            code, _trading, require = self._call(body, alert, trading=False)
+        self.assertEqual(code, 0)
+        body.assert_not_called()
+        alert.assert_not_called()
+        require.assert_not_called()
+
+    def test_profile_mismatch_returns_one_without_body(self):
+        body, alert = Mock(), Mock(return_value=True)
+        code, _trading, _require = self._call(body, alert, profile_ok=False)
+        self.assertEqual(code, 1)
+        body.assert_not_called()
+        self.assertEqual(alert.call_count, 1)
+        self.assertIn(self.TAG, alert.call_args.args[0])
+
+    def test_success_with_lines_notifies_once(self):
+        alert = Mock(return_value=True)
+        body = Mock(return_value={"lines": ["매수 005930 10주", "매도 000660 5주"], "code": 0})
+        code, _trading, _require = self._call(body, alert)
+        self.assertEqual(code, 0)
+        self.assertEqual(alert.call_count, 1)
+        message = alert.call_args.args[0]
+        self.assertIn(self.TAG, message)
+        self.assertIn("매수 005930 10주", message)
+        self.assertIn("매도 000660 5주", message)
+
+    def test_success_without_lines_stays_silent(self):
+        alert = Mock(return_value=True)
+        code, _trading, _require = self._call(
+            Mock(return_value={"lines": [], "code": 0}), alert)
+        self.assertEqual(code, 0)
+        alert.assert_not_called()
+
+    def test_body_none_returns_zero_silently(self):
+        alert = Mock(return_value=True)
+        code, _trading, _require = self._call(Mock(return_value=None), alert)
+        self.assertEqual(code, 0)
+        alert.assert_not_called()
+
+    def test_nonzero_code_passes_through(self):
+        alert = Mock(return_value=True)
+        code, _trading, _require = self._call(Mock(return_value={"code": 1}), alert)
+        self.assertEqual(code, 1)
+        alert.assert_not_called()
+
+    def test_body_error_with_alert_returns_two(self):
+        alert = Mock(return_value=True)
+        with patch("traceback.print_exc"):
+            code, _trading, _require = self._call(
+                Mock(side_effect=ValueError("폭락")), alert)
+        self.assertEqual(code, 2)
+        self.assertEqual(alert.call_count, 1)
+        message = alert.call_args.args[0]
+        self.assertIn("실패", message)
+        self.assertIn("ValueError", message)
+
+    def test_body_error_without_alert_returns_one(self):
+        alert = Mock(return_value=False)
+        with patch("traceback.print_exc"):
+            code, _trading, _require = self._call(
+                Mock(side_effect=ValueError("폭락")), alert)
+        self.assertEqual(code, 1)
+        self.assertEqual(alert.call_count, 1)
+
+    def test_body_error_with_alert_failure_returns_one(self):
+        alert = Mock(side_effect=RuntimeError("끊김"))
+        with patch("traceback.print_exc"), patch("builtins.print"):
+            code, _trading, _require = self._call(
+                Mock(side_effect=ValueError("폭락")), alert)
+        self.assertEqual(code, 1)
+
+    def test_no_broker_url_skips_profile_check(self):
+        body = Mock(return_value=None)
+        alert = Mock(return_value=True)
+        code, _trading, require = self._call(body, alert, broker_url=None)
+        self.assertEqual(code, 0)
+        require.assert_not_called()
+        body.assert_called_once_with()
+
+    def test_trading_day_false_skips_calendar(self):
+        body = Mock(return_value=None)
+        alert = Mock(return_value=True)
+        code, trading, _require = self._call(body, alert, trading_day=False)
+        self.assertEqual(code, 0)
+        trading.assert_not_called()
+        body.assert_called_once_with()
+
+
+class UnknownRecheckTest(unittest.TestCase):
+    """불명 주문 재판정 classify_unknown + 재주문 수량 retry_qty."""
+
+    def test_lookup_none_is_lookup_failed(self):
+        self.assertEqual(tbc.classify_unknown("0024530", None, []), ("lookup_failed", 0))
+        self.assertEqual(tbc.classify_unknown("0024530", [], None), ("lookup_failed", 0))
+
+    def test_zero_order_no_is_distinct_from_lookup_failed(self):
+        self.assertEqual(tbc.classify_unknown("0000000", [], []), ("no_order_no", 0))
+
+    def test_open_absorbs_zero_padding(self):
+        self.assertEqual(tbc.classify_unknown("0024530", [{"order_no": "24530"}], []),
+                         ("open", 0))
+
+    def test_open_reports_filled_qty(self):
+        fills = [{"order_no": "0024530", "cntr_qty": 30}]
+        self.assertEqual(tbc.classify_unknown("0024530", [{"order_no": "24530"}], fills),
+                         ("open", 30))
+
+    def test_filled_sums_across_padded_rows(self):
+        fills = [{"order_no": "24530", "cntr_qty": 10},
+                 {"order_no": "0024530", "cntr_qty": 20}]
+        self.assertEqual(tbc.classify_unknown("0024530", [], fills), ("filled", 30))
+
+    def test_not_found(self):
+        self.assertEqual(tbc.classify_unknown("0024530", [], []), ("not_found", 0))
+
+    def test_retry_qty(self):
+        self.assertEqual(tbc.retry_qty(10, 7), 7)
+        self.assertEqual(tbc.retry_qty(10, None), 0)
+        self.assertEqual(tbc.retry_qty(10, 0), 0)
+        self.assertEqual(tbc.retry_qty(5, 9), 5)

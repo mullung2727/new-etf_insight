@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,9 @@ CLOSE_BET_PATHS = {
     "ops/scheduled-tasks/close-bet-order.xml",
     "ops/batches/daily-close-bet-order.md",
 }
+
+
+PLAN_DOC_RE = re.compile(r"^docs/PLAN_[^/]+\.md$")
 
 
 def run(cmd: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
@@ -63,10 +67,55 @@ def close_bet_checks() -> None:
     )
 
 
+def plan_done_check(changed: set[str]) -> list[str]:
+    result: list[str] = []
+    for path in sorted(changed):
+        if not PLAN_DOC_RE.match(path):
+            continue
+        try:
+            text = (ROOT / path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        lines = text.splitlines()
+        start = None
+        for i, line in enumerate(lines):
+            s = line.strip()
+            if s == "## 진행" or s.startswith("## 진행 ") or s.startswith("## 진행\t"):
+                start = i + 1
+                break
+        if start is None:
+            continue
+        end = len(lines)
+        for j in range(start, len(lines)):
+            if lines[j].strip().startswith("## "):
+                end = j
+                break
+        total = 0
+        unchecked = 0
+        for line in lines[start:end]:
+            m = re.match(r"\s*- \[([ xX])\]", line)
+            if m:
+                total += 1
+                if m.group(1) == " ":
+                    unchecked += 1
+        if total >= 1 and unchecked == 0:
+            result.append(path)
+    return result
+
+
 def main() -> int:
     changed = staged_files()
     if not changed:
         return 0
+
+    done = plan_done_check(changed)
+    if done:
+        for path in done:
+            print(
+                f"[pre-commit] {path}: 진행 체크리스트 완료 -> git mv {path} docs/done/ 후 참조 링크(grep)도 고칠 것",
+                file=sys.stderr,
+            )
+        return 1
 
     if changed & CLOSE_BET_PATHS:
         print("[pre-commit] close-bet contract files changed; running focused checks")

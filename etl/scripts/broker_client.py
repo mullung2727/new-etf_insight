@@ -149,6 +149,34 @@ class BrokerClient:
             return None
         return px
 
+    def base_price(self, t: str) -> int | None:
+        """기준가(전일 종가, 권리락 등 보정 반영). 동시호가 하한가 계산용."""
+        try:
+            resp = requests.get(f"{self._url}/quotes/{t}",
+                                timeout=self._timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data.get("raw")
+            if not isinstance(raw, dict):
+                print(f"[{self._tag}] {t} 기준가 응답 형식 오류(raw dict 아님)")
+                return None
+            value = raw.get("base_pric")
+            if value is None:
+                print(f"[{self._tag}] {t} 기준가 없음")
+                return None
+            try:
+                px = _parse_quote(value)
+            except (TypeError, ValueError):
+                print(f"[{self._tag}] {t} 기준가 형식 오류({value!r})")
+                return None
+            if px <= 0:
+                print(f"[{self._tag}] {t} 기준가 없음(0)")
+                return None
+            return px
+        except Exception as exc:
+            print(f"[{self._tag}] {t} 기준가 조회 실패: {exc}")
+            return None
+
     def place(self, t: str, side: str, qty: int, price: int,
               order_type: str) -> dict:
         """전략 주문. 시장가(order_type="market")는 price 0으로 보낸다."""

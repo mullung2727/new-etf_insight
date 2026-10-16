@@ -19,6 +19,9 @@
 - `send_xxx(message) -> bool` 함수를 하나 만들고(성공 True, 실패/미설정 False,
   예외는 안 던진다),
 - 아래 `_SENDERS` 딕셔너리에 `"xxx": send_xxx` 한 줄 등록.
+전략 전용 채널은 `send_strategy_alert(msg, "<전략>_WEBHOOK_URL")`,
+첫 줄은 `headline()`,
+규약은 아래 주석 참고.
 
 참고: 종가베팅 트레이딩 스크립트(run_close_bet.py 등)는 아직 `send_discord`를
 직접 부른다. 그쪽 알림까지 채널 스왑에 포함하려면 그 호출들을 `notify()`로
@@ -85,7 +88,9 @@ def send_discord(message: str, webhook_url: str | None = None, *, _sleep=time.sl
     일시적 오류(429/5xx/타임아웃)는 재시도 — 한 번의 웹훅 blip이 digest 전송 실패로
     텔레그램 세션 전체를 FAILED로 만들던 문제. _sleep 은 테스트 주입용.
     """
-    url = webhook_url if webhook_url is not None else os.getenv("DISCORD_WEBHOOK_URL", "")
+    # 기본 발송처 = 배치 채널. BATCH 미설정 때만 기존 기본값으로 폴백 (조용한 유실 방지).
+    url = webhook_url if webhook_url is not None else (
+        os.getenv("DISCORD_BATCH_WEBHOOK_URL", "") or os.getenv("DISCORD_WEBHOOK_URL", ""))
     if not url:
         # ASCII only: cp949 콘솔에서도 안전 (stdout 재설정 안 한 호출자 대비)
         print("[notify] DISCORD_WEBHOOK_URL not set - skip Discord notify")
@@ -134,16 +139,51 @@ def send_batch_report(message: str) -> bool:
     return send_discord(message, webhook_url=os.getenv("DISCORD_BATCH_WEBHOOK_URL", ""))
 
 
+def send_etf_holdings_alert(message: str) -> bool:
+    """ETF 보유 모니터링 전용 Discord 채널로 보낸다.
+
+    env: ETF_HOLDINGS_DISCORD_WEBHOOK_URL. 없으면 스킵(False) — 폴백 없음.
+    """
+    url = os.getenv("ETF_HOLDINGS_DISCORD_WEBHOOK_URL", "")
+    if not url:
+        print("[notify] ETF_HOLDINGS_DISCORD_WEBHOOK_URL not set - skip holdings notify")
+        return False
+    return send_discord(message, webhook_url=url)
+
+
+def send_strategy_alert(message: str, webhook_env: str) -> bool:
+    """전략 전용 Discord 채널로 보낸다 — env `webhook_env` 의 웹훅. 비었으면 기본 채널(send_discord)로 폴백(경고 print).
+    전략마다 채널을 따로 두면 이상 알림이 다른 배치 메시지에 묻히지 않는다."""
+    url = (os.getenv(webhook_env, "") or "").strip()
+    if not url:
+        print(f"[notify] {webhook_env} not set - fallback to default Discord channel")
+        return send_discord(message)
+    return send_discord(message, webhook_url=url)
+
+
+# ── 알림 첫 줄(헤드라인) 규약 — 전략 공통 ─────────────────────────────
+# 형식: "<표시> <전략> <단계> — <결과>", 둘째 줄부터 기존 상세.
+# 표시 기준(모든 전략 공통):
+#   ✅ OK   — 해야 할 일을 다 함, 또는 할 일이 원래 없음
+#   ⚠ WARN — 해야 할 일을 못 함(체결 < 대상, 0건, 중단, 계좌 확인 실패, 데이터 일부 누락,
+#            수동 확인 필요, 소요 시간 초과)
+#   ❌ FAIL — 예외(코드·통신 오류)로 단계가 끝까지 못 감
+# 단계 이름과 "할 일을 못 함" 판정은 전략마다 다르므로 전략 코드가 정하고, 여기는 형식만.
+HEADLINE_OK, HEADLINE_WARN, HEADLINE_FAIL = "✅", "⚠", "❌"
+
+
+def headline(mark: str, label: str, stage: str, result: str, body: str = "") -> str:
+    """첫 줄 "<mark> <label> <stage> — <result>" + (body 있으면) 줄바꿈 + body."""
+    first = f"{mark} {label} {stage} — {result}"
+    return f"{first}\n{body}" if body else first
+
+
 def send_rights_alert(message: str) -> bool:
     """유증 하락매수 전용 Discord 채널로 보낸다.
 
     env: RIGHTS_DIP_DISCORD_WEBHOOK_URL. 없으면 기본 채널(send_discord)로 폴백.
     """
-    url = os.getenv("RIGHTS_DIP_DISCORD_WEBHOOK_URL", "")
-    if not url:
-        print("[notify] RIGHTS_DIP_DISCORD_WEBHOOK_URL not set - fallback to default Discord channel")
-        return send_discord(message)
-    return send_discord(message, webhook_url=url)
+    return send_strategy_alert(message, "RIGHTS_DIP_DISCORD_WEBHOOK_URL")
 
 
 def send_theme_alert(message: str) -> bool:
@@ -194,6 +234,7 @@ _SENDERS = {
     "telegram_report": "send_telegram_report",
     "batch": "send_batch_report",
     "theme_alert": "send_theme_alert",
+    "etf_holdings": "send_etf_holdings_alert",
 }
 
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Callable
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -14,8 +16,8 @@ import requests
 
 REQUEST_TIMEOUT = 15
 
-# 유증 전략 자금 분리 예약 (R2b). {"host:port": {"reserve", "capital_total", ...}}.
-# 유증 verify·order 가 갱신, 다른 전략 available_cash 가 차감. 파일 없으면 기존 동작 그대로.
+# 전략별 자금 예약. {"host:port": {"strategy": {"reserve", "capital_total", ...}}}.
+# 각 전략 order·verify 가 자기 항목 갱신, available_cash 는 남의 reserve 합 차감. 파일 없으면 기존 동작 그대로.
 RESERVATION_PATH = Path(__file__).resolve().parents[1] / "db" / "cash_reservations.json"
 
 # 청산이 끝난 것으로 간주하는 sell_status. 청산 워커의 미청산 조회와 주문 배치의
@@ -116,18 +118,81 @@ def _valid_amount(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def read_reservation(broker_url: str) -> dict | None:
-    """계좌 예약 1건. 파일 없음·읽기 실패·깨짐·키 없음 → None (예외 없음, 깨짐은 경고)."""
+def _account_entries(account_value: object) -> dict[str, dict] | None:
+    """계좌 값 → {전략: 항목}. 계좌 키 없음(None) → {}. 모양이 이상하면 None (fail closed)."""
+    if account_value is None:
+        return {}
+    if not isinstance(account_value, dict):
+        return None
+    if "reserve" in account_value:
+        name = account_value.get("strategy") or "rights_dip"
+        return {name: account_value}
+    for value in account_value.values():
+        if not isinstance(value, dict):
+            return None
+    return dict(account_value)
+
+
+@contextmanager
+def _reservation_lock():
+    """예약 파일 읽기→수정→교체를 직렬화하는 프로세스 간 잠금.
+
+    잠금 파일은 RESERVATION_PATH 옆 ``cash_reservations.json.lock`` —
+    매번 RESERVATION_PATH 로부터 계산하므로 테스트의 임시 경로 패치가 그대로 적용된다.
+    """
+    lock_path = RESERVATION_PATH.with_name(RESERVATION_PATH.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
+def read_reservation(broker_url: str, strategy: str = "rights_dip") -> dict | None:
+    """그 전략 예약 1건(기본 rights_dip). 파일 없음·읽기 실패·깨짐·키 없음 → None."""
     data, _ = _load_reservation_file()
     if data is None:
         return None
-    entry = data.get(_broker_key(broker_url))
+    entries = _account_entries(data.get(_broker_key(broker_url)))
+    if entries is None:
+        print(f"[reserve] 예약 파일 형식 오류 — fail closed ({RESERVATION_PATH})")
+        return None
+    entry = entries.get(strategy)
     return entry if isinstance(entry, dict) else None
 
 
-def available_cash(broker_url: str, exclude_reserve: bool = True) -> int | None:
-    """주문가능금액 — exclude_reserve 면 유증 예약 차감 (없으면 기존값 그대로).
-    예약 파일이 존재하는데 깨지거나 예약값이 이상하면 0 (fail closed, A-10)."""
+def read_reservations(broker_url: str) -> dict[str, dict]:
+    """그 계좌의 전략별 예약 전부. 파일 없음·깨짐·키 없음 → {}."""
+    data, _ = _load_reservation_file()
+    if data is None:
+        return {}
+    entries = _account_entries(data.get(_broker_key(broker_url)))
+    if entries is None:
+        print(f"[reserve] 예약 파일 형식 오류 — fail closed ({RESERVATION_PATH})")
+        return {}
+    return entries
+
+
+def available_cash(broker_url: str, exclude_reserve: bool = True, strategy: str | None = None) -> int | None:
+    """주문가능금액 — exclude_reserve 면 자기 제외 다른 전략 reserve 합 차감.
+    strategy=None 이면 전부 차감(보수적). 파일 없음·계좌 키 없음 → 원값.
+    파일이 깨지거나 차감 대상 예약값이 이상하면 0 (fail closed, A-10)."""
     cash = _deposit_cash(broker_url)
     if cash is None or not exclude_reserve:
         return cash
@@ -136,15 +201,23 @@ def available_cash(broker_url: str, exclude_reserve: bool = True) -> int | None:
         return 0
     if data is None:
         return cash
-    reservation = data.get(_broker_key(broker_url))
-    if not isinstance(reservation, dict):
-        return cash
-    reserve = reservation.get("reserve", 0)
-    capital_total = reservation.get("capital_total", 0)
-    if not _valid_amount(reserve) or not _valid_amount(capital_total):
-        print(f"[reserve] 예약값 오류 — fail closed ({RESERVATION_PATH})")
+    entries = _account_entries(data.get(_broker_key(broker_url)))
+    if entries is None:
+        print(f"[reserve] 예약 파일 형식 오류 — fail closed ({RESERVATION_PATH})")
         return 0
-    return max(0, cash - reserve)
+    if not entries:
+        return cash
+    total = 0
+    others = {k: v for k, v in entries.items() if k != strategy}
+
+    for item in others.values():
+        reserve = item.get("reserve")
+        capital_total = item.get("capital_total")
+        if not _valid_amount(reserve) or not _valid_amount(capital_total):
+            print(f"[reserve] 예약값 오류 — fail closed ({RESERVATION_PATH})")
+            return 0
+        total += reserve
+    return max(0, cash - total)
 
 
 def _deposit_cash(broker_url: str) -> int | None:
@@ -166,43 +239,46 @@ def write_reservation(broker_url: str, reserve: int, capital_total: int, strateg
     """
     if not _valid_amount(reserve) or not _valid_amount(capital_total):
         raise ValueError(f"예약값 오류: reserve={reserve!r} capital_total={capital_total!r}")
-    try:
-        raw = RESERVATION_PATH.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        data = {}
-    except OSError as error:
-        raise RuntimeError(
-            f"예약 파일 읽기 실패 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
-    else:
+    with _reservation_lock():
         try:
-            data = json.loads(raw)
-        except ValueError as error:
+            raw = RESERVATION_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            data = {}
+        except OSError as error:
             raise RuntimeError(
-                f"예약 파일 깨짐 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
-        if not isinstance(data, dict):
-            raise RuntimeError(f"예약 파일 형식 오류 — 덮어쓰지 않음 ({RESERVATION_PATH})")
-    data[_broker_key(broker_url)] = {
-        "reserve": reserve, "capital_total": capital_total,
-        "strategy": strategy, "updated": now_seoul().isoformat(),
-    }
-    RESERVATION_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # 쓰는 쪽이 08:50 order·16:00 verify 뿐이라 동시 실행 없음 — 프로세스 간 잠금 없음.
-    tmp: str | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=str(RESERVATION_PATH.parent),
-            prefix=RESERVATION_PATH.name + ".", delete=False,
-        ) as handle:
-            tmp = handle.name
-            handle.write(json.dumps(data, ensure_ascii=False))
-        os.replace(tmp, RESERVATION_PATH)
-    except BaseException:
-        if tmp is not None:
+                f"예약 파일 읽기 실패 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
+        else:
             try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-        raise
+                data = json.loads(raw)
+            except ValueError as error:
+                raise RuntimeError(
+                    f"예약 파일 깨짐 — 덮어쓰지 않음 ({RESERVATION_PATH}: {error})") from error
+            if not isinstance(data, dict):
+                raise RuntimeError(f"예약 파일 형식 오류 — 덮어쓰지 않음 ({RESERVATION_PATH})")
+        entries = _account_entries(data.get(_broker_key(broker_url)))
+        if entries is None:
+            raise RuntimeError(f"예약 파일 형식 오류 — 덮어쓰지 않음 ({RESERVATION_PATH})")
+        entries[strategy] = {"reserve": reserve, "capital_total": capital_total,
+            "strategy": strategy, "updated": now_seoul().isoformat()}
+        data[_broker_key(broker_url)] = entries
+        RESERVATION_PATH.parent.mkdir(parents=True, exist_ok=True)
+        # 여러 전략이 같은 시각에 쓸 수 있다 — 읽기~교체를 잠금 파일로 직렬화
+        tmp: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=str(RESERVATION_PATH.parent),
+                prefix=RESERVATION_PATH.name + ".", delete=False,
+            ) as handle:
+                tmp = handle.name
+                handle.write(json.dumps(data, ensure_ascii=False))
+            os.replace(tmp, RESERVATION_PATH)
+        except BaseException:
+            if tmp is not None:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            raise
 
 
 def fetch_realized(broker_url: str, ticker: str) -> dict | None:
@@ -282,3 +358,105 @@ def held_quantities(balance: dict) -> dict[str, int] | None:
     if not isinstance(rows, list):
         return None
     return {_strip_ticker(r.get("stk_cd", "")): _padint(r.get("trde_able_qty")) for r in rows}
+
+
+def run_live_batch(
+    tag: str,
+    body: Callable[[], dict | None],
+    *,
+    broker_url: str | None,
+    profile: str | None,
+    notify_fn: Callable[[str], bool] | None = None,
+    trading_day: bool = True,
+    today: str | None = None,
+) -> int:
+    """실매매 배치 공용 시작 절차: 거래일 확인 → 계좌 확인 → body → 결과 알림.
+
+    종료 코드: 0 정상(휴장일 포함), 1 중단(계좌 불일치·body 실패·body가 nonzero 반환),
+    2 body 실패 + 알림 성공(러너는 중복 알림 생략 — run_swing_pick.py와 같은 규약).
+    """
+    try:
+        from scripts.check_krx_trading_day import is_krx_trading_day
+    except ImportError:  # etl/scripts 직접 실행 시
+        from check_krx_trading_day import is_krx_trading_day  # noqa: E402
+    try:
+        from scripts.notify import notify
+    except ImportError:  # etl/scripts 직접 실행 시
+        from notify import notify  # noqa: E402
+    import traceback
+
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    if today is None:
+        today = now_seoul().strftime("%Y%m%d")
+    if notify_fn is None:
+        def notify_fn(message: str) -> bool:
+            return notify(message, channel="batch")
+    if trading_day and not is_krx_trading_day(today):
+        print(f"{tag} {today} 거래일 아님 — 종료")
+        return 0
+    if broker_url and not require_profile(broker_url, profile):
+        try:
+            notify_fn(f"{tag} {today} {broker_url} 계좌 확인 실패 — 중단")
+        except Exception as error:
+            print(f"[{tag}] 계좌 확인 실패 알림 실패: {error}")
+        return 1
+    try:
+        res = body()
+    except Exception as error:
+        traceback.print_exc()
+        try:
+            alerted = notify_fn(f"{tag} {today} 실패: {type(error).__name__}: {error}")
+        except Exception as notify_error:
+            print(f"[{tag}] 실패 알림 실패: {notify_error}")
+            return 1
+        return 2 if alerted else 1
+    if isinstance(res, dict):
+        lines = res.get("lines")
+        if lines:
+            try:
+                notify_fn(f"{tag} {today}\n" + "\n".join(lines))
+            except Exception as error:
+                print(f"[{tag}] 결과 알림 실패: {error}")
+        return int(res.get("code", 0))
+    return 0
+
+
+def classify_unknown(
+    order_no: object,
+    unfilled_rows: list[dict] | None,
+    fill_rows: list[dict] | None,
+) -> tuple[str, int]:
+    """broker 결과 불명(unknown) 주문의 다음 실행 재판정 → (상태, 체결수량).
+
+    lookup_failed = 조회 실패(완료 아님, 손대지 말 것), no_order_no = 주문번호 없음,
+    open = 미체결에 살아 있음, filled = 체결 반영, not_found = 접수 안 됨(재시도 대상).
+    """
+    try:
+        from scripts.run_verify import normalize_order_no
+    except ImportError:  # etl/scripts 직접 실행 시
+        from run_verify import normalize_order_no  # noqa: E402
+    if unfilled_rows is None or fill_rows is None:
+        return ("lookup_failed", 0)
+    key = normalize_order_no(order_no)
+    if not key:
+        return ("no_order_no", 0)
+    filled = 0
+    for row in fill_rows:
+        if normalize_order_no(row.get("order_no")) != key:
+            continue
+        filled += int(row.get("cntr_qty") or 0)
+    for row in unfilled_rows:
+        if normalize_order_no(row.get("order_no")) == key:
+            return ("open", filled)
+    if filled > 0:
+        return ("filled", filled)
+    return ("not_found", 0)
+
+
+def retry_qty(ledger_qty: int, held_qty: int | None) -> int:
+    """재주문 수량 = min(원장수량, 보유수량). 잔고 조회 실패(None)·음수는 0."""
+    if held_qty is None:
+        return 0
+    return max(0, min(ledger_qty, held_qty))

@@ -14,8 +14,11 @@ INTERVAL="${INTERVAL:-60}"
 
 declare -A seen  # PR 번호 -> 마지막으로 알린 CodeRabbit 활동 시각
 
+# 요약 코멘트는 "자동 리뷰 대상 아님"(skip review) 안내로도 갱신된다. 이 갱신은
+# 커밋 직후에 달려서 updated_at 만 보면 리뷰 도착으로 오탐한다. 그래서 요약은
+# 본문의 coveredCommitId 가 PR head 와 일치할 때만 활동으로 친다.
 latest_activity() {  # 이 PR 의 가장 최근 CodeRabbit 활동 시각(ISO8601). 없으면 빈 문자열
-  local pr="$1"
+  local pr="$1" head="$2"
   {
     # 제출 안 된 리뷰는 submitted_at 이 null 이다. 걸러내지 않으면 "null" 이 정렬 맨 뒤로
     # 밀려 최신 활동으로 뽑히고, 리뷰가 오기도 전에 도착으로 오판한다.
@@ -26,7 +29,9 @@ latest_activity() {  # 이 PR 의 가장 최근 CodeRabbit 활동 시각(ISO8601
     # 거르지 않으면 리뷰 전에 도착으로 오판한다. 끝나면 같은 답글이 "Review finished"로 수정된다.
     gh api --paginate "repos/$REPO/issues/$pr/comments" \
       --jq '.[] | select(.user.login=="coderabbitai[bot]")
-            | select(.body | test("Currently processing|Review triggered") | not) | .updated_at' 2>/dev/null
+            | select(.body | test("Currently processing|Review triggered") | not)
+            | select((.body | contains("summarize by coderabbit.ai") | not)
+                     or (.body | contains("\"coveredCommitId\":\"'"$head"'\""))) | .updated_at' 2>/dev/null
   } | sort | tail -1
 }
 
@@ -72,9 +77,9 @@ while true; do
 
   pending=0
   for pr in $prs; do
-    last_commit=$(gh pr view "$pr" --repo "$REPO" --json commits \
-      --jq '.commits | last | .committedDate' 2>/dev/null)
-    latest=$(latest_activity "$pr")
+    read -r last_commit head <<< "$(gh pr view "$pr" --repo "$REPO" --json commits,headRefOid \
+      --jq '"\(.commits | last | .committedDate) \(.headRefOid)"' 2>/dev/null)"
+    latest=$(latest_activity "$pr" "$head")
 
     # 활동이 없거나 마지막 커밋보다 이전이면 아직 기다리는 중
     if [ -z "$latest" ] || [ -z "$last_commit" ] || [[ "$latest" < "$last_commit" ]]; then

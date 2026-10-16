@@ -1,5 +1,6 @@
 # 급등 전 변화 포착 — 예약 등록안 (PLAN §20-5)
 
+진행 상태는 `PLAN_EARLY_THEME_SIGNALS.md` 의 "진행" 절에서 관리한다.
 - 작성 2026-09-09. 근거는 실측이며 추정치가 아니다. policy_v2 기준.
 - 이 문서는 **등록안**이다. 실제 Windows Task Scheduler 등록·외부 발송·주문 연동은 하지 않는다(§1.3).
 - 등록 시 `ops/batches/README.md` 의 전략별 작업 매핑과 레지스트리 절차를 따른다.

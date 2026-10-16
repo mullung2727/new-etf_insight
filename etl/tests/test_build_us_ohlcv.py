@@ -6,6 +6,7 @@ import duckdb
 import pandas as pd
 
 from scripts.build_us_ohlcv import (
+    DEFAULT_FROM_DATE,
     ETF_TICKERS,
     NEW_YORK,
     UniverseItem,
@@ -13,6 +14,7 @@ from scripts.build_us_ohlcv import (
     _replace_split_history,
     apply_share_history,
     audit_gaps,
+    backfill_ohlcv,
     bar_cutoff_day,
     carry_forward_shares,
     ensure_etf,
@@ -457,6 +459,50 @@ class TestEtf(unittest.TestCase):
         stats = ensure_etf(self.con, "20260912", download, "20260912", tickers=("SPY",))
         self.assertEqual(stats["failed_tickers"], ["SPY"])
         self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='SPY'").fetchone()[0], 1)
+
+
+class TestBackfill(unittest.TestCase):
+    def setUp(self):
+        self.con = duckdb.connect(":memory:")
+        ensure_schema(self.con)
+        self.items = [UniverseItem("AAA", "Alpha", "NASDAQ")]
+
+    def tearDown(self):
+        self.con.close()
+
+    def test_b1_fills_early_history(self):
+        _insert_rows(self.con, [_row("20240102", "AAA", 10)])
+        download = lambda tickers, start, end: _frame({"AAA": [("2010-01-04", 10), ("2024-01-02", 20)]})
+        stats = backfill_ohlcv(self.con, self.items, "20100101", "20260912", download, "20260912")
+        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='AAA'").fetchone()[0], 2)
+        self.assertEqual(self.con.execute("SELECT close FROM ohlcv WHERE ticker='AAA' AND date='20240102'").fetchone()[0], 20)
+        self.assertEqual(stats["replaced"], ["AAA"])
+
+    def test_b3_truncated_response_preserved(self):
+        _insert_rows(self.con, [_row("20100104", "AAA", 10)])
+        download = lambda tickers, start, end: _frame({"AAA": [("2015-01-02", 20)]})
+        stats = backfill_ohlcv(self.con, self.items, "20100101", "20260912", download, "20260912")
+        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='AAA'").fetchone()[0], 1)
+        self.assertEqual(self.con.execute("SELECT close FROM ohlcv WHERE ticker='AAA'").fetchone()[0], 10)
+        self.assertEqual(stats["failed_tickers"], ["AAA"])
+
+    def test_b4_splits_recorded(self):
+        download = lambda tickers, start, end: _frame({"AAA": [("2012-05-01", 10)]}, splits={("AAA", "2012-05-01"): 2.0})
+        backfill_ohlcv(self.con, self.items, "20100101", "20260912", download, "20260912")
+        self.assertEqual(self.con.execute("SELECT ticker, date, ratio FROM splits").fetchall(), [("AAA", "20120501", 2.0)])
+
+    def test_b5_default_from_date(self):
+        self.assertEqual(DEFAULT_FROM_DATE, "20100101")
+
+    def test_b6_rejects_response_missing_recent_dates(self):
+        _insert_rows(self.con, [
+            _row("20100105", "AAA", 10), _row("20100106", "AAA", 10), _row("20100107", "AAA", 10),
+        ])
+        download = lambda tickers, start, end: _frame({"AAA": [("2010-01-04", 20), ("2010-01-05", 20), ("2010-01-06", 20)]})
+        stats = backfill_ohlcv(self.con, self.items, "20100101", "20260912", download, "20260912")
+        self.assertEqual(stats["failed_tickers"], ["AAA"])
+        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv WHERE ticker='AAA'").fetchone()[0], 3)
+        self.assertEqual(self.con.execute("SELECT close FROM ohlcv WHERE ticker='AAA' AND date='20100107'").fetchone()[0], 10)
 
 
 class TestBarCutoff(unittest.TestCase):

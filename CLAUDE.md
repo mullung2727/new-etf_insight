@@ -2,14 +2,17 @@
 
 ## Skills
 
+- 코드 작성·수정 전 `skills/muse-codegen/SKILL.md`를 먼저 읽는다. 한 줄 수정도 Muse에 맡기고, 검수·테스트·실행은 호출 에이전트가 직접 수행한다.
 - When running or debugging the ETF batch pipeline, first read `skills/new-etf-insight-batch/SKILL.md`.
 - When reading, modifying, or extending ETL pipeline code (modules, functions, data flow, schemas), first read `skills/new-etf-insight-etl-reference/SKILL.md`.
 - When starting, restarting, checking, or debugging local project servers, first read `skills/new-etf-insight-server-dev/SKILL.md`.
-- When writing or updating a PLAN/design doc (설계문서) before implementation, first read `skills/new-etf-insight-plan-writing/SKILL.md`.
+- When writing or updating a PLAN/design doc (설계문서) before implementation, **and when finishing an implementation based on a PLAN** (진행 체크·구현 차이·docs/done 이동), first read `skills/new-etf-insight-plan-writing/SKILL.md`.
 - When backtesting a trading strategy (일봉/분봉 데이터 조회, 청산 시뮬레이션, 표본 확장), first read `research/BACKTEST_DATA.md`.
 - 일봉 수익률·가드·비용 계산은 즉석 확인용 한 줄 계산이라도 `research/backtest_daily` 를 import 한다(재구현 금지). 수익률 표를 내기 전 `research/backtest_daily/README.md` 함수 목록과 대조: 상한가 `guards.limit_up_close`, 비용 `stats.COSTS`(기준 0.35%), 일별 가중 `stats.day_*`.
 - 분봉 계산도 즉석 확인용 한 줄 계산이라도 `research/backtest_minute` 를 import 한다(재구현 금지, 통계·비용·가드는 `research/backtest_daily`). 표를 내기 전 `research/BACKTEST_DATA.md` 맨 위 체크리스트(전일 정보 결합·유니버스·지정가 체결 `pre_open`·09:00 가격·청산)와 대조.
-- When committing, branching, opening a PR, or handling CodeRabbit review comments, first read `skills/new-etf-insight-git-workflow/SKILL.md`.
+- 어떤 종목 매수·매도가 어느 전략 주문인지 물으면 `skills/new-etf-insight-order-lookup/SKILL.md` 를 먼저 읽는다(로그 grep 금지, 원장 DB 조회).
+- When committing, branching, opening a PR, merging, or handling CodeRabbit review comments, first read `skills/new-etf-insight-git-workflow/SKILL.md`.
+- 같은 계좌 전략별 예산을 보거나 리셋할 때("8001 예산 리셋", "되돌림 예산 600만으로") `skills/new-etf-insight-strategy-budget/SKILL.md` 를 먼저 읽는다.
 
 ## 코드 탐색
 

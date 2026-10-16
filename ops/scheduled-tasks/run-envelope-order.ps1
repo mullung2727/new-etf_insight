@@ -4,6 +4,8 @@ $logDir = Join-Path $etlDir "logs"
 $date = Get-Date -Format "yyyyMMdd"
 New-Item -Force -ItemType Directory $logDir | Out-Null
 Set-Location $etlDir
+. (Join-Path $PSScriptRoot "lib_trading_day_guard.ps1")
+Exit-IfNonTradingDay -Tag "envelope-order"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = "1"
 # research.private.* lives at the repo root; scripts.* resolves from etl (cwd).

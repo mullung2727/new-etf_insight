@@ -72,6 +72,17 @@ class TestIterSources(_BackupCase):
             "broker/notes.db",
             "research/private/a/b.json",
             ".env",
+            "etl/exports/stock_reports/x.pdf",
+            "etl/runs/y.json",
+            "etl/scripts/close_bet.json",
+            ".claude/skills/rights-dip-funds/SKILL.md",
+            "research/rights_issue/cache/c.json",
+            "research/rights_issue/out/o.json",
+            "research/watchlist_pullback_strategy/minute_cache/m.json",
+            "broker/.token_cache.json",
+            "broker-web/.env.local",
+            "kiwoom-rest-api-spec.json",
+            "api/.env",
         ]
         drop = [
             "etl/db/x.sqlite3-wal",
@@ -82,6 +93,9 @@ class TestIterSources(_BackupCase):
             "broker/.venv/z.db",
             "etl/db/__pycache__/q.pyc",
             "broker/readme.txt",
+            "broker-web/.env.example",
+            "etl/.venv/x.env",
+            "node_modules/pkg/.env",
         ]
         for rel in keep + drop:
             self._write(rel)

@@ -38,7 +38,9 @@ reader before composing the Discord report.
   - Purpose: build same-day Kiwoom candidates and write D+1 open-rise probability scores to `llm_scores` (feeds the 15:19 close-bet order window).
 - `daily-minute-bars-backfill.md`
   - Purpose: backfill all-symbol KRX one-minute bars recent-first with validation and resume state.
-- `orderbook-recorder` (`docs/SPEC_ORDERBOOK_SNAPSHOT_RECORDER.md`)
+- `daily-us-facts.md`
+  - Purpose: archive SEC XBRL companyfacts raw to D: and update all-account US financial statement versions (`us_facts.sqlite3`).
+- `orderbook-recorder` (`docs/done/SPEC_ORDERBOOK_SNAPSHOT_RECORDER.md`)
   - Purpose: record KRX 10-level orderbook snapshots on a one-second grid during the morning and closing windows.
 - `daily-new-etf-insight-batch.md`
   - Purpose: run the ETF daily insight pipeline and sync DuckDB.
@@ -58,6 +60,8 @@ reader before composing the Discord report.
   - Purpose: rebound target-sell worker 09:00-15:31 (market close at 15:19:20, auction retry 15:20:10).
 - `rebound-verify.md`
   - Purpose: confirm rebound fills at 16:00, record realized P/L, and warn at -20% (no orders).
+- `daily-etf-holdings` (`docs/done/PLAN_ETF_HOLDINGS_WATCH.md`)
+  - Purpose: crawl TIME 4 ETF daily holdings, detect entry/exit/5%/3% events, alert to dedicated Discord channel.
 
 See `openclaw-cron.registry.json` for the active schedules, Windows task
 bindings, and Discord webhook env key. Do not duplicate schedules in this README.
@@ -111,6 +115,8 @@ project scripts directly and the scripts report through `DISCORD_WEBHOOK_URL`.
   `ops/scheduled-tasks/run-daily-trading-result.ps1` (눌림목·종가베팅 실제 매도 통합 보고).
 - `\new-etf_insight\daily-minute-bars-backfill` — daily 02:00–05:30,
   `ops/scheduled-tasks/run-minute-bars-backfill.ps1`.
+- `\new-etf_insight\daily-us-facts` — daily 04:00,
+  `ops/scheduled-tasks/run-us-facts.ps1`.
 - `\OpenClaw\orderbook-recorder` — Mon-Fri 08:44 and 14:59,
   `ops/scheduled-tasks/run-orderbook-recorder.ps1`.
 - `\new-etf_insight\high52-order` — Mon-Fri 15:10 start (orders 15:19:10),

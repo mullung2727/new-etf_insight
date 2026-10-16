@@ -1,6 +1,6 @@
 ﻿# 호가 스냅샷 수집기 런처 — 평일 08:44(오전 구간), 14:59(오후 구간). 같은 러너를 두 번 부른다.
 # 구간은 스크립트가 현재 시각으로 고른다. 설정: etl/scripts/orderbook_recorder.json (enabled=false 면 즉시 종료).
-# 명세: docs/SPEC_ORDERBOOK_SNAPSHOT_RECORDER.md §11
+# 명세: docs/done/SPEC_ORDERBOOK_SNAPSHOT_RECORDER.md §11
 $ErrorActionPreference = "Stop"
 $etlDir = "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl"
 $logDir = Join-Path $etlDir "logs"

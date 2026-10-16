@@ -365,6 +365,64 @@
       }
     },
     {
+      "id": "d1085a5a-ea42-48a5-b39e-dc0a8ab1596b",
+      "name": "daily-us-facts",
+      "description": "Daily 04:00 KST SEC XBRL companyfacts raw archive (D:/sec_edgar) + us_facts.sqlite3 update for companies with new periodic filings",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 4 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-us-facts.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-us-facts",
+        "xmlFile": "ops/scheduled-tasks/us-facts.xml",
+        "runnerScript": "ops/scheduled-tasks/run-us-facts.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "f1dcd966-8184-4c55-85ad-5134b779f6b1",
+      "name": "daily-etf-holdings",
+      "description": "Weekdays 16:30 KST TIME 4 ETF daily holdings crawl (timefolioetf PDF) + conviction events (5% in / 3% out) alert to dedicated Discord channel",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "docs/done/PLAN_ETF_HOLDINGS_WATCH.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-etf-holdings",
+        "xmlFile": "ops/scheduled-tasks/etf-holdings.xml",
+        "runnerScript": "ops/scheduled-tasks/run-etf-holdings.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "55e59971-07e5-400a-b9ea-1d6d0b126a43",
       "name": "daily-trading-result",
       "description": "Mon-Fri 16:20 report actual filled sells and broker-authoritative realized P/L for pullback and close-bet",
@@ -663,6 +721,153 @@
         "channel": "discord",
         "to": "1513799139715190854"
       }
+    },
+    {
+      "id": "7e3a1f52-9c4d-4b6e-a8f2-5d0c7e1b9a33",
+      "name": "daily-swing-pick",
+      "description": "Weekdays 19:00 KST swing candidate top-3 (telegram/youtube/report/high52 → Jev + code checklist), report to Discord batch channel",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 19 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-swing-pick.md",
+      "timeoutSeconds": 3600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-swing-pick",
+        "xmlFile": "ops/scheduled-tasks/swing-pick.xml",
+        "runnerScript": "ops/scheduled-tasks/run-swing-pick.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_BATCH_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "7d4e9a1b-3f2c-4d8e-a5b6-c7d8e9f0a1b2",
+      "name": "orderbook-research-recorder",
+      "description": "Mon-Fri 08:20; research orderbook(0D)+trade(0B) recorder for prior-day volume top30, 08:30-20:00, dedicated WS on :8001 appkey; stops itself if broker WS drops (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/orderbook-research-recorder.md",
+      "timeoutSeconds": 43200,
+      "runNote": "Windows Task Scheduler is authoritative. User decision 2026-10-13.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "orderbook-research-recorder",
+        "xmlFile": "ops/scheduled-tasks/orderbook-research-recorder.xml",
+        "runnerScript": "ops/scheduled-tasks/run-orderbook-research-recorder.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "9c2b7e5f-1a3d-4c6b-8e9f-0a1b2c3d4e5f",
+      "name": "orderbook-archive",
+      "description": "Mon-Fri 20:15; convert finished daily orderbook sqlite (C:) to parquet on D:, verify, then delete C: copy",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "15 20 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/orderbook-archive.md",
+      "timeoutSeconds": 3600,
+      "runNote": "Windows Task Scheduler is authoritative. User decision 2026-10-13.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "orderbook-archive",
+        "xmlFile": "ops/scheduled-tasks/orderbook-archive.xml",
+        "runnerScript": "ops/scheduled-tasks/run-orderbook-archive.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "f1986f85-9725-4e1a-bd83-3b137210c5a1",
+      "name": "msig-select",
+      "description": "Mon-Fri 08:40 and 09:15 KST Msig select batch",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": ["40 8 * * 1-5", "15 9 * * 1-5"],
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/msig-select.md",
+      "timeoutSeconds": 1800,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "msig-select",
+        "xmlFile": "ops/scheduled-tasks/msig-select.xml",
+        "runnerScript": "ops/scheduled-tasks/run-msig-select.ps1",
+        "delivery": {"kind": "discordWebhook", "env": "DISCORD_WEBHOOK_URL"}
+      },
+      "delivery": {"mode": "announce", "channel": "discord", "to": "1513799139715190854"}
+    },
+    {
+      "id": "41b27ab1-8d0d-4a08-9e19-2a4b82d1e366",
+      "name": "msig-exec",
+      "description": "Mon-Fri 09:25 KST Msig execution batch",
+      "enabled": true,
+      "schedule": {"kind": "cron", "expr": "25 9 * * 1-5", "tz": "Asia/Seoul"},
+      "instructionFile": "ops/batches/msig-exec.md",
+      "timeoutSeconds": 25200,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "msig-exec",
+        "xmlFile": "ops/scheduled-tasks/msig-exec.xml",
+        "runnerScript": "ops/scheduled-tasks/run-msig-exec.ps1",
+        "delivery": {"kind": "discordWebhook", "env": "DISCORD_WEBHOOK_URL"}
+      },
+      "delivery": {"mode": "announce", "channel": "discord", "to": "1513799139715190854"}
+    },
+    {
+      "id": "aa293fb9-3d40-48a2-bf87-1a810d056e0a",
+      "name": "msig-monitor",
+      "description": "Mon-Fri 16:00 KST Msig monitor batch",
+      "enabled": true,
+      "schedule": {"kind": "cron", "expr": "0 16 * * 1-5", "tz": "Asia/Seoul"},
+      "instructionFile": "ops/batches/msig-monitor.md",
+      "timeoutSeconds": 1800,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "msig-monitor",
+        "xmlFile": "ops/scheduled-tasks/msig-monitor.xml",
+        "runnerScript": "ops/scheduled-tasks/run-msig-monitor.ps1",
+        "delivery": {"kind": "discordWebhook", "env": "DISCORD_WEBHOOK_URL"}
+      },
+      "delivery": {"mode": "announce", "channel": "discord", "to": "1513799139715190854"}
     }
   ]
 }
