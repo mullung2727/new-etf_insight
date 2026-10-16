@@ -6,7 +6,7 @@ description: Use when the user asks to view or reset per-strategy budgets on a s
 # 전략별 예산 조회·리셋
 
 같은 계좌(:8001)의 전략마다 예산 = config `capital`(시드) + `capital_since` 이후 확정 손익.
-각 전략은 안 쓴 몫을 `etl/db/cash_reservations.json` 에 예약하고, 남의 예약은 못 쓴다. 설계: `docs/PLAN_STRATEGY_BUDGET.md`.
+각 전략은 안 쓴 몫을 `etl/db/cash_reservations.json` 에 예약하고, 남의 예약은 못 쓴다. 설계: `docs/done/PLAN_STRATEGY_BUDGET.md`.
 
 ## 조회
 
