@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -22,6 +23,28 @@ from new_etf_insight.models import FilingCandidate
 
 
 LIST_API_URL = "https://opendart.fss.or.kr/api/list.json"
+
+_KEY_RE = re.compile(r"crtfc_key\s*=\s*[^&\s'\";]+", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
+_MAX_ERROR_TEXT = 500
+
+
+class DartAPIError(RuntimeError):
+    """DART JSON 목록 API typed 오류. status(013 제외 비-000·http_error 등) + sanitized message."""
+
+    def __init__(self, status: Any, message: Any) -> None:
+        self.status = status
+        self.message = message
+        super().__init__(f"DART API 오류: status={status}, message={message}")
+
+
+def _sanitize_dart_error(text: object, api_key: str | None = None) -> str:
+    s = str(text)
+    if api_key:
+        s = s.replace(api_key, "<redacted>")
+    s = _KEY_RE.sub("crtfc_key=<redacted>", s)
+    s = _URL_RE.sub("<url-redacted>", s)
+    return s[:_MAX_ERROR_TEXT]
 
 
 def get_api_key() -> str:
@@ -50,18 +73,35 @@ def fetch_dart_list(
 ) -> list[dict[str, Any]]:
     """DART JSON 목록 엔드포인트 공용 GET.
 
-    crtfc_key 주입 → raise_for_status → json. status 000이면 list, 그 외(013 무자료 포함)는 [].
-    status 구분이 필요 없는 단순 목록 API용(fnltt* 등). status를 raise로 구분해야 하는
-    호출부(list.json 페이지네이션 등)는 이 헬퍼 대신 직접 처리.
+    crtfc_key 주입 → raise_for_status → json. status 000이면 list, 013(무자료)만 [].
+    014/020/인증(901 등)·기타 비-000은 DartAPIError, 000인데 list 누락·비-리스트도
+    malformed으로 DartAPIError. HTTP 예외는 URL·키를 지우고 DartAPIError(http_error)로
+    from None. status를 raise로 구분해야 하는 호출부용. ETF list.json 페이지네이션
+    (fetch_filing_page/fetch_all_filings)은 이 헬퍼를 쓰지 않고 직접 처리.
     session은 requests.Session 주입용(없으면 모듈 requests).
     """
     http = session or requests
-    resp = http.get(endpoint, params={"crtfc_key": api_key, **params}, timeout=timeout)
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("status") != "000":
+    try:
+        resp = http.get(endpoint, params={"crtfc_key": api_key, **params}, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+    except DartAPIError:
+        raise
+    except Exception as exc:
+        raise DartAPIError("http_error", _sanitize_dart_error(exc, api_key)) from None
+    if not isinstance(data, dict):
+        raise DartAPIError("unknown", "malformed payload: non-dict json")
+    status = data.get("status")
+    if status == "013":
         return []
-    return data.get("list") or []
+    if status != "000":
+        raise DartAPIError(status, _sanitize_dart_error(data.get("message"), api_key))
+    if "list" not in data or data.get("list") is None:
+        raise DartAPIError("000", "malformed payload: missing list")
+    lst = data.get("list")
+    if not isinstance(lst, list):
+        raise DartAPIError("000", "malformed payload: list is not a list")
+    return lst
 
 
 def fetch_filing_page(
@@ -113,5 +153,3 @@ def fetch_all_filings(
             break
 
     return filings, last_payload
-
-
