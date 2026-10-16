@@ -56,6 +56,7 @@ class SlicedRunTest(unittest.TestCase):
         api.quotes["sell"] = 100
         api.quotes["buy"] = 99
         run_sliced(TODAY, [order(qty=3)], api, self.clock,
+                   on_event=lambda *a, **k: None,
                    slices=("09:30:00",), last_cut="09:31:00")
         self.assertFalse(any(call[0] == "place_limit" for call in api.calls))
 
@@ -73,6 +74,7 @@ class SlicedRunTest(unittest.TestCase):
         api.quotes["buy"] = 99
         clock = FakeClock(ch.at(TODAY, "09:30:00"))
         result = run_sliced(TODAY, [order(qty=3)], api, clock,
+                            on_event=lambda *a, **k: None,
                             slices=("09:30:00",), last_cut="09:31:00")
         self.assertEqual(result["A"], 2)
 
@@ -87,6 +89,7 @@ class SlicedRunTest(unittest.TestCase):
                  "market_at": "10:05:00", "cancel_only_at": "10:04:00"}
         clock = FakeClock(ch.at(TODAY, "10:00:00"))
         ch.run_chase(TODAY, [state], api, clock, first_at="10:00:00",
+                     on_event=lambda *a, **k: None,
                      market_at="10:05:00", end_at="10:10:00")
         self.assertFalse(any(call[0] == "place_market" for call in api.calls))
         self.assertIn("123", api.cancelled)
@@ -100,6 +103,7 @@ class SlicedRunTest(unittest.TestCase):
 
         api = VanishedApi()
         result = run_sliced(TODAY, [order(qty=6)], api, self.clock,
+                            on_event=lambda *a, **k: None,
                             slices=("09:30:00", "09:32:00"), last_cut="09:33:00",
                             step_seconds=30)
         self.assertEqual(result["A"], 6)
@@ -115,6 +119,7 @@ class SlicedRunTest(unittest.TestCase):
 
         api = FilledVanishedApi()
         result = run_sliced(TODAY, [order(qty=3)], api, self.clock,
+                            on_event=lambda *a, **k: None,
                             slices=("09:30:00",), last_cut="09:31:00")
         self.assertEqual(result["A"], 0)
 
@@ -140,6 +145,7 @@ class SlicedRunTest(unittest.TestCase):
     def test_cancel_only_no_market(self):
         self.api.quotes["sell"] = 99
         result = run_sliced(TODAY, [order(qty=3)], self.api, self.clock,
+                            on_event=lambda *a, **k: None,
                             slices=("09:30:00",), last_cut="09:31:00",
                             step_seconds=30)
         self.assertEqual(result["A"], 3)
@@ -151,6 +157,7 @@ class SlicedRunTest(unittest.TestCase):
         self.api.quotes["sell"] = 100
         self.api.books["sell"] = {}
         result = run_sliced(TODAY, [order(qty=3)], self.api, self.clock,
+                            on_event=lambda *a, **k: None,
                             slices=("09:30:00", "09:32:00"), last_cut="09:33:00",
                             step_seconds=30)
         self.assertEqual(result["A"], 3)
@@ -159,6 +166,7 @@ class SlicedRunTest(unittest.TestCase):
     def test_final_market_only_last(self):
         self.api.quotes["sell"] = 100
         run_sliced(TODAY, [order(qty=4, final=True)], self.api, self.clock,
+                   on_event=lambda *a, **k: None,
                    slices=("09:30:00",), last_cut="09:31:00",
                    final_market_at="09:32:00", end_at="09:34:00",
                    step_seconds=30)
@@ -167,12 +175,14 @@ class SlicedRunTest(unittest.TestCase):
     def test_no_market_after_end(self):
         self.clock.t = ch.at(TODAY, "15:20:00")
         run_sliced(TODAY, [order(qty=4, final=True)], self.api, self.clock,
+                   on_event=lambda *a, **k: None,
                    slices=("09:30:00",), last_cut="15:10:00",
                    final_market_at="15:15:00", end_at="15:20:00")
         self.assertFalse(any(p[0] == "place_market" for p in self.api.placed))
 
     def test_returns_remaining(self):
         result = run_sliced(TODAY, [order(qty=4)], self.api, self.clock,
+                            on_event=lambda *a, **k: None,
                             slices=("09:31:00",), last_cut="09:32:00")
         self.assertEqual(result, {"A": 4})
 
@@ -180,6 +190,7 @@ class SlicedRunTest(unittest.TestCase):
         self.api.books["sell"]["999"] = {"ticker": "000001", "oso_qty": 5,
                                           "ord_price": 10, "order_no": "999"}
         run_sliced(TODAY, [order(qty=2)], self.api, self.clock,
+                   on_event=lambda *a, **k: None,
                    slices=("09:30:00",), last_cut="09:31:00")
         self.assertIn("999", self.api.books["sell"])
         self.assertNotIn("999", self.api.cancelled)
@@ -187,6 +198,7 @@ class SlicedRunTest(unittest.TestCase):
     def test_sell_first_buy_cash_capped(self):
         os = [order("B", "buy", 10), order("S", "sell", 10)]
         run_sliced(TODAY, os, self.api, self.clock, slices=("09:30:00",),
+                   on_event=lambda *a, **k: None,
                    last_cut="09:31:00", cash_fn=lambda: 300)
         placed = [x for x in self.api.calls if x[0] == "place_limit"]
         self.assertEqual([x[1] for x in placed[:2]], ["sell", "buy"])
@@ -194,6 +206,7 @@ class SlicedRunTest(unittest.TestCase):
 
     def test_cash_lookup_fail_no_buy(self):
         run_sliced(TODAY, [order("B", "buy", 10)], self.api, self.clock,
+                   on_event=lambda *a, **k: None,
                    slices=("09:30:00",), last_cut="09:31:00", cash_fn=lambda: None)
         self.assertFalse(any(x[0] == "place_limit" and x[1] == "buy"
                              for x in self.api.calls))
