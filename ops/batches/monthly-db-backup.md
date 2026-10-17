@@ -16,5 +16,6 @@ this file with host-default shell decoding, especially Windows PowerShell 5.1
 ## Purpose
 
 Mon 05:30; DB backup to the external drive (overwrite) via
-`ops/scheduled-tasks/run-db-backup.ps1`. The runner sends its own
-success/failure/drive-missing notification. Trigger is weekly despite the name.
+`ops/scheduled-tasks/run-db-backup.ps1`, which runs `etl/scripts/backup_db.py` and
+propagates its exit code. `backup_db.py` sends the success/failure/drive-missing
+notification. Trigger is weekly despite the name.
