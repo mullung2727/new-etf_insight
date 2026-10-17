@@ -145,13 +145,19 @@ class SttFailureAlertTest(unittest.TestCase):
     def test_expected_only_filtered_out(self):
         pairs = [
             ("x", ["stt_error:yt-dlp 실패 x: ERROR: [youtube] x: Private video"]),
-            ("y", ["stt_error:members-only video, skipping"]),
-            ("z", ["stt_error:only available to this channel's members"]),
+            ("y", ["stt_error:yt-dlp 실패 y: ERROR: [youtube] y: This video is available to this channel's members on level: L"]),
         ]
         failures = _unexpected_stt_failures(pairs)
         self.assertEqual(failures, [])
         self.assertIsNone(
-            _stt_failure_message(failures, 3, "2026-10-15", "2026-10-17")
+            _stt_failure_message(failures, 2, "2026-10-15", "2026-10-17")
+        )
+
+    def test_not_members_only_still_alerted(self):
+        pairs = [("w", ["stt_error:not members-only, other failure"])]
+        self.assertEqual(
+            _unexpected_stt_failures(pairs),
+            [("w", "not members-only, other failure")],
         )
 
     def test_non_stt_warnings_ignored_and_prefix_stripped(self):
