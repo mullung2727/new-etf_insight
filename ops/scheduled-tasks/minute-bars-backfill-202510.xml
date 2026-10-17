@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!-- Register:
+     Register-ScheduledTask -Xml (Get-Content -Path minute-bars-backfill-202510.xml -Raw -Encoding UTF8) -TaskName "minute-bars-backfill-202510" -TaskPath "\new-etf_insight\" -Force
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>One-off KRX 1-minute bar backfill for 2025-10, daily 20:00 up to 240 min until complete (2026-10-16)</Description>
+    <URI>\new-etf_insight\minute-bars-backfill-202510</URI>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-10-16T20:00:00</StartBoundary>
+      <EndBoundary>2026-10-23T23:59:00</EndBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT4H20M</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-minute-bars-backfill.ps1" -MaxRuntimeMin 240 -Month 202510</Arguments>
+    </Exec>
+  </Actions>
+</Task>

@@ -365,6 +365,35 @@
       }
     },
     {
+      "id": "e7b3c9d1-5f2a-4e6b-8d1c-3f9a0e7b2c4d",
+      "name": "minute-bars-backfill-202510",
+      "description": "One-off 2025-10 KRX 1-minute bar backfill, daily 20:00 KST up to 240 min until month complete (until 2026-10-23)",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 20 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-minute-bars-backfill.md",
+      "timeoutSeconds": 15600,
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "minute-bars-backfill-202510",
+        "xmlFile": "ops/scheduled-tasks/minute-bars-backfill-202510.xml",
+        "runnerScript": "ops/scheduled-tasks/run-minute-bars-backfill.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "d1085a5a-ea42-48a5-b39e-dc0a8ab1596b",
       "name": "daily-us-facts",
       "description": "Daily 04:00 KST SEC XBRL companyfacts raw archive (D:/sec_edgar) + us_facts.sqlite3 update for companies with new periodic filings",
@@ -868,6 +897,456 @@
         "delivery": {"kind": "discordWebhook", "env": "DISCORD_WEBHOOK_URL"}
       },
       "delivery": {"mode": "announce", "channel": "discord", "to": "1513799139715190854"}
+    },
+    {
+      "id": "06fdccd6-709f-4a33-8912-f7bcad1ada0a",
+      "name": "rights-dip-detect",
+      "description": "Mon-Fri 08:20; rights-dip detect: KIND rights-offering filings to candidates ledger (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rights-dip.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rights-dip-detect",
+        "xmlFile": "ops/scheduled-tasks/rights-dip-detect.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rights-dip-detect.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "3ce06d3f-b57a-4c1b-9bdf-8f99b4aaf2c4",
+      "name": "rights-dip-detect-pm",
+      "description": "Mon-Fri 18:00; rights-dip detect evening run (-Mode pm, no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 18 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rights-dip.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rights-dip-detect-pm",
+        "xmlFile": "ops/scheduled-tasks/rights-dip-detect-pm.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rights-dip-detect.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "1caf11e3-9b6b-4167-8d9b-51d61672feee",
+      "name": "rights-dip-order",
+      "description": "Mon-Fri 08:40 start; rights-dip order batch on the existing account broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "40 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rights-dip.md",
+      "timeoutSeconds": 3600,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rights-dip-order",
+        "xmlFile": "ops/scheduled-tasks/rights-dip-order.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rights-dip-order.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "365521df-8a99-4a82-ab30-5592771c746f",
+      "name": "rights-dip-expire",
+      "description": "Mon-Fri 14:58 start; rights-dip expiry sells on the existing account broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "58 14 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rights-dip.md",
+      "timeoutSeconds": 2400,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rights-dip-expire",
+        "xmlFile": "ops/scheduled-tasks/rights-dip-expire.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rights-dip-expire.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "d3695777-98e4-498a-9db5-90b493186b22",
+      "name": "rights-dip-verify",
+      "description": "Mon-Fri 16:00; rights-dip fill verify (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rights-dip.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rights-dip-verify",
+        "xmlFile": "ops/scheduled-tasks/rights-dip-verify.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rights-dip-verify.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "27b8d4c6-75d7-42ce-aafc-0b61843d0d7e",
+      "name": "rights-dip-monitor",
+      "description": "Mon-Fri 17:00; rights-dip monitor (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 17 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/rights-dip.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "rights-dip-monitor",
+        "xmlFile": "ops/scheduled-tasks/rights-dip-monitor.xml",
+        "runnerScript": "ops/scheduled-tasks/run-rights-dip-monitor.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "1540965d-00fd-4f29-9053-e12dd64b5775",
+      "name": "us-daily",
+      "description": "Tue-Sat 11:00 KST; US daily OHLCV/ETF + FRED macro collection and Discord report",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 11 * * 2-6",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/us-daily.md",
+      "timeoutSeconds": 3600,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "us-daily",
+        "xmlFile": "ops/scheduled-tasks/us-daily.xml",
+        "runnerScript": "ops/scheduled-tasks/run-us-daily.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "f0a18dd0-ba56-49f6-88e4-d6f1efac02f1",
+      "name": "orderbook-recorder",
+      "description": "Mon-Fri 08:44 and 14:59; orderbook snapshot recorder (08:45-10:00, 15:00-15:30, KRX 0D 1s grid, no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "44 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/orderbook-recorder.md",
+      "timeoutSeconds": 5400,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it). Second trigger Mon-Fri 14:59.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "orderbook-recorder",
+        "xmlFile": "ops/scheduled-tasks/orderbook-recorder.xml",
+        "runnerScript": "ops/scheduled-tasks/run-orderbook-recorder.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "3c2ec1d8-84c0-4de2-a75f-a23811a6e58d",
+      "name": "jevq-exit",
+      "description": "Mon-Fri 08:55; private strategy (jevq) batch on broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "55 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/jevq.md",
+      "timeoutSeconds": 2700,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "jevq-exit",
+        "xmlFile": "research/private/jev_quant_live/ops/jevq-exit.xml",
+        "runnerScript": "research/private/jev_quant_live/ops/run-jevq-exit.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "b8df7881-0164-4152-9f2f-d7cc62fefcc7",
+      "name": "jevq-report",
+      "description": "Mon-Fri 09:10; private strategy (jevq) report (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10 9 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/jevq.md",
+      "timeoutSeconds": 300,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "jevq-report",
+        "xmlFile": "research/private/jev_quant_live/ops/jevq-report.xml",
+        "runnerScript": "research/private/jev_quant_live/ops/run-jevq-report.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "1cf85ec5-290a-4207-9852-d5aa1e4a30d9",
+      "name": "jevq-outcomes",
+      "description": "Mon-Fri 09:20; private strategy (jevq) outcomes (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 9 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/jevq.md",
+      "timeoutSeconds": 600,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "jevq-outcomes",
+        "xmlFile": "research/private/jev_quant_live/ops/jevq-outcomes.xml",
+        "runnerScript": "research/private/jev_quant_live/ops/run-jevq-outcomes.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "31f96c02-7c6d-4d66-af03-2fa33066e6c9",
+      "name": "jevq-prep",
+      "description": "Mon-Fri 15:10; private strategy (jevq) prep (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10 15 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/jevq.md",
+      "timeoutSeconds": 480,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "jevq-prep",
+        "xmlFile": "research/private/jev_quant_live/ops/jevq-prep.xml",
+        "runnerScript": "research/private/jev_quant_live/ops/run-jevq-prep.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "6d4f5bdc-b711-4d78-bfdd-a6fc67a3be09",
+      "name": "jevq-order",
+      "description": "Mon-Fri 15:18; private strategy (jevq) batch on broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "18 15 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/jevq.md",
+      "timeoutSeconds": 180,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "jevq-order",
+        "xmlFile": "research/private/jev_quant_live/ops/jevq-order.xml",
+        "runnerScript": "research/private/jev_quant_live/ops/run-jevq-order.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "e8f8caf3-4a04-4685-871b-40df9024aca4",
+      "name": "jevq-buy-ah",
+      "description": "Mon-Fri 15:18; private strategy (jevq) batch on broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "18 15 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/jevq.md",
+      "timeoutSeconds": 1200,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "jevq-buy-ah",
+        "xmlFile": "research/private/jev_quant_live/ops/jevq-buy-ah.xml",
+        "runnerScript": "research/private/jev_quant_live/ops/run-jevq-buy-ah.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "3a2c2d0e-73e1-40c9-9d72-39bc221ac193",
+      "name": "jevq-add-ah",
+      "description": "Mon-Fri 16:00; private strategy (jevq) batch on broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/jevq.md",
+      "timeoutSeconds": 15000,
+      "runNote": "Windows Task Scheduler is authoritative. Moved into the registry 2026-10-17 (was registered outside it).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "jevq-add-ah",
+        "xmlFile": "research/private/jev_quant_live/ops/jevq-add-ah.xml",
+        "runnerScript": "research/private/jev_quant_live/ops/run-jevq-add-ah.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
     }
   ]
 }
