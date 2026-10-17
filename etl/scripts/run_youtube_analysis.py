@@ -18,10 +18,12 @@ if hasattr(sys.stdout, "reconfigure"):
 
 try:
     from scripts.collect_youtube import DEFAULT_DB, ensure_schema as ensure_videos_schema
+    from scripts.notify import notify
     from scripts.youtube_channels import load_auto_summary_channels
     from scripts.youtube_langgraph.youtube_analysis_langgraph import run_video
 except ImportError:
     from collect_youtube import DEFAULT_DB, ensure_schema as ensure_videos_schema
+    from notify import notify
     from youtube_channels import load_auto_summary_channels
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -34,6 +36,52 @@ except ImportError:
 """
 MIN_TRANSCRIPT_CHARS = 2000
 MAX_TRANSCRIPT_CHARS = 35000
+
+
+_STT_EXPECTED = (
+    "Private video",
+    "members-only",
+    "available to this channel's members",
+)
+
+_STT_ERROR_PREFIX = "stt_error:"
+
+
+def _unexpected_stt_failures(
+    pairs: list[tuple[str, list[str]]],
+) -> list[tuple[str, str]]:
+    """(video_id, warnings) 목록에서 알림 대상 STT 실패만 추출한다."""
+    failures: list[tuple[str, str]] = []
+    for video_id, warnings in pairs:
+        for w in warnings:
+            if not w.startswith(_STT_ERROR_PREFIX):
+                continue
+            msg = w[len(_STT_ERROR_PREFIX):]
+            if any(s in msg for s in _STT_EXPECTED):
+                continue
+            failures.append((video_id, msg))
+    return failures
+
+
+def _stt_failure_message(
+    failures: list[tuple[str, str]],
+    total: int,
+    date_from: str,
+    date_to: str,
+) -> str | None:
+    """STT 실패 디스코드 알림문. 실패 없으면 None."""
+    if not failures:
+        return None
+    lines = [
+        f"⚠ [유튜브 분석] STT 실패 {len(failures)}/{total}건 "
+        f"({date_from}~{date_to})"
+    ]
+    for video_id, msg in failures[:3]:
+        snippet = msg.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+        lines.append(f"- {video_id}: {snippet[:150]}")
+    if len(failures) > 3:
+        lines.append(f"… 외 {len(failures) - 3}건")
+    return "\n".join(lines)
 
 
 def _date_from_iso(s: str) -> dt.date:
@@ -178,6 +226,7 @@ def main() -> int:
         con.close()
 
     ok = skipped = errors = 0
+    stt_warnings: list[tuple[str, list[str]]] = []
     for channel_id, video_id in videos:
         try:
             result = run_video(
@@ -187,6 +236,7 @@ def main() -> int:
                 force=args.force,
                 stt_enabled=stt_enabled,
             )
+            stt_warnings.append((video_id, result.get("warnings") or []))
             if result.get("skip"):
                 skipped += 1
             elif result.get("persisted"):
@@ -210,6 +260,10 @@ def main() -> int:
         f"auto_only={args.auto_only} videos={len(videos)} "
         f"ok={ok} skipped={skipped} errors={errors}"
     )
+    failures = _unexpected_stt_failures(stt_warnings)
+    alert = _stt_failure_message(failures, len(videos), date_from, date_to)
+    if alert is not None:
+        notify(alert)
     return 1 if errors else 0
 
 

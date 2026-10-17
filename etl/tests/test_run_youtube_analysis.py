@@ -7,6 +7,8 @@ import unittest
 from scripts.run_youtube_analysis import (
     MAX_TRANSCRIPT_CHARS,
     MIN_TRANSCRIPT_CHARS,
+    _stt_failure_message,
+    _unexpected_stt_failures,
     list_videos,
 )
 
@@ -132,6 +134,56 @@ class ListVideosTest(unittest.TestCase):
             pending_only=True,
         )
         self.assertEqual(vids, [])
+
+
+class SttFailureAlertTest(unittest.TestCase):
+    def test_no_failures_returns_none(self):
+        self.assertIsNone(
+            _stt_failure_message([], 13, "2026-10-15", "2026-10-17")
+        )
+
+    def test_expected_only_filtered_out(self):
+        pairs = [
+            ("x", ["stt_error:yt-dlp 실패 x: ERROR: [youtube] x: Private video"]),
+            ("y", ["stt_error:members-only video, skipping"]),
+            ("z", ["stt_error:only available to this channel's members"]),
+        ]
+        failures = _unexpected_stt_failures(pairs)
+        self.assertEqual(failures, [])
+        self.assertIsNone(
+            _stt_failure_message(failures, 3, "2026-10-15", "2026-10-17")
+        )
+
+    def test_non_stt_warnings_ignored_and_prefix_stripped(self):
+        pairs = [("vid1", ["stt_error:boom", "plain warning"])]
+        self.assertEqual(_unexpected_stt_failures(pairs), [("vid1", "boom")])
+
+    def test_four_key_invalid_shows_three_plus_rest(self):
+        pairs = [
+            (f"vid{i}", [f"stt_error:Gemini STT 실패 vid{i}: API_KEY_INVALID"])
+            for i in range(4)
+        ]
+        failures = _unexpected_stt_failures(pairs)
+        self.assertEqual(len(failures), 4)
+        msg = _stt_failure_message(failures, 13, "2026-10-15", "2026-10-17")
+        assert msg is not None
+        lines = msg.split("\n")
+        self.assertEqual(
+            lines[0], "⚠ [유튜브 분석] STT 실패 4/13건 (2026-10-15~2026-10-17)"
+        )
+        self.assertEqual(len(lines), 5)
+        for i in range(3):
+            self.assertTrue(lines[1 + i].startswith(f"- vid{i}: "))
+        self.assertEqual(lines[4], "… 외 1건")
+
+    def test_long_message_truncated_and_newlines_removed(self):
+        failures = [("vid1", "에러\n상세 " + "가" * 200)]
+        msg = _stt_failure_message(failures, 1, "2026-10-15", "2026-10-15")
+        assert msg is not None
+        example = msg.split("\n")[1]
+        body = example.split(": ", 1)[1]
+        self.assertEqual(len(body), 150)
+        self.assertNotIn("\n", body)
 
 
 if __name__ == "__main__":
