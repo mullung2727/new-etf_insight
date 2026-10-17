@@ -1348,5 +1348,96 @@
         "to": "1513799139715190854"
       }
     }
+    ,
+    {
+      "id": "86c464ed-b0cd-4a6c-a6f4-fb081be03fa8",
+      "name": "daily-financial-indicators",
+      "description": "Daily 19:00; DART periodic-report financial indicators and key accounts into financial_indicators.sqlite3, Discord report only on days with filings",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 19 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-financial-indicators.md",
+      "timeoutSeconds": 3600,
+      "runNote": "Windows Task Scheduler is authoritative. Added to the registry 2026-10-17 (was registered without an entry).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-financial-indicators",
+        "xmlFile": "ops/scheduled-tasks/financial-indicators.xml",
+        "runnerScript": "ops/scheduled-tasks/run-financial-indicators.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "1e6f046f-5be1-40ac-af8d-6505fcdb511b",
+      "name": "daily-theme-alert-night",
+      "description": "Daily 21:00; collect telegram then theme re-emergence alert (docs/PLAN_THEME_REEMERGENCE_ALERT.md)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 21 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/daily-theme-alert-night.md",
+      "timeoutSeconds": 3600,
+      "runNote": "Windows Task Scheduler is authoritative. Added to the registry 2026-10-17 (was registered without an entry).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-theme-alert-night",
+        "xmlFile": "ops/scheduled-tasks/theme-alert-night.xml",
+        "runnerScript": "ops/scheduled-tasks/run-theme-alert-night.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "6cf10c63-8f75-4c91-8a90-cab0e1e70c0c",
+      "name": "monthly-db-backup",
+      "description": "Mon 05:30; DB backup to external drive (overwrite), script notifies success/failure/drive missing",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 5 * * 1",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/monthly-db-backup.md",
+      "timeoutSeconds": 7200,
+      "runNote": "Windows Task Scheduler is authoritative. Added to the registry 2026-10-17 (was registered without an entry). Name says monthly but the trigger is weekly (Mon 05:30).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "monthly-db-backup",
+        "xmlFile": "ops/scheduled-tasks/db-backup.xml",
+        "runnerScript": "ops/scheduled-tasks/run-db-backup.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    }
   ]
 }
