@@ -150,6 +150,7 @@ git reset --hard origin/main
 ### 머지한 브랜치·worktree 바로 정리
 
 머지 직후 같은 턴에 정리한다. 미루면 쌓인다(2026-10-06 로컬 17·원격 20 브랜치, worktree 3개 일괄 정리).
+세션 시작 hook(`.claude/hooks/warn-repo-hygiene.sh`)이 research/ 미커밋·메인 폴더 미커밋·머지된 로컬 브랜치를 경고한다 — 뜨면 그 세션에서 먼저 정리.
 
 ```bash
 git cherry origin/main <branch> | grep -c '^+'   # 0 이어야 삭제 (rebase 머지라 branch -d 는 실패함)
