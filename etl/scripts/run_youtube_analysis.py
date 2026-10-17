@@ -38,10 +38,10 @@ MIN_TRANSCRIPT_CHARS = 2000
 MAX_TRANSCRIPT_CHARS = 35000
 
 
+# 실측 yt-dlp 에러 형식, 2026-10-17
 _STT_EXPECTED = (
-    "Private video",
-    "members-only",
-    "available to this channel's members",
+    ": Private video",
+    ": This video is available to this channel's members",
 )
 
 _STT_ERROR_PREFIX = "stt_error:"
