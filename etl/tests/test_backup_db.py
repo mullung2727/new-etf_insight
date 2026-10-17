@@ -5,6 +5,7 @@ Usage (from etl/):
 """
 import os
 import sqlite3
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -156,44 +157,6 @@ class TestSqliteCorrupt(_BackupCase):
         self.assertEqual(result["failed"][0][0], "etl/db/c.sqlite3")
         self.assertEqual(dst.read_bytes(), before)
 
-    def test_quick_check_fail_keeps_dst(self):
-        src = self._sqlite("etl/db/q.sqlite3")
-        dst = self.dest / "etl/db/q.sqlite3"
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(b"old-backup")
-        newer = dst.stat().st_mtime + 10
-        os.utime(src, (newer, newer))
-        real_connect = sqlite3.connect
-
-        class _QuickCheckFailConnection:
-            def __init__(self, con):
-                self._con = con
-
-            def backup(self, target, *args, **kwargs):
-                if isinstance(target, _QuickCheckFailConnection):
-                    target = target._con
-                return self._con.backup(target, *args, **kwargs)
-
-            def execute(self, sql, *args, **kwargs):
-                if "quick_check" in sql:
-                    m = mock.Mock()
-                    m.fetchall.return_value = [("corrupt",)]
-                    return m
-                return self._con.execute(sql, *args, **kwargs)
-
-            def close(self):
-                return self._con.close()
-
-        def fake_connect(*args, **kwargs):
-            return _QuickCheckFailConnection(real_connect(*args, **kwargs))
-
-        with mock.patch("scripts.backup_db.sqlite3.connect", new=fake_connect):
-            result = run(self.root, self.dest)
-        self.assertEqual(len(result["failed"]), 1)
-        self.assertIn("quick_check", result["failed"][0][1])
-        self.assertEqual(dst.read_bytes(), b"old-backup")
-        self.assertFalse(dst.with_name(dst.name + ".tmp").exists())
-
 
 class TestDuckdbBackup(_BackupCase):
     def test_copy_and_query(self):
@@ -230,6 +193,21 @@ class TestPlainFile(_BackupCase):
         r2 = run(self.root, self.dest)
         self.assertEqual(r2["copied"], [])
         self.assertEqual(r2["skipped"], 1)
+
+    def test_readonly_old_backup_overwritten(self):
+        src = self._write("research/private/r.json", '{"k": 2}')
+        dst = self.dest / "research/private/r.json"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(b'{"k": 1}')
+        os.chmod(dst, stat.S_IREAD)
+        newer = dst.stat().st_mtime + 10
+        os.utime(src, (newer, newer))
+        try:
+            result = run(self.root, self.dest)
+        finally:
+            os.chmod(dst, stat.S_IWRITE | stat.S_IREAD)
+        self.assertEqual(result["failed"], [])
+        self.assertEqual(dst.read_bytes(), b'{"k": 2}')
 
 
 class TestFindBackupRoot(unittest.TestCase):

@@ -1420,7 +1420,7 @@
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/monthly-db-backup.md",
-      "timeoutSeconds": 7200,
+      "timeoutSeconds": 21600,
       "runNote": "Windows Task Scheduler is authoritative. Added to the registry 2026-10-17 (was registered without an entry). Name says monthly but the trigger is weekly (Mon 05:30).",
       "windowsTask": {
         "enabled": true,
