@@ -1,6 +1,7 @@
 ﻿param(
   [ValidateRange(1, 240)]
-  [int]$MaxRuntimeMin = 210
+  [int]$MaxRuntimeMin = 210,
+  [ValidatePattern('^(\d{6})?$')][string]$Month = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,9 +11,15 @@ $logDir = Join-Path $etlDir "logs"
 New-Item -Force -ItemType Directory $logDir | Out-Null
 
 $dateKey = Get-Date -Format "yyyyMMdd"
-$log = Join-Path $logDir ("minute-backfill-" + $dateKey + ".log")
-$errorLog = Join-Path $logDir ("minute-backfill-" + $dateKey + ".error.log")
-$report = Join-Path $logDir ("minute-backfill-" + $dateKey + ".json")
+$suffix = ""
+$title = "[1분봉 백필]"
+if ($Month -ne "") {
+  $suffix = "-m" + $Month
+  $title = "[1분봉 백필 $Month]"
+}
+$log = Join-Path $logDir ("minute-backfill-" + $dateKey + $suffix + ".log")
+$errorLog = Join-Path $logDir ("minute-backfill-" + $dateKey + $suffix + ".error.log")
+$report = Join-Path $logDir ("minute-backfill-" + $dateKey + $suffix + ".json")
 $mutex = New-Object System.Threading.Mutex($false, "Global\new-etf-insight-minute-backfill")
 
 if (-not $mutex.WaitOne(0)) {
@@ -38,6 +45,7 @@ try {
     "--max-failures", "20",
     "--report-file", $report
   )
+  if ($Month -ne "") { $args += "--month", $Month }
   $process = Start-Process -FilePath ".\.venv\Scripts\python.exe" -ArgumentList $args `
     -WorkingDirectory $etlDir -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $log -RedirectStandardError $errorLog
@@ -50,7 +58,7 @@ try {
   }
 
   $data = Get-Content -LiteralPath $report -Raw -Encoding UTF8 | ConvertFrom-Json
-  $lines = @("[1분봉 백필] $dateKey 완료 · KRX $($data.latest_krx_date)")
+  $lines = @("$title $dateKey 완료 · KRX $($data.latest_krx_date)")
   foreach ($item in $data.results) {
     $lines += ("- {0}: 종목 {1}/{2}, 신규봉 {3:N0}, 남은 종목일 {4:N0}, 실패 {5}, 보류 {6}, 종료 {7}" -f `
       $item.month, $item.completed_tickers, $item.attempted_tickers, $item.inserted_bars, `
@@ -60,7 +68,7 @@ try {
   & ".\.venv\Scripts\python.exe" "scripts\send_report_messages.py" "--message" $message "--best-effort"
   exit 0
 } catch {
-  $message = "[1분봉 백필] $dateKey 실패`n$($_.Exception.Message)`nlog: $log`nerror: $errorLog"
+  $message = "$title $dateKey 실패`n$($_.Exception.Message)`nlog: $log`nerror: $errorLog"
   try {
     Set-Location $etlDir
     & ".\.venv\Scripts\python.exe" "scripts\send_report_messages.py" "--message" $message "--best-effort"
