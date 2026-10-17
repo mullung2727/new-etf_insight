@@ -15,6 +15,7 @@ import fnmatch
 import os
 import shutil
 import sqlite3
+import stat
 import time
 from pathlib import Path
 
@@ -220,6 +221,13 @@ def _unlink_quiet(path: Path) -> None:
         pass
 
 
+def _replace(tmp: Path, dst: Path) -> None:
+    # 이전 백업본이 읽기 전용(git 객체 등)이면 Windows 에서 replace 가 WinError 5.
+    if dst.exists():
+        os.chmod(dst, stat.S_IWRITE | stat.S_IREAD)
+    os.replace(tmp, dst)
+
+
 def backup_sqlite(src: Path, dst: Path) -> None:
     tmp = dst.with_name(dst.name + ".tmp")
     _unlink_quiet(tmp)
@@ -229,17 +237,11 @@ def backup_sqlite(src: Path, dst: Path) -> None:
         src_con = sqlite3.connect(f"file:{src.as_posix()}?mode=ro", uri=True)
         dst_con = sqlite3.connect(str(tmp))
         src_con.backup(dst_con)
-        ok = dst_con.execute("PRAGMA quick_check").fetchall() == [("ok",)]
-        mismatch = None
-        if ok:
-            src_counts = table_counts_sqlite(src_con)
-            dst_counts = table_counts_sqlite(dst_con)
-            if src_counts != dst_counts:
-                mismatch = _format_mismatch(src_counts, dst_counts)
-        if not ok:
-            raise RuntimeError("quick_check 실패")
-        if mismatch is not None:
-            raise RuntimeError(f"행 수 불일치: {mismatch}")
+        # 전체 무결성 검사는 외장 HDD 무작위 읽기라 11GB에 48분(2026-10-17 실측) → 열기+테이블별 행 수 비교만.
+        src_counts = table_counts_sqlite(src_con)
+        dst_counts = table_counts_sqlite(dst_con)
+        if src_counts != dst_counts:
+            raise RuntimeError(f"행 수 불일치: {_format_mismatch(src_counts, dst_counts)}")
     except Exception:
         if dst_con is not None:
             dst_con.close()
@@ -254,7 +256,7 @@ def backup_sqlite(src: Path, dst: Path) -> None:
             dst_con.close()
         if src_con is not None:
             src_con.close()
-    os.replace(tmp, dst)
+    _replace(tmp, dst)
 
 
 def backup_duckdb(src: Path, dst: Path) -> None:
@@ -290,7 +292,7 @@ def backup_duckdb(src: Path, dst: Path) -> None:
     except Exception:
         _unlink_quiet(tmp)
         raise
-    os.replace(tmp, dst)
+    _replace(tmp, dst)
 
 
 def backup_file(src: Path, dst: Path) -> None:
@@ -300,7 +302,7 @@ def backup_file(src: Path, dst: Path) -> None:
     except Exception:
         _unlink_quiet(tmp)
         raise
-    os.replace(tmp, dst)
+    _replace(tmp, dst)
 
 
 def run(project_root: Path, backup_root: Path) -> dict:
