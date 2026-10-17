@@ -31,6 +31,8 @@ if git -C "$main" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
     [ "$b" = "main" ] && continue
     n=$(git -C "$main" cherry origin/main "$b" 2>/dev/null | grep -c -E '^\+' 2>/dev/null)
     [ "$n" = "0" ] || continue
+    # cherry 는 머지 커밋을 안 셈 → origin/main 에 없는 머지 커밋(충돌 해결 등)이 있으면 머지됨 아님 (PR #104 리뷰)
+    [ -z "$(git -C "$main" rev-list --merges "origin/main..$b" 2>/dev/null)" ] || continue
     # 그 브랜치를 쓰는 worktree 경로 (branch 줄보다 앞의 가장 가까운 worktree 줄)
     wtp=$(printf '%s\n' "$wt" | awk -v br="branch refs/heads/$b" '/^worktree /{w=substr($0,10)} $0==br{print w; exit}' 2>/dev/null)
     line="$b"
