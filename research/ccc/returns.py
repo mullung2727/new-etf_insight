@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from new_etf_insight.data_paths import db_dir
 
 import duckdb
 import pandas as pd
 
-OHLCV_DB = Path(__file__).resolve().parents[2] / "etl" / "db" / "us_ohlcv.duckdb"
+OHLCV_DB = db_dir() / "us_ohlcv.duckdb"
 
 
 def ticker_key(t: str) -> str:

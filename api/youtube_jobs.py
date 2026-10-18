@@ -13,10 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from duck_watchlist import PROJECT_DIR
+from duck_watchlist import db_dir
 from youtube_ops import run_summarize
 
-_JOBS_PATH = PROJECT_DIR / "etl" / "db" / "youtube_summarize_jobs.json"
+_JOBS_PATH = db_dir() / "youtube_summarize_jobs.json"
 _LOCK = threading.Lock()
 _THREAD: threading.Thread | None = None
 

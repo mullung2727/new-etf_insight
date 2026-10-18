@@ -25,14 +25,15 @@ if str(ROOT) not in sys.path:
 
 import duckdb
 from dotenv import load_dotenv
+from new_etf_insight.data_paths import db_dir
 from typesafe_sdk import TypeSafeClient
 
 from research.jev_candidate import questions, state, store
 from research.jev_candidate.questions import QUESTION_SET_VER
 from research.jev_candidate.state import JEV_MODEL
 
-KRX_DB = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
-TG_DB = ROOT / "etl" / "db" / "telegram_public.sqlite3"
+KRX_DB = db_dir() / "krx_ohlcv.duckdb"
+TG_DB = db_dir() / "telegram_public.sqlite3"
 
 # 종목B 이후 라벨 — 당일 Top30 나머지 29개용 (Top30 순서대로)
 _EXTRA_LABELS = ["종목" + chr(c) for c in range(ord("B"), ord("Z") + 1)] + [

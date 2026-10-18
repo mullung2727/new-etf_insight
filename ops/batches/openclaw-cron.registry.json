@@ -1439,5 +1439,36 @@
         "to": "1513799139715190854"
       }
     }
+    ,
+    {
+      "id": "c9f1d2e3-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+      "name": "daily-code-backup",
+      "description": "Daily 23:30; copy C-side files (.env, research/private) to data drive code_backup, notify only on failure",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 23 * * *",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/monthly-db-backup.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Copies C-side files to NEW_ETF_DATA_ROOT/code_backup; skips when unset (PLAN_DATA_DRIVE_MOVE).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "daily-code-backup",
+        "xmlFile": "ops/scheduled-tasks/code-backup.xml",
+        "runnerScript": "ops/scheduled-tasks/run-code-backup.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    }
   ]
 }

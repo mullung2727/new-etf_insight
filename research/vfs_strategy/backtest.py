@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[2]
 # etl/scripts 는 패키지가 아니라 sys.path 진입점 규약(_bootstrap)을 쓴다.
@@ -32,7 +33,7 @@ from research.watchlist_expected_return.phase8_minute_pullback_strategy import (
     simulate_minute_exit,
 )
 
-DEFAULT_KRX_DB = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
+DEFAULT_KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent
 
 ENTRY_TIME = "151900"          # 종가 확정 근사 — 15:19 1분봉 종가에 체결 가정

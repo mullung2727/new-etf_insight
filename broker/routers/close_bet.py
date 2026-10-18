@@ -13,11 +13,17 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter
+
+_ETL_SRC = Path(__file__).resolve().parents[2] / "etl" / "src"
+if str(_ETL_SRC) not in sys.path:
+    sys.path.insert(0, str(_ETL_SRC))
+from new_etf_insight.data_paths import db_dir  # noqa: E402
 
 router = APIRouter(prefix="/close-bet", tags=["close-bet"])
 
@@ -26,7 +32,7 @@ _KST = timezone(timedelta(hours=9))
 
 # 기본 경로 = repo_root/etl/db/watchlist.sqlite3 (broker/routers/close_bet.py 기준).
 # 테스트·이설은 CLOSE_BET_DB_PATH로 override (루트 .env의 WATCHLIST_DB_PATH와 별개).
-_DEFAULT = Path(__file__).resolve().parents[2] / "etl" / "db" / "watchlist.sqlite3"
+_DEFAULT = db_dir() / "watchlist.sqlite3"
 
 
 def _db_path() -> Path:

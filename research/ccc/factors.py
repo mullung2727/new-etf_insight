@@ -5,8 +5,9 @@ from typing import Callable, Optional
 import zipfile
 
 import pandas as pd
+from new_etf_insight.data_paths import ken_french_dir
 
-RAW_ROOT = Path("D:/ken_french")
+RAW_ROOT = ken_french_dir()
 BASE_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/"
 FILES = ("F-F_Research_Data_5_Factors_2x3_CSV", "F-F_Momentum_Factor_CSV")
 
