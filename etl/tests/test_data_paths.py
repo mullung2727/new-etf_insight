@@ -98,6 +98,13 @@ class DataRootTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "폴백하지 않음"):
                 data_paths.db_dir()
 
+    def test_relative_value_resolves_from_repo_root(self):
+        data = self.tmp_path / "data"
+        data.mkdir()
+        with patch.dict(os.environ, {data_paths.ENV_KEY: "data"}):
+            with patch.object(data_paths, "REPO_ROOT", self.tmp_path):
+                self.assertEqual(data_paths.data_root(), data)
+
 
 class HardcodedPathTest(unittest.TestCase):
     def test_no_hardcoded_data_dirs(self):

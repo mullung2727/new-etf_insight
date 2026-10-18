@@ -440,6 +440,8 @@ def main(argv=None) -> int:
         if root is None:
             result = run(PROJECT_ROOT, backup_root / f"slot_{slot}")
         else:
+            if backup_root.resolve().is_relative_to(root.resolve()):
+                raise RuntimeError(f"백업 폴더 {backup_root} 가 데이터 루트 {root} 안에 있음")
             code_result = sync_code_backup(PROJECT_ROOT, code_backup_dir())
             slot_result = run(root, backup_root / f"slot_{slot}", iter_tree(root))
             result = {

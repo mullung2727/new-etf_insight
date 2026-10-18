@@ -508,3 +508,23 @@ class TestMainWithDataRoot(_BackupCase):
         self.assertFalse((self.dest / "slot_A").exists())
         self.assertFalse((self.dest / "slot_B").exists())
         self.assertFalse((self.dest / "latest.txt").exists())
+
+    def test_backup_root_inside_data_root_aborts(self):
+        data = Path(self._tmp.name) / "data"
+        data.mkdir()
+        backup_root = data / BACKUP_DIRNAME
+        backup_root.mkdir()
+        with mock.patch.dict(os.environ, {"NEW_ETF_DATA_ROOT": str(data)}):
+            with mock.patch(
+                "scripts.backup_db.find_backup_root", return_value=backup_root
+            ):
+                with mock.patch(
+                    "scripts.backup_db.notify", return_value=True
+                ) as m_notify:
+                    with mock.patch("scripts.backup_db.PROJECT_ROOT", self.root):
+                        rc = main()
+        self.assertEqual(rc, 1)
+        m_notify.assert_called_once()
+        self.assertIn("오류", m_notify.call_args[0][0])
+        self.assertFalse((backup_root / "slot_A").exists())
+        self.assertFalse((backup_root / "slot_B").exists())
