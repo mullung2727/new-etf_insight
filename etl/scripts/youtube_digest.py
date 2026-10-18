@@ -405,16 +405,92 @@ def _highlight_block(rank_item: dict) -> list[str]:
     return lines
 
 
-def collect_failure_note(channel_ids: list[str]) -> str | None:
-    """수집 실패 채널을 사람이 읽는 한 줄로. 러너가 넘긴 channel_id를 label로 바꾼다."""
-    if not channel_ids:
+def parse_collect_failed(arg: str) -> list[tuple[str, str]]:
+    """`UC…=오류원문` CSV를 (channel_id, reason_raw) 목록으로. `=` 없는 항목은 옛 형식이라 원문 빈 문자열."""
+    out: list[tuple[str, str]] = []
+    for item in arg.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        cid, sep, raw = item.partition("=")
+        out.append((cid, raw) if sep else (cid, ""))
+    return out
+
+
+_HTTP_ERROR_RE = re.compile(r"HTTP Error (\d{3})")
+
+
+def classify_collect_error(raw: str) -> tuple[str, str]:
+    """수집 오류 원문을 (kind, http_code_or_text)로. 우선순위: block > net > other > transient > unknown."""
+    m = _HTTP_ERROR_RE.search(raw)
+    if m:
+        code = m.group(1)
+        if code in ("403", "429"):
+            return ("block", code)
+        if code in ("404", "500", "502", "503", "504"):
+            return ("transient", code)
+        return ("other", raw[:60])
+    lowered = raw.lower()
+    if (
+        "timed out" in lowered
+        or "urlopen error" in lowered
+        or "connection" in lowered
+        or "getaddrinfo" in lowered
+    ):
+        return ("net", "")
+    if not raw:
+        return ("unknown", "")
+    return ("other", raw[:60])
+
+
+_COLLECT_KIND_PRIORITY = {"block": 0, "net": 1, "other": 2, "transient": 3, "unknown": 4}
+
+
+def collect_failure_note(failed: list[tuple[str, str]]) -> str | None:
+    """수집 실패 채널을 원인 분류별로 묶은 여러 줄. 문자열 원소(옛 호출)는 원문 빈 문자열로 취급."""
+    best: dict[str, tuple[str, str, str]] = {}  # cid -> (kind, code_or_text, raw)
+    order: list[str] = []
+    if not failed:
         return None
     labels = {cid: cfg.get("label") or cid for cid, cfg in load_all_channels().items()}
-    names = " · ".join(labels.get(cid, cid) for cid in channel_ids)
-    return f"⚠️ 수집 실패: {names} (해당 채널 새 영상은 다음 세션에 포함)"
+    for item in failed:
+        cid, raw = (item, "") if isinstance(item, str) else item
+        kind, detail = classify_collect_error(raw)
+        if cid not in best:
+            order.append(cid)
+        prev = best.get(cid)
+        if prev is None or _COLLECT_KIND_PRIORITY[kind] < _COLLECT_KIND_PRIORITY[prev[0]]:
+            best[cid] = (kind, detail, raw)
+    lines = [f"⚠️ 수집 실패 {len(order)}채널 (다음 세션에 다시 받음)"]
+    groups: dict[str, list[str]] = {
+        kind: [cid for cid in order if best[cid][0] == kind]
+        for kind in ("block", "net", "other", "transient", "unknown")
+    }
+
+    def names(cids: list[str]) -> str:
+        return " · ".join(labels.get(cid, cid) for cid in cids)
+
+    if groups["block"]:
+        codes = "·".join(sorted({best[cid][1] for cid in groups["block"]}))
+        lines.append(
+            f"- 유튜브 차단 의심 — 수집 빈도 줄여야 함 (HTTP {codes}): {names(groups['block'])}"
+        )
+    if groups["net"]:
+        lines.append(f"- 인터넷 연결 실패 — PC 네트워크 확인: {names(groups['net'])}")
+    if groups["other"]:
+        excerpt = best[groups["other"][0]][2][:60]
+        lines.append(f"- 기타 오류 ({excerpt}): {names(groups['other'])}")
+    if groups["transient"]:
+        codes = "·".join(sorted({best[cid][1] for cid in groups["transient"]}))
+        lines.append(
+            f"- 유튜브 일시 오류, 재시도해도 실패 (HTTP {codes}): {names(groups['transient'])}"
+        )
+    if groups["unknown"]:
+        lines.append(f"- 원인 미상: {names(groups['unknown'])}")
+    return "\n".join(lines)
 
 
-def format_digest_message(
+def format_digest_message(
     date_kst: str,
     session: str,
     rows: list[dict],
@@ -457,7 +533,7 @@ def run_digest(
     db_path: Path | str = DEFAULT_DB,
     channel: str | None = None,
     dry_run: bool = False,
-    collect_failed: list[str] | None = None,
+    collect_failed: list[tuple[str, str]] | None = None,
     summarize_failed: bool = False,
     generate_fn=generate_json,
     send_fn=notify,
@@ -571,7 +647,7 @@ def main() -> int:
         db_path=args.db,
         channel=args.channel,
         dry_run=args.dry_run,
-        collect_failed=[c for c in args.collect_failed.split(",") if c.strip()],
+        collect_failed=parse_collect_failed(args.collect_failed),
         summarize_failed=args.summarize_failed,
     )
 

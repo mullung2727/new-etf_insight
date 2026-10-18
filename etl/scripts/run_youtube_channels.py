@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -23,6 +24,10 @@ try:
 except ImportError:
     from collect_youtube import DEFAULT_DB, collect_channel, ensure_schema
     from youtube_channels import load_all_channels
+
+
+# 유튜브 RSS 404/500 이 fetch_url 재시도(~30초)보다 길게 이어짐(2026-10-18 실측) → 한 바퀴 뒤 1회 더.
+RETRY_DELAY_SEC = 60
 
 
 def process_channel(
@@ -42,6 +47,7 @@ def run_all(
     date_kst: str,
     *,
     only: str | None = None,
+    _sleep=time.sleep,
     **kwargs,
 ) -> tuple[list[dict], list[tuple[str, str]]]:
     """채널 순회. 한 채널 실패해도 나머지 계속. 반환: (results, errors)."""
@@ -56,6 +62,19 @@ def run_all(
             results.append(process_channel(con, ch, date_kst, **kwargs))
         except Exception as exc:  # noqa: BLE001 — 채널 격리가 목적
             errors.append((ch, str(exc)))
+    retryable = [ch for ch, err in errors if not err.startswith("channel not in config")]
+    if retryable:
+        print(
+            f"[run_youtube_channels] retry {len(retryable)} failed channels "
+            f"after {RETRY_DELAY_SEC}s"
+        )
+        _sleep(RETRY_DELAY_SEC)
+        errors = [(ch, err) for ch, err in errors if err.startswith("channel not in config")]
+        for ch in retryable:
+            try:
+                results.append(process_channel(con, ch, date_kst, **kwargs))
+            except Exception as exc:  # noqa: BLE001 — 채널 격리가 목적
+                errors.append((ch, str(exc)))
     return results, errors
 
 
