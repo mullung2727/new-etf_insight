@@ -145,7 +145,7 @@ def format_lines(r: dict, already: bool) -> list[str]:
 
 def qqq_ma_gap(qqq_ret: pd.Series, asof: str) -> float | None:
     """QQQ 200일선 괴리율 (순수, no I/O). asof 이하 일간 총수익만 사용."""
-    # TQQQ 최종 후보 D25 의 200일선 판정과 같은 정의(QQQ 총수익 수준).
+    # 200일선 = QQQ 총수익 수준의 200일 단순이동평균.
     s = qqq_ret[qqq_ret.index <= asof]
     if len(s) < 200:
         return None
