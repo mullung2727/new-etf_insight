@@ -201,7 +201,8 @@ def send_risk_channel(r: dict) -> bool:
         pass
     try:
         gap = qqq_ma_gap(load_etf_tr(["QQQ"])["QQQ"], r["date"])
-    except Exception:
+    except Exception as e:
+        print(f"OAS qqq_ma_gap failed: {e!r}")
         gap = None
     return bool(send_strategy_alert(format_risk_alert(r, gap), RISK_WEBHOOK_ENV))
 
