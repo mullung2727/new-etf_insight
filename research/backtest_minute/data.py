@@ -1,7 +1,7 @@
 """분봉 전용 유니버스·분봉 로드 — 전일 정보만으로 D 후보 확정(M2), 읽기 전용(M3)."""
 from __future__ import annotations
 
-from pathlib import Path
+from new_etf_insight.data_paths import db_dir
 
 import duckdb
 import numpy as np
@@ -11,7 +11,7 @@ from research.backtest_daily.data import DB, load_px, market_dates
 from research.backtest_daily.guards import halt_ok, jump_ok, liquidity
 from research.backtest_daily.universe import listing_flags
 
-MB = Path(__file__).resolve().parents[2] / "etl/db/minute_bars.duckdb"
+MB = db_dir() / "minute_bars.duckdb"
 OPEN_T, CLOSE_T = "090000", "153000"
 FULL_SINCE = "20251201"
 

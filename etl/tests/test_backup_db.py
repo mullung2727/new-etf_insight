@@ -18,6 +18,7 @@ from scripts.backup_db import (
     backup_sqlite,
     find_backup_root,
     is_fresh,
+    iter_code_sources,
     iter_sources,
     main,
     pick_slot,
@@ -394,3 +395,116 @@ class TestTmpCleanupOnFailure(_BackupCase):
                 self.assertFalse(tmp.exists())
                 self.assertEqual(dst.read_bytes(), b"old-backup")
                 self.assertTrue(tracked["con"].closed)
+
+
+class TestIterCodeSources(_BackupCase):
+    def test_excludes_data_subs(self):
+        self._write("etl/db/a.sqlite3")
+        self._write("etl/exports/x.pdf")
+        self._write("etl/runs/r.json")
+        self._write(".env")
+        self._write("research/private/p.md")
+        got = {
+            p.relative_to(self.root).as_posix()
+            for p in iter_code_sources(self.root)
+        }
+        self.assertNotIn("etl/db/a.sqlite3", got)
+        self.assertNotIn("etl/exports/x.pdf", got)
+        self.assertNotIn("etl/runs/r.json", got)
+        self.assertIn(".env", got)
+        self.assertIn("research/private/p.md", got)
+
+
+class TestCodeOnly(_BackupCase):
+    def test_code_only_copies_without_notify(self):
+        data = Path(self._tmp.name) / "data"
+        data.mkdir()
+        self._write(".env", "K=V")
+        self._write("research/private/p.md", "secret")
+        with mock.patch.dict(os.environ, {"NEW_ETF_DATA_ROOT": str(data)}):
+            with mock.patch("scripts.backup_db.find_backup_root") as m_root:
+                with mock.patch(
+                    "scripts.backup_db.notify", return_value=True
+                ) as m_notify:
+                    with mock.patch("scripts.backup_db.PROJECT_ROOT", self.root):
+                        rc = main(["--code-only"])
+        self.assertEqual(rc, 0)
+        self.assertEqual((data / "code_backup" / ".env").read_bytes(), b"K=V")
+        self.assertEqual(
+            (data / "code_backup" / "research/private/p.md").read_bytes(), b"secret"
+        )
+        m_root.assert_not_called()
+        m_notify.assert_not_called()
+
+    def test_code_only_unset_skips(self):
+        self._write(".env", "K=V")
+        with mock.patch.dict(os.environ):
+            os.environ.pop("NEW_ETF_DATA_ROOT", None)
+            with mock.patch("scripts.backup_db.find_backup_root") as m_root:
+                with mock.patch(
+                    "scripts.backup_db.notify", return_value=True
+                ) as m_notify:
+                    with mock.patch(
+                        "scripts.backup_db.sync_code_backup"
+                    ) as m_sync:
+                        with mock.patch("scripts.backup_db.PROJECT_ROOT", self.root):
+                            rc = main(["--code-only"])
+        self.assertEqual(rc, 0)
+        m_sync.assert_not_called()
+        m_root.assert_not_called()
+        m_notify.assert_not_called()
+
+
+class TestMainWithDataRoot(_BackupCase):
+    def test_external_backup_from_data_root(self):
+        data = Path(self._tmp.name) / "data"
+        (data / "db").mkdir(parents=True)
+        (data / "exports" / "s").mkdir(parents=True)
+        con = sqlite3.connect(data / "db" / "k.sqlite3")
+        con.execute("CREATE TABLE t (k TEXT, v INTEGER)")
+        con.executemany("INSERT INTO t VALUES (?, ?)", [("a", 1), ("b", 2)])
+        con.commit()
+        con.close()
+        (data / "exports" / "s" / "x.pdf").write_bytes(b"%PDF-fake")
+        self._write(".env", "K=V")
+        with mock.patch.dict(os.environ, {"NEW_ETF_DATA_ROOT": str(data)}):
+            with mock.patch(
+                "scripts.backup_db.find_backup_root", return_value=self.dest
+            ):
+                with mock.patch(
+                    "scripts.backup_db.notify", return_value=True
+                ) as m_notify:
+                    with mock.patch("scripts.backup_db.PROJECT_ROOT", self.root):
+                        rc = main()
+        self.assertEqual(rc, 0)
+        slot = self.dest / "slot_A"
+        self.assertTrue((slot / "db" / "k.sqlite3").is_file())
+        self.assertTrue((slot / "exports" / "s" / "x.pdf").is_file())
+        self.assertTrue((slot / "code_backup" / ".env").is_file())
+        con = sqlite3.connect(slot / "db" / "k.sqlite3")
+        try:
+            n = con.execute("SELECT count(*) FROM t").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(n, 2)
+        self.assertEqual((self.dest / "latest.txt").read_text(encoding="utf-8"), "A")
+        m_notify.assert_called_once()
+        self.assertIn("원본", m_notify.call_args[0][0])
+
+    def test_missing_data_root_notifies_error(self):
+        missing = Path(self._tmp.name) / "no-such-data"
+        with mock.patch.dict(os.environ, {"NEW_ETF_DATA_ROOT": str(missing)}):
+            with mock.patch(
+                "scripts.backup_db.find_backup_root", return_value=self.dest
+            ):
+                with mock.patch(
+                    "scripts.backup_db.notify", return_value=True
+                ) as m_notify:
+                    with mock.patch("scripts.backup_db.PROJECT_ROOT", self.root):
+                        rc = main()
+        self.assertEqual(rc, 1)
+        m_notify.assert_called_once()
+        self.assertIn("오류", m_notify.call_args[0][0])
+        self.assertFalse((self.dest / "slot_A").exists())
+        self.assertFalse((self.dest / "slot_B").exists())
+        self.assertFalse((self.dest / "latest.txt").exists())

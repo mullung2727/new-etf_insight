@@ -27,7 +27,12 @@ if str(_ETL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_ETL_SCRIPTS))
 import download_naver_research as dnr  # noqa: E402
 
-_FACTS_DB = Path(__file__).resolve().parents[2] / "etl" / "db" / "report_metrics.sqlite3"
+_ETL_SRC = Path(__file__).resolve().parents[2] / "etl" / "src"
+if str(_ETL_SRC) not in sys.path:
+    sys.path.insert(0, str(_ETL_SRC))
+from new_etf_insight.data_paths import db_dir  # noqa: E402
+
+_FACTS_DB = db_dir() / "report_metrics.sqlite3"
 _CODE_RE = re.compile(r"^\d{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DOC_TYPES = ("company", "industry", "market", "invest", "economy", "unknown")

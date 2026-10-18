@@ -27,10 +27,10 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pandas as pd
+from new_etf_insight.data_paths import db_dir
 
-ROOT = Path(__file__).resolve().parents[2]
-KRX_DB = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
-FIN_DB = ROOT / "etl" / "db" / "financial_indicators.sqlite3"
+KRX_DB = db_dir() / "krx_ohlcv.duckdb"
+FIN_DB = db_dir() / "financial_indicators.sqlite3"
 
 LOOKBACK = 250          # 52주 (거래일)
 MIN_BARS = 200          # 룩백 구간 내 최소 실거래일

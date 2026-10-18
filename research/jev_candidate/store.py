@@ -11,7 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DEFAULT_DB = Path(__file__).resolve().parents[2] / "etl" / "db" / "jev_candidate.sqlite3"
+from new_etf_insight.data_paths import db_dir
+
+DEFAULT_DB = db_dir() / "jev_candidate.sqlite3"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (

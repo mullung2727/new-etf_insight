@@ -5,10 +5,10 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+from new_etf_insight.data_paths import db_dir
 
-ROOT = Path(__file__).resolve().parents[2]
-US_OHLCV_DB = ROOT / "etl" / "db" / "us_ohlcv.duckdb"
-US_MACRO_DB = ROOT / "etl" / "db" / "us_macro.duckdb"
+US_OHLCV_DB = db_dir() / "us_ohlcv.duckdb"
+US_MACRO_DB = db_dir() / "us_macro.duckdb"
 
 
 def load_etf_tr(tickers: list[str], db: Path = US_OHLCV_DB) -> pd.DataFrame:

@@ -14,12 +14,18 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 API_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = API_DIR.parent
+
+_ETL_SRC = Path(__file__).resolve().parents[1] / "etl" / "src"
+if str(_ETL_SRC) not in sys.path:
+    sys.path.insert(0, str(_ETL_SRC))
+from new_etf_insight.data_paths import db_dir  # noqa: E402
 
 
 def _resolve_project_path(value: str | None, default: Path) -> Path:
@@ -30,7 +36,7 @@ def _resolve_project_path(value: str | None, default: Path) -> Path:
 
 
 DUCKDB_PATH = _resolve_project_path(
-    os.getenv("DUCKDB_PATH"), PROJECT_DIR / "etl" / "db" / "etf_insight.sqlite3"
+    os.getenv("DUCKDB_PATH"), db_dir() / "etf_insight.sqlite3"
 )
 
 

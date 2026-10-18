@@ -6,8 +6,9 @@ import sqlite3
 from pathlib import Path
 
 import pandas as pd
+from new_etf_insight.data_paths import db_dir
 
-FACTS_DB = Path(__file__).resolve().parents[2] / "etl" / "db" / "us_facts.sqlite3"
+FACTS_DB = db_dir() / "us_facts.sqlite3"
 SALES_TAGS = ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet",
               "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueGoodsNet")
 COGS_TAGS = ("CostOfGoodsAndServicesSold", "CostOfRevenue", "CostOfGoodsSold",

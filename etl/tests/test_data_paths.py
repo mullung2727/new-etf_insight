@@ -101,16 +101,40 @@ class DataRootTest(unittest.TestCase):
 
 class HardcodedPathTest(unittest.TestCase):
     def test_no_hardcoded_data_dirs(self):
-        etl_dir = Path(__file__).resolve().parents[1]
+        repo_root = Path(__file__).resolve().parents[2]
+        etl_dir = repo_root / "etl"
         targets = sorted((etl_dir / "scripts").rglob("*.py")) + sorted(
             (etl_dir / "src").rglob("*.py")
         )
+        api_dir = repo_root / "api"
+        broker_dir = repo_root / "broker"
+        research_dir = repo_root / "research"
+        if api_dir.is_dir():
+            targets += sorted(api_dir.rglob("*.py"))
+        if broker_dir.is_dir():
+            targets += sorted(broker_dir.rglob("*.py"))
+        if research_dir.is_dir():
+            targets += sorted(research_dir.rglob("*.py"))
+        ops_tasks = repo_root / "ops" / "scheduled-tasks"
+        if ops_tasks.is_dir():
+            targets += sorted(ops_tasks.glob("*.ps1"))
+        private_root = research_dir / "private"
         allowed = {"data_paths.py", "backup_db.py"}
-        patterns = ('/ "db"', '/ "exports"', '/ "runs"', '"D:/')
+        patterns = (
+            '/ "db"', '/ "exports"', '/ "runs"', '"D:/',
+            '"etl/db', '"etl" / "db"', '"etl" / "exports"', 'Path("exports/',
+        )
         violations = []
         for path in targets:
             if path.name in allowed:
                 continue
+            if ".venv" in path.parts or "node_modules" in path.parts or "__pycache__" in path.parts:
+                continue
+            if path.is_relative_to(private_root):
+                continue
+            if path.suffix == ".py" and path.name.startswith("test_"):
+                if path.is_relative_to(api_dir) or path.is_relative_to(broker_dir):
+                    continue
             in_docstring = False
             lines = path.read_text(encoding="utf-8").splitlines()
             for lineno, line in enumerate(lines, 1):

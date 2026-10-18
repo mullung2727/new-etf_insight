@@ -47,8 +47,9 @@ try {
 
   $report = @'
 import pathlib
+from new_etf_insight.data_paths import exports_dir
 date = "__DATE__"
-base = pathlib.Path("exports/stock_reports")
+base = exports_dir() / "stock_reports"
 pdfs = sorted(base.rglob(date + "_*.pdf")) if base.exists() else []
 stocks = sorted({p.parent.name for p in pdfs})
 lines = ["[증권사 종목리포트] " + date, f"- PDF: {len(pdfs)}건"]

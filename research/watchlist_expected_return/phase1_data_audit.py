@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+from new_etf_insight.data_paths import db_dir
 
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_WATCHLIST_DB = ROOT / "etl" / "db" / "watchlist.sqlite3"
-DEFAULT_KRX_DB = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
+DEFAULT_KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "results"
 SQLITE_TABLES = ("watchlist", "llm_scores", "intraday_ranking", "close_bet_orders")
 

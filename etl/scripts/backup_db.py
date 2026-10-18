@@ -8,9 +8,16 @@ import _bootstrap  # noqa: F401
 slot_A/slot_B에 교대로 덮어쓰고, 완전 성공한 슬롯을 latest.txt에 기록한다.
 성공/실패/드라이브 없음 모두 batch 채널로 알림 1건.
 
+NEW_ETF_DATA_ROOT 가 설정되면 외장 백업 원본이 프로젝트 루트 대신 데이터
+루트 폴더 전체가 되고, 시작 전에 C: 측 파일(.env·research/private 등)을 데이터
+루트 code_backup/ 에 먼저 복사한다. `--code-only` 로 코드 사본만 매일 복사할 수
+있다 (실패 시에만 알림). 키가 없으면 기존 동작 그대로다.
+
 Usage:
     cd etl && uv run python scripts/backup_db.py
+    cd etl && uv run python scripts/backup_db.py --code-only
 """
+import argparse
 import fnmatch
 import os
 import shutil
@@ -21,12 +28,15 @@ from pathlib import Path
 
 from notify import notify
 
+from new_etf_insight.data_paths import code_backup_dir, data_root
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKUP_DIRNAME = "new-etf_insight_backup"
 
 _SQLITE_EXTS = {".sqlite3", ".sqlite", ".db"}
 _DUCKDB_EXTS = {".duckdb"}
 _EXCLUDE_NAMES = ("*.bak*", "_bak_del_*", "*-wal", "*-shm", "*.lock", "corpcode.zip")
+_DATA_SUBS = ("etl/db", "etl/exports", "etl/runs")
 
 
 def find_backup_root(
@@ -132,6 +142,32 @@ def iter_sources(root: Path) -> list[Path]:
         if rel.parts[:2] == (".claude", "worktrees"):
             continue
         _add(p)
+    return sorted(set(out))
+
+
+def iter_code_sources(root: Path) -> list[Path]:
+    """iter_sources 중 데이터 루트로 옮겨가는 폴더(_DATA_SUBS) 아래는 제외."""
+    root = Path(root)
+    subs = {tuple(Path(s).parts) for s in _DATA_SUBS}
+    return [
+        p for p in iter_sources(root) if p.relative_to(root).parts[:2] not in subs
+    ]
+
+
+def iter_tree(root: Path) -> list[Path]:
+    """root 아래 모든 파일(rglob), _excluded 적용, 정렬."""
+    root = Path(root)
+    out: list[Path] = []
+    for p in sorted(root.rglob("*")):
+        if not p.is_file():
+            continue
+        try:
+            rel = p.relative_to(root)
+        except ValueError:
+            continue
+        if _excluded(rel):
+            continue
+        out.append(p)
     return sorted(set(out))
 
 
@@ -305,15 +341,22 @@ def backup_file(src: Path, dst: Path) -> None:
     _replace(tmp, dst)
 
 
-def run(project_root: Path, backup_root: Path) -> dict:
-    """전체 백업 수행. 실패는 파일 단위로 기록하고 계속. 소스에서 지워진 파일은 백업에서 지우지 않음."""
+def run(
+    project_root: Path, backup_root: Path, sources: list[Path] | None = None
+) -> dict:
+    """전체 백업 수행. 실패는 파일 단위로 기록하고 계속. 소스에서 지워진 파일은 백업에서 지우지 않음.
+
+    sources가 None이면 iter_sources(project_root), 아니면 그 목록을 쓴다. 상대경로는 project_root 기준.
+    """
     project_root = Path(project_root)
     backup_root = Path(backup_root)
     copied: list[str] = []
     skipped = 0
     failed: list[tuple[str, str]] = []
     total = 0
-    for src in iter_sources(project_root):
+    if sources is None:
+        sources = iter_sources(project_root)
+    for src in sources:
         rel = src.relative_to(project_root).as_posix()
         dst = backup_root / rel
         try:
@@ -341,6 +384,11 @@ def run(project_root: Path, backup_root: Path) -> dict:
     return {"copied": copied, "skipped": skipped, "failed": failed, "bytes": total}
 
 
+def sync_code_backup(project_root: Path, code_root: Path) -> dict:
+    """C: 측 파일을 데이터 루트 code_backup/ 에 복사. run() 결과 dict 그대로 반환."""
+    return run(project_root, code_root, iter_code_sources(project_root))
+
+
 def _send(message: str) -> None:
     try:
         notify(message, channel="batch")
@@ -348,7 +396,34 @@ def _send(message: str) -> None:
         print(f"[backup] notify failed: {exc}")
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="외장하드 DB 백업 (slot_A/slot_B 교대)")
+    ap.add_argument(
+        "--code-only",
+        action="store_true",
+        help="C: 측 파일만 데이터 루트 code_backup/ 에 복사 (외장 백업 없음)",
+    )
+    args = ap.parse_args([] if argv is None else argv)
+    from dotenv import load_dotenv
+
+    load_dotenv(PROJECT_ROOT / ".env")
+    try:
+        root = data_root()
+    except Exception as exc:
+        _send(f"[DB 백업] 오류: {exc}")
+        return 1
+    if args.code_only:
+        if root is None:
+            print("[backup] NEW_ETF_DATA_ROOT 미설정 - code backup skip")
+            return 0
+        result = sync_code_backup(PROJECT_ROOT, code_backup_dir())
+        if not result["failed"]:
+            return 0
+        lines = [f"[코드 사본] 일부 실패 {len(result['failed'])}개"]
+        for rel, msg in result["failed"][:20]:
+            lines.append(f"{rel}: {msg}")
+        _send("\n".join(lines))
+        return 1
     try:
         from dotenv import load_dotenv
 
@@ -362,7 +437,20 @@ def main() -> int:
             return 1
         slot = pick_slot(backup_root)
         start = time.time()
-        result = run(PROJECT_ROOT, backup_root / f"slot_{slot}")
+        if root is None:
+            result = run(PROJECT_ROOT, backup_root / f"slot_{slot}")
+        else:
+            code_result = sync_code_backup(PROJECT_ROOT, code_backup_dir())
+            slot_result = run(root, backup_root / f"slot_{slot}", iter_tree(root))
+            result = {
+                "copied": [*code_result["copied"], *slot_result["copied"]],
+                "skipped": code_result["skipped"] + slot_result["skipped"],
+                "failed": [
+                    *((f"code_backup: {rel}", msg) for rel, msg in code_result["failed"]),
+                    *slot_result["failed"],
+                ],
+                "bytes": code_result["bytes"] + slot_result["bytes"],
+            }
         elapsed = int(time.time() - start)
         gb = result["bytes"] / (1024**3)
         if not result["failed"]:
@@ -380,6 +468,7 @@ def main() -> int:
             first = f"[DB 백업] 일부 실패 slot_{slot} (최신 유지: {kept})"
         lines = [
             first,
+            *([f"원본 {root}"] if root is not None else []),
             f"복사 {len(result['copied'])}개({gb:.1f} GB), "
             f"건너뜀 {result['skipped']}개, 실패 {len(result['failed'])}개, "
             f"소요 {elapsed // 60:02d}:{elapsed % 60:02d}",
@@ -394,4 +483,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
