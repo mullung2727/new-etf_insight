@@ -20,9 +20,10 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB = ROOT / "db" / "swing_pick.sqlite3"
+DEFAULT_DB = db_dir() / "swing_pick.sqlite3"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS swing_candidates (

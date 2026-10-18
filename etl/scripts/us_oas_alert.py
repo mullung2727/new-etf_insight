@@ -25,6 +25,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pandas as pd
+from new_etf_insight.data_paths import db_dir
 
 OAS_SERIES = "BAMLH0A0HYM2"
 FIXED_BP = 20.0
@@ -32,7 +33,7 @@ PCT_Q = 0.02
 WIN = 252
 MIN_N = 126
 CUM_K = 7
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_macro.duckdb"
+DEFAULT_DB_PATH = db_dir() / "us_macro.duckdb"
 
 _CREATE_ALERT_LOG = """
 CREATE TABLE IF NOT EXISTS oas_alert_log (

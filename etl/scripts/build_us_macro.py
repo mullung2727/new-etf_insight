@@ -25,9 +25,10 @@ import requests
 from dotenv import load_dotenv
 
 from build_us_ohlcv import _default_download, fetch_batch
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[2]                        # new-etf_insight/
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_macro.duckdb"
+DEFAULT_DB_PATH = db_dir() / "us_macro.duckdb"
 ENV_PATH = ROOT / ".env"
 
 FRED_URL = "https://api.stlouisfed.org/fred/series/observations"

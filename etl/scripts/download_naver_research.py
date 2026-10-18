@@ -27,6 +27,7 @@ from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
+from new_etf_insight.data_paths import exports_dir
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -54,8 +55,8 @@ _DESKTOP_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWeb
 FETCH_TIMEOUT = 30
 REQUEST_SLEEP = 0.4  # 예의상 요청 간 간격
 LOOKBACK_DAYS = 7  # 일일 배치 목록 재조회 창(오늘 포함 일수)
-DEFAULT_EXPORT_BASE = Path(__file__).resolve().parents[1] / "exports" / "stock_reports"
-SECTOR_EXPORT_BASE = Path(__file__).resolve().parents[1] / "exports" / "sector_reports"
+DEFAULT_EXPORT_BASE = exports_dir() / "stock_reports"
+SECTOR_EXPORT_BASE = exports_dir() / "sector_reports"
 _ILLEGAL_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
 _CODE_RE = re.compile(r"^\d{6}$")
 

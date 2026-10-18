@@ -16,8 +16,9 @@ import argparse
 import sqlite3
 import sys
 from pathlib import Path
+from new_etf_insight.data_paths import db_dir
 
-DB_DIR = Path(__file__).resolve().parents[1] / "db"
+DB_DIR = db_dir()
 OUT_PATH = Path(__file__).resolve().parents[1] / "docs" / "DB_SCHEMA.md"
 # etl 밖 SQLite DB도 카탈로그에 포함 (표시명, 경로)
 EXTRA_SQLITE = [

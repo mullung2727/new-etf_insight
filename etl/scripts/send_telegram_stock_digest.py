@@ -26,8 +26,9 @@ from notify import notify  # noqa: E402
 from telegram_channels import load_all_channels  # noqa: E402
 from telegram_session_highlights import fetch_session_highlights  # noqa: E402
 from wl_sqlite import connect_ro  # noqa: E402
+from new_etf_insight.data_paths import db_dir
 
-DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
+DEFAULT_DB = db_dir() / "telegram_public.sqlite3"
 
 _CHANGE_LABEL = {"new": "🆕", "continued": "🔁"}
 # flow_data/research_note가 하나라도 붙으면 '주목', 아니면 '리포트/뉴스'

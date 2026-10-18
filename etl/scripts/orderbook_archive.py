@@ -28,11 +28,12 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from notify import notify
+from new_etf_insight.data_paths import db_dir, orderbook_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]  # new-etf_insight/
 ETL_ROOT = Path(__file__).resolve().parents[1]  # etl/
-DEFAULT_SRC = ETL_ROOT / "db" / "orderbook_research"
-DEFAULT_DST = Path("D:/orderbook")
+DEFAULT_SRC = db_dir() / "orderbook_research"
+DEFAULT_DST = orderbook_dir()
 
 KST = ZoneInfo("Asia/Seoul")
 RECORDING_CUTOFF = time(20, 10)  # 오늘 파일은 이 시각 전이면 녹화 중이라 건너뜀 (녹화 08:30~20:00)

@@ -27,9 +27,10 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from youtube_transcript_api import YouTubeTranscriptApi
+from new_etf_insight.data_paths import db_dir
 
 KST = dt.timezone(dt.timedelta(hours=9))
-DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "youtube_public.sqlite3"
+DEFAULT_DB = db_dir() / "youtube_public.sqlite3"
 FETCH_TIMEOUT = 40
 # `YouTube RSS Feeds server`가 유효한 피드에도 404/500을 요청 단위로 랜덤 반환하는 구간이
 # 있다(실측: 같은 URL이 몇 초 간격으로 404→200, 클라이언트·UA 무관). 재시도로 흡수하되
