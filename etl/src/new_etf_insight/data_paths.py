@@ -48,6 +48,8 @@ def data_root() -> Path | None:
     if value is None or not value.strip():
         return None
     root = Path(value.strip())
+    if not root.is_absolute():
+        root = REPO_ROOT / root
     if not root.is_dir():
         raise RuntimeError(
             f"{ENV_KEY}={value} 폴더 없음 — 데이터 드라이브 인식 확인 (C: 로 폴백하지 않음)"

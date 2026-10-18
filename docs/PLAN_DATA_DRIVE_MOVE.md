@@ -42,10 +42,10 @@ E:\new-etf_insight_data\
 - `etl/logs`(86MB)·`temp/`·`research` 결과물은 대상 아님. temp·오래된 결과물 정리는 별도.
 
 ## 4. 코드
-### 4.1 공용 함수 `data_paths.py` (저장소 루트, stdlib 만)
+### 4.1 공용 함수 `data_paths.py` (etl/src/new_etf_insight/data_paths.py, stdlib 만)
 - `data_root() -> Path | None`: 환경변수 → 없으면 루트 `.env` 에서 `NEW_ETF_DATA_ROOT=` 한 줄 직접 파싱. 없으면 None. 있는데 폴더 없으면 `RuntimeError`.
 - `db_dir()`, `exports_dir()`, `runs_dir()`, `orderbook_dir()`, `sec_edgar_dir()`, `ken_french_dir()`: root 있으면 그 아래, 없으면 지금 기본값(`<repo>/etl/db` 등, D: 계열은 지금 D: 경로).
-- 저장소 루트를 sys.path 에 넣는 기존 패턴(etl/scripts `_bootstrap`, api holdings·research 라우터, research 모듈)으로 import. api venv 에서도 stdlib 만이라 import 가능.
+- etl venv 는 패키지 설치로 import. api·broker venv 는 파일 상단에서 <repo>/etl/src 를 sys.path 에 넣고 import (stdlib 만이라 가능).
 
 ### 4.2 호출부 교체
 - etl/scripts·research·api·broker·ops 의 하드코딩 경로를 위 함수로 교체. 기존 per-DB env 오버라이드(`KRX_DB_PATH` 등)는 우선순위 유지(env > data_paths 기본).
