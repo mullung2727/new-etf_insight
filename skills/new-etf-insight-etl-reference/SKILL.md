@@ -207,7 +207,7 @@ save_graph_png(path)
 
 ### `scripts/build_db.py`
 ```python
-DEFAULT_RUNS_DIR = <데이터루트>/runs  # (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir())
+DEFAULT_RUNS_DIR = <데이터루트>/runs  # (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.runs_dir())
 DEFAULT_DB_PATH  = <데이터루트>/db/etf_insight.sqlite3
 
 sync_to_db(runs_dir: Path, db_path: Path = DEFAULT_DB_PATH) -> int

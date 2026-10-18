@@ -30,7 +30,7 @@ etl/
 - 경로는 `new_etf_insight.data_paths` 의 `db_dir()`·`exports_dir()`·`runs_dir()`·`orderbook_dir()`·`sec_edgar_dir()`·`ken_french_dir()` 로만 정한다. `etl/db`·`"db/…"`·`Path("runs")`·`D:/` 를 코드에 직접 쓰지 않는다 (`tests/test_data_paths.py` 가 검사).
 - 키가 없으면 예전 경로(저장소 `etl/db` 등), 키가 있는데 폴더가 없으면 RuntimeError — C: 로 조용히 폴백하지 않는다.
 - `.env` 에 `KRX_DB_PATH` 같은 DB별 경로를 넣으면 data_paths 를 이긴다. 넣지 말 것.
-- 외장하드 D: 는 백업 사본(`backup_db.py`, slot_A/B). 원본 아님.
+- 데이터 루트가 설정된 동안 외장하드 D: 는 백업 사본(`backup_db.py`, slot_A/B)이다. 원본 아님. (키가 없을 때의 옛 기본값은 orderbook·sec_edgar·ken_french 를 D: 에 둔다.)
 
 ## 데이터 흐름
 
