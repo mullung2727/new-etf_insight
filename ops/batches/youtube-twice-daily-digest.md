@@ -24,7 +24,7 @@ ops/scheduled-tasks/run-youtube-digest-session.ps1 -Session morning|evening
   → youtube_digest.py --date D --session <s> --channel telegram_report
 ```
 
-- DB: `etl/db/youtube_public.sqlite3` (신규 테이블 2개만 추가)
+- DB: `<데이터루트>/db/youtube_public.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) (신규 테이블 2개만 추가)
 - LLM: 통합 1회 (`scripts/youtube_langgraph/prompts/market_digest.md` + `market_digest_schema.json`)
 
 ## 입력 선별 규칙

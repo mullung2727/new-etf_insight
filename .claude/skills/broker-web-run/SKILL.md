@@ -41,9 +41,9 @@ npm run dev
 ## 전제 조건
 
 - `api/.env` 존재 (`api/.env.example` 복사 후 작성)
-  - `DUCKDB_PATH=../etl/db/etf_insight.sqlite3` (SQLite. 변수명은 back-compat용 유지. ETL 배치가 먼저 생성)
-  - `WATCHLIST_DB_PATH=../etl/db/watchlist.sqlite3` (SQLite)
-  - `KRX_DB_PATH=../etl/db/krx_ohlcv.duckdb` (OHLCV는 DuckDB 유지)
+  - `DUCKDB_PATH`는 설정하지 않는다 — 비우면 data_paths 기본(데이터 루트) (SQLite. 변수명은 back-compat용 유지. ETL 배치가 먼저 생성)
+  - `WATCHLIST_DB_PATH`는 설정하지 않는다 — 비우면 data_paths 기본(데이터 루트) (SQLite)
+  - `KRX_DB_PATH`는 설정하지 않는다 — 비우면 data_paths 기본(데이터 루트) (OHLCV는 DuckDB 유지)
 - `broker/.env` 존재 (`broker/.env.example` 복사 후 작성)
   - `KIWOOM_APPKEY`, `KIWOOM_SECRETKEY` 필수
   - `KIWOOM_ENV=paper` (기본, 모의투자)

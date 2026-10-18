@@ -1,7 +1,7 @@
 # Telegram Collected-Posts Query Guide
 
 Use this skill when searching/reading Telegram posts already collected into
-`etl/db/telegram_public.sqlite3` (see `new-etf-insight-telegram-collect` for
+`<데이터루트>/db/telegram_public.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) (see `new-etf-insight-telegram-collect` for
 collection).
 
 ## Scope
@@ -44,7 +44,7 @@ uv run python scripts/query_telegram_public.py --keyword 반도체 --full --limi
 - `--from` / `--to` : KST date range (either or both optional).
 - `--limit` : max rows (default 100).
 - `--full` : print full body; default prints a 120-char single-line snippet.
-- `--db` : override DB path (default `etl/db/telegram_public.sqlite3`).
+- `--db` : override DB path (default `<데이터루트>/db/telegram_public.sqlite3`).
 
 Output line: `[date_kst] channel/post_id: <body>`, ending with a `--- N건 ---`
 count.
@@ -55,7 +55,7 @@ For anything the CLI does not cover (aggregates, joins), query the SQLite
 directly — reconfigure stdout to utf-8 first:
 
 ```bash
-uv run python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); import sqlite3; con=sqlite3.connect('db/telegram_public.sqlite3'); con.execute('PRAGMA query_only=ON'); [print(r) for r in con.execute(\"SELECT channel, date_kst, COUNT(*) FROM telegram_posts GROUP BY channel, date_kst ORDER BY date_kst, channel\")]"
+uv run python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); import sqlite3; con=sqlite3.connect('E:/new-etf_insight_data/db/telegram_public.sqlite3'); con.execute('PRAGMA query_only=ON'); [print(r) for r in con.execute(\"SELECT channel, date_kst, COUNT(*) FROM telegram_posts GROUP BY channel, date_kst ORDER BY date_kst, channel\")]"
 ```
 
 Schema: `telegram_posts(channel, post_id, post_ref, posted_at_utc, date_kst,

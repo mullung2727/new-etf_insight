@@ -17,7 +17,7 @@ ops/scheduled-tasks/run-youtube-daily.ps1
 ```
 
 - 대상 채널: `etl/scripts/youtube_channels.json`
-- DB: `etl/db/youtube_public.sqlite3`
+- DB: `<데이터루트>/db/youtube_public.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir())
 - LLM: `.env`의 `ETF_LLM_PROVIDER` (기본 codex)
 
 ## 스케줄

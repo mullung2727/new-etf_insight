@@ -25,13 +25,13 @@ Run the previous-day `new_etf_insight` ETF daily batch and sync records to DuckD
 - Run `new_etf_insight.daily_pipeline.run_daily_pipeline` for that previous-day date with:
   - records path: `runs/YYYYMMDD/records`
   - PDFs path: `runs/YYYYMMDD/pdfs`
-- The pipeline must sync records to SQLite at `etl/db/etf_insight.sqlite3`.
+- The pipeline must sync records to SQLite at `<데이터루트>/db/etf_insight.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()).
 
 ## Verification
 
 After the pipeline:
 
-- Verify `etl/db/etf_insight.sqlite3` exists.
+- Verify `<데이터루트>/db/etf_insight.sqlite3` exists.
 - If DB row verification is needed, use the verification block in the
   skill exactly, replacing `YYYYMMDD`.
 - Report a concise result summary to Discord.

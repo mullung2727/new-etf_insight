@@ -7,7 +7,7 @@
 ## Guardrails
 
 - 보고 전용이다. 주문·취소·정정·재시도하지 않는다.
-- `etl/db/watchlist.sqlite3`를 읽기 전용으로 조회한다.
+- `<데이터루트>/db/watchlist.sqlite3`(<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir())를 읽기 전용으로 조회한다.
 - KST 지정일의 `sell_status='filled'`이고 `sold_at` 날짜가 지정일인 행만 포함한다.
 - `sell_cmsn`, `sell_tax`, `sell_pl_won`은 청산 워커가 저장한 키움 권위값을 사용한다.
 - 실제 비용·손익이 `NULL`이면 0원이나 gross 추정값으로 대체하지 않고 `미확정`으로 보고한다.

@@ -16,6 +16,6 @@ this file with host-default shell decoding, especially Windows PowerShell 5.1
 ## Purpose
 
 Daily 19:00; DART periodic-report financial indicators and key accounts into
-`etl/db/financial_indicators.sqlite3` via
+`<데이터루트>/db/financial_indicators.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) via
 `ops/scheduled-tasks/run-financial-indicators.ps1`. Discord report only on days
 with filings.
