@@ -561,12 +561,14 @@ def analyze_telegram_session(
     date_kst: str,
     session: str,
     start_date_kst: str | None = None,
-    db_path: Path = db_dir() / "telegram_public.sqlite3",
+    db_path: Path | None = None,
     output_path: Path | None = None,
     history_days: int = 7,
     min_text_length: int = 30,
     stock_db_path: str = "",
 ) -> dict:
+    if db_path is None:
+        db_path = db_dir() / "telegram_public.sqlite3"
     ensure_schema(str(db_path))  # 워터마크/insights 테이블 선생성(읽기 노드 DDL 금지)
     app = build_graph()
     result = app.invoke({
@@ -612,7 +614,7 @@ def main() -> None:
     ap.add_argument("--date", required=True, help="분석 대상 KST 일자 YYYY-MM-DD")
     ap.add_argument("--session", required=True, choices=["morning", "close", "evening"])
     ap.add_argument("--start-date", help="증분 조회 시작 KST 일자(기본: --date)")
-    ap.add_argument("--db", default=str(db_dir() / "telegram_public.sqlite3"))
+    ap.add_argument("--db", default=None)
     ap.add_argument("--output", help="디버그 JSON 덤프 경로(선택)")
     ap.add_argument("--history-days", type=int, default=7)
     ap.add_argument("--min-text-length", type=int, default=30)
@@ -622,7 +624,7 @@ def main() -> None:
         args.date,
         args.session,
         start_date_kst=args.start_date,
-        db_path=Path(args.db),
+        db_path=Path(args.db) if args.db else None,
         output_path=Path(args.output) if args.output else None,
         history_days=args.history_days,
         min_text_length=args.min_text_length,

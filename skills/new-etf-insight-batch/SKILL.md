@@ -15,7 +15,7 @@ For the pullback/close-bet realized-result report and its 16:20:00 Windows task,
 - Python requirement is `>=3.12`.
 - `.env` is one directory above the working directory: `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\.env`.
 - Do not print secrets from `.env`.
-- Batch output goes under `<데이터루트>/runs/...` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()).
+- Batch output goes under `<데이터루트>/runs/...` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.runs_dir()).
 - SQLite output goes to `<데이터루트>/db/etf_insight.sqlite3`.
 
 ## Prepare
