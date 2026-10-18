@@ -45,8 +45,9 @@ try {
 
   $status = @'
 import duckdb
+from new_etf_insight.data_paths import db_dir
 yday = "__YDAY__"
-con = duckdb.connect("db/krx_ohlcv.duckdb", read_only=True)
+con = duckdb.connect(str(db_dir() / "krx_ohlcv.duckdb"), read_only=True)
 latest = con.execute("SELECT max(date) FROM ohlcv").fetchone()[0]
 cnt, min_t, max_t, total_tv = con.execute(
     "SELECT COUNT(*), MIN(ticker), MAX(ticker), SUM(trading_value) FROM ohlcv WHERE date=?", [latest]).fetchone()
@@ -59,7 +60,7 @@ print(
     + f"- rows: {cnt}\n"
     + f"- ticker range: {min_t}~{max_t}\n"
     + f"- total trading value: {(total_tv or 0):,.0f}\n"
-    + "- DB: db/krx_ohlcv.duckdb\n"
+    + "- DB: " + str(db_dir() / "krx_ohlcv.duckdb") + "\n"
     + "- watchlist build / LLM scoring: skipped by design"
 )
 '@.Replace("__YDAY__", $yday)

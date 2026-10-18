@@ -26,6 +26,7 @@ if hasattr(sys.stdout, "reconfigure"):
 from langgraph.graph import END, StateGraph
 
 from new_etf_insight.llm import generate_json
+from new_etf_insight.data_paths import db_dir
 
 # 순수 로직 재사용 — 종목 추출/취합은 기존 discover 파이프라인 것을 그대로 쓴다.
 try:
@@ -560,7 +561,7 @@ def analyze_telegram_session(
     date_kst: str,
     session: str,
     start_date_kst: str | None = None,
-    db_path: Path = Path("db/telegram_public.sqlite3"),
+    db_path: Path = db_dir() / "telegram_public.sqlite3",
     output_path: Path | None = None,
     history_days: int = 7,
     min_text_length: int = 30,
@@ -611,7 +612,7 @@ def main() -> None:
     ap.add_argument("--date", required=True, help="분석 대상 KST 일자 YYYY-MM-DD")
     ap.add_argument("--session", required=True, choices=["morning", "close", "evening"])
     ap.add_argument("--start-date", help="증분 조회 시작 KST 일자(기본: --date)")
-    ap.add_argument("--db", default="db/telegram_public.sqlite3")
+    ap.add_argument("--db", default=str(db_dir() / "telegram_public.sqlite3"))
     ap.add_argument("--output", help="디버그 JSON 덤프 경로(선택)")
     ap.add_argument("--history-days", type=int, default=7)
     ap.add_argument("--min-text-length", type=int, default=30)
