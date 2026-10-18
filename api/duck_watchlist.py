@@ -36,6 +36,9 @@ WATCHLIST_DB_PATH = _resolve_project_path(
 KRX_DB_PATH = _resolve_project_path(
     os.getenv("KRX_DB_PATH"), ETL_DB_DIR / "krx_ohlcv.duckdb"
 )
+US_DB_PATH = _resolve_project_path(
+    os.getenv("US_DB_PATH"), ETL_DB_DIR / "us_ohlcv.duckdb"
+)
 FINANCIAL_DB_PATH = _resolve_project_path(
     os.getenv("FINANCIAL_DB_PATH"), ETL_DB_DIR / "financial_indicators.sqlite3"
 )
@@ -111,3 +114,7 @@ def _krx_cursor(db_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
 
 def krx_cursor() -> ContextManager[duckdb.DuckDBPyConnection]:
     return _krx_cursor(KRX_DB_PATH)
+
+
+def us_cursor() -> ContextManager[duckdb.DuckDBPyConnection]:
+    return _krx_cursor(US_DB_PATH)

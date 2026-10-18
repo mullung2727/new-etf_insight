@@ -79,6 +79,10 @@ class DailyHolding(_Base):
     d1: float | None = None   # 직전 스냅샷 대비 비중 증감(%p)
     d7: float | None = None   # 7일 전(이하 가장 가까운) 스냅샷 대비
     d30: float | None = None  # 30일 전(이하 가장 가까운) 스냅샷 대비
+    r1m: float | None = None  # 기준일 종가 vs 1개월 전(이하 가장 가까운 거래일) 종가 수익률(%), 가격 없으면 None
+    r3m: float | None = None  # 기준일 종가 vs 3개월 전(이하 가장 가까운 거래일) 종가 수익률(%), 가격 없으면 None
+    r6m: float | None = None  # 기준일 종가 vs 6개월 전(이하 가장 가까운 거래일) 종가 수익률(%), 가격 없으면 None
+    r12m: float | None = None  # 기준일 종가 vs 12개월 전(이하 가장 가까운 거래일) 종가 수익률(%), 가격 없으면 None
 
 
 class HoldingEvent(_Base):

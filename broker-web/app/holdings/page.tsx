@@ -25,6 +25,10 @@ interface DailyHolding {
   d1: number | null;
   d7: number | null;
   d30: number | null;
+  r1m: number | null;
+  r3m: number | null;
+  r6m: number | null;
+  r12m: number | null;
 }
 
 interface HoldingPoint {
@@ -47,10 +51,10 @@ interface PageProps {
 }
 
 const ETFS = [
-  { code: "426030", label: "나스닥100" },
-  { code: "385720", label: "KOSPI" },
-  { code: "495060", label: "밸류업" },
-  { code: "456600", label: "글로벌AI" },
+  { code: "426030", label: "TIME 미국나스닥100액티브" },
+  { code: "385720", label: "TIME 코스피액티브" },
+  { code: "495060", label: "TIME 코리아밸류업액티브" },
+  { code: "456600", label: "TIME 글로벌AI인공지능액티브" },
 ] as const;
 
 const DEFAULT_ETF = "426030";
@@ -81,6 +85,12 @@ function formatDelta(v: number | null): string {
   if (v === null || v === undefined) return "-";
   if (v === 0) return "0.00";
   return `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
+}
+
+function formatRet(v: number | null): string {
+  if (v === null || v === undefined) return "-";
+  if (v === 0) return "0.00%";
+  return `${v > 0 ? "+" : ""}${v.toFixed(2)}%`;
 }
 
 function deltaClass(v: number | null): string | undefined {
@@ -121,7 +131,8 @@ export default async function HoldingsPage({ searchParams }: PageProps) {
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
             )}
           >
-            {code} {label}
+            <div>{label}</div>
+            <div className="text-xs text-muted-foreground">{code}</div>
           </Link>
         ))}
       </div>
@@ -152,6 +163,10 @@ export default async function HoldingsPage({ searchParams }: PageProps) {
                   <TableHead className="text-right">전일</TableHead>
                   <TableHead className="text-right">1주</TableHead>
                   <TableHead className="text-right">1개월</TableHead>
+                  <TableHead className="text-right">수익률 1M</TableHead>
+                  <TableHead className="text-right">3M</TableHead>
+                  <TableHead className="text-right">6M</TableHead>
+                  <TableHead className="text-right">12M</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -175,6 +190,10 @@ export default async function HoldingsPage({ searchParams }: PageProps) {
                     <TableCell className={cn("text-right font-mono", deltaClass(h.d1))}>{formatDelta(h.d1)}</TableCell>
                     <TableCell className={cn("text-right font-mono", deltaClass(h.d7))}>{formatDelta(h.d7)}</TableCell>
                     <TableCell className={cn("text-right font-mono", deltaClass(h.d30))}>{formatDelta(h.d30)}</TableCell>
+                    <TableCell className={cn("text-right font-mono", deltaClass(h.r1m))}>{formatRet(h.r1m)}</TableCell>
+                    <TableCell className={cn("text-right font-mono", deltaClass(h.r3m))}>{formatRet(h.r3m)}</TableCell>
+                    <TableCell className={cn("text-right font-mono", deltaClass(h.r6m))}>{formatRet(h.r6m)}</TableCell>
+                    <TableCell className={cn("text-right font-mono", deltaClass(h.r12m))}>{formatRet(h.r12m)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
