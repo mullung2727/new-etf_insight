@@ -1,4 +1,4 @@
-# ETL — Claude Code Context
+# ETL — Agent Context
 
 코드 수정 전 루트 `README.md`(구성·포트·데이터 흐름) 확인. 실행 방법은 `skills/new-etf-insight-batch/SKILL.md` 참조.
 
@@ -6,20 +6,31 @@
 
 모든 명령은 `etl/` 기준. `uv sync` → `uv run` 순서 필수.
 
+- 패키지 추가는 `uv add <pkg>` 사용 (이 디렉토리에서).
+- `pip install` 사용하지 말 것.
+
 ```
 etl/
 ├── src/new_etf_insight/   # 파이프라인 핵심 모듈
 ├── scripts/               # 실행 스크립트 및 LangGraph
 │   └── pdf_langgraph/     # PDF 분석 LangGraph + 프롬프트 + 스키마
-├── runs/                  # 파이프라인 출력 (git 제외)
+├── runs/                  # (옛 위치) 지금은 <데이터루트>/runs
 │   └── {날짜범위}/
 │       ├── records/       # ETF JSON (etf_key.json)
 │       └── pdfs/          # 다운로드 PDF
-├── db/                    # git 제외. etf_insight/watchlist=SQLite, krx_ohlcv=DuckDB
+├── db/                    # (옛 위치) 지금은 <데이터루트>/db
 │   └── etf_insight.sqlite3
 ├── tests/
 └── pyproject.toml
 ```
+
+## 데이터 위치 (2026-10-18~)
+
+- DB·리포트 PDF·runs·호가 parquet·SEC 원본은 저장소 밖 **데이터 루트**에 있다: 루트 `.env` 의 `NEW_ETF_DATA_ROOT` (현재 `E:\new-etf_insight_data`) 아래 `db\`·`exports\`·`runs\`·`orderbook\`·`sec_edgar\`·`ken_french\`.
+- 경로는 `new_etf_insight.data_paths` 의 `db_dir()`·`exports_dir()`·`runs_dir()`·`orderbook_dir()`·`sec_edgar_dir()`·`ken_french_dir()` 로만 정한다. `etl/db`·`"db/…"`·`Path("runs")`·`D:/` 를 코드에 직접 쓰지 않는다 (`tests/test_data_paths.py` 가 검사).
+- 키가 없으면 예전 경로(저장소 `etl/db` 등), 키가 있는데 폴더가 없으면 RuntimeError — C: 로 조용히 폴백하지 않는다.
+- `.env` 에 `KRX_DB_PATH` 같은 DB별 경로를 넣으면 data_paths 를 이긴다. 넣지 말 것.
+- 외장하드 D: 는 백업 사본(`backup_db.py`, slot_A/B). 원본 아님.
 
 ## 데이터 흐름
 
@@ -29,8 +40,8 @@ DART API
   → dart_viewer.py         fund_code 추출, etf_key 생성
   → dart_pdf.py            투자설명서 PDF 다운로드
   → pdf_analysis_langgraph.py  LLM 분석 (LangGraph)
-  → runs/{날짜}/records/{etf_key}.json  저장
-  → build_db.py            runs/ 전체 스캔 → SQLite upsert
+  → <데이터루트>/runs/{날짜}/records/{etf_key}.json  저장
+  → build_db.py            <데이터루트>/runs 전체 스캔 → SQLite upsert
 ```
 
 ## 핵심 식별자
@@ -56,11 +67,11 @@ etf_key = "{corp_code}_{fund_code}"   # 예: 00104500_AL415
 | `scripts/pdf_langgraph/pdf_analysis_langgraph.py` | LangGraph 상태머신. PDF → LLM → JSON |
 | `scripts/pdf_langgraph/prompts/` | LLM 프롬프트 (pdf_summary, correction_review 등) |
 | `scripts/pdf_langgraph/*.json` | LLM 출력 JSON 스키마 |
-| `scripts/build_db.py` | runs/ 전체 스캔 → SQLite upsert (standalone 실행 가능) |
+| `scripts/build_db.py` | <데이터루트>/runs 전체 스캔 → SQLite upsert (standalone 실행 가능) |
 
 ## ETF JSON 레코드 구조
 
-`runs/{날짜}/records/{etf_key}.json`
+`<데이터루트>/runs/{날짜}/records/{etf_key}.json`
 
 ```json
 {
@@ -99,13 +110,13 @@ etf_key = "{corp_code}_{fund_code}"   # 예: 00104500_AL415
 
 ## etf_insight 테이블 (SQLite)
 
-`db/etf_insight.sqlite3`
+`<데이터루트>/db/etf_insight.sqlite3`
 
 - `etf_records`: etf_key PK, ETF 메타 + 요약 (1 row per ETF)
 - `etf_holdings`: (etf_key, seq) PK, 구성종목 목록
 - `etf_filing_history`: (etf_key, rcept_no) PK, 공시 메타·최초 관측시각·action/reason·성공 record snapshot. 성공 snapshot과 최초 관측정보 불변
 
-runs/ 전체 JSON은 dedup 전에 공시별 이력으로 적재한다. 최신 요약은 `(rcept_dt, rcept_no)`로 선택하며 DB보다 오래된 JSON으로 요약·holdings를 후퇴시키지 않는다. 파이프라인은 날짜별 JSON과 DB 성공 snapshot을 함께 조회해 정정을 연결한다. 성공 공시의 JSON이 없어도 LLM 재호출 없이 snapshot을 재사용한다.
+<데이터루트>/runs 전체 JSON은 dedup 전에 공시별 이력으로 적재한다. 최신 요약은 `(rcept_dt, rcept_no)`로 선택하며 DB보다 오래된 JSON으로 요약·holdings를 후퇴시키지 않는다. 파이프라인은 날짜별 JSON과 DB 성공 snapshot을 함께 조회해 정정을 연결한다. 성공 공시의 JSON이 없어도 LLM 재호출 없이 snapshot을 재사용한다.
 
 ## LLM 프로바이더
 
@@ -118,7 +129,7 @@ DART_API_KEY=...
 
 ## 수정 시 주의
 
-- filing_filter.py 키워드 변경 시 기존 runs/ 재처리 필요 여부 확인
+- filing_filter.py 키워드 변경 시 기존 <데이터루트>/runs 재처리 필요 여부 확인
 - LLM 스키마(`*.json`) 변경 시 대응 프롬프트(`prompts/*.md`)도 함께 수정
 - `daily_pipeline.py` 수정 시 `tests/test_pipeline_modules.py` 실행 확인
 - `build_db.py`는 멱등 — 여러 번 실행해도 안전

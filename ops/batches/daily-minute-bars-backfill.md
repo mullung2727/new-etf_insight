@@ -3,7 +3,7 @@
 ## Purpose
 
 키움 `ka10080`으로 KRX 전 종목 1분봉을 최근 월부터 수집하고
-`etl/db/minute_bars.duckdb`에 검증 후 저장한다.
+`<데이터루트>/db/minute_bars.duckdb`(<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir())에 검증 후 저장한다.
 
 - 대상 (종목, 날짜)는 KRX 일봉 DB 기준이다. KRX 일봉은 다음 날 08:30에 적재되므로,
   그 뒤 어제까지의 평일은 삼성전자(005930) 분봉 1회 조회로 개장 여부를 확인하고

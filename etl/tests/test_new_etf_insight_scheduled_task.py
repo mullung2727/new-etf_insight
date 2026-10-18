@@ -101,6 +101,11 @@ class NewEtfInsightScheduledTaskTest(unittest.TestCase):
                 "    }\n",
                 encoding="utf-8",
             )
+            (package / "data_paths.py").write_text(
+                "from pathlib import Path\n\ndef runs_dir():\n"
+                "    return Path(\"runs\")\n",
+                encoding="utf-8",
+            )
             report_path = temp / "report.json"
             code = embedded_python.replace("__DATE__", "20260723").replace(
                 "__REPORT_JSON__", str(report_path)

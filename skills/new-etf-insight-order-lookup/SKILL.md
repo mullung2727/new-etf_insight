@@ -10,7 +10,7 @@ description: Use when asked which strategy placed a buy/sell order for a ticker 
 ## 원칙
 
 - 전략↔테이블 목록을 여기 적지 않는다. 테이블은 매번 자동 탐색 → 전략 추가·변경돼도 이 문서 수정 불필요.
-- 스캔 대상은 원장 DB 2개뿐: `etl/db/watchlist.sqlite3`(전략 ledger.py 전부), `etl/db/jev_candidate.sqlite3`(Jev).
+- 스캔 대상은 원장 DB 2개뿐: `<데이터루트>/db/watchlist.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) (전략 ledger.py 전부), `<데이터루트>/db/jev_candidate.sqlite3`(Jev).
   분봉·호가 등 시세 DB는 원장이 없으므로 보지 않는다.
 - 새 전략이 원장을 다른 DB에 두면 아래 `DBS` 에 추가.
 
@@ -21,7 +21,7 @@ cd etl && uv run python -c "
 import sqlite3, sys
 sys.stdout.reconfigure(encoding='utf-8')
 CODE = sys.argv[1]
-DBS = ['db/watchlist.sqlite3', 'db/jev_candidate.sqlite3']
+DBS = ['E:/new-etf_insight_data/db/watchlist.sqlite3', 'E:/new-etf_insight_data/db/jev_candidate.sqlite3']
 for db in DBS:
     con = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
     for (t,) in con.execute(\"select name from sqlite_master where type='table'\"):

@@ -6,7 +6,7 @@ description: Use when the user asks to view or reset per-strategy budgets on a s
 # 전략별 예산 조회·리셋
 
 같은 계좌(:8001)의 전략마다 예산 = config `capital`(시드) + `capital_since` 이후 확정 손익.
-각 전략은 안 쓴 몫을 `etl/db/cash_reservations.json` 에 예약하고, 남의 예약은 못 쓴다. 설계: `docs/done/PLAN_STRATEGY_BUDGET.md`.
+각 전략은 안 쓴 몫을 `<데이터루트>/db/cash_reservations.json` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) 에 예약하고, 남의 예약은 못 쓴다. 설계: `docs/done/PLAN_STRATEGY_BUDGET.md`.
 
 ## 조회
 
@@ -28,7 +28,7 @@ cd etl && uv run python scripts/strategy_budget.py status
 
 - 장중(거래일 08:20~15:35)은 도구가 거부한다 — 장 마감 뒤에 실행
 - 예약 파일은 각 전략의 다음 배치가 새 예산으로 다시 쓴다
-- 이력: `etl/db/watchlist.sqlite3` 표 `strategy_budget_resets`
+- 이력: `<데이터루트>/db/watchlist.sqlite3` 표 `strategy_budget_resets`
 
 ## 전략 추가·삭제
 

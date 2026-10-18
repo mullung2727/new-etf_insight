@@ -1,7 +1,7 @@
 # Telegram Public Channel Collection Guide
 
 Use this skill when collecting Telegram public-channel posts into
-`etl/db/telegram_public.sqlite3`.
+`<데이터루트>/db/telegram_public.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()).
 
 ## Scope
 
@@ -19,7 +19,7 @@ Use this skill when collecting Telegram public-channel posts into
 - `--date` is KST `YYYY-MM-DD`. Posts are filtered by KST date, never UTC.
 - Idempotent: `UNIQUE(channel, post_id)`. Re-running the same date updates
   existing rows, never duplicates.
-- SQLite output: `etl/db/telegram_public.sqlite3` (git-ignored).
+- SQLite output: `<데이터루트>/db/telegram_public.sqlite3` (git-ignored).
 
 ## Collect one date, all registered channels
 
@@ -59,5 +59,5 @@ foreach ($d in 1..6) {
 ## Verify collected rows
 
 ```bash
-uv run python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); import sqlite3; con=sqlite3.connect('db/telegram_public.sqlite3'); [print(r) for r in con.execute(\"SELECT date_kst, channel, COUNT(*) FROM telegram_posts GROUP BY date_kst, channel ORDER BY date_kst, channel\")]"
+uv run python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); import sqlite3; con=sqlite3.connect('E:/new-etf_insight_data/db/telegram_public.sqlite3'); [print(r) for r in con.execute(\"SELECT date_kst, channel, COUNT(*) FROM telegram_posts GROUP BY date_kst, channel ORDER BY date_kst, channel\")]"
 ```
