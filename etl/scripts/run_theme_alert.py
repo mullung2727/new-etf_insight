@@ -19,9 +19,10 @@ import _bootstrap  # noqa: F401,E402  (cp949 가드 + sys.path)
 from dotenv import load_dotenv  # noqa: E402  (2단계: main 진입점)
 from notify import notify  # noqa: E402  (2단계: 기본 send_fn)
 from telegram_channels import load_discovery_channels  # noqa: E402  (2단계: 텔레그램 범위)
+from new_etf_insight.data_paths import db_dir
 
 _BASE = Path(__file__).resolve().parent
-DEFAULT_DB_PATH = _BASE.parent / "db" / "theme_alert.sqlite3"
+DEFAULT_DB_PATH = db_dir() / "theme_alert.sqlite3"
 DEFAULT_CONFIG_PATH = _BASE / "theme_alert" / "theme_alert.json"
 
 _KST = timedelta(hours=9)
@@ -271,8 +272,8 @@ PROMPTS_DIR = THEME_ALERT_DIR / "prompts"
 THEME_EXTRACT_SCHEMA = THEME_ALERT_DIR / "theme_extract_schema.json"
 THEME_SUMMARY_SCHEMA = THEME_ALERT_DIR / "theme_summary_schema.json"
 
-DEFAULT_TELEGRAM_DB_PATH = _BASE.parent / "db" / "telegram_public.sqlite3"
-DEFAULT_YOUTUBE_DB_PATH = _BASE.parent / "db" / "youtube_public.sqlite3"
+DEFAULT_TELEGRAM_DB_PATH = db_dir() / "telegram_public.sqlite3"
+DEFAULT_YOUTUBE_DB_PATH = db_dir() / "youtube_public.sqlite3"
 
 PROJECT_ROOT = _BASE.parents[1]
 ENV_PATH = PROJECT_ROOT / ".env"

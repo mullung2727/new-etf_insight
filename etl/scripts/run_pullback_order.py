@@ -39,6 +39,7 @@ except ImportError:
         quantity_for_budget,
     )
     from wl_sqlite import connect_ro, connect_rw
+from new_etf_insight.data_paths import db_dir
 
 
 MAX_WAIT_DAYS = 5
@@ -47,8 +48,8 @@ REQUEST_TIMEOUT = 15
 OPEN_PULLBACK_STATUSES = ("submitted", "unconfirmed", "confirmed", "sell_ordered")
 OPEN_CLOSE_BET_STATUSES = ("submitted", "unconfirmed", "confirmed")
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
-DEFAULT_KRX_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
+DEFAULT_KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 
 
 def create_pullback_orders_table(con: sqlite3.Connection) -> None:

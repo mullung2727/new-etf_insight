@@ -29,6 +29,7 @@ import requests
 from check_krx_trading_day import is_krx_trading_day
 from trading_batch_common import now_seoul, read_reservations
 from wl_sqlite import connect_ro, connect_rw
+from new_etf_insight.data_paths import db_dir
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows cp949 크래시 가드
@@ -41,7 +42,7 @@ STRATEGIES = {
     "envelope":   ("http://127.0.0.1:8001", "research/private/envelope/live/config.json"),
     "jevq":       ("http://127.0.0.1:8001", "research/private/jev_quant_live/config.json"),
 }
-DB = REPO_ROOT / "etl" / "db" / "watchlist.sqlite3"
+DB = db_dir() / "watchlist.sqlite3"
 
 REQUEST_TIMEOUT = 15
 _BLOCK_START_SEC = 8 * 3600 + 20 * 60  # 08:20

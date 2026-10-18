@@ -34,7 +34,8 @@ from research.watchlist_expected_return.minute_bar_store import (  # noqa: E402
     missing_dates,
 )
 
-KRX_DB = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
+from new_etf_insight.data_paths import db_dir
+KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 PROBE_TICKER = "005930"
 FAILURE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS minute_backfill_failures (

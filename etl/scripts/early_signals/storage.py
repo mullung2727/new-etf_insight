@@ -13,9 +13,10 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DB = ROOT / "etl" / "db" / "early_signals.sqlite3"
+DEFAULT_DB = db_dir() / "early_signals.sqlite3"
 # 추출은 "무엇을 뽑는가"이고 처리 한도는 "몇 건 처리하는가"다. 한도를 바꿨다고 이미 뽑아둔
 # 변화가 달라지지 않으므로 추출 캐시 키에는 정책 버전을 넣지 않는다(§14 stage별 규칙).
 EXTRACT_CACHE_POLICY = "policy_independent"

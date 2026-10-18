@@ -71,8 +71,11 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
-DEFAULT_KRX_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
+
+from new_etf_insight.data_paths import db_dir
+
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
+DEFAULT_KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 
 # 총 500만원을 score 상위 N개에 분할 매수(예산은 budget_for).
 _TOP_N = 3

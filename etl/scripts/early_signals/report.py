@@ -14,9 +14,10 @@ from typing import Any
 
 from . import policy, pricing, themes
 from .metrics import has_invalidation
+from new_etf_insight.data_paths import exports_dir
 
 ROOT = Path(__file__).resolve().parents[3]
-EXPORT_DIR = ROOT / "etl" / "exports" / "early_signals"
+EXPORT_DIR = exports_dir() / "early_signals"
 
 
 def load_events_by_entity(

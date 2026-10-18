@@ -26,9 +26,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import duckdb
 import pandas as pd
+from new_etf_insight.data_paths import db_dir
 
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_ohlcv.duckdb"
+DEFAULT_DB_PATH = db_dir() / "us_ohlcv.duckdb"
 UNIVERSE_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqtraded.txt"
 DEFAULT_FROM_DATE = "20100101"
 BATCH_SIZE = 200

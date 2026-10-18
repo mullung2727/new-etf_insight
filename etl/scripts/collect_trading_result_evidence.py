@@ -35,11 +35,12 @@ import requests
 
 from report_daily_trading_result import DEFAULT_WATCHLIST_DB, _date_dash, load_filled_sells
 from wl_sqlite import connect_rw
+from new_etf_insight.data_paths import db_dir
 
 
 SEOUL = ZoneInfo("Asia/Seoul")
 ETL_DIR = pathlib.Path(__file__).resolve().parents[1]
-DEFAULT_TELEGRAM_DB = ETL_DIR / "db" / "telegram_public.sqlite3"
+DEFAULT_TELEGRAM_DB = db_dir() / "telegram_public.sqlite3"
 PROMPT_PATH = Path(__file__).resolve().with_name("trading_result_cause.md")
 SCHEMA_PATH = Path(__file__).resolve().with_name("trading_result_cause_schema.json")
 DART_VIEWER_URL = "https://dart.fss.or.kr/dsaf001/main.do?rcpNo={}"

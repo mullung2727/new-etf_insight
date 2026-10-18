@@ -7,9 +7,10 @@ from __future__ import annotations
 import statistics
 from pathlib import Path
 from typing import Any
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[3]
-KRX_DB = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
+KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 
 REQUIRED_SESSIONS = 61          # 60일 수익률에 t 와 t-60 종가가 필요하다(§9.1)
 LOOKBACK_HIGH = 120             # 보조 지표

@@ -19,12 +19,13 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from new_etf_insight.data_paths import db_dir
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 KST = dt.timezone(dt.timedelta(hours=9))
-DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
+DEFAULT_DB = db_dir() / "telegram_public.sqlite3"
 FETCH_TIMEOUT = 40
 FETCH_RETRIES = 2  # 일시적 read timeout 흡수 (총 3회 시도)
 FETCH_RETRY_BACKOFF = 2.0  # 초, attempt마다 선형 증가

@@ -13,9 +13,10 @@ from pathlib import Path
 from typing import Iterator, Optional, Sequence
 
 from .models import STATUS_IMAGE_PDF, STATUS_PARSE_ERROR, ReportFacts, YearEstimate
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB = ROOT / "db" / "report_metrics.sqlite3"
+DEFAULT_DB = db_dir() / "report_metrics.sqlite3"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS report_facts (

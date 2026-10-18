@@ -12,13 +12,14 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import requests
+from new_etf_insight.data_paths import db_dir
 
 
 REQUEST_TIMEOUT = 15
 
 # 전략별 자금 예약. {"host:port": {"strategy": {"reserve", "capital_total", ...}}}.
 # 각 전략 order·verify 가 자기 항목 갱신, available_cash 는 남의 reserve 합 차감. 파일 없으면 기존 동작 그대로.
-RESERVATION_PATH = Path(__file__).resolve().parents[1] / "db" / "cash_reservations.json"
+RESERVATION_PATH = db_dir() / "cash_reservations.json"
 
 # 청산이 끝난 것으로 간주하는 sell_status. 청산 워커의 미청산 조회와 주문 배치의
 # 중복매수 가드가 같은 집합을 봐야 한다 — 한쪽만 알면 유령 포지션이 매수를 영구 차단한다.

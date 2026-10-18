@@ -35,12 +35,13 @@ import requests
 from notify import notify
 from check_krx_trading_day import trading_day_status
 from wl_sqlite import connect_ro
+from new_etf_insight.data_paths import db_dir
 
 KST = ZoneInfo("Asia/Seoul")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]  # new-etf_insight/
 ETL_ROOT = Path(__file__).resolve().parents[1]  # etl/
-OUT_DIR = ETL_ROOT / "db" / "orderbook_research"
+OUT_DIR = db_dir() / "orderbook_research"
 LOCK_PATH = OUT_DIR / "recorder.lock"
 
 WINDOW_START = dt_time(8, 30)
@@ -836,7 +837,7 @@ def _run(date: str, today: str) -> int:
     if date != today or now.time() >= WINDOW_END:
         print(f"[orderbook_research] {date} 녹화 창 아님 (now={now:%H:%M})")
         return 0
-    src, codes = pick_codes(ETL_ROOT / "db" / "watchlist.sqlite3", date)
+    src, codes = pick_codes(db_dir() / "watchlist.sqlite3", date)
     if not codes:
         msg = f"[orderbook_research] {date} 종목 없음(source_date={src})"
         print(msg)

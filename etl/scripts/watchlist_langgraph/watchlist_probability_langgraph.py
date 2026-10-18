@@ -28,11 +28,12 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from new_etf_insight.llm import generate_json  # noqa: E402
+from new_etf_insight.data_paths import db_dir
 
 
-DEFAULT_WATCHLIST_DB = ETL_DIR / "db" / "watchlist.sqlite3"
-DEFAULT_TELEGRAM_DB = ETL_DIR / "db" / "telegram_public.sqlite3"
-DEFAULT_KRX_DB = ETL_DIR / "db" / "krx_ohlcv.duckdb"
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
+DEFAULT_TELEGRAM_DB = db_dir() / "telegram_public.sqlite3"
+DEFAULT_KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 DEFAULT_OUTPUT_DIR = ROOT / "research" / "watchlist_expected_return" / "results" / "shadow_probability"
 DEFAULT_REPORTS_DIR = ROOT.parents[1] / "reports"
 SCHEMA_PATH = Path(__file__).resolve().with_name("watchlist_scoring_schema.json")

@@ -26,8 +26,9 @@ from dotenv import load_dotenv  # noqa: E402
 from notify import notify  # noqa: E402
 from telegram_channels import load_all_channels  # noqa: E402
 from wl_sqlite import connect_ro, connect_rw  # noqa: E402
+from new_etf_insight.data_paths import db_dir
 
-DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "telegram_public.sqlite3"
+DEFAULT_DB = db_dir() / "telegram_public.sqlite3"
 
 # 최신 세션 우선순위(요약·논조는 늦은 세션 것이 현재에 가깝다)
 _SESSION_RANK = {"morning": 0, "close": 1, "evening": 2}
