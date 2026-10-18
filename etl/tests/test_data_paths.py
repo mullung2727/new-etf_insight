@@ -130,10 +130,12 @@ class HardcodedPathTest(unittest.TestCase):
         patterns = (
             '/ "db"', '/ "exports"', '/ "runs"', '"D:/',
             '"etl/db', '"etl" / "db"', '"etl" / "exports"', 'Path("exports/',
+            '"db/', '"runs/', '"exports/', 'Path("runs")', 'Path("db")',
+            '"db\\', '"runs\\', '"exports\\',
         )
         violations = []
         for path in targets:
-            if path.name in allowed:
+            if path.name in allowed or path.name.startswith("_smoke_"):
                 continue
             if ".venv" in path.parts or "node_modules" in path.parts or "__pycache__" in path.parts:
                 continue

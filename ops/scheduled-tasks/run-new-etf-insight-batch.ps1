@@ -34,21 +34,23 @@ function Invoke-Step {
 try {
   # 파이프라인의 상세 stdout은 로그로 격리하고, 알림 본문은 JSON 파일로 전달한다.
   # 긴 JSON/따옴표가 PowerShell 5.1 명령행 인자로 재해석되는 일을 막는다.
-  $reportJson = Join-Path $etlDir ("runs\\" + $target + "\\report-messages.json")
+  $runsDir = (& ".\.venv\Scripts\python.exe" -c "from new_etf_insight.data_paths import runs_dir; print(runs_dir())").Trim()
+  $reportJson = Join-Path $runsDir ($target + "\report-messages.json")
   # 로그 파일 기록자는 Tee-Object 하나뿐이다. 파이썬이 같은 파일을 붙잡고 있으면
   # 파이프에 첫 출력이 흐르는 순간 Tee 가 공유 위반으로 죽는다(신규 ETF 있는 날만 배치 사망).
   $runner = @'
 import json
 from pathlib import Path
 from new_etf_insight.daily_pipeline import run_daily_pipeline
+from new_etf_insight.data_paths import runs_dir
 
 date = "__DATE__"
 report_path = Path(r"__REPORT_JSON__")
 result = run_daily_pipeline(
     date,
     date,
-    Path("runs") / date / "records",
-    Path("runs") / date / "pdfs",
+    runs_dir() / date / "records",
+    runs_dir() / date / "pdfs",
 )
 print(json.dumps(result, ensure_ascii=False, indent=2))
 actions = {}
