@@ -10,6 +10,7 @@ Usage (from etl/):
 from __future__ import annotations
 
 import argparse
+import re
 import sqlite3
 import sys
 import time
@@ -28,6 +29,18 @@ except ImportError:
 
 # 유튜브 RSS 404/500 이 fetch_url 재시도(~30초)보다 길게 이어짐(2026-10-18 실측) → 한 바퀴 뒤 1회 더.
 RETRY_DELAY_SEC = 60
+
+_PERMANENT_HTTP_RE = re.compile(r"HTTP Error (4\d\d)")
+
+
+def _is_retryable(err: str) -> bool:
+    if err.startswith("channel not in config"):
+        return False
+    m = _PERMANENT_HTTP_RE.search(err)
+    # 404는 유효 피드에도 RSS가 랜덤 반환 → 재시도 (collect_youtube.py 34줄과 같은 이유)
+    if m and m.group(1) not in ("404", "429"):
+        return False
+    return True
 
 
 def process_channel(
@@ -62,14 +75,14 @@ def run_all(
             results.append(process_channel(con, ch, date_kst, **kwargs))
         except Exception as exc:  # noqa: BLE001 — 채널 격리가 목적
             errors.append((ch, str(exc)))
-    retryable = [ch for ch, err in errors if not err.startswith("channel not in config")]
+    retryable = [ch for ch, err in errors if _is_retryable(err)]
     if retryable:
         print(
             f"[run_youtube_channels] retry {len(retryable)} failed channels "
             f"after {RETRY_DELAY_SEC}s"
         )
         _sleep(RETRY_DELAY_SEC)
-        errors = [(ch, err) for ch, err in errors if err.startswith("channel not in config")]
+        errors = [(ch, err) for ch, err in errors if not _is_retryable(err)]
         for ch in retryable:
             try:
                 results.append(process_channel(con, ch, date_kst, **kwargs))

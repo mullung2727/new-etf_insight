@@ -478,8 +478,8 @@ def collect_failure_note(failed: list[tuple[str, str]]) -> str | None:
     if groups["net"]:
         lines.append(f"- 인터넷 연결 실패 — PC 네트워크 확인: {names(groups['net'])}")
     if groups["other"]:
-        excerpt = best[groups["other"][0]][2][:60]
-        lines.append(f"- 기타 오류 ({excerpt}): {names(groups['other'])}")
+        parts = [f"{labels.get(cid, cid)} ({best[cid][2][:60]})" for cid in groups["other"]]
+        lines.append(f"- 기타 오류: {' · '.join(parts)}")
     if groups["transient"]:
         codes = "·".join(sorted({best[cid][1] for cid in groups["transient"]}))
         lines.append(

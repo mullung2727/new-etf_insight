@@ -264,6 +264,38 @@ class RunAllRetryTest(unittest.TestCase):
         mocked.assert_not_called()
         sleep.assert_not_called()
 
+    def test_permanent_http_error_is_not_retried(self):
+        sleep = MagicMock()
+        with patch(
+            "scripts.run_youtube_channels.process_channel",
+            side_effect=RuntimeError("HTTP Error 403: Forbidden"),
+        ) as mocked:
+            results, errors = ryc.run_all(
+                None, {RY_CH_A: {}}, "2026-10-18", _sleep=sleep
+            )
+        self.assertEqual(results, [])
+        self.assertEqual(errors, [(RY_CH_A, "HTTP Error 403: Forbidden")])
+        self.assertEqual(mocked.call_count, 1)
+        sleep.assert_not_called()
+
+    def test_http_404_is_retried(self):
+        attempts: dict[str, int] = {}
+
+        def fake(con, ch, date_kst, **kwargs):
+            attempts[ch] = attempts.get(ch, 0) + 1
+            if attempts[ch] == 1:
+                raise RuntimeError("HTTP Error 404: Not Found")
+            return {"channel_id": ch}
+
+        sleep = MagicMock()
+        with patch("scripts.run_youtube_channels.process_channel", side_effect=fake):
+            results, errors = ryc.run_all(
+                None, {RY_CH_A: {}}, "2026-10-18", _sleep=sleep
+            )
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 1)
+        sleep.assert_called_once_with(60)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -470,6 +470,15 @@ class CollectFailureNoteTest(unittest.TestCase):
             [("UC1", "HTTP Error 404: Not Found"), ("UC2", ""), ("UC3", "a=b")],
         )
 
+    def test_other_group_shows_each_channel_own_excerpt(self):
+        note = yd.collect_failure_note([
+            (CH_A, "ValueError: bad xml"),
+            (CH_B, "sqlite3.OperationalError: locked"),
+        ])
+        self.assertIn("unrealtech (ValueError: bad xml)", note)
+        self.assertIn("이효석아카데미 (sqlite3.OperationalError: locked)", note)
+        self.assertEqual(note.count("bad xml"), 1)
+
     def test_no_failure_gives_no_note(self):
         self.assertIsNone(yd.collect_failure_note([]))
 
