@@ -3,10 +3,10 @@
 한 줄: 코드는 C: 저장소에 두고, DB·리포트 PDF·호가 원본 등 git 밖 데이터는 E:\new-etf_insight_data 로 옮긴다. 경로는 공용 함수 하나(`data_paths`)가 정하고, 외장하드(D:)는 E: 폴더의 사본이 된다.
 
 ## 진행
-- [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (스케줄 작업·config) — .env `NEW_ETF_DATA_ROOT`, 백업·코드사본 작업
-- [ ] 첫 실가동 확인 (날짜) — 이전 후 서버·배치 하루, 첫 E:→D: 백업
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [x] 구현·테스트 머지 (PR #110, 후속 PR #111 경로 누락분)
+- [x] 운영 등록 (2026-10-18) — .env NEW_ETF_DATA_ROOT=E:\new-etf_insight_data, daily-code-backup 23:30 등록·1회 실행 성공
+- [ ] 첫 실가동 확인 (날짜) — 이전 후 서버·배치 하루, 첫 E:→D: 백업 — 2026-10-19 거래일 배치·실매매로 확인 예정, 첫 E:→D: 백업 미실행
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ## 1. 배경 (2026-10-18 실측)
 - C: 233GB 중 여유 16.8GB. 프로젝트 39.4GB = `etl/db` 27GB · `etl/exports`(리포트 PDF) 6.2GB(월 1~2GB 증가) · research 2.9GB · temp 1.3GB · 기타.
@@ -90,4 +90,10 @@ E:\new-etf_insight_data\
 - 외장 D: 를 뺀 동안 백업 실패 알림(정상).
 
 ## 구현 차이
-없음
+- 이전 당일(2026-10-18 일) 실측: DB 26.6GB C:→E: robocopy 55초(약 650MB/s). 파일 수·크기 전부 일치, DB 20개 테이블별 행 수 일치.
+- research/private 는 계획대로 이전 당일 54개 파일 교체(원본 `_backup_20261018_datapaths`), 그 폴더 테스트 통과.
+- 루트 `.env` 의 `KRX_DB_PATH`·`WATCHLIST_DB_PATH`(`./etl/db/…`)가 data_paths 를 이겨 /watchlist 500 → 두 줄 삭제. DB별 env 는 넣지 않는 걸 규칙으로(etl/AGENTS.md).
+- P1·P2 grep 이 놓친 cwd 상대경로 4곳(`"db/…"`, `Path("runs")`, ps1 `db\`·`runs\`) → PR #111 에서 수정, 검사 패턴 추가.
+- C: 원본: `etl/db_moved_20261018`·`etl/runs_moved_20261018` 보관(10-25 이후 삭제). exports 사본은 E:·D: slot_A 확인 후 당일 삭제.
+- D: 의 orderbook·sec_edgar·ken_french 옛 원본은 그대로 남음 — 정리 여부 미정.
+
