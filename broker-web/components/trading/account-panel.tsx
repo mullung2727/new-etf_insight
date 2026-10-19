@@ -113,7 +113,7 @@ export function AccountPanel({ onHoldingSelect }: { onHoldingSelect?: (symbol: s
   useBrokerEvents((e) => { if (isFillEvent(e)) loadAccount(); });
 
   const deposit = parseKrwString(depositData?.entr);
-  const ordAlow = parseKrwString(depositData?.ord_alow_amt);
+  const ordAlow = parseKrwString(depositData?.["100stk_ord_alow_amt"]);
   const evalAmt = parseKrwString(data?.tot_evlt_amt);
   const pl = parseKrwString(data?.tot_evlt_pl);
   const holdings: Holding[] = data?.acnt_evlt_remn_indv_tot ?? [];

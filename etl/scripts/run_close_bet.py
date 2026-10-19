@@ -472,7 +472,7 @@ def fetch_price_via_broker(broker_url: str, ticker: str) -> int | None:
 
 
 def fetch_available_cash_via_broker(broker_url: str) -> int | None:
-    """GET {broker_url}/account/deposit → ord_alow_amt(주문가능금액, 원). 실패 시 None."""
+    """GET {broker_url}/account/deposit → 100stk_ord_alow_amt(증거금 100% 주문가능, 원). 실패 시 None."""
     return available_cash(broker_url)
 
 

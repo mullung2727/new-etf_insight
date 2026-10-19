@@ -38,12 +38,23 @@ class TradingBatchCommonTest(unittest.TestCase):
 
     @patch("scripts.trading_batch_common.requests.get")
     def test_quote_and_cash_are_normalized(self, get: Mock):
-        responses = [Mock(json=lambda: {"price": "001230"}), Mock(json=lambda: {"ord_alow_amt": "0300000"})]
+        responses = [Mock(json=lambda: {"price": "001230"}), Mock(json=lambda: {"100stk_ord_alow_amt": "0300000"})]
         for response in responses:
             response.raise_for_status = Mock()
         get.side_effect = responses
         self.assertEqual(current_price("http://broker", "005930"), 1230)
         self.assertEqual(available_cash("http://broker"), 300000)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_cash_uses_100stk_not_ord_alow_amt(self, get: Mock):
+        both = Mock(json=lambda: {"ord_alow_amt": "000000000791240", "100stk_ord_alow_amt": "000000017466360"})
+        both.raise_for_status = Mock()
+        get.return_value = both
+        self.assertEqual(available_cash("http://broker", exclude_reserve=False), 17466360)
+        only_old = Mock(json=lambda: {"ord_alow_amt": "000000000791240"})
+        only_old.raise_for_status = Mock()
+        get.return_value = only_old
+        self.assertIsNone(available_cash("http://broker", exclude_reserve=False))
 
     @patch("scripts.trading_batch_common.requests.get")
     def test_quote_snapshot_normalizes_intraday_ohlc(self, get: Mock):
@@ -194,7 +205,7 @@ class CashReservationTest(unittest.TestCase):
         self.td.cleanup()
 
     def _deposit(self, value):
-        response = Mock(json=lambda: {"ord_alow_amt": value})
+        response = Mock(json=lambda: {"100stk_ord_alow_amt": value})
         response.raise_for_status = Mock()
         return response
 
