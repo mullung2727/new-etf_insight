@@ -21,6 +21,7 @@ from scripts.trading_batch_common import (
     fetch_realized,
     held_quantities,
     in_order_window,
+    limit_up_price,
     market_order,
     quote_snapshot,
     quantity_for_budget,
@@ -106,6 +107,21 @@ class TradingBatchCommonTest(unittest.TestCase):
     def test_quantity_for_budget(self):
         self.assertEqual(quantity_for_budget(300000, 10000), 30)
         self.assertEqual(quantity_for_budget(300000, 400000), 0)
+
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_limit_up_price_checks_base(self, get: Mock):
+        def resp(body):
+            response = Mock(json=lambda: body)
+            response.raise_for_status = Mock()
+            return response
+        get.return_value = resp({"price": 16370,
+                                 "raw": {"base_pric": "13400", "upl_pric": "+17420"}})
+        self.assertEqual(limit_up_price("http://broker", "117670", 13400), 17420)
+        self.assertIsNone(limit_up_price("http://broker", "117670", 13000))  # 기준가 불일치
+        self.assertIsNone(limit_up_price("http://broker", "117670", None))
+        get.return_value = resp({"price": 16370, "raw": {"base_pric": "13400"}})
+        self.assertIsNone(limit_up_price("http://broker", "117670", 13400))  # upl 없음
 
 
 if __name__ == "__main__":
