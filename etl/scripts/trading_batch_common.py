@@ -222,11 +222,11 @@ def available_cash(broker_url: str, exclude_reserve: bool = True, strategy: str 
 
 
 def _deposit_cash(broker_url: str) -> int | None:
-    """GET /account/deposit → ord_alow_amt. 실패 시 None."""
+    """GET /account/deposit → 100stk_ord_alow_amt(증거금 100% 주문가능, 미정산 매도대금 포함). 실패 시 None."""
     try:
         response = requests.get(f"{broker_url}/account/deposit", timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
-        value = response.json().get("ord_alow_amt")
+        value = response.json().get("100stk_ord_alow_amt")
         return int(value) if value is not None else None
     except Exception:
         return None
