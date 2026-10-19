@@ -12,22 +12,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/block-bare-python.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-bare-python.sh\"",
             "shell": "bash"
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/block-main-commit.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-main-commit.sh\"",
             "shell": "bash"
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/warn-inline-backtest.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-inline-backtest.sh\"",
             "shell": "bash"
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/block-plan-pr.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-plan-pr.sh\"",
             "shell": "bash"
           }
         ]
@@ -37,17 +37,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/block-nonroot-env.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-nonroot-env.sh\"",
             "shell": "bash"
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/block-hardcoded-color.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-hardcoded-color.sh\"",
             "shell": "bash"
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/warn-inline-backtest.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-inline-backtest.sh\"",
             "shell": "bash"
           }
         ]
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/block-worktree-link.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-worktree-link.sh\"",
             "shell": "bash"
           }
         ]
@@ -68,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/warn-repo-hygiene.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-repo-hygiene.sh\"",
             "shell": "bash"
           }
         ]
