@@ -66,6 +66,25 @@ def quote_snapshot(broker_url: str, ticker: str) -> dict[str, int] | None:
         return None
 
 
+def limit_up_price(broker_url: str, ticker: str, prev_close: int | None) -> int | None:
+    """오늘 상한가 — GET /quotes/{ticker} 의 raw upl_pric.
+    raw base_pric(오늘 기준가)가 prev_close 와 다르면 None — 시세 지연·권리락 등으로 상한가를 믿을 수 없음 (fail closed).
+    prev_close 없음·조회 실패·값 없음·0 이하도 None."""
+    if prev_close is None:
+        return None
+    try:
+        response = requests.get(f"{broker_url}/quotes/{ticker}", timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        raw = response.json().get("raw") or {}
+        base = abs(int(raw["base_pric"]))
+        upl = abs(int(raw["upl_pric"]))
+    except Exception:
+        return None
+    if base != prev_close or upl <= 0:
+        return None
+    return upl
+
+
 def require_profile(broker_url: str, expected: str) -> bool:
     """broker ``/health`` 의 계좌 구분(profile)이 expected 인가.
 
