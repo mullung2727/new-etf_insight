@@ -154,6 +154,8 @@ class PeriodInfo(_Base):
     year: str
     reprt: str
     label: str          # "2025 연간" / "2026 1분기"
+    corp_count: int     # 그 기간 적재 회사 수
+    is_default: bool    # 첫 진입 기본 기간 (최다 기간 회사 수 50% 이상 중 최신)
 
 
 class RankingRow(_Base):

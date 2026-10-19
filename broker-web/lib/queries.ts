@@ -91,6 +91,8 @@ export interface PeriodInfo {
   year: string;
   reprt: string;
   label: string;
+  corp_count: number;
+  is_default: boolean;
 }
 export interface RankingRow {
   rank: number;
