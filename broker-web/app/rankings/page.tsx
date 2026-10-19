@@ -33,7 +33,7 @@ export default async function RankingsPage({ searchParams }: PageProps) {
   const metric: MetricInfo =
     metrics.find((m) => m.key === sp.metric) ?? metrics[0];
   const period: PeriodInfo =
-    periods.find((p) => p.year === sp.year && p.reprt === sp.reprt) ?? periods[0];
+    periods.find((p) => p.year === sp.year && p.reprt === sp.reprt) ?? periods.find((p) => p.is_default) ?? periods[0];
   const excludeImpaired = sp.exclude !== "0"; // 기본 제외
   const order = sp.order === "asc" || sp.order === "desc" ? sp.order : metric?.default_order;
 

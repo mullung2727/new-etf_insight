@@ -14,6 +14,10 @@ router = APIRouter(tags=["rankings"])
 
 # 보고서코드 → 라벨
 REPRT_LABEL = {"11011": "연간", "11013": "1분기", "11012": "반기", "11014": "3분기"}
+# 같은 사업연도 안 최신순 (연간 > 3분기 > 반기 > 1분기)
+REPRT_ORDER = {"11011": 4, "11014": 3, "11012": 2, "11013": 1}
+# 회사 수가 최다 기간의 이 비율 미만이면 공시 진행 중으로 보고 기본에서 제외
+DEFAULT_MIN_SHARE = 0.5
 
 # 큐레이션 지표. source=indicators면 ref=idx_code, accounts면 ref=account_nm(or "op_margin" 계산).
 METRICS: dict[str, dict] = {
@@ -44,22 +48,40 @@ def list_metrics() -> list[MetricInfo]:
     ]
 
 
+def _build_periods(rows: list[tuple[str, str, int]]) -> list[PeriodInfo]:
+    """(year, reprt, 회사수) → 최신순 PeriodInfo. 기준 미달 기간은 라벨에 회사 수."""
+    if not rows:
+        return []
+    ordered = sorted(rows, key=lambda t: (t[0], REPRT_ORDER.get(t[1], 0)), reverse=True)
+    threshold = max(n for _, _, n in rows) * DEFAULT_MIN_SHARE
+    default_done = False
+    out: list[PeriodInfo] = []
+    for y, r, n in ordered:
+        label = f"{y} {REPRT_LABEL.get(r, r)}"
+        if n < threshold:
+            label += f" ({n:,}개사)"
+            is_default = False
+        else:
+            is_default = not default_done
+            default_done = True
+        out.append(PeriodInfo(year=y, reprt=r, label=label, corp_count=n, is_default=is_default))
+    return out
+
+
 @router.get("/rankings/periods", response_model=list[PeriodInfo], operation_id="list_ranking_periods")
 def list_periods() -> list[PeriodInfo]:
-    """적재된 (year, reprt) 조합, 최신순."""
+    """적재된 (year, reprt) 조합, 최신순 + 회사 수·기본 기간."""
     with financial_cursor() as con:
         rows = con.execute(
             """
-            SELECT bsns_year, reprt_code FROM indicators
-            UNION
-            SELECT bsns_year, reprt_code FROM accounts
-            ORDER BY bsns_year DESC, reprt_code DESC
+            SELECT bsns_year, reprt_code, MAX(n) FROM (
+                SELECT bsns_year, reprt_code, COUNT(DISTINCT corp_code) AS n FROM indicators GROUP BY 1, 2
+                UNION ALL
+                SELECT bsns_year, reprt_code, COUNT(DISTINCT corp_code) AS n FROM accounts GROUP BY 1, 2
+            ) GROUP BY 1, 2
             """
         ).fetchall()
-    return [
-        PeriodInfo(year=y, reprt=r, label=f"{y} {REPRT_LABEL.get(r, r)}")
-        for y, r in rows
-    ]
+    return _build_periods(rows)
 
 
 @router.get("/rankings", response_model=list[RankingRow], operation_id="get_rankings")
