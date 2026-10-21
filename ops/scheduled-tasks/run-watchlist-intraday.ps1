@@ -71,11 +71,12 @@ try {
 
   $researchJson = Join-Path $reportsDir ("watchlist_research_" + $todayDash + ".json")
   $discordJson = Join-Path $reportsDir ("watchlist_discord_" + $todayDash + ".json")
+  $dbDir = (& ".\.venv\Scripts\python.exe" -c "from new_etf_insight.data_paths import db_dir; print(db_dir())").Trim()
   Invoke-Step "format Discord report" ".\.venv\Scripts\python.exe" @(
     "-X", "utf8",
     "scripts\format_watchlist_discord_report.py",
     "--json", $researchJson,
-    "--db", (Join-Path $etlDir "db\watchlist.sqlite3"),
+    "--db", (Join-Path $dbDir "watchlist.sqlite3"),
     "--out", $discordJson,
     "--fail-on-mojibake"
   )

@@ -14,10 +14,10 @@ Asia/Seoul calendar date.
 This is the next-morning KRX price-only batch. KRX OpenAPI may publish the
 previous trading day's full exchange OHLCV one day late.
 
-This job must only refresh and verify `etl/db/krx_ohlcv.duckdb` for the previous
+This job must only refresh and verify `<데이터루트>/db/krx_ohlcv.duckdb` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) for the previous
 date.
 
-Do not select stock picks, do not build or update `etl/db/watchlist.sqlite3`, do
+Do not select stock picks, do not build or update `<데이터루트>/db/watchlist.sqlite3`, do
 not run D+1 probability scoring, do not collect news/Telegram evidence, do
 not create LLM scores, and do not write watchlist research reports. Stock
 picking and LLM scoring belong to the separate same-day 15:35 Kiwoom intraday
@@ -41,7 +41,7 @@ batch.
 
 ## DB-First Reporting Rule
 
-After the runner finishes, query `etl/db/krx_ohlcv.duckdb` directly and report
+After the runner finishes, query `<데이터루트>/db/krx_ohlcv.duckdb` directly and report
 from the saved DB rows, not from script stdout alone.
 
 Use this verification block (replace `YYYYMMDD`):
@@ -49,7 +49,7 @@ Use this verification block (replace `YYYYMMDD`):
 ```powershell
 @'
 import duckdb
-con = duckdb.connect("db/krx_ohlcv.duckdb", read_only=True)
+con = duckdb.connect("E:/new-etf_insight_data/db/krx_ohlcv.duckdb", read_only=True)
 date = "YYYYMMDD"
 row = con.execute(
     f"SELECT COUNT(*) AS cnt, MIN(ticker) AS min_t, MAX(ticker) AS max_t, "

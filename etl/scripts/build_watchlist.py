@@ -42,11 +42,12 @@ except ImportError:
     from build_intraday_ranking import drop_bottom_caps
     from close_bet_config import load as load_close_bet_config
     from wl_sqlite import connect_rw
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[2]                       # new-etf_insight/
 ENV_PATH = ROOT / ".env"
-DEFAULT_KRX_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
+DEFAULT_KRX_DB = db_dir() / "krx_ohlcv.duckdb"
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
 DEFAULT_REPORTS_DIR = Path(r"C:\Users\mullu\.openclaw\workspace\reports")
 
 LOOKBACK = 60                 # 신규진입 판정 lookback (거래일)

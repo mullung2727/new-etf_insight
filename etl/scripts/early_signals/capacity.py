@@ -14,10 +14,11 @@ import statistics
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from new_etf_insight.data_paths import db_dir, exports_dir
 
 ROOT = Path(__file__).resolve().parents[3]
-TELEGRAM_DB = ROOT / "etl" / "db" / "telegram_public.sqlite3"
-REPORT_DIR = ROOT / "etl" / "exports" / "stock_reports"
+TELEGRAM_DB = db_dir() / "telegram_public.sqlite3"
+REPORT_DIR = exports_dir() / "stock_reports"
 
 BUDGET_CALLS = 600          # §12.2 (policy_v2) 1차 추출 논리 호출 상한
 BUDGET_SECONDS = 150 * 60   # §12.2 (policy_v2) 총 150분

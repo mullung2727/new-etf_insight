@@ -26,12 +26,13 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 import duckdb
+from new_etf_insight.data_paths import db_dir
 
 from research.jev_candidate import store
 from research.jev_candidate.questions import QUESTION_SET_VER
 from research.watchlist_expected_return import minute_bar_store
 
-KRX_DB = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
+KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 
 GAP_LIMIT = 0.31  # ±31% 밖 — 권리락/오류 (BACKTEST_DATA §2c)
 LOCK_LIMIT = 0.295  # +29.5%↑ — 시가 상한가 매수 불가 (§2b)

@@ -138,6 +138,38 @@ class TestEarningsDisclosures(unittest.TestCase):
         finally:
             con.close()
 
+    def test_parse_pending_since_all_tickers(self):
+        con = _memdb()
+        try:
+            now = m._now()
+            con.executemany(
+                "INSERT INTO earnings_disclosures (rcept_no, rcept_dt, corp_code, "
+                "stock_code, kind, report_nm, is_correction, parse_status, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                [("A1", "20261010", "00126380", "005930", "prelim",
+                  "영업(잠정)실적(공정공시)", 0, "pending", now),
+                 ("B1", "20261015", "00164779", "000660", "prelim",
+                  "영업(잠정)실적(공정공시)", 0, "pending", now),
+                 ("C1", "20261016", "00164779", "000660", "pnl_change",
+                  "매출액또는손익구조30%(대규모법인은15%)이상변동", 0, "pending", now)])
+            with mock.patch.object(
+                    m, "fetch_document_html",
+                    side_effect=requests.ConnectionError("x")):
+                with mock.patch("time.sleep"):
+                    ret = m.parse_pending(con, [], since="20261015")
+            self.assertEqual(ret["fetch_failed"], 2)
+            got = {r[0]: (r[1], r[2]) for r in con.execute(
+                "SELECT rcept_no, parse_status, parse_note FROM earnings_disclosures")}
+            self.assertEqual(got["A1"][0], "pending")
+            self.assertIsNone(got["A1"][1])
+            for rcept in ("B1", "C1"):
+                self.assertEqual(got[rcept][0], "pending")
+                self.assertTrue(got[rcept][1].startswith("fetch:"))
+            ret2 = m.parse_pending(con, [])
+            self.assertEqual(ret2["targets"], 0)
+        finally:
+            con.close()
+
     def test_pnl_samsung(self):
         r = m.parse_document(_read("20250131800097.html"), "pnl_change", "20250131", 12)
         self.assertEqual((r["fs_basis"], r["fiscal_year"], r["period"]), ("CFS", "2024", "FY"))

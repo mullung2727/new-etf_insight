@@ -10,9 +10,10 @@ import json
 import pathlib
 import sqlite3
 from typing import Any
+from new_etf_insight.data_paths import db_dir
 
-DB_PATH = pathlib.Path(__file__).resolve().parents[1] / "db" / "orderbook.sqlite3"
-RAW_DIR = pathlib.Path(__file__).resolve().parents[1] / "db" / "orderbook_raw"
+DB_PATH = db_dir() / "orderbook.sqlite3"
+RAW_DIR = db_dir() / "orderbook_raw"
 
 # (FID, 컬럼, 가격여부). 가격은 부호(전일대비 표시)를 떼고 절댓값.
 _FIDS: list[tuple[str, str, bool]] = (

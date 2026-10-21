@@ -9,10 +9,11 @@ import argparse
 import json
 import sqlite3
 from pathlib import Path
+from new_etf_insight.data_paths import db_dir, runs_dir
 
 
-DEFAULT_RUNS_DIR = Path(__file__).parent.parent / "runs"
-DEFAULT_DB_PATH = Path(__file__).parent.parent / "db" / "etf_insight.sqlite3"
+DEFAULT_RUNS_DIR = runs_dir()
+DEFAULT_DB_PATH = db_dir() / "etf_insight.sqlite3"
 
 # SQLite 타입 매핑: VARCHAR→TEXT, JSON→TEXT(직렬화 문자열), DOUBLE→REAL,
 # BOOLEAN→INTEGER(0/1), TIMESTAMP→TEXT(CURRENT_TIMESTAMP ISO 문자열).

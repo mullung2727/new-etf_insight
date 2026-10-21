@@ -13,9 +13,10 @@ from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from new_etf_insight.data_paths import db_dir
 
 
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
 
 
 def _date_dash(value: str) -> str:

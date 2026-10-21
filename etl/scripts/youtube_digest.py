@@ -29,8 +29,9 @@ from new_etf_insight.llm import generate_json  # noqa: E402
 from notify import notify  # noqa: E402
 from wl_sqlite import connect_rw  # noqa: E402
 from youtube_channels import load_all_channels  # noqa: E402
+from new_etf_insight.data_paths import db_dir
 
-DEFAULT_DB = Path(__file__).resolve().parents[1] / "db" / "youtube_public.sqlite3"
+DEFAULT_DB = db_dir() / "youtube_public.sqlite3"
 _HERE = Path(__file__).resolve().parent / "youtube_langgraph"
 PROMPT_PATH = _HERE / "prompts" / "market_digest.md"
 SCHEMA_PATH = _HERE / "market_digest_schema.json"
@@ -490,7 +491,8 @@ def collect_failure_note(failed: list[tuple[str, str]]) -> str | None:
     return "\n".join(lines)
 
 
-def format_digest_message(
+
+def format_digest_message(
     date_kst: str,
     session: str,
     rows: list[dict],

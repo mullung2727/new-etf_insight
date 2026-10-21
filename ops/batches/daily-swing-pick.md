@@ -49,7 +49,7 @@ ops/scheduled-tasks/run-swing-pick.ps1
 
 ## 결과
 
-- DB: `etl/db/swing_pick.sqlite3` — `swing_candidates`(전 후보 × 항목별 점수·원값),
+- DB: `<데이터루트>/db/swing_pick.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) — `swing_candidates`(전 후보 × 항목별 점수·원값),
   `swing_runs`(일별 집계 + GPT 요약문 + 전송 여부)
 - Discord 배치 채널: 상위 3종목 요약 보고
 

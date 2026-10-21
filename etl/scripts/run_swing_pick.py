@@ -22,6 +22,7 @@ from check_krx_trading_day import is_krx_trading_day
 from notify import notify
 from swing_pick.graph import Deps, build_graph
 from swing_pick.store import DEFAULT_DB as SWING_DB
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[1]  # etl/
 REPO_ROOT = Path(__file__).resolve().parents[2]  # new-etf_insight/
@@ -60,12 +61,12 @@ def main(argv: list[str] | None = None) -> int:
         from new_etf_insight.llm import generate_json
 
         deps = Deps(
-            tg_db=ROOT / "db" / "telegram_public.sqlite3",
-            yt_db=ROOT / "db" / "youtube_public.sqlite3",
-            report_db=ROOT / "db" / "report_metrics.sqlite3",
-            ohlcv_db=ROOT / "db" / "krx_ohlcv.duckdb",
-            fin_db=ROOT / "db" / "financial_indicators.sqlite3",
-            high52_db=ROOT / "db" / "watchlist.sqlite3",
+            tg_db=db_dir() / "telegram_public.sqlite3",
+            yt_db=db_dir() / "youtube_public.sqlite3",
+            report_db=db_dir() / "report_metrics.sqlite3",
+            ohlcv_db=db_dir() / "krx_ohlcv.duckdb",
+            fin_db=db_dir() / "financial_indicators.sqlite3",
+            high52_db=db_dir() / "watchlist.sqlite3",
             broker_url=args.broker_url,
             jev_client=TypeSafeClient(),
             fetch_filings=fetch_filings,

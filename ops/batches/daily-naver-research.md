@@ -10,7 +10,7 @@
 - 목록: `m.stock.naver.com/api/research/company?page=N` (종목분석, 날짜 desc)
 - 상세: `m.stock.naver.com/api/research/company/{researchId}` → `attachUrl`(stock.pstatic.net 실제 PDF) + 요약/투자의견/목표가
 - 종목코드 있는 행만(비종목 리포트 제외).
-- 저장: `etl/exports/stock_reports/<종목명>_<종목코드>/<일자>_<증권사>_<researchId>.pdf`
+- 저장: `<데이터루트>/exports/stock_reports/<종목명>_<종목코드>/<일자>_<증권사>_<researchId>.pdf` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.exports_dir())
 - 멱등: 파일 존재 시 스킵. 응답이 %PDF 아니면 저장 안 함.
 
 ## 스케줄

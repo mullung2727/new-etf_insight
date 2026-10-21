@@ -19,3 +19,8 @@ Mon 05:30; DB backup to the external drive (overwrite) via
 `ops/scheduled-tasks/run-db-backup.ps1`, which runs `etl/scripts/backup_db.py` and
 propagates its exit code. `backup_db.py` sends the success/failure/drive-missing
 notification. Trigger is weekly despite the name.
+
+## daily-code-backup (`--code-only`)
+- 매일 23:30 `run-code-backup.ps1` → `backup_db.py --code-only`.
+- `.env`·`research/private` 등 C: 에 남는 파일을 `NEW_ETF_DATA_ROOT/code_backup/` 로 복사. 외장하드는 안 씀.
+- `NEW_ETF_DATA_ROOT` 미설정이면 아무것도 안 하고 0 종료. 실패 때만 batch 채널 알림.

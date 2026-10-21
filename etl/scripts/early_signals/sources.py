@@ -16,10 +16,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .identity import content_hash, normalize_origin_group, split_units
+from new_etf_insight.data_paths import db_dir, exports_dir
 
 ROOT = Path(__file__).resolve().parents[3]
-TELEGRAM_DB = ROOT / "etl" / "db" / "telegram_public.sqlite3"
-REPORT_DIR = ROOT / "etl" / "exports" / "stock_reports"
+TELEGRAM_DB = db_dir() / "telegram_public.sqlite3"
+REPORT_DIR = exports_dir() / "stock_reports"
 KST = timezone(timedelta(hours=9))
 
 # 리포트 파일명: {date}_{broker}_{yyyymmdd}_{kind}_{key}.pdf  (download_naver_research.dest_path)

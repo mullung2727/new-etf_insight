@@ -31,9 +31,10 @@ if hasattr(sys.stdout, "reconfigure"):
 import duckdb
 import requests
 from dotenv import load_dotenv
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[2]                       # new-etf_insight/
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
+DEFAULT_DB_PATH = db_dir() / "krx_ohlcv.duckdb"
 ENV_PATH = ROOT / ".env"
 
 KRX_BASE = "https://data-dbg.krx.co.kr/svc/apis/sto/"

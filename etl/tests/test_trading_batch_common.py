@@ -21,6 +21,7 @@ from scripts.trading_batch_common import (
     fetch_realized,
     held_quantities,
     in_order_window,
+    limit_up_price,
     market_order,
     quote_snapshot,
     quantity_for_budget,
@@ -38,12 +39,23 @@ class TradingBatchCommonTest(unittest.TestCase):
 
     @patch("scripts.trading_batch_common.requests.get")
     def test_quote_and_cash_are_normalized(self, get: Mock):
-        responses = [Mock(json=lambda: {"price": "001230"}), Mock(json=lambda: {"ord_alow_amt": "0300000"})]
+        responses = [Mock(json=lambda: {"price": "001230"}), Mock(json=lambda: {"100stk_ord_alow_amt": "0300000"})]
         for response in responses:
             response.raise_for_status = Mock()
         get.side_effect = responses
         self.assertEqual(current_price("http://broker", "005930"), 1230)
         self.assertEqual(available_cash("http://broker"), 300000)
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_cash_uses_100stk_not_ord_alow_amt(self, get: Mock):
+        both = Mock(json=lambda: {"ord_alow_amt": "000000000791240", "100stk_ord_alow_amt": "000000017466360"})
+        both.raise_for_status = Mock()
+        get.return_value = both
+        self.assertEqual(available_cash("http://broker", exclude_reserve=False), 17466360)
+        only_old = Mock(json=lambda: {"ord_alow_amt": "000000000791240"})
+        only_old.raise_for_status = Mock()
+        get.return_value = only_old
+        self.assertIsNone(available_cash("http://broker", exclude_reserve=False))
 
     @patch("scripts.trading_batch_common.requests.get")
     def test_quote_snapshot_normalizes_intraday_ohlc(self, get: Mock):
@@ -95,6 +107,21 @@ class TradingBatchCommonTest(unittest.TestCase):
     def test_quantity_for_budget(self):
         self.assertEqual(quantity_for_budget(300000, 10000), 30)
         self.assertEqual(quantity_for_budget(300000, 400000), 0)
+
+
+    @patch("scripts.trading_batch_common.requests.get")
+    def test_limit_up_price_checks_base(self, get: Mock):
+        def resp(body):
+            response = Mock(json=lambda: body)
+            response.raise_for_status = Mock()
+            return response
+        get.return_value = resp({"price": 16370,
+                                 "raw": {"base_pric": "13400", "upl_pric": "+17420"}})
+        self.assertEqual(limit_up_price("http://broker", "117670", 13400), 17420)
+        self.assertIsNone(limit_up_price("http://broker", "117670", 13000))  # 기준가 불일치
+        self.assertIsNone(limit_up_price("http://broker", "117670", None))
+        get.return_value = resp({"price": 16370, "raw": {"base_pric": "13400"}})
+        self.assertIsNone(limit_up_price("http://broker", "117670", 13400))  # upl 없음
 
 
 if __name__ == "__main__":
@@ -194,7 +221,7 @@ class CashReservationTest(unittest.TestCase):
         self.td.cleanup()
 
     def _deposit(self, value):
-        response = Mock(json=lambda: {"ord_alow_amt": value})
+        response = Mock(json=lambda: {"100stk_ord_alow_amt": value})
         response.raise_for_status = Mock()
         return response
 

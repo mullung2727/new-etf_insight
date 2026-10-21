@@ -12,13 +12,14 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import requests
+from new_etf_insight.data_paths import db_dir
 
 
 REQUEST_TIMEOUT = 15
 
 # 전략별 자금 예약. {"host:port": {"strategy": {"reserve", "capital_total", ...}}}.
 # 각 전략 order·verify 가 자기 항목 갱신, available_cash 는 남의 reserve 합 차감. 파일 없으면 기존 동작 그대로.
-RESERVATION_PATH = Path(__file__).resolve().parents[1] / "db" / "cash_reservations.json"
+RESERVATION_PATH = db_dir() / "cash_reservations.json"
 
 # 청산이 끝난 것으로 간주하는 sell_status. 청산 워커의 미청산 조회와 주문 배치의
 # 중복매수 가드가 같은 집합을 봐야 한다 — 한쪽만 알면 유령 포지션이 매수를 영구 차단한다.
@@ -63,6 +64,25 @@ def quote_snapshot(broker_url: str, ticker: str) -> dict[str, int] | None:
         return {"current_price": abs(int(price)), "open": abs(int(day_open)), "low": abs(int(day_low))}
     except Exception:
         return None
+
+
+def limit_up_price(broker_url: str, ticker: str, prev_close: int | None) -> int | None:
+    """오늘 상한가 — GET /quotes/{ticker} 의 raw upl_pric.
+    raw base_pric(오늘 기준가)가 prev_close 와 다르면 None — 시세 지연·권리락 등으로 상한가를 믿을 수 없음 (fail closed).
+    prev_close 없음·조회 실패·값 없음·0 이하도 None."""
+    if prev_close is None:
+        return None
+    try:
+        response = requests.get(f"{broker_url}/quotes/{ticker}", timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        raw = response.json().get("raw") or {}
+        base = abs(int(raw["base_pric"]))
+        upl = abs(int(raw["upl_pric"]))
+    except Exception:
+        return None
+    if base != prev_close or upl <= 0:
+        return None
+    return upl
 
 
 def require_profile(broker_url: str, expected: str) -> bool:
@@ -221,11 +241,11 @@ def available_cash(broker_url: str, exclude_reserve: bool = True, strategy: str 
 
 
 def _deposit_cash(broker_url: str) -> int | None:
-    """GET /account/deposit → ord_alow_amt. 실패 시 None."""
+    """GET /account/deposit → 100stk_ord_alow_amt(증거금 100% 주문가능, 미정산 매도대금 포함). 실패 시 None."""
     try:
         response = requests.get(f"{broker_url}/account/deposit", timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
-        value = response.json().get("ord_alow_amt")
+        value = response.json().get("100stk_ord_alow_amt")
         return int(value) if value is not None else None
     except Exception:
         return None

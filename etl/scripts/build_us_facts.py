@@ -26,6 +26,7 @@ import requests  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
 from wl_sqlite import connect_rw  # noqa: E402
+from new_etf_insight.data_paths import db_dir, sec_edgar_dir
 
 FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
@@ -33,8 +34,8 @@ INDEX_URL = "https://www.sec.gov/Archives/edgar/daily-index/{y}/QTR{q}/form.{ymd
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 FF_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/Siccodes{n}.zip"
 FF_SCHEMES = (5, 10, 12, 17, 30, 38, 48, 49)
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_facts.sqlite3"
-RAW_ROOT = Path("D:/sec_edgar")
+DEFAULT_DB_PATH = db_dir() / "us_facts.sqlite3"
+RAW_ROOT = sec_edgar_dir()
 PERIODIC_FORMS = frozenset({"10-K", "10-K/A", "10-Q", "10-Q/A", "10-KT", "10-KT/A",
                              "10-QT", "10-QT/A", "20-F", "20-F/A", "40-F", "40-F/A"})
 DELAY = 0.12

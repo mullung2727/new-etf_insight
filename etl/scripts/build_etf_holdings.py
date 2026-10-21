@@ -27,13 +27,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import notify as notify_mod
+from new_etf_insight.data_paths import db_dir
 
 ETFS = {"426030": "2", "385720": "11", "495060": "15", "456600": "6"}
 UA = {"User-Agent": "Mozilla/5.0"}
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = ssl.CERT_NONE
-DB = Path(__file__).resolve().parent.parent / "db" / "etf_insight.sqlite3"
+DB = db_dir() / "etf_insight.sqlite3"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS etf_holdings_daily(

@@ -1,12 +1,12 @@
 """일봉 전용 데이터 로드 — etl/db/krx_ohlcv.duckdb 읽기 전용."""
 from __future__ import annotations
 
-from pathlib import Path
+from new_etf_insight.data_paths import db_dir
 
 import duckdb
 import pandas as pd
 
-DB = Path(__file__).resolve().parents[2] / "etl/db/krx_ohlcv.duckdb"
+DB = db_dir() / "krx_ohlcv.duckdb"
 
 
 def load_px(db=DB) -> pd.DataFrame:

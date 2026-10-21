@@ -9,6 +9,7 @@ db/financial_indicators.sqlite3(earnings_disclosures)에 쌓는다. 여러 리�
 Usage (from etl/):
     uv run python scripts/build_earnings_disclosures.py --from 20240101 --to 20240930
     uv run python scripts/build_earnings_disclosures.py --no-list --tickers-file tickers.txt
+    uv run python scripts/build_earnings_disclosures.py --from 20261014 --parse-since 20261014   # 매일 배치
 """
 from __future__ import annotations
 
@@ -520,20 +521,26 @@ def load_fye_months(con) -> dict[str, int]:
     return out
 
 
-def parse_pending(con, stock_codes, force: bool = False) -> dict:
+def parse_pending(con, stock_codes, force: bool = False, since: str | None = None) -> dict:
     """pending 원문 파싱. 실패 건은 failed로 남기고 계속."""
     codes = list(stock_codes or [])
-    if not codes:
+    if not codes and not since:
         return {"targets": 0, "ok": 0, "failed": 0, "fetch_failed": 0}
     fye = load_fye_months(con)
-    qmarks = ",".join("?" for _ in codes)
-    sql = (f"SELECT rcept_no, rcept_dt, stock_code, kind, is_correction "
-           f"FROM earnings_disclosures "
-           f"WHERE stock_code IN ({qmarks}) AND kind IN ('prelim','pnl_change')")
+    sql = ("SELECT rcept_no, rcept_dt, stock_code, kind, is_correction "
+           "FROM earnings_disclosures "
+           "WHERE kind IN ('prelim','pnl_change')")
+    params: list = []
+    if codes:
+        sql += f" AND stock_code IN ({','.join('?' for _ in codes)})"
+        params.extend(codes)
+    if since:
+        sql += " AND rcept_dt >= ?"
+        params.append(since)
     if not force:
         sql += " AND parse_status='pending'"
     sql += " ORDER BY rcept_dt, rcept_no"
-    rows = con.execute(sql, codes).fetchall()
+    rows = con.execute(sql, params).fetchall()
     ok = fail = fetch_fail = 0
     for i, (rcept_no, rcept_dt, stock, kind, is_corr) in enumerate(rows, 1):
         try:
@@ -601,6 +608,7 @@ def main() -> None:
     p.add_argument("--to", default=None, help="종료일 YYYYMMDD (기본 오늘 KST)")
     p.add_argument("--no-list", action="store_true", help="목록 단계 생략")
     p.add_argument("--tickers-file", type=Path, default=None, help="원문 파싱 종목 파일")
+    p.add_argument("--parse-since", default=None, help="이 날짜(YYYYMMDD) 이후 공시를 종목 지정 없이 원문 파싱")
     p.add_argument("--force-parse", action="store_true", help="파싱 상태 무관 재파싱")
     p.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
     args = p.parse_args()
@@ -613,8 +621,10 @@ def main() -> None:
         if not args.no_list:
             assert key is not None
             load_list(con, key, args.from_, to)
-        if args.tickers_file:
-            parse_pending(con, _read_tickers(args.tickers_file), force=args.force_parse)
+        if args.tickers_file or args.parse_since:
+            parse_pending(con,
+                          _read_tickers(args.tickers_file) if args.tickers_file else [],
+                          force=args.force_parse, since=args.parse_since)
         for kind, status, c in con.execute(
                 "SELECT kind, parse_status, COUNT(*) FROM earnings_disclosures "
                 "GROUP BY kind, parse_status ORDER BY kind, parse_status"):

@@ -32,6 +32,7 @@ if str(ROOT) not in sys.path:
 import duckdb
 import numpy as np
 import pandas as pd
+from new_etf_insight.data_paths import db_dir
 
 from research.high52_strategy.backtest import CAP_EDGES, CAP_LABELS
 from research.jev_candidate import questions, store
@@ -511,7 +512,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--to", dest="date_to", default="20260921")
     ap.add_argument("--out", default="temp/jev_review/eval_open.md")
     ap.add_argument("--db", default=str(store.DEFAULT_DB))
-    ap.add_argument("--krx", default=str(ROOT / "etl" / "db" / "krx_ohlcv.duckdb"))
+    ap.add_argument("--krx", default=str(db_dir() / "krx_ohlcv.duckdb"))
     args = ap.parse_args(argv)
     con = store.connect(args.db)
     store.ensure_schema(con)
