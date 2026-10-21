@@ -9,10 +9,11 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pandas as pd
+from new_etf_insight.data_paths import db_dir
 
 from . import adjust, bench, data, universe
 
-BENCH_DB = Path(__file__).resolve().parents[2] / "etl/db/bench_daily.duckdb"
+BENCH_DB = db_dir() / "bench_daily.duckdb"
 CODE_VERSION = "2"
 
 BUCKETS = ["CAP1", "CAP2", "CAP3", "CAP4", "CAP5"]

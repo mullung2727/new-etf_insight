@@ -36,6 +36,7 @@ export function RankingControls({ metrics, periods, current }: Props) {
       <div className="flex flex-col gap-1">
         <label className="text-xs text-muted-foreground">기간</label>
         <Select
+          items={periods.map((p) => ({ value: `${p.year}_${p.reprt}`, label: p.label }))}
           value={`${current.year}_${current.reprt}`}
           onValueChange={(v) => {
             if (!v) return;
@@ -57,6 +58,7 @@ export function RankingControls({ metrics, periods, current }: Props) {
       <div className="flex flex-col gap-1">
         <label className="text-xs text-muted-foreground">지표</label>
         <Select
+          items={metrics.map((m) => ({ value: m.key, label: m.label }))}
           value={current.metric}
           onValueChange={(v) => {
             if (!v) return;

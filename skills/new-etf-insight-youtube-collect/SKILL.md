@@ -1,7 +1,7 @@
 # YouTube Channel Collection Guide
 
 Use this skill when collecting YouTube channel uploads + transcripts into
-`etl/db/youtube_public.sqlite3`.
+`<데이터루트>/db/youtube_public.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()).
 
 ## Scope
 
@@ -53,5 +53,5 @@ uv run python scripts/collect_youtube.py --channel-id UCeN2YeJcBCRJoXgzF_OU3qw -
 ## Verify collected rows
 
 ```bash
-uv run python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); import sqlite3; con=sqlite3.connect('db/youtube_public.sqlite3'); [print(r) for r in con.execute(\"SELECT date_kst, channel_id, COUNT(*), SUM(transcript IS NOT NULL) FROM youtube_videos GROUP BY date_kst, channel_id ORDER BY date_kst, channel_id\")]"
+uv run python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); import sqlite3; con=sqlite3.connect('E:/new-etf_insight_data/db/youtube_public.sqlite3'); [print(r) for r in con.execute(\"SELECT date_kst, channel_id, COUNT(*), SUM(transcript IS NOT NULL) FROM youtube_videos GROUP BY date_kst, channel_id ORDER BY date_kst, channel_id\")]"
 ```

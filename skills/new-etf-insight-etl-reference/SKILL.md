@@ -207,8 +207,8 @@ save_graph_png(path)
 
 ### `scripts/build_db.py`
 ```python
-DEFAULT_RUNS_DIR = etl/runs
-DEFAULT_DB_PATH  = etl/db/etf_insight.sqlite3
+DEFAULT_RUNS_DIR = <데이터루트>/runs  # (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.runs_dir())
+DEFAULT_DB_PATH  = <데이터루트>/db/etf_insight.sqlite3
 
 sync_to_db(runs_dir: Path, db_path: Path = DEFAULT_DB_PATH) -> int
     # Backfills all JSON filing snapshots before dedup. Latest = max(rcept_dt, rcept_no).
@@ -360,7 +360,7 @@ LLM env var           = ETF_LLM_PROVIDER  (default "codex")
 
 ## 7. DB Schema
 
-**전체 DB 스키마 카탈로그: `etl/docs/DB_SCHEMA.md`** — `etl/db/`의 모든 sqlite3/duckdb
+**전체 DB 스키마 카탈로그: `etl/docs/DB_SCHEMA.md`** — `<데이터루트>/db/`의 모든 sqlite3/duckdb
 테이블을 한눈에 본다. 자동 생성이므로 **직접 수정 금지**. 스키마(테이블/컬럼) 변경 후:
 ```
 uv run python scripts/dump_db_schema.py     # docs/DB_SCHEMA.md 갱신

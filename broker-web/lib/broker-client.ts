@@ -88,6 +88,7 @@ export interface BalanceData {
 export interface DepositData {
   entr?: string;
   ord_alow_amt?: string;
+  "100stk_ord_alow_amt"?: string;
   [key: string]: unknown;
 }
 

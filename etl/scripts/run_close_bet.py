@@ -71,8 +71,11 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
-DEFAULT_KRX_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
+
+from new_etf_insight.data_paths import db_dir
+
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
+DEFAULT_KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 
 # 총 500만원을 score 상위 N개에 분할 매수(예산은 budget_for).
 _TOP_N = 3
@@ -469,7 +472,7 @@ def fetch_price_via_broker(broker_url: str, ticker: str) -> int | None:
 
 
 def fetch_available_cash_via_broker(broker_url: str) -> int | None:
-    """GET {broker_url}/account/deposit → ord_alow_amt(주문가능금액, 원). 실패 시 None."""
+    """GET {broker_url}/account/deposit → 100stk_ord_alow_amt(증거금 100% 주문가능, 원). 실패 시 None."""
     return available_cash(broker_url)
 
 

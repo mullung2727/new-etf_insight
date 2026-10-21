@@ -61,12 +61,12 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 research snapshot folder, and every run shows up as a repo change.
 
 The probability scorer must use saved same-day watchlist and 15:00 snapshot rows
-and upsert `etl/db/watchlist.sqlite3` `llm_scores`. It uses prior KRX rows for
+and upsert `<데이터루트>/db/watchlist.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) `llm_scores`. It uses prior KRX rows for
 `avg5_volume`, `ratio`, and previous-day market cap.
 
 ## DB-First Reporting Rule
 
-After all three steps finish, query `etl/db/watchlist.sqlite3` directly and report from
+After all three steps finish, query `<데이터루트>/db/watchlist.sqlite3` directly and report from
 the saved DB rows, not from stdout alone, memory, or an abbreviated
 interpretation.
 
@@ -126,7 +126,7 @@ After probability scoring completes, run:
 ```powershell
 .\.venv\Scripts\python.exe -X utf8 scripts\format_watchlist_discord_report.py `
   --json "C:\Users\mullu\.openclaw\workspace\reports\watchlist_research_<TODAY_YYYY-MM-DD>.json" `
-  --db "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl\db\watchlist.sqlite3" `
+  --db "E:\new-etf_insight_data\db\watchlist.sqlite3" `
   --out "C:\Users\mullu\.openclaw\workspace\reports\watchlist_discord_<TODAY_YYYY-MM-DD>.json" `
   --fail-on-mojibake
 ```

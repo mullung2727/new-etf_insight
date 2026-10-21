@@ -32,10 +32,11 @@ from orderbook_recorder_config import CODE_RE, ConfigError, load  # noqa: E402
 from orderbook_store import normalize  # noqa: E402
 from orderbook_symbols import WATCHLIST_DB, plan_additions, resolve_symbols  # noqa: E402
 from wl_sqlite import connect_rw  # noqa: E402
+from new_etf_insight.data_paths import db_dir
 
 KST = timezone(timedelta(hours=9))
 VENUE = "KRX"
-LOCK_PATH = pathlib.Path(__file__).resolve().parents[1] / "db" / "orderbook.lock"
+LOCK_PATH = db_dir() / "orderbook.lock"
 FLUSH_DELAY = 0.2       # 격자 t 를 t+0.2초에 확정 — SSE 전달이 조금 늦은 t 이전 이벤트까지 담는다
 REG_RETRY_GAP = 2.0     # §7-9 재시도 간격
 SSE_RETRY_GAP = 2.0     # §6 SSE 재연결 간격

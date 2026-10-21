@@ -22,14 +22,14 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 import duckdb
+from new_etf_insight.data_paths import db_dir
 
 from research.watchlist_expected_return.minute_bar_cache import (
     DEFAULT_CACHE_DIR,
     normalize_minute_bar,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB_PATH = ROOT / "etl" / "db" / "minute_bars.duckdb"
+DEFAULT_DB_PATH = db_dir() / "minute_bars.duckdb"
 DEFAULT_SCOPE = "1"
 SESSION_OPEN, SESSION_CLOSE = "090000", "153000"
 MAX_PAGES = 5

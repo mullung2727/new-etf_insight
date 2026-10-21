@@ -9,11 +9,12 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
+from new_etf_insight.data_paths import db_dir, runs_dir
 
 ETL_ROOT = Path(__file__).resolve().parents[1]
-SQLITE_DB = ETL_ROOT / "db" / "watchlist.sqlite3"
-KRX_DB = ETL_ROOT / "db" / "krx_ohlcv.duckdb"
-OUT_DIR = ETL_ROOT / "runs" / "analysis"
+SQLITE_DB = db_dir() / "watchlist.sqlite3"
+KRX_DB = db_dir() / "krx_ohlcv.duckdb"
+OUT_DIR = runs_dir() / "analysis"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 

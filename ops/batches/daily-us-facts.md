@@ -3,7 +3,7 @@
 ## Purpose
 
 SEC XBRL 재무 원본(companyfacts)을 `D:/sec_edgar/` 에 회사별로 보관하고,
-정기보고서(10-K·10-Q·20-F·40-F 등) 전 계정을 "값이 바뀐 공시만" 버전으로 `etl/db/us_facts.sqlite3` 에 쌓는다.
+정기보고서(10-K·10-Q·20-F·40-F 등) 전 계정을 "값이 바뀐 공시만" 버전으로 `<데이터루트>/db/us_facts.sqlite3` (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()) 에 쌓는다.
 상장폐지 회사 포함. 설계 `docs/done/PLAN_US_FACTS.md`.
 
 ## Execution

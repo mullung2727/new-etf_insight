@@ -55,10 +55,11 @@ except ImportError:
         in_order_window as in_trading_window, now_seoul as _now_seoul,
     )
     from run_pullback_order import _fallback_tick_size as tick_size
+from new_etf_insight.data_paths import db_dir
 
 ROOT =Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
 
 # 반반 분할 청산 (docs/done/PLAN_CLOSE_BET_SPLIT_EXIT.md) — auction 은 exit_time 동시호가, chase 는 아래 시각
 SPLIT_LEGS = ("auction", "chase")

@@ -23,6 +23,8 @@ from scripts.pdf_langgraph.pdf_analysis_langgraph import (
     update_record_from_correction,
 )
 
+from new_etf_insight import data_paths
+
 _AUTO_COLLECTED_AT: Any = object()
 
 
@@ -38,7 +40,7 @@ def run_daily_pipeline(
     candidates.sort(key=lambda item: (str(item.get("rcept_dt", "")), str(item.get("rcept_no", ""))))
     holding_identifier_resolver = HoldingIdentifierResolver(bas_dd=end)
     runs_dir = records_dir.parent.parent
-    db_path = runs_dir.parent / "db" / "etf_insight.sqlite3"
+    db_path = runs_dir.parent / "db" / "etf_insight.sqlite3"  # data-paths: ok — records_dir 기준(테스트 격리), 이전 후엔 runs_dir.parent = 데이터 루트
     results = []
 
     for candidate in candidates:
@@ -299,7 +301,7 @@ def run_daily_pipeline(
 def run_period_as_daily_runs(
     begin: str,
     end: str,
-    runs_dir: Path = Path("runs"),
+    runs_dir: Path = data_paths.runs_dir(),
     max_pages: int = 50,
     query: str | None = None,
 ) -> dict[str, Any]:

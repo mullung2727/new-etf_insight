@@ -36,10 +36,11 @@ try:  # 직접 실행(scripts/ on path) / 패키지 import(tests) 양쪽 지원
 except ImportError:
     from notify import send_discord
     from wl_sqlite import connect_ro, connect_rw
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
-DEFAULT_WATCHLIST_DB = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
+DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
 
 REQUEST_TIMEOUT = 15
 _UNVERIFIED = ("submitted", "unconfirmed")

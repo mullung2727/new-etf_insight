@@ -53,11 +53,12 @@ except ImportError:
     from check_krx_trading_day import trading_day_status
     from close_bet_config import load as load_close_bet_config
     from wl_sqlite import connect_rw
+from new_etf_insight.data_paths import db_dir
 
 ROOT = Path(__file__).resolve().parents[2]                        # new-etf_insight/
 ENV_PATH = ROOT / ".env"
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
-DEFAULT_KRX_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
+DEFAULT_DB_PATH = db_dir() / "watchlist.sqlite3"
+DEFAULT_KRX_DB_PATH = db_dir() / "krx_ohlcv.duckdb"
 TOKEN_CACHE_PATH = ROOT / "broker" / ".token_cache.json"          # broker 와 공유
 
 _HOSTS = {

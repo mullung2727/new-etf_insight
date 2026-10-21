@@ -20,14 +20,15 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+from new_etf_insight.data_paths import db_dir
 
 from research.watchlist_expected_return.minute_bar_store import connect as minute_connect
 from research.watchlist_expected_return.minute_bar_store import load_bars
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_LEDGER = ROOT / "etl" / "db" / "watchlist.sqlite3"
-DEFAULT_MINUTES = ROOT / "etl" / "db" / "minute_bars.duckdb"
-DEFAULT_KRX = ROOT / "etl" / "db" / "krx_ohlcv.duckdb"
+DEFAULT_LEDGER = db_dir() / "watchlist.sqlite3"
+DEFAULT_MINUTES = db_dir() / "minute_bars.duckdb"
+DEFAULT_KRX = db_dir() / "krx_ohlcv.duckdb"
 STRATEGY_CONFIGS = {
     "pullback": ROOT / "etl" / "scripts" / "pullback.json",
     "close_bet": ROOT / "etl" / "scripts" / "close_bet.json",

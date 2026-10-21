@@ -26,6 +26,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pandas as pd
+from new_etf_insight.data_paths import db_dir
 
 OAS_SERIES = "BAMLH0A0HYM2"
 FIXED_BP = 20.0
@@ -37,7 +38,7 @@ RISK_WEBHOOK_ENV = "US_RISK_WEBHOOK_URL"
 # research/private/us_oas_alert/RESULTS_SPIKE_ALERT.md 5절 P 구간 분위 2% 14.49% vs 평소 6.94%
 _RISK_PAST_SPIKE_PCT = 14
 _RISK_PAST_BASE_PCT = 7
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "us_macro.duckdb"
+DEFAULT_DB_PATH = db_dir() / "us_macro.duckdb"
 
 _CREATE_ALERT_LOG = """
 CREATE TABLE IF NOT EXISTS oas_alert_log (

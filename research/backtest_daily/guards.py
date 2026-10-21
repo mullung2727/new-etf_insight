@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import math
 import sqlite3
-from pathlib import Path
+from new_etf_insight.data_paths import db_dir
 
 import numpy as np
 import pandas as pd
 
-FIN_DB = Path(__file__).resolve().parents[2] / "etl/db/financial_indicators.sqlite3"
+FIN_DB = db_dir() / "financial_indicators.sqlite3"
 AVAIL = {"11011": (1, "0401"), "11013": (0, "0601"), "11012": (0, "0901"), "11014": (0, "1201")}
 
 LIMIT_UP = "limit_up"

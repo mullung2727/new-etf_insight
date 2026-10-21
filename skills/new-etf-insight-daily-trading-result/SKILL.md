@@ -40,10 +40,10 @@ C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl
 
 ## Source of Truth
 
-운영 DB:
+운영 DB (<데이터루트> = .env NEW_ETF_DATA_ROOT, 현재 E:\new-etf_insight_data — data_paths.db_dir()):
 
 ```text
-etl\db\watchlist.sqlite3
+<데이터루트>/db/watchlist.sqlite3
 ```
 
 전략별 원장:

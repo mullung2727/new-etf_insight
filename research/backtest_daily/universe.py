@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from new_etf_insight.data_paths import db_dir
 
 import duckdb
 import numpy as np
 import pandas as pd
 
-DB = Path(__file__).resolve().parents[2] / "etl/db/krx_ohlcv.duckdb"
+DB = db_dir() / "krx_ohlcv.duckdb"
 SPAC_RE = re.compile("스팩|기업인수목적")
 
 

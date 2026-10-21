@@ -5,11 +5,12 @@ import statistics
 from pathlib import Path
 
 import duckdb
+from new_etf_insight.data_paths import db_dir, runs_dir
 
 ETL_ROOT = Path(__file__).resolve().parents[1]
-INPUT = ETL_ROOT / "runs" / "analysis" / "listing_market_cap_trade_enriched_20260826.csv"
-OUTPUT = ETL_ROOT / "runs" / "analysis" / "execution_risk_filter_impact_20260826.md"
-KRX_DB = ETL_ROOT / "db" / "krx_ohlcv.duckdb"
+INPUT = runs_dir() / "analysis" / "listing_market_cap_trade_enriched_20260826.csv"
+OUTPUT = runs_dir() / "analysis" / "execution_risk_filter_impact_20260826.md"
+KRX_DB = db_dir() / "krx_ohlcv.duckdb"
 
 
 def pct(value: float) -> str:

@@ -35,6 +35,7 @@ import requests  # noqa: E402
 
 from new_etf_insight.dart_client import DartAPIError, fetch_all_filings, fetch_dart_list, get_api_key  # noqa: E402
 from wl_sqlite import connect_rw  # noqa: E402
+from new_etf_insight.data_paths import db_dir, exports_dir
 
 BASE_URL = "https://opendart.fss.or.kr/api"
 INDX_API_URL = f"{BASE_URL}/fnlttCmpnyIndx.json"
@@ -44,11 +45,11 @@ CORPCODE_API_URL = f"{BASE_URL}/corpCode.xml"
 # 지표 카테고리 4개 (종목당 66지표). 원본 전량 저장 대상.
 IDX_CATEGORIES = ["M210000", "M220000", "M230000", "M240000"]
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "financial_indicators.sqlite3"
+DEFAULT_DB_PATH = db_dir() / "financial_indicators.sqlite3"
 # 현재 상장 종목코드(KRX). corpCode.xml stock_code는 상폐사도 유지하므로 이걸로 교차 필터.
-KRX_OHLCV_DB = Path(__file__).resolve().parents[1] / "db" / "krx_ohlcv.duckdb"
+KRX_OHLCV_DB = db_dir() / "krx_ohlcv.duckdb"
 # corpCode.xml zip 로컬 캐시 (신규상장/상폐로만 변동 → 하루 1회 갱신 충분)
-CORPCODE_CACHE = Path(__file__).resolve().parents[1] / "db" / "corpcode.zip"
+CORPCODE_CACHE = db_dir() / "corpcode.zip"
 CORPCODE_TTL_SEC = 24 * 3600
 
 BATCH = 10       # corp_code / 호출 (콤마 다중)
@@ -939,7 +940,7 @@ HISTORY_WINDOW_DAYS = 90         # 회사 미지정 조회 3개월 제한 준수
 HISTORY_MAX_PAGES = 500          # 무한 루프 방지 상한
 HISTORY_ARTIFACT = "financial_filing_history_manifest"
 KNOWN_REPRT_CODES = ("11011", "11012", "11013", "11014")
-DEFAULT_HISTORY_DIR = Path(__file__).resolve().parents[1] / "exports" / "financial_filing_history"
+DEFAULT_HISTORY_DIR = exports_dir() / "financial_filing_history"
 EARLIEST_CAVEAT = ("queried_range_only: earliest within the fetched range,"
                    " not a verified lifetime earliest")
 

@@ -19,9 +19,10 @@ import _bootstrap  # noqa: F401,E402
 
 from orderbook_recorder_config import CODE_RE  # noqa: E402
 from wl_sqlite import connect_ro  # noqa: E402
+from new_etf_insight.data_paths import db_dir
 
 KST = timezone(timedelta(hours=9))
-WATCHLIST_DB = pathlib.Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
+WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
 _READ_TRIES = 3
 
 

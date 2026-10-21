@@ -17,9 +17,10 @@ try:
 except ImportError:  # 직접 실행: python scripts/collect_watchlist_market_snapshot.py
     from build_intraday_ranking import ENV_PATH, _HOSTS, _kiwoom_env, get_token
     from wl_sqlite import connect_ro, connect_rw
+from new_etf_insight.data_paths import db_dir
 
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "db" / "watchlist.sqlite3"
+DEFAULT_DB_PATH = db_dir() / "watchlist.sqlite3"
 SEOUL = ZoneInfo("Asia/Seoul")
 REQUEST_TIMEOUT = 20
 TR_STOCK_INFO = "ka10001"
