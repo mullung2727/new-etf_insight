@@ -41,6 +41,12 @@ try {
       ".\.venv\Scripts\python.exe" @("scripts\build_financial_indicators.py", "--filings-on", $day)
   }
 
+  # 실적 공시(잠정실적·30% 변동) 목록 + 원문 금액 - 정기보고서보다 먼저 나오는 실적.
+  # 최근 7일을 다시 훑는다(PC 꺼진 날 보충, 목록 upsert·원문은 pending 만이라 멱등).
+  $discFrom = $runDate.AddDays(-7).ToString("yyyyMMdd")
+  Invoke-Step "load DART earnings disclosures $discFrom-$target" `
+    ".\.venv\Scripts\python.exe" @("scripts\build_earnings_disclosures.py", "--from", $discFrom, "--to", $target, "--parse-since", $discFrom) | Out-Null
+
   # 제출사 0이면 알리지 않는다 - 대부분의 날이 여기 해당하고, 매일 오는 "0건" 알림은 소음이다.
   $submitters = 0
   foreach ($line in $out) {
