@@ -1352,7 +1352,7 @@
     {
       "id": "86c464ed-b0cd-4a6c-a6f4-fb081be03fa8",
       "name": "daily-financial-indicators",
-      "description": "Daily 19:00; DART periodic-report financial indicators and key accounts into financial_indicators.sqlite3, Discord report only on days with filings",
+      "description": "Daily 19:00; DART periodic-report financial indicators and key accounts, then earnings disclosures (provisional results, last 7 days, list + amounts) into financial_indicators.sqlite3, Discord report only on days with filings",
       "enabled": true,
       "schedule": {
         "kind": "cron",
