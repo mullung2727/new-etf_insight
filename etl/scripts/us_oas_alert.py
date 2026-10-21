@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from research.backtest_daily.data_us import load_etf_tr, load_fred  # noqa: E402
 from research.us_oas import proxy  # noqa: E402
+from notify import send_strategy_alert  # noqa: E402
 
 import argparse
 from datetime import datetime, timezone
@@ -33,6 +34,10 @@ PCT_Q = 0.02
 WIN = 252
 MIN_N = 126
 CUM_K = 7
+RISK_WEBHOOK_ENV = "US_RISK_WEBHOOK_URL"
+# research/private/us_oas_alert/RESULTS_SPIKE_ALERT.md 5절 P 구간 분위 2% 14.49% vs 평소 6.94%
+_RISK_PAST_SPIKE_PCT = 14
+_RISK_PAST_BASE_PCT = 7
 DEFAULT_DB_PATH = db_dir() / "us_macro.duckdb"
 
 _CREATE_ALERT_LOG = """
@@ -139,6 +144,70 @@ def format_lines(r: dict, already: bool) -> list[str]:
     return lines
 
 
+def qqq_ma_gap(qqq_ret: pd.Series, asof: str) -> float | None:
+    """QQQ 200일선 괴리율 (순수, no I/O). asof 이하 일간 총수익만 사용."""
+    # 200일선 = QQQ 총수익 수준의 200일 단순이동평균.
+    s = qqq_ret[qqq_ret.index <= asof]
+    if len(s) < 200:
+        return None
+    level = (1 + s.fillna(0)).cumprod()
+    sma200 = level.rolling(200).mean()
+    return float(level.iloc[-1] / sma200.iloc[-1] - 1)
+
+
+def _fmt_ymd(d) -> str:
+    s = str(d)
+    return f"{s[:4]}-{s[4:6]}-{s[6:8]}" if len(s) == 8 else s
+
+
+def format_risk_alert(r: dict, ma_gap: float | None) -> str:
+    """🟡 주의(카나리) 전용 채널 문구 (순수, no I/O)."""
+    date = _fmt_ymd(r["date"])
+    base_date = _fmt_ymd(r["base_date"])
+    lines = [f"🟡 [주의] 미국 신용위험 급등 — 카나리 ({date} 미국장 기준)"]
+    lines.append(
+        f"- 하이일드 스프레드(투기등급 회사채와 국채 금리차) 추정 {r['est']:.2f}%, "
+        f"전날({base_date}) {r['base']:.2f}% 대비 {r['chg_bp'] / 100:+.2f}%p"
+    )
+    if r["rank_pct"] is None:
+        lines.append(f"- 하루 상승폭 {r['chg_bp'] / 100:+.2f}%p (최근 1년 순위 계산 불가)")
+    else:
+        lines.append(
+            f"- 하루 상승폭이 최근 1년 중 상위 {(1 - r['rank_pct']) * 100:.1f}%  "
+            f"(알림 기준: 상위 2% 또는 +0.20%p 이상)"
+        )
+    if r["cum7_bp"] is not None:
+        lines.append(f"- 최근 1주 누적 {r['cum7_bp'] / 100:+.2f}%p")
+    if ma_gap is None:
+        qqq = "QQQ 200일선 확인 실패"
+    elif ma_gap >= 0:
+        qqq = f"나스닥100(QQQ) 200일선 위 {ma_gap * 100:+.1f}% → 하락 추세 아님"
+    else:
+        qqq = f"⚠ 나스닥100(QQQ) 200일선 아래 {ma_gap * 100:+.1f}% → 하락 추세와 겹침, 특히 주의"
+    lines.append(f"- {qqq}")
+    lines.append(
+        f"- 과거(2007~2023) 이런 날 뒤 20일 안 나스닥100 −10% 이상 하락 약 "
+        f"{_RISK_PAST_SPIKE_PCT}% (평소 {_RISK_PAST_BASE_PCT}%) — 대부분은 지나감"
+    )
+    lines.append("- 오늘 값은 HYG·IEI 등락으로 추정, 공식값은 다음 날 발표")
+    return "\n".join(lines)
+
+
+def send_risk_channel(r: dict) -> bool:
+    """전용 채널(RISK_WEBHOOK_ENV)로 카나리 알림 전송. 실패해도 False만 반환."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env")
+    except Exception:
+        pass
+    try:
+        gap = qqq_ma_gap(load_etf_tr(["QQQ"])["QQQ"], r["date"])
+    except Exception as e:
+        print(f"OAS qqq_ma_gap failed: {e!r}")
+        gap = None
+    return bool(send_strategy_alert(format_risk_alert(r, gap), RISK_WEBHOOK_ENV))
+
+
 def ensure_alert_table(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(_CREATE_ALERT_LOG)
 
@@ -173,6 +242,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="OAS spike alert: estimate, log, print OAS lines")
     parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument("--mark-reported", default=None)
+    parser.add_argument("--send-risk", default=None)
     args = parser.parse_args(argv)
     if args.mark_reported is not None:
         args.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -187,6 +257,26 @@ def main(argv=None) -> int:
             return 0
         print(f"OAS {args.mark_reported} not found")
         return 1
+    if args.send_risk is not None:
+        args.db_path.parent.mkdir(parents=True, exist_ok=True)
+        con = duckdb.connect(str(args.db_path))
+        try:
+            ensure_alert_table(con)
+            row = con.execute(
+                "SELECT date, base_date, base, est, chg_bp, thr_bp, rank_pct,"
+                " alert_fixed, alert_pct, cum7_bp FROM oas_alert_log WHERE date = ?",
+                [args.send_risk],
+            ).fetchone()
+        finally:
+            con.close()
+        if row is None:
+            print(f"OAS {args.send_risk} not found")
+            return 1
+        keys = ["date", "base_date", "base", "est", "chg_bp", "thr_bp", "rank_pct",
+                "alert_fixed", "alert_pct", "cum7_bp"]
+        r = dict(zip(keys, row))
+        print(f"OAS risk channel sent={send_risk_channel(r)}")
+        return 0
     oas = load_fred(OAS_SERIES)
     px = load_etf_tr(["HYG", "IEI"])
     logret = np.log1p(px[["HYG", "IEI"]])
@@ -200,6 +290,8 @@ def main(argv=None) -> int:
         con.close()
     for line in format_lines(r, already=not inserted):
         print(line)
+    if inserted and r["alert"]:
+        print(f"OAS risk channel sent={send_risk_channel(r)}")
     return 0
 
 
