@@ -23,6 +23,8 @@ from research.backtest_daily.adjust import adj_price, adj_returns  # noqa: E402
 router = APIRouter(tags=["holdings"])
 
 RETURN_MONTHS = (1, 3, 6, 12)
+# 끝 시세가 기준일보다 이만큼(달력일) 넘게 오래되면 수익률 없음 — 정지·상폐 종목. 명절 연휴 여유.
+STALE_DAYS = 14
 
 _KR_RE = re.compile(r"^\d{6}$")
 _US_SUFFIX = " US EQUITY"
@@ -83,6 +85,10 @@ def _window_returns(
     for ticker, grp in px.groupby("ticker", sort=False):
         past = grp[grp["date"] <= end]
         if past.empty:
+            continue
+        last = past["date"].iloc[-1]
+        if (date(int(end[:4]), int(end[4:6]), int(end[6:8])) - date(int(last[:4]), int(last[4:6]), int(last[6:8]))).days > STALE_DAYS:
+            out[ticker] = {f"r{n}m": None for n in RETURN_MONTHS}
             continue
         end_v = float(past[value_col].iloc[-1])
         row: dict[str, float | None] = {}
