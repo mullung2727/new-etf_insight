@@ -80,4 +80,6 @@
 
 ## 구현 차이
 - P1: 원래 "뉴욕 현재 날짜 미만만" → 실제 기본 컷 = 뉴욕 16:30 이후면 내일(`routers/us.py:_cutoff`). KST 06:30 은 뉴욕 전날 17:30 이라 방금 끝난 장을 포함해야 함.
+- P2: 확신주 목록은 runner 가 env `US_EARLY_EXTRA_TICKERS` 없으면 `research/private/us_oas/early_tickers.txt`(있을 때) 사용 — 스케줄 작업은 .env 를 안 읽음.
+- P3: `build_us_macro.replace_index` 도 같은 문제(전 구간 DELETE)라 같이 고침.
 - P1: broker 에 `tzdata` 의존성 추가 — Windows 는 IANA 시간대 DB 가 없어 `ZoneInfo("America/New_York")` 가 실패.

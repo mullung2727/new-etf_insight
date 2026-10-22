@@ -17,6 +17,7 @@ from scripts.build_us_macro import (
     index_cutoff_day,
     load_series,
     main,
+    replace_index,
     run,
     upsert_first_release,
     upsert_fred,
@@ -167,6 +168,40 @@ class TestIndexOhlcv(unittest.TestCase):
         self.assertEqual(
             self.con.execute("SELECT DISTINCT close FROM index_ohlcv WHERE ticker='^VIX'").fetchall(),
             [(21.0,)],
+        )
+
+    def test_v4_short_response_preserves_newer_rows(self):
+        """야후 응답이 저장보다 짧으면 이후 행(CBOE/us-early) 보존, 실패 아님 (P3)."""
+        self.con.executemany("INSERT INTO index_ohlcv VALUES (?,?,?,?,?,?,?)", [
+            ("20261019", "^VIX", 20.0, 20.0, 20.0, 20.0, T1),
+            ("20261020", "^VIX", 20.0, 20.0, 20.0, 20.0, T1),
+            ("20261021", "^VIX", 21.0, 21.0, 21.0, 21.0, T1),
+        ])
+        frame = _frame({"^VIX": [("2026-10-19", 25), ("2026-10-20", 26)]})["^VIX"]
+        count = replace_index(self.con, "^VIX", frame, "20261022", T2)
+        self.assertEqual(count, 2)
+        self.assertEqual(
+            self.con.execute(
+                "SELECT date, close FROM index_ohlcv WHERE ticker='^VIX' ORDER BY date"
+            ).fetchall(),
+            [("20261019", 25.0), ("20261020", 26.0), ("20261021", 21.0)],
+        )
+
+    def test_v5_healthy_response_overwrites_newer_rows(self):
+        """야후 응답에 마지막 날이 정상이면 us-early 행을 덮어쓴다 (P3)."""
+        self.con.executemany("INSERT INTO index_ohlcv VALUES (?,?,?,?,?,?,?)", [
+            ("20261019", "^VIX", 20.0, 20.0, 20.0, 20.0, T1),
+            ("20261020", "^VIX", 20.0, 20.0, 20.0, 20.0, T1),
+            ("20261021", "^VIX", 21.0, 21.0, 21.0, 21.0, T1),
+        ])
+        frame = _frame({"^VIX": [("2026-10-19", 25), ("2026-10-20", 26), ("2026-10-21", 27)]})["^VIX"]
+        count = replace_index(self.con, "^VIX", frame, "20261022", T2)
+        self.assertEqual(count, 3)
+        self.assertEqual(
+            self.con.execute(
+                "SELECT date, close FROM index_ohlcv WHERE ticker='^VIX' ORDER BY date"
+            ).fetchall(),
+            [("20261019", 25.0), ("20261020", 26.0), ("20261021", 27.0)],
         )
 
     def test_index_cutoff_day(self):

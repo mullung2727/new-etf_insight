@@ -395,30 +395,63 @@ class TestEtf(unittest.TestCase):
             [(25.0,)],
         )
 
-    def test_e8_truncated_tail_response_protected(self):
-        """잘린 재조회(뒤 구간 누락)는 기존 이력을 지우지 않고 실패한다."""
-        def download_for(days):
-            def _download(tickers, start, end):
-                return _frame({ticker: list(days) for ticker in tickers})
-            return _download
-
+    def test_e8_short_yahoo_tail_preserves_newer_rows(self):
+        """야후 응답이 저장보다 하루 짧으면(마지막 날 NaN) 실패 대신 이후 행 보존 (P3)."""
         ensure_etf(
-            self.con, "20260912",
-            download_for([("2026-09-09", 100), ("2026-09-10", 100), ("2026-09-11", 100)]),
-            "20260912",
+            self.con, "20261022",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-10-19", 100), ("2026-10-20", 100), ("2026-10-21", 100)]
+                 for ticker in tickers},
+                dividends={("SPY", "2026-10-21"): 0.5},
+            ),
+            "20261022",
             tickers=("SPY",),
         )
-        truncated = ensure_etf(
-            self.con, "20260912",
-            download_for([("2026-09-09", 25), ("2026-09-10", 25)]),
-            "20260912",
+        stats = ensure_etf(
+            self.con, "20261022",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-10-19", 25), ("2026-10-20", 25)] for ticker in tickers},
+                dividends={("SPY", "2026-10-20"): 0.3},
+            ),
+            "20261022",
             tickers=("SPY",),
         )
-        self.assertEqual(truncated["failed_tickers"], ["SPY"])
-        self.assertEqual(self.con.execute("SELECT count(*) FROM etf_ohlcv WHERE ticker='SPY'").fetchone()[0], 3)
+        self.assertEqual(stats["failed_tickers"], [])
         self.assertEqual(
-            self.con.execute("SELECT DISTINCT close FROM etf_ohlcv WHERE ticker='SPY'").fetchall(),
-            [(100.0,)],
+            self.con.execute(
+                "SELECT date, close FROM etf_ohlcv WHERE ticker='SPY' ORDER BY date"
+            ).fetchall(),
+            [("20261019", 25.0), ("20261020", 25.0), ("20261021", 100.0)],
+        )
+        self.assertEqual(
+            self.con.execute(
+                "SELECT date, amount FROM etf_dividends WHERE ticker='SPY' ORDER BY date"
+            ).fetchall(),
+            [("20261020", 0.3), ("20261021", 0.5)],
+        )
+
+    def test_e9_healthy_yahoo_overwrites_early_rows(self):
+        """야후 응답에 마지막 날이 정상이면 us-early 행을 덮어쓴다 (P3)."""
+        self.con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", [
+            ("20261019", "SPY", 100.0, 101.0, 99.0, 100.0, 100),
+            ("20261020", "SPY", 100.0, 101.0, 99.0, 100.0, 100),
+            ("20261021", "SPY", 725.0, 726.0, 724.0, 725.2, 1000),
+        ])
+        stats = ensure_etf(
+            self.con, "20261022",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-10-19", 25), ("2026-10-20", 26), ("2026-10-21", 27)]
+                 for ticker in tickers}
+            ),
+            "20261022",
+            tickers=("SPY",),
+        )
+        self.assertEqual(stats["failed_tickers"], [])
+        self.assertEqual(
+            self.con.execute(
+                "SELECT date, close FROM etf_ohlcv WHERE ticker='SPY' ORDER BY date"
+            ).fetchall(),
+            [("20261019", 25.0), ("20261020", 26.0), ("20261021", 27.0)],
         )
 
     def test_e4_empty_etf_calendar_fails(self):
