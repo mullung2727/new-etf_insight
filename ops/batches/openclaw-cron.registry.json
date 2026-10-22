@@ -542,6 +542,36 @@
       }
     },
     {
+      "id": "f4a7c2e9-6b1d-4e83-9a5c-2d8f0b3e7c1a",
+      "name": "high52-earn",
+      "description": "Mon-Fri 19:40 high52 private-strategy earnings judgment for held positions on the ledger (no orders); next-day 09:00 exit worker sells misses",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "40 19 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/high52-earn.md",
+      "timeoutSeconds": 900,
+      "runNote": "Windows Task Scheduler is authoritative. No orders; safe to rerun. Posts a Discord summary when something was judged.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "high52-earn",
+        "xmlFile": "ops/scheduled-tasks/high52-earn.xml",
+        "runnerScript": "ops/scheduled-tasks/run-high52-earn.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "c47e1a92-5f3b-4d68-8b2c-9e0a7d4f6b15",
       "name": "high52-exit",
       "description": "Mon-Fri 08:50 start; high52 private-strategy intraday stop/target worker 09:00-15:18:30 on the HIGH52 account broker :8002",
