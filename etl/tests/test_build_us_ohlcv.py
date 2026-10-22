@@ -430,6 +430,33 @@ class TestEtf(unittest.TestCase):
             [("20261020", 0.3), ("20261021", 0.5)],
         )
 
+    def test_e8b_tail_short_nan_dividend_no_conflict(self):
+        """2차 응답 마지막 날 OHLC NaN + 배당이어도 PK 충돌 없이 기존 배당 유지 (PR #121 리뷰)."""
+        ensure_etf(
+            self.con, "20261022",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-10-19", 100), ("2026-10-20", 100), ("2026-10-21", 100)]
+                 for ticker in tickers},
+                dividends={("SPY", "2026-10-21"): 0.5},
+            ),
+            "20261022",
+            tickers=("SPY",),
+        )
+        stats = ensure_etf(
+            self.con, "20261022",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-10-19", 25), ("2026-10-20", 25), ("2026-10-21", float("nan"))]
+                 for ticker in tickers},
+                dividends={("SPY", "2026-10-21"): 0.5},
+            ),
+            "20261022",
+            tickers=("SPY",),
+        )
+        self.assertEqual(stats["failed_tickers"], [])
+        self.assertEqual(self.con.execute(
+            "SELECT count(*) FROM etf_dividends WHERE ticker='SPY' AND date='20261021'"
+        ).fetchone()[0], 1)
+
     def test_e9_healthy_yahoo_overwrites_early_rows(self):
         """야후 응답에 마지막 날이 정상이면 us-early 행을 덮어쓴다 (P3)."""
         self.con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", [
