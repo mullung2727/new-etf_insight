@@ -243,6 +243,16 @@ def test_no_earlier_price_r12m_none(returns_holdings: Path, price_dbs: tuple[Pat
     assert row["r12m"] is None
 
 
+def test_stale_end_price_returns_none(returns_holdings: Path, price_dbs: tuple[Path, Path]) -> None:
+    krx, _ = price_dbs
+    _insert_krx(krx, [
+        _krx_row("20260808", "005930", 100, 3),
+        _krx_row("20260918", "005930", 110, 10),
+    ])
+    row = _holding("385720", "005930")
+    assert [row[k] for k in ("r1m", "r3m", "r6m", "r12m")] == [None] * 4
+
+
 def test_futures_returns_none(returns_holdings: Path, price_dbs: tuple[Path, Path]) -> None:
     row = _holding("426030", "NQZ6 INDEX")
     assert [row[k] for k in ("r1m", "r3m", "r6m", "r12m")] == [None] * 4
