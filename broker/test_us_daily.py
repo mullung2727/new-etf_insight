@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from kiwoom import us
-from kiwoom.client import TrResult
+from kiwoom.client import KiwoomError, TrResult
 from routers import us as us_router
 
 
@@ -51,6 +51,34 @@ class TestGetUsDaily(unittest.TestCase):
             seen.clear()
             us.get_us_daily("QQQ", "20261013", "20261022")
             self.assertEqual(seen, ["NY"])
+
+    def test_1903_nd_falls_through_to_ny_and_caches(self):
+        seen: list[str] = []
+
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            seen.append(body["stex_tp"])
+            if body["stex_tp"] == "ND":
+                raise KiwoomError(
+                    "usa06012 return_code=7: [1903:종목 정보가 없습니다 "
+                    "거래소구분=ND, 종목코드=SPY]")
+            return TrResult(data={"result_list": [_bar("20261021")]}, cont_yn="N", next_key="")
+
+        with patch("kiwoom.us.request", side_effect=fake):
+            rows = us.get_us_daily("SPY", "20261013", "20261022")
+            self.assertEqual(seen, ["ND", "NY"])
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(us._EXCHANGE["SPY"], "NY")
+            # 두 번째 호출부터 NY 먼저 — 1콜로 끝
+            seen.clear()
+            us.get_us_daily("SPY", "20261013", "20261022")
+            self.assertEqual(seen, ["NY"])
+
+    def test_non_1903_kiwoom_error_propagates(self):
+        with patch("kiwoom.us.request",
+                   side_effect=KiwoomError("usa06012 return_code=1: 시스템 오류")):
+            with self.assertRaises(KiwoomError):
+                us.get_us_daily("SPY", "20261013", "20261022")
+        self.assertNotIn("SPY", us._EXCHANGE)
 
     def test_filters_today_and_before_from_ascending_numbers(self):
         bars = [  # 응답은 최신일 내림차순

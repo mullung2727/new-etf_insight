@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .client import request
+from .client import KiwoomError, request
 
 # 키움 usa06012 stex_tp: ND 나스닥, NY NYSE, NA AMEX.
 # 실측 2026-10-22: QQQ·TQQQ·IEF=ND, SPY·BIL=NY(NYSE Arca도 NY로 조회됨).
@@ -39,7 +39,15 @@ def get_us_daily(code: str, from_date: str, today_ny: str) -> list[dict]:
     for ex in order:
         body = {"stex_tp": ex, "stk_cd": code, "strt_dt": today_ny,
                 "upd_stkpc_tp": "1", "exrt_appl_tp": "0"}
-        res = request("usa06012", "/api/us/chart", body)
+        # 실측 2026-10-23: 거래소를 틀리게 주면 빈 응답이 아니라 return_code=7 [1903:종목 정보가 없습니다] KiwoomError.
+        try:
+            res = request("usa06012", "/api/us/chart", body)
+        except KiwoomError as e:
+            if "1903" not in str(e):
+                raise
+            if _EXCHANGE.get(code) == ex:
+                del _EXCHANGE[code]
+            continue
         rows = res.data.get("result_list") or []
         if not rows:
             continue
