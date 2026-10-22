@@ -27,7 +27,7 @@ positions. It places no orders.
   SUE not computable) → the next day's `high52-exit` worker sells at market
   at 09:00. `hold` → judged again next quarter.
 - No orders. Posts a Discord summary only when something was judged.
-- 실패 시 수동 재실행: `etl\.venv\Scripts\python.exe -m research.private.high52_quiet_breakout.live.earn_check --dry-run false` from `etl/` with `PYTHONPATH=..`.
+- 실패 시 수동 재실행: `.venv\Scripts\python.exe -m research.private.high52_quiet_breakout.live.earn_check --dry-run false` from `etl/` with `PYTHONPATH=..`.
 
 ## Guardrails
 
