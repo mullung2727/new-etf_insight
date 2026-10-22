@@ -301,7 +301,10 @@ def replace_index(
             raise RuntimeError(
                 f"{ticker} 지수 재조회가 기존 구간을 못 덮는다 (저장 {stored_first} < 응답 {first})"
             )
-        con.execute("DELETE FROM index_ohlcv WHERE ticker=?", [ticker])
+        # 야후 마지막 날이 NaN 이면 응답이 하루 짧아진다. CBOE/us-early 가 넣은 이후 행이
+        # 지워지지 않게 DELETE 를 응답 마지막일 이하로 한정한다.
+        last = max(row[0] for row in rows)
+        con.execute("DELETE FROM index_ohlcv WHERE ticker=? AND date <= ?", [ticker, last])
         con.executemany("INSERT INTO index_ohlcv VALUES (?,?,?,?,?,?,?)", rows)
         con.execute("COMMIT")
     except Exception:

@@ -720,13 +720,20 @@ def ensure_etf(
                 raise RuntimeError(
                     f"{ticker} ETF 재조회가 기존 구간을 못 덮는다 (저장 {stored_first} < 응답 {first})"
                 )
-            if stored_last is not None and (last is None or last < stored_last):
-                raise RuntimeError(
-                    f"{ticker} ETF 재조회가 기존 구간을 못 덮는다 "
-                    f"(저장 마지막 {stored_last} > 응답 마지막 {last})"
+            # P3: 꼬리 짧은 응답(야후 마지막 날 NaN)은 실패 대신 응답 마지막일 이후 저장 행 보존.
+            _tail_short = stored_last is not None and last is not None and last < stored_last
+            if _tail_short:
+                print(
+                    f"[etf] {ticker} 야후 마지막 {last} < 저장 {stored_last} — 이후 행 보존",
+                    flush=True,
                 )
-            con.execute("DELETE FROM etf_ohlcv WHERE ticker=?", [ticker])
-            con.execute("DELETE FROM etf_dividends WHERE ticker=?", [ticker])
+                con.execute("DELETE FROM etf_ohlcv WHERE ticker=? AND date <= ?", [ticker, last])
+            else:
+                con.execute("DELETE FROM etf_ohlcv WHERE ticker=?", [ticker])
+            if _tail_short:
+                con.execute("DELETE FROM etf_dividends WHERE ticker=? AND date <= ?", [ticker, last])
+            else:
+                con.execute("DELETE FROM etf_dividends WHERE ticker=?", [ticker])
             if prices:
                 con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", prices)
             if divs:
