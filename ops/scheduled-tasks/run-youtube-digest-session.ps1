@@ -71,8 +71,12 @@ try {
   foreach ($day in $collectSteps) {
     $r = Invoke-StepSoft "youtube collect all channels ($day)" `
       ".\.venv\Scripts\python.exe" @("scripts\run_youtube_channels.py", "--date", $day)
-    foreach ($m in [regex]::Matches($r.Text, 'ERROR channel=(UC[\w-]{22})')) {
-      $collectFailed += $m.Groups[1].Value
+    # "UC...=raw error" pairs; classification and wording live in youtube_digest.collect_failure_note.
+    foreach ($m in [regex]::Matches($r.Text, 'ERROR channel=(UC[\w-]{22}) date=\S+: ([^\r\n]*)')) {
+      $cid = $m.Groups[1].Value
+      $reason = $m.Groups[2].Value.Replace(",", " ")
+      if ($reason.Length -gt 80) { $reason = $reason.Substring(0, 80) }
+      $collectFailed += "$cid=$reason"
     }
   }
   $collectFailed = $collectFailed | Sort-Object -Unique

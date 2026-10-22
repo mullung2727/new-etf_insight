@@ -9,8 +9,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 from urllib.error import URLError
 
+from scripts import run_youtube_channels as ryc
 from scripts.youtube_channels import (
     DEFAULT_CONFIG,
     load_all_channels,
@@ -190,6 +192,109 @@ class DefaultConfigTest(unittest.TestCase):
         # 실채널이 들어 있어도 dict 이면 OK (빈 객체 강제 아님)
         data = json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8"))
         self.assertIsInstance(data, dict)
+
+
+RY_CH_A = "UC" + "A" * 22
+RY_CH_B = "UC" + "B" * 22
+
+
+class RunAllRetryTest(unittest.TestCase):
+    """run_all 끝-1회 재시도. process_channel만 mock이라 네트워크·DB 없이 돈다."""
+
+    def test_failed_then_success_is_recovered(self):
+        attempts: dict[str, int] = {}
+
+        def fake(con, ch, date_kst, **kwargs):
+            attempts[ch] = attempts.get(ch, 0) + 1
+            if ch == RY_CH_A and attempts[ch] == 1:
+                raise RuntimeError("HTTP Error 500: Internal Server Error")
+            return {"channel_id": ch}
+
+        sleep = MagicMock()
+        with patch("scripts.run_youtube_channels.process_channel", side_effect=fake):
+            results, errors = ryc.run_all(
+                None, {RY_CH_A: {}, RY_CH_B: {}}, "2026-10-18", _sleep=sleep
+            )
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 2)
+        sleep.assert_called_once_with(60)
+
+    def test_second_failure_keeps_the_new_message(self):
+        attempts: dict[str, int] = {}
+
+        def fake(con, ch, date_kst, **kwargs):
+            attempts[ch] = attempts.get(ch, 0) + 1
+            raise RuntimeError(f"boom attempt {attempts[ch]}")
+
+        sleep = MagicMock()
+        with patch("scripts.run_youtube_channels.process_channel", side_effect=fake):
+            results, errors = ryc.run_all(
+                None, {RY_CH_A: {}}, "2026-10-18", _sleep=sleep
+            )
+        self.assertEqual(results, [])
+        self.assertEqual(errors, [(RY_CH_A, "boom attempt 2")])
+        sleep.assert_called_once_with(60)
+
+    def test_all_success_sleeps_never(self):
+        sleep = MagicMock()
+        with patch(
+            "scripts.run_youtube_channels.process_channel",
+            side_effect=lambda con, ch, date_kst, **kwargs: {"channel_id": ch},
+        ):
+            results, errors = ryc.run_all(
+                None, {RY_CH_A: {}, RY_CH_B: {}}, "2026-10-18", _sleep=sleep
+            )
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 2)
+        sleep.assert_not_called()
+
+    def test_channel_not_in_config_is_not_retried(self):
+        missing = "UC" + "Z" * 22
+        sleep = MagicMock()
+        with patch(
+            "scripts.run_youtube_channels.process_channel",
+            side_effect=AssertionError("must not be called"),
+        ) as mocked:
+            results, errors = ryc.run_all(
+                None, {RY_CH_A: {}}, "2026-10-18", only=missing, _sleep=sleep
+            )
+        self.assertEqual(results, [])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("channel not in config", errors[0][1])
+        mocked.assert_not_called()
+        sleep.assert_not_called()
+
+    def test_permanent_http_error_is_not_retried(self):
+        sleep = MagicMock()
+        with patch(
+            "scripts.run_youtube_channels.process_channel",
+            side_effect=RuntimeError("HTTP Error 403: Forbidden"),
+        ) as mocked:
+            results, errors = ryc.run_all(
+                None, {RY_CH_A: {}}, "2026-10-18", _sleep=sleep
+            )
+        self.assertEqual(results, [])
+        self.assertEqual(errors, [(RY_CH_A, "HTTP Error 403: Forbidden")])
+        self.assertEqual(mocked.call_count, 1)
+        sleep.assert_not_called()
+
+    def test_http_404_is_retried(self):
+        attempts: dict[str, int] = {}
+
+        def fake(con, ch, date_kst, **kwargs):
+            attempts[ch] = attempts.get(ch, 0) + 1
+            if attempts[ch] == 1:
+                raise RuntimeError("HTTP Error 404: Not Found")
+            return {"channel_id": ch}
+
+        sleep = MagicMock()
+        with patch("scripts.run_youtube_channels.process_channel", side_effect=fake):
+            results, errors = ryc.run_all(
+                None, {RY_CH_A: {}}, "2026-10-18", _sleep=sleep
+            )
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 1)
+        sleep.assert_called_once_with(60)
 
 
 if __name__ == "__main__":

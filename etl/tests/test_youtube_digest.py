@@ -424,10 +424,60 @@ class FormatMessageTest(unittest.TestCase):
 
 class CollectFailureNoteTest(unittest.TestCase):
     def test_channel_ids_are_shown_as_labels(self):
-        note = yd.collect_failure_note([CH_A, CH_B])
+        note = yd.collect_failure_note([(CH_A, ""), (CH_B, "")])
         self.assertIn("unrealtech", note)
         self.assertIn("이효석아카데미", note)
         self.assertNotIn(CH_A, note)
+
+    def test_classify_collect_error(self):
+        self.assertEqual(
+            yd.classify_collect_error("HTTP Error 404: Not Found"), ("transient", "404")
+        )
+        self.assertEqual(
+            yd.classify_collect_error("HTTP Error 429: Too Many Requests"), ("block", "429")
+        )
+        self.assertEqual(
+            yd.classify_collect_error("<urlopen error timed out>"), ("net", "")
+        )
+        self.assertEqual(yd.classify_collect_error(""), ("unknown", ""))
+        self.assertEqual(
+            yd.classify_collect_error("ValueError: bad xml"), ("other", "ValueError: bad xml")
+        )
+
+    def test_transient_group_lists_channels_with_ascending_codes(self):
+        note = yd.collect_failure_note([
+            (CH_A, "HTTP Error 404: Not Found"),
+            (CH_B, "HTTP Error 500: Internal Server Error"),
+        ])
+        self.assertIn("수집 실패 2채널", note)
+        self.assertIn("유튜브 일시 오류", note)
+        self.assertIn("HTTP 404·500", note)
+        self.assertIn("unrealtech", note)
+        self.assertIn("이효석아카데미", note)
+
+    def test_channel_with_block_and_transient_shows_only_in_block(self):
+        note = yd.collect_failure_note([
+            (CH_A, "HTTP Error 404: Not Found"),
+            (CH_A, "HTTP Error 429: Too Many Requests"),
+        ])
+        self.assertIn("수집 실패 1채널", note)
+        self.assertIn("유튜브 차단 의심", note)
+        self.assertNotIn("일시 오류", note)
+
+    def test_parse_collect_failed(self):
+        self.assertEqual(
+            yd.parse_collect_failed("UC1=HTTP Error 404: Not Found,UC2, ,UC3=a=b"),
+            [("UC1", "HTTP Error 404: Not Found"), ("UC2", ""), ("UC3", "a=b")],
+        )
+
+    def test_other_group_shows_each_channel_own_excerpt(self):
+        note = yd.collect_failure_note([
+            (CH_A, "ValueError: bad xml"),
+            (CH_B, "sqlite3.OperationalError: locked"),
+        ])
+        self.assertIn("unrealtech (ValueError: bad xml)", note)
+        self.assertIn("이효석아카데미 (sqlite3.OperationalError: locked)", note)
+        self.assertEqual(note.count("bad xml"), 1)
 
     def test_no_failure_gives_no_note(self):
         self.assertIsNone(yd.collect_failure_note([]))
@@ -636,7 +686,7 @@ class ScheduleRunnerTest(unittest.TestCase):
         self.assertEqual(self.ps1.count("Invoke-Step \""), 1)
 
     def test_failed_channels_are_passed_to_digest_message(self):
-        self.assertIn("ERROR channel=(UC[\\w-]{22})", self.ps1)
+        self.assertIn("ERROR channel=(UC[\\w-]{22}) date=\\S+: ([^\\r\\n]*)", self.ps1)
         self.assertIn("--collect-failed", self.ps1)
         self.assertIn("--summarize-failed", self.ps1)
 
