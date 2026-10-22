@@ -83,7 +83,7 @@ def ensure_schema(con) -> None:
 
 
 def classify(report_nm: str) -> str | None:
-    """공시 제목 → prelim / pnl_change / annual_report. 실적 무관·자회사는 None."""
+    """공시 제목 → prelim / pnl_change / annual_report / quarter_report. 실적 무관·자회사는 None."""
     nm = (report_nm or "").strip()
     if "자회사" in nm:
         return None
@@ -92,8 +92,11 @@ def classify(report_nm: str) -> str | None:
     if "매출액또는손익구조" in nm:
         return "pnl_change"
     parsed = parse_report_period(nm)
-    if parsed and parsed[1] == "11011":
-        return "annual_report"
+    if parsed:
+        if parsed[1] == "11011":
+            return "annual_report"
+        if parsed[1] in ("11013", "11012", "11014"):
+            return "quarter_report"
     return None
 
 
@@ -140,6 +143,10 @@ def upsert_list_rows(con, filings: list[dict]) -> int:
             parsed = parse_report_period(nm)
             assert parsed is not None  # classify 통과 = 파싱 성공
             fiscal_year, period, status = parsed[0], "FY", "skip"
+        elif kind == "quarter_report":
+            parsed = parse_report_period(nm)
+            assert parsed is not None  # classify 통과 = 파싱 성공
+            fiscal_year, period, status = parsed[0], {"11013": "Q1", "11012": "Q2", "11014": "Q3"}[parsed[1]], "skip"
         else:
             fiscal_year, period, status = None, None, "pending"
         fs_basis = "CFS" if (kind == "prelim" and "연결" in nm) else None

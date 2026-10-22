@@ -41,7 +41,9 @@ class TestEarningsDisclosures(unittest.TestCase):
             ("매출액또는손익구조30%(대규모법인은15%)이상변동", "pnl_change"),
             ("매출액또는손익구조30%(대규모법인은15%)이상변경(자회사의 주요경영사항)", None),
             ("사업보고서 (2024.12)", "annual_report"),
-            ("반기보고서 (2024.06)", None),
+            ("반기보고서 (2024.06)", "quarter_report"),
+            ("분기보고서 (2024.03)", "quarter_report"),
+            ("[기재정정]분기보고서 (2024.09)", "quarter_report"),
             ("단일판매ㆍ공급계약체결", None),
         ]
         for nm, want in cases:
@@ -283,6 +285,20 @@ class TestEarningsDisclosures(unittest.TestCase):
             self.assertEqual(row[2:], ("CFS", "2024", "Q4", 1.0, 2.0, "ok"))  # 파싱값 유지
             self.assertEqual(
                 con.execute("SELECT COUNT(*) FROM earnings_disclosures").fetchone()[0], 1)
+        finally:
+            con.close()
+
+    def test_upsert_quarter_report(self):
+        con = _memdb()
+        try:
+            m.upsert_list_rows(con, [{
+                "report_nm": "분기보고서 (2024.09)", "corp_cls": "Y",
+                "stock_code": "005930", "rcept_no": "Q1",
+                "rcept_dt": "20241114", "corp_code": "00126380"}])
+            row = con.execute(
+                "SELECT kind, fiscal_year, period, parse_status "
+                "FROM earnings_disclosures").fetchone()
+            self.assertEqual(row, ("quarter_report", "2024", "Q3", "skip"))
         finally:
             con.close()
 

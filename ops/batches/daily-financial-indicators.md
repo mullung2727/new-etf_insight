@@ -21,7 +21,7 @@ Daily 19:00; DART periodic-report financial indicators and key accounts into
 with filings.
 
 After the periodic filings, the same run loads DART earnings disclosures
-(잠정실적·매출/손익 30% 변동) into the `earnings_disclosures` table:
+(잠정실적·매출/손익 30% 변동, plus periodic-report filing dates — 사업·반기·분기보고서, no parsing) into the `earnings_disclosures` table:
 list for the last 7 days, then parses every pending disclosure in that window
 (`build_earnings_disclosures.py --from D-7 --to D --parse-since D-7`).
 Amounts are year-to-date cumulative (`_parse_prelim`). This table is the only
