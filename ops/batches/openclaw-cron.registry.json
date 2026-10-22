@@ -1081,11 +1081,11 @@
     {
       "id": "1540965d-00fd-4f29-9053-e12dd64b5775",
       "name": "us-daily",
-      "description": "Tue-Sat 11:00 KST; US daily OHLCV/ETF + FRED macro collection and Discord report",
+      "description": "Tue-Sat 11:00 KST (retry 13/15/17 until success, failure alert only at 17:00); US daily OHLCV/ETF + FRED macro collection and Discord report",
       "enabled": true,
       "schedule": {
         "kind": "cron",
-        "expr": "0 11 * * 2-6",
+        "expr": "0 11,13,15,17 * * 2-6",
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/us-daily.md",
