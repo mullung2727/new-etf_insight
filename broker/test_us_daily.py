@@ -80,6 +80,13 @@ class TestGetUsDaily(unittest.TestCase):
                 us.get_us_daily("SPY", "20261013", "20261022")
         self.assertNotIn("SPY", us._EXCHANGE)
 
+    def test_http_body_1903_propagates(self):
+        with patch("kiwoom.us.request",
+                   side_effect=KiwoomError("usa06012 HTTP 500: ... 1903 ...")):
+            with self.assertRaises(KiwoomError):
+                us.get_us_daily("SPY", "20261013", "20261022")
+        self.assertNotIn("SPY", us._EXCHANGE)
+
     def test_filters_today_and_before_from_ascending_numbers(self):
         bars = [  # 응답은 최신일 내림차순
             _bar("20261022", "200.00"),   # 뉴욕 당일 진행 봉 → 제외

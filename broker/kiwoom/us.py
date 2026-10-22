@@ -43,7 +43,8 @@ def get_us_daily(code: str, from_date: str, today_ny: str) -> list[dict]:
         try:
             res = request("usa06012", "/api/us/chart", body)
         except KiwoomError as e:
-            if "1903" not in str(e):
+            msg = str(e)
+            if "return_code=7" not in msg or "[1903:" not in msg:
                 raise
             if _EXCHANGE.get(code) == ex:
                 del _EXCHANGE[code]
