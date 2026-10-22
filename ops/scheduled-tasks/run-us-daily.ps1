@@ -4,8 +4,17 @@ $etlDir = Join-Path $projectRoot "etl"
 $logDir = Join-Path $etlDir "logs"
 New-Item -Force -ItemType Directory $logDir | Out-Null
 
-$target = (Get-Date).ToString("yyyyMMdd")
+$now = Get-Date
+$target = $now.ToString("yyyyMMdd")
 $log = Join-Path $logDir ("us-daily-" + $target + ".log")
+# Schedule: Tue-Sat 11/13/15/17 KST. Earlier failures stay silent and retry; only the 17:00 run alerts.
+# Runs outside 11-17 (manual) count as final so a failure is never silent.
+$isFinal = ($now.Hour -ge 17) -or ($now.Hour -lt 11)
+$okMarker = Join-Path $logDir ("us-daily-" + $target + ".ok")
+if (Test-Path $okMarker) {
+  "[$(Get-Date -Format o)] already succeeded today ($okMarker), skip" | Tee-Object -FilePath $log -Append | Write-Output
+  exit 0
+}
 
 Set-Location $etlDir
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -80,6 +89,7 @@ try {
     $message | Tee-Object -FilePath $log -Append | Write-Output
     Invoke-Step "send Discord report" ".\.venv\Scripts\python.exe" @("scripts\send_report_messages.py", "--message", $message)
     if ($script:lastCode -ne 0) { throw "send Discord report failed with exit code $($script:lastCode)" }
+    Set-Content -Path $okMarker -Value (Get-Date -Format o) -Encoding ASCII
     if ($oasDate -ne "") {
       Invoke-Step "OAS mark reported" ".\.venv\Scripts\python.exe" @("scripts\us_oas_alert.py", "--mark-reported", $oasDate)
       if ($script:lastCode -ne 0) { "WARN: OAS mark reported failed (exit $($script:lastCode))" | Tee-Object -FilePath $log -Append | Write-Output }
@@ -89,12 +99,20 @@ try {
     $message = "[US DAILY] " + $target + " FAILED`n" + ($failedSteps -join "`n") + "`nlog: " + $log
     if ($oasLines.Count -gt 0) { $message += "`n" + ($oasLines -join "`n") }
     $message | Tee-Object -FilePath $log -Append | Write-Output
-    Send-FailureReport $message
+    if ($isFinal) {
+      Send-FailureReport $message
+    } else {
+      "not final attempt: alert suppressed, next scheduled run retries" | Tee-Object -FilePath $log -Append | Write-Output
+    }
     exit 1
   }
 } catch {
   $message = "[US DAILY] " + $target + " FAILED`n$($_.Exception.Message)`nlog: " + $log
   $message | Tee-Object -FilePath $log -Append | Write-Output
-  Send-FailureReport $message
+  if ($isFinal) {
+    Send-FailureReport $message
+  } else {
+    "not final attempt: alert suppressed, next scheduled run retries" | Tee-Object -FilePath $log -Append | Write-Output
+  }
   exit 1
 }
