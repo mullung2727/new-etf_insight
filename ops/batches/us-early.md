@@ -41,5 +41,5 @@ Work from `C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\etl`.
 
 1. Windows task status for `\new-etf_insight\us-early`.
 2. Today's log: `logs\us-early-YYYYMMDD.log`.
-3. Latest dates per ticker in `db\us_ohlcv.duckdb` (`etf_ohlcv`, `ohlcv`) and
-   `db\us_macro.duckdb` (`index_ohlcv` for `^VIX`/`^VIX3M`).
+3. Latest dates per ticker in `<data root>\db\us_ohlcv.duckdb` (`etf_ohlcv`, `ohlcv`) and
+   `<data root>\db\us_macro.duckdb` (`index_ohlcv` for `^VIX`/`^VIX3M`); data root = `.env` `NEW_ETF_DATA_ROOT`.
