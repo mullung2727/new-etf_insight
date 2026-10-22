@@ -15,6 +15,7 @@ from routers import notes as notes_router
 from routers import orders as orders_router
 from routers import quotes as quotes_router
 from routers import settings as settings_router
+from routers import us as us_router
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -142,6 +143,7 @@ app.include_router(notes_router.router)
 app.include_router(settings_router.router)
 app.include_router(events_router.router)
 app.include_router(realtime_router.router)
+app.include_router(us_router.router)
 
 mcp = FastApiMCP(
     app,
