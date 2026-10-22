@@ -732,6 +732,8 @@ def ensure_etf(
                 con.execute("DELETE FROM etf_ohlcv WHERE ticker=?", [ticker])
             if _tail_short:
                 con.execute("DELETE FROM etf_dividends WHERE ticker=? AND date <= ?", [ticker, last])
+                # 보존한 구간의 배당은 기존 행을 유지 (PR #121 리뷰).
+                divs = [d for d in divs if d[1] <= last]
             else:
                 con.execute("DELETE FROM etf_dividends WHERE ticker=?", [ticker])
             if prices:
