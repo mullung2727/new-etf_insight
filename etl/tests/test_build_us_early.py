@@ -236,7 +236,7 @@ class TestYahooFallback(unittest.TestCase):
         ],
     }
 
-    def _run(self, yahoo=None, yahoo_exc=None, cboe_exc=None):
+    def _run(self, yahoo=None, yahoo_exc=None, cboe_exc=None, vix_csv=None, vix3m_csv=None):
         with tempfile.TemporaryDirectory() as tmp:
             ohlcv_path = Path(tmp) / "us_ohlcv.duckdb"
             macro_path = Path(tmp) / "us_macro.duckdb"
@@ -248,7 +248,10 @@ class TestYahooFallback(unittest.TestCase):
             def fake_fetch_cboe(symbol):
                 if cboe_exc is not None:
                     raise cboe_exc
-                return {"VIX": self.VIX_CSV, "VIX3M": self.VIX3M_CSV}[symbol]
+                return {
+                    "VIX": vix_csv or self.VIX_CSV,
+                    "VIX3M": vix3m_csv or self.VIX3M_CSV,
+                }[symbol]
 
             if yahoo_exc is not None:
                 yahoo_patch = mock.patch(
@@ -327,6 +330,50 @@ class TestYahooFallback(unittest.TestCase):
         self.assertEqual(vix3m, [("20261022", 17.0, 18.0, 16.5, 17.5)])
         self.assertIn("[us-early] ^VIX 야후로 채움 20261022", out)
         self.assertIn("[us-early] ^VIX3M 야후로 채움 20261022", out)
+        self.assertIn("vix=ok", out)
+
+    def test_yahoo_fills_middle_gap_when_latest_present(self):
+        # CBOE 에 최신일(10-22)은 있고 중간 날짜(10-21)만 빠짐
+        # → 최신일 유무와 무관하게 야후로 중간 날짜를 채운다.
+        vix_csv = (
+            "DATE,OPEN,HIGH,LOW,CLOSE\n"
+            "10/20/2026,20.0,21.0,19.0,20.5\n"
+            "10/22/2026,22.0,23.0,21.0,22.5\n"
+        )
+        yahoo = {
+            "^VIX": [
+                {"date": "20261021", "open": 16.0, "high": 17.0, "low": 15.5, "close": 16.5},
+                {"date": "20261022", "open": 999.0, "high": 999.0, "low": 999.0, "close": 999.0},
+            ],
+            "^VIX3M": [],
+        }
+        rc, out, vix, _vix3m = self._run(yahoo=yahoo, vix_csv=vix_csv)
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            vix,
+            [
+                ("20261020", 20.0, 21.0, 19.0, 20.5),
+                ("20261021", 16.0, 17.0, 15.5, 16.5),
+                ("20261022", 22.0, 23.0, 21.0, 22.5),
+            ],
+        )
+        self.assertIn("[us-early] ^VIX 야후로 채움 20261021", out)
+        self.assertIn("vix=ok", out)
+
+    def test_yahoo_future_dates_ignored(self):
+        # 야후가 expected_latest(10-22) 이후 날짜(10-23)를 줘도 넣지 않는다.
+        yahoo = {
+            "^VIX": [
+                {"date": "20261022", "open": 16.0, "high": 17.0, "low": 15.5, "close": 16.5},
+                {"date": "20261023", "open": 99.0, "high": 99.0, "low": 99.0, "close": 99.0},
+            ],
+            "^VIX3M": [],
+        }
+        rc, out, vix, _vix3m = self._run(yahoo=yahoo)
+        self.assertEqual(rc, 0)
+        self.assertEqual([row[0] for row in vix], ["20261020", "20261021", "20261022"])
+        self.assertIn("[us-early] ^VIX 야후로 채움 20261022", out)
+        self.assertNotIn("20261023", out)
         self.assertIn("vix=ok", out)
 
 

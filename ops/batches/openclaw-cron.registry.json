@@ -1111,11 +1111,11 @@
     {
       "id": "a7c2e4f1-8b3d-4e5f-9a6c-1d2e3f4a5b6c",
       "name": "us-early",
-      "description": "Tue-Sat 06:30 KST; US early daily load of signal ETFs + extra tickers (Kiwoom via broker) and VIX/VIX3M (CBOE)",
+      "description": "Tue-Sat 07:30 KST; US early daily load of signal ETFs + extra tickers (Kiwoom via broker) and VIX/VIX3M (CBOE)",
       "enabled": true,
       "schedule": {
         "kind": "cron",
-        "expr": "30 6 * * 2-6",
+        "expr": "30 7 * * 2-6",
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/us-early.md",
