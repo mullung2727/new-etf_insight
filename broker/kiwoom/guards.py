@@ -7,6 +7,8 @@ structural validation but are intentionally exempt from that strategy cap.
 
 from __future__ import annotations
 
+import os
+
 from .config import Config
 
 
@@ -57,4 +59,34 @@ def check_order(
         raise OrderRejected(
             f"{kind} 상한 초과: {notional:,} > MAX_ORDER_AMOUNT="
             f"{cfg.max_order_amount:,}"
+        )
+
+
+def check_order_source(source: str) -> None:
+    """ALLOWED_ORDER_SOURCES 가드 — 허용 목록 밖 source는 ValueError.
+
+    국내·미국 전략 주문이 공유한다. 라우터가 422로 변환하며 메시지는 기존 국내 문구 그대로.
+    """
+    allowed = {s.strip() for s in os.getenv("ALLOWED_ORDER_SOURCES", "").split(",") if s.strip()}
+    if allowed and source not in allowed:
+        raise ValueError(
+            f"source {source!r} 는 이 계좌 broker 에서 허용되지 않음 (허용: {', '.join(sorted(allowed))})",
+        )
+
+
+def check_us_strategy_order(side: str, qty: int, notional_usd: float, max_usd: float) -> None:
+    """미국 전략 주문 가드 — 키움 호출 전. 위반은 ValueError(라우터가 422로 변환).
+
+    매수 1건 금액(notional_usd)이 MAX_US_ORDER_USD를 넘으면 거부. 매도는 금액 상한 없음.
+    """
+    if qty <= 0:
+        raise ValueError(f"수량은 1 이상이어야 함: qty={qty}")
+    if side not in ("buy", "sell"):
+        raise ValueError(f"side는 buy/sell이어야 함: side={side!r}")
+    # 매도는 금액 상한 없음 — 급등 종목의 손절/강제청산이 막히면 포지션이 갇힌다(국내 가드와 같은 이유).
+    if side == "sell":
+        return
+    if notional_usd > max_usd:
+        raise ValueError(
+            f"매수 예상금액 상한 초과: {notional_usd:,.2f} > MAX_US_ORDER_USD={max_usd:,.2f}"
         )
