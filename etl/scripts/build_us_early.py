@@ -1,4 +1,8 @@
-"""Early-morning US daily load for signal use (KST 06:30).
+"""Early-morning US daily load for signal use (KST 07:30 year-round).
+
+07:30 stays 90+ min after the US close all year: after DST ends (first
+Sunday of November) the close is KST 06:00, so 06:30 would collide with
+the broker cutoff (NY 16:30).
 
 Fetches the previous US session bars for a small set of tickers from Kiwoom
 usa06012 via the broker (/us/daily) and VIX/VIX3M from CBOE CSVs (Yahoo fallback),
@@ -306,24 +310,22 @@ def main(argv: list[str] | None = None) -> int:
             ins, upd = upsert_index_bars(mcon, ticker, rows, fetched_at)
             if expected_latest is not None:
                 try:
-                    has_latest = mcon.execute(
-                        "SELECT 1 FROM index_ohlcv WHERE date=? AND ticker=?",
-                        [expected_latest, ticker],
-                    ).fetchone()
-                    if has_latest is None:
-                        have = {
-                            row[0]
-                            for row in mcon.execute(
-                                "SELECT date FROM index_ohlcv WHERE ticker=?", [ticker]
-                            ).fetchall()
-                        }
-                        fill = [row for row in yahoo.get(ticker, []) if row["date"] not in have]
-                        if fill:
-                            fins, fupd = upsert_index_bars(mcon, ticker, fill, fetched_at)
-                            inserted += fins
-                            updated += fupd
-                            dates = " ".join(row["date"] for row in fill)
-                            print(f"[us-early] {ticker} 야후로 채움 {dates}", flush=True)
+                    have = {
+                        row[0]
+                        for row in mcon.execute(
+                            "SELECT date FROM index_ohlcv WHERE ticker=?", [ticker]
+                        ).fetchall()
+                    }
+                    fill = [
+                        row for row in yahoo.get(ticker, [])
+                        if row["date"] <= expected_latest and row["date"] not in have
+                    ]
+                    if fill:
+                        fins, fupd = upsert_index_bars(mcon, ticker, fill, fetched_at)
+                        inserted += fins
+                        updated += fupd
+                        dates = " ".join(row["date"] for row in fill)
+                        print(f"[us-early] {ticker} 야후로 채움 {dates}", flush=True)
                 except Exception as exc:
                     print(f"[us-early] {ticker} 야후 보충 실패: {type(exc).__name__}", flush=True)
             inserted += ins
