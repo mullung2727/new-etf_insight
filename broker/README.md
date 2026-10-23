@@ -50,7 +50,7 @@ credentials, `uv sync`, then `uv run python server.py`.
 
 ### 계좌별 broker 는 같은 코드다 — 다른 건 계좌와 전략뿐
 
-- :8001(기존 계좌)과 :8002(high52 계좌)는 **같은 `broker/` 코드·같은 `.venv`** 로 뜬다. 코드 수정은 양쪽에 똑같이 적용된다
+- :8001(기존 계좌)·:8002(high52 계좌)·:8003(US 계좌)은 **같은 `broker/` 코드·같은 `.venv`** 로 뜬다. 코드 수정은 세 쪽에 똑같이 적용된다
 - 차이는 `scripts/restart_all_servers.ps1` 이 기동 시 넣는 설정뿐이다
 
   | 설정 | 무엇에 따른 차이 |
@@ -58,9 +58,11 @@ credentials, `uv sync`, then `uv run python server.py`.
   | `KIWOOM_PROFILE` (어느 계좌 키를 읽나, `.env` 의 `KIWOOM_<PROFILE>_<ENV>_*`) | 계좌 |
   | `TOKEN_CACHE_PATH`, `NOTES_DB_PATH` | 계좌 (토큰·노트가 계좌별로 따로 쌓인다) |
   | `ALLOWED_ORDER_SOURCES` (그 밖의 전략 주문은 422) | 전략 |
+  | :8003 `broker-us` (US 계좌, `ALLOWED_ORDER_SOURCES=us_v38`) | 계좌 + 전략 (미국 주식 전용, 미국 전략 `us_v38`만 주문) |
 
 - `MAX_ORDER_AMOUNT`(주문 1건 상한) 등 나머지는 루트 `.env` 를 공유한다
-- **재기동은 반드시 `restart_all_servers.ps1` 로 전부 같이.** 떠 있는 broker 는 기동 시점 코드로 돈다(`--reload` 없음) → 한쪽만 재기동하면 두 broker 코드 버전이 어긋난다
+- :8003(US 계좌, `broker-us`)은 미국 주식 전용이다. 비밀값은 루트 `.env` 의 `KIWOOM_US_REAL_*`, 미국 주문 1건 상한은 `MAX_US_ORDER_USD`(기본 5000)
+- **재기동은 반드시 `restart_all_servers.ps1` 로 전부 같이.** 떠 있는 broker 는 기동 시점 코드로 돈다(`--reload` 없음) → 한쪽만 재기동하면 broker 간 코드 버전이 어긋난다
 - **MCP**: MCP 서버는 broker 마다 붙어 있어 `:8002/mcp` 도 존재하지만, 클라이언트(Claude Code `.mcp.json`, Hermes)는 **:8001 에만 연결**한다. broker-web 화면도 :8001 만 본다
 - 매매 배치(`etl/scripts`)는 실행마다 새 프로세스라 항상 최신 코드다. 어느 broker 에 붙을지는 러너의 `--broker-url`, 계좌 확인은 `require_profile`
 

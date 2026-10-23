@@ -9,9 +9,9 @@ $logDir = Join-Path $root "ops\logs"
 Write-Host "=== KILLING existing servers ===" -ForegroundColor Yellow
 
 # broker-web 상시 = prod 빌드(.next-prod)를 :3100 에서 next start. dev(:3000)은 개발 시 수동.
-# broker 는 계좌마다 하나씩 뜬다 (docs/PLAN_MULTI_ACCOUNT_TRADING.md). 8002 = high52 계좌.
-$ports = @(8000, 8001, 8002, 3100)
-$names = @{ 8000 = "api"; 8001 = "broker"; 8002 = "broker-high52"; 3100 = "broker-web" }
+# broker 는 계좌마다 하나씩 뜬다 (docs/PLAN_MULTI_ACCOUNT_TRADING.md). 8002 = high52 계좌, 8003 = 미국(US) 계좌.
+$ports = @(8000, 8001, 8002, 8003, 3100)
+$names = @{ 8000 = "api"; 8001 = "broker"; 8002 = "broker-high52"; 8003 = "broker-us"; 3100 = "broker-web" }
 
 if (Test-Path $pidDir) {
     foreach ($n in $names.Values) {
@@ -44,6 +44,14 @@ $high52Env = 'set "KIWOOM_PROFILE=HIGH52" & set "TOKEN_CACHE_PATH=.token_cache.h
 Start-DetachedServer -Name "broker-high52" -WorkDir (Join-Path $root "broker") -Title "broker-high52 :8002" `
     -CommandLine ($high52Env + ".\.venv\Scripts\python.exe -m uvicorn main:app --port 8002 --host 127.0.0.1")
 
+# 미국 주식 전용 계좌(달러) broker. 비밀값(KIWOOM_US_REAL_*)은 루트 .env, 여기선 계좌별 설정만 준다.
+# 프로세스 env 가 .env 보다 우선이라(load_dotenv override=False) 공용 .env 값을 이 인스턴스만 덮는다.
+# 미국 주문 1건 상한 MAX_US_ORDER_USD(.env, 기본 5000).
+$usEnv = 'set "KIWOOM_PROFILE=US" & set "TOKEN_CACHE_PATH=.token_cache.us.json" & ' +
+    'set "NOTES_DB_PATH=notes.us.db" & set "ALLOWED_ORDER_SOURCES=us_v38" & '
+Start-DetachedServer -Name "broker-us" -WorkDir (Join-Path $root "broker") -Title "broker-us :8003" `
+    -CommandLine ($usEnv + ".\.venv\Scripts\python.exe -m uvicorn main:app --port 8003 --host 127.0.0.1")
+
 # prod 빌드가 없으면 next start가 실패한다 → 최초/변경 후엔 scripts\deploy_broker_web_prod.ps1 먼저.
 $prodBuild = Join-Path $root "broker-web\.next-prod\BUILD_ID"
 if (-not (Test-Path $prodBuild)) {
@@ -57,6 +65,7 @@ Write-Host "`r`n=== HEALTH CHECK ===" -ForegroundColor Cyan
 $okApi = Wait-Http -Name "api" -Url "http://localhost:8000/health"
 $okBroker = Wait-Http -Name "broker" -Url "http://localhost:8001/health"
 $okBrokerHigh52 = Wait-Http -Name "broker-high52" -Url "http://localhost:8002/health"
+$okBrokerUs = Wait-Http -Name "broker-us" -Url "http://localhost:8003/health"
 $okWeb = Wait-Http -Name "broker-web" -Url "http://localhost:3100"
 
 # 스크립트 종료 직후에도 잡 킬에 안 당했는지 한 번 더 확인
@@ -91,10 +100,10 @@ foreach ($n in $names.Values) {
 
 Write-Host "`r`nDone. Servers started detached (no window, job-breakaway). PIDs: $pidDir" -ForegroundColor Green
 Write-Host "Logs: $logDir\<name>-yyyyMMdd.log (console + file)" -ForegroundColor Cyan
-Write-Host "Health: http://localhost:8000/health  http://localhost:8001/health  http://localhost:8002/health  http://localhost:3100" -ForegroundColor Cyan
+Write-Host "Health: http://localhost:8000/health  http://localhost:8001/health  http://localhost:8002/health  http://localhost:8003/health  http://localhost:3100" -ForegroundColor Cyan
 Write-Host "Note: broker-web=prod(:3100, .next-prod). 코드 반영은 .\scripts\deploy_broker_web_prod.ps1. dev는 별도 npm run dev(:3000)." -ForegroundColor DarkGray
 
-if ($still.Count -lt $ports.Count -or -not ($okApi -and $okBroker -and $okBrokerHigh52 -and $okWeb)) {
+if ($still.Count -lt $ports.Count -or -not ($okApi -and $okBroker -and $okBrokerHigh52 -and $okBrokerUs -and $okWeb)) {
     exit 1
 }
 exit 0

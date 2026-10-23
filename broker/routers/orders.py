@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -16,7 +15,7 @@ from pydantic import BaseModel
 from kiwoom import orders
 from kiwoom.client import KiwoomError
 from kiwoom.config import get_current_env
-from kiwoom.guards import OrderRejected
+from kiwoom.guards import OrderRejected, check_order_source
 from kiwoom.models import OrderRequest, OrderResult
 from notes import trades
 
@@ -131,12 +130,10 @@ def place_strategy_order(req: OrderRequest) -> OrderResult:
     ALLOWED_ORDER_SOURCES(쉼표 구분)가 있으면 그 밖의 source 는 키움에 보내기 전에 422.
     계좌별 broker 에서 다른 계좌 전략의 주문이 잘못 들어오는 것을 막는다. 없으면 제한 없음.
     """
-    allowed = {s.strip() for s in os.getenv("ALLOWED_ORDER_SOURCES", "").split(",") if s.strip()}
-    if allowed and req.source not in allowed:
-        raise HTTPException(
-            status_code=422,
-            detail=f"source {req.source!r} 는 이 계좌 broker 에서 허용되지 않음 (허용: {', '.join(sorted(allowed))})",
-        )
+    try:
+        check_order_source(req.source)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _submit_order(req, enforce_amount_cap=True)
 
 
