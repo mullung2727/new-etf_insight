@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 from datetime import datetime, time, timedelta
@@ -13,7 +14,13 @@ from pydantic import BaseModel
 
 from kiwoom import us
 from kiwoom.client import KiwoomError
-from kiwoom.guards import check_order_source, check_us_strategy_order
+from kiwoom.config import load_config
+from kiwoom.guards import (
+    check_order_source,
+    check_us_profile,
+    check_us_strategy_order,
+    parse_max_us_order_usd,
+)
 from notes import trades
 
 logger = logging.getLogger(__name__)
@@ -102,7 +109,7 @@ class UsOrderRequest(BaseModel):
     side: str  # buy/sell — 형식은 가드가 검증
     qty: int
     trde_tp: str = "03"  # 03 시장가, 00 지정가, 30 LOC
-    price: float | None = None  # USD. 지정가·LOC 필수, 시장가는 상한 계산용(없으면 현재가)
+    price: float | None = None  # USD. 지정가·LOC 필수, 시장가는 무시(항상 현재가로 상한 계산)
     source: str
     dry_run: bool = False
 
@@ -113,50 +120,90 @@ class UsOrderRequest(BaseModel):
     summary="미국 전략 주문 (매수 ust20000/매도 ust20001)",
 )
 def place_us_strategy_order(req: UsOrderRequest) -> Any:
-    """전략 전용 미국 주문. 국내 전략 주문과 같은 가드(source 허용·매수 금액 상한)를 지난다.
+    """전략 전용 미국 주문. US 계좌 broker에서만 받는다.
 
-    검증 실패는 422. 키움 거부는 HTTP 200 {status: rejected}로 반환한다.
+    처리 순서: source 허용 → US 프로파일 → 형식(dry_run 전) → dry_run 반환 →
+    매수 상한(현재가 기준) → 키움 전송. 검증 실패는 422.
+    키움 거부는 HTTP 200 {status: rejected}로 반환한다.
     성공 주문은 kiwoom_trade_history에 기록한다(order_type "US:<trde_tp>").
     MCP에는 노출하지 않는다(main.py exclude_operations).
     """
+    # 1. source 허용 검사
     try:
         check_order_source(req.source)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # 2. 계좌 검사 — US 프로파일 broker에서만 미국 전략 주문
+    try:
+        check_us_profile(load_config().profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # 3. 형식 검사 (dry_run 전)
+    code = req.code.upper()
+    if not _CODE_RE.match(code):
+        raise HTTPException(status_code=422, detail="code는 영문·숫자·'.'·'-' 1~10자여야 함")
+    if req.side not in ("buy", "sell"):
+        raise HTTPException(
+            status_code=422, detail=f"side는 buy/sell이어야 함: side={req.side!r}"
+        )
+    if isinstance(req.qty, bool) or not isinstance(req.qty, int) or req.qty <= 0:
+        raise HTTPException(
+            status_code=422, detail=f"수량은 1 이상이어야 함: qty={req.qty}"
+        )
     if req.trde_tp not in _TRDE_TPS:
         raise HTTPException(
             status_code=422,
             detail=f"trde_tp는 03(시장가)/00(지정가)/30(LOC)이어야 함: {req.trde_tp!r}",
         )
-    if req.trde_tp in _PRICE_REQUIRED and req.price is None:
-        raise HTTPException(
-            status_code=422, detail=f"trde_tp={req.trde_tp} 주문은 price(USD)가 필요함"
-        )
-    code = req.code.upper()
+    if req.trde_tp in _PRICE_REQUIRED:
+        price = req.price
+        if (
+            price is None
+            or isinstance(price, bool)
+            or not isinstance(price, (int, float))
+            or not math.isfinite(float(price))
+            or float(price) <= 0
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"trde_tp={req.trde_tp} 주문은 양의 유한 price(USD)가 필요함: price={req.price!r}",
+            )
+    # 4. dry_run이면 여기서 반환 (현재가 조회·주문 없음)
     if req.dry_run:
         return {"status": "dry_run", "order_no": "",
                 "message": f"dry_run: {code} {req.side} {req.qty}주, 키움 전송 없음"}
-    unit = req.price
-    if unit is None:
+    # 5-6. 매수만 금액 상한. 매도는 상한 파싱·현재가 조회 없이 주문으로.
+    if req.side == "buy":
         try:
-            unit = us.get_us_quote(code)["price"]
+            max_usd = parse_max_us_order_usd(os.getenv("MAX_US_ORDER_USD"))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            cur = us.get_us_quote(code)["price"]
         except KiwoomError as exc:
             logger.warning("us strategy quote error raw: %s", exc)
             return {"status": "rejected", "order_no": "", "message": str(exc)}
-    if unit is None:
-        raise HTTPException(
-            status_code=422,
-            detail="시장가 주문 예상금액 확인 실패 — 현재가 조회 불가. 주문을 보내지 않음",
-        )
-    try:
-        max_usd = float(os.getenv("MAX_US_ORDER_USD", "5000"))
-    except ValueError:
-        raise HTTPException(
-            status_code=422, detail="MAX_US_ORDER_USD 파싱 실패 — 숫자여야 함") from None
-    try:
-        check_us_strategy_order(req.side, req.qty, req.qty * unit, max_usd)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if (
+            cur is None
+            or isinstance(cur, bool)
+            or not isinstance(cur, (int, float))
+            or not math.isfinite(float(cur))
+            or float(cur) <= 0
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="시장가 주문 예상금액 확인 실패 — 현재가 조회 불가. 주문을 보내지 않음",
+            )
+        cur_f = float(cur)
+        if req.trde_tp == "03":
+            unit = cur_f  # 시장가는 요청 price 무시, 항상 현재가
+        else:
+            assert req.price is not None  # 위 형식 검사에서 양의 유한 값 확인됨
+            unit = max(float(req.price), cur_f)
+        try:
+            check_us_strategy_order(req.side, req.qty, req.qty * unit, max_usd)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         placed = us.place_us_order(code, req.side, req.qty, req.trde_tp, req.price)
     except KiwoomError as exc:

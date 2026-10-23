@@ -13,6 +13,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -80,6 +81,10 @@ class _UsOrdersTestBase(unittest.TestCase):
                                       "MAX_US_ORDER_USD": "5000"})
         env.start()
         self.addCleanup(env.stop)
+        profile = patch("routers.us.load_config",
+                        return_value=SimpleNamespace(profile="US"))
+        profile.start()
+        self.addCleanup(profile.stop)
 
     def tearDown(self) -> None:
         if notes_db._conn is not None:
@@ -267,14 +272,17 @@ class TestUsReads(unittest.TestCase):
 class TestUsStrategyRoute(_UsOrdersTestBase):
     """POST /us/orders/strategy — 가드·dry_run·제출·거부."""
 
-    def test_buy_over_cap_422_without_wire(self):
-        with patch("kiwoom.us.request") as m:
+    def test_limit_buy_over_cap_422_no_order(self):
+        # 지정가 매수도 현재가와 max로 상한 계산 → 현재가 1콜 후 거부, 주문 미전송.
+        with patch("kiwoom.us.request",
+                   return_value=_tr(_quote_data())) as m:
             r = self.client.post("/us/orders/strategy", json={
                 "code": "QQQ", "side": "buy", "qty": 100, "trde_tp": "00",
                 "price": 150.25, "source": "close_bet"})
         self.assertEqual(r.status_code, 422)
         self.assertIn("MAX_US_ORDER_USD", r.json()["detail"])
-        m.assert_not_called()
+        m.assert_called_once()
+        self.assertEqual(m.call_args.args[0], "usa20101")
 
     def test_market_buy_over_cap_uses_quote(self):
         with patch("kiwoom.us.request",
@@ -306,14 +314,19 @@ class TestUsStrategyRoute(_UsOrdersTestBase):
         self.assertEqual(rows[0]["price"], 150)
         self.assertEqual(rows[0]["status"], "submitted")
 
-    def test_limit_buy_under_cap_skips_quote(self):
-        with patch("kiwoom.us.request",
-                   return_value=_tr({"ord_no": "000000284", "return_msg": "ok"})) as m:
+    def test_limit_buy_under_cap_orders_with_quote(self):
+        # 지정가 매수도 현재가 조회 후 max로 상한 계산 → 2콜(현재가+주문).
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            if api_id == "usa20101":
+                return _tr(_quote_data())
+            return _tr({"ord_no": "000000284", "return_msg": "ok"})
+
+        with patch("kiwoom.us.request", side_effect=fake) as m:
             r = self.client.post("/us/orders/strategy", json={
                 "code": "QQQ", "side": "buy", "qty": 1, "trde_tp": "00",
                 "price": 150.25, "source": "close_bet"})
         self.assertEqual(r.status_code, 200)
-        m.assert_called_once()
+        self.assertEqual(m.call_count, 2)
         self.assertEqual(m.call_args.args[0], "ust20000")
 
     def test_disallowed_source_422_before_wire(self):
@@ -390,6 +403,114 @@ class TestUsStrategyRoute(_UsOrdersTestBase):
         self.assertEqual(body["order_no"], "")
         self.assertIn("주문거부", body["message"])
         self.assertEqual(_trade_rows(self.db), [])
+
+    def test_non_us_profile_422(self):
+        # US 프로파일이 아니면 일반·dry_run 모두 422, wire 없음.
+        for profile in ("", "HIGH52"):
+            with patch("routers.us.load_config",
+                       return_value=SimpleNamespace(profile=profile)):
+                with patch("kiwoom.us.request") as m:
+                    r = self.client.post("/us/orders/strategy", json={
+                        "code": "QQQ", "side": "buy", "qty": 1,
+                        "source": "close_bet"})
+                    self.assertEqual(r.status_code, 422, profile)
+                    self.assertIn("KIWOOM_PROFILE=US", r.json()["detail"])
+                    r = self.client.post("/us/orders/strategy", json={
+                        "code": "QQQ", "side": "buy", "qty": 1,
+                        "source": "close_bet", "dry_run": True})
+                    self.assertEqual(r.status_code, 422, f"dry_run {profile}")
+                    self.assertIn("KIWOOM_PROFILE=US", r.json()["detail"])
+                m.assert_not_called()
+
+    def test_dry_run_still_validates_format(self):
+        # dry_run이어도 형식 오류면 422, wire 없음.
+        bad_bodies = [
+            {"code": "QQQ", "side": "hold", "qty": 1},
+            {"code": "QQQ", "side": "buy", "qty": 0},
+            {"code": "QQQ", "side": "buy", "qty": -5},
+            {"code": "QQQ!", "side": "buy", "qty": 1},
+            {"code": "QQQ", "side": "buy", "qty": 1, "trde_tp": "99"},
+            {"code": "QQQ", "side": "buy", "qty": 1, "trde_tp": "00"},
+        ]
+        with patch("kiwoom.us.request") as m:
+            for body in bad_bodies:
+                body.update({"source": "close_bet", "dry_run": True})
+                r = self.client.post("/us/orders/strategy", json=body)
+                self.assertEqual(r.status_code, 422, body)
+        m.assert_not_called()
+
+    def test_market_buy_ignores_request_price(self):
+        # 시장가 매수는 요청 price=0.01을 무시하고 현재가(150.25)로 상한 계산.
+        # 0.01*100=1달러면 통과할 주문이 150.25*100=15025달러로 422.
+        with patch("kiwoom.us.request",
+                   return_value=_tr(_quote_data())) as m:
+            r = self.client.post("/us/orders/strategy", json={
+                "code": "QQQ", "side": "buy", "qty": 100, "trde_tp": "03",
+                "price": 0.01, "source": "close_bet"})
+        self.assertEqual(r.status_code, 422)
+        self.assertIn("MAX_US_ORDER_USD", r.json()["detail"])
+        m.assert_called_once()
+        self.assertEqual(m.call_args.args[0], "usa20101")
+
+    def test_limit_buy_low_price_uses_current(self):
+        # 지정가 price(0.01)가 현재가(150.25)보다 낮으면 현재가로 상한 계산.
+        # 0.01*100=1달러면 통과할 주문이 max→150.25*100=15025달러로 422.
+        with patch("kiwoom.us.request",
+                   return_value=_tr(_quote_data())) as m:
+            r = self.client.post("/us/orders/strategy", json={
+                "code": "QQQ", "side": "buy", "qty": 100, "trde_tp": "00",
+                "price": 0.01, "source": "close_bet"})
+        self.assertEqual(r.status_code, 422)
+        self.assertIn("MAX_US_ORDER_USD", r.json()["detail"])
+        m.assert_called_once()
+        self.assertEqual(m.call_args.args[0], "usa20101")
+
+    def test_empty_max_env_defaults_to_5000(self):
+        # MAX_US_ORDER_USD 빈 값이면 5000. 3005달러 통과·6010달러 거부로 확인.
+        def fake(api_id, endpoint, body, *, cont_yn="N", next_key=""):
+            if api_id == "usa20101":
+                return _tr(_quote_data())
+            return _tr({"ord_no": "000000285", "return_msg": "ok"})
+
+        with patch.dict(os.environ, {"MAX_US_ORDER_USD": ""}):
+            with patch("kiwoom.us.request", side_effect=fake) as m:
+                r = self.client.post("/us/orders/strategy", json={
+                    "code": "QQQ", "side": "buy", "qty": 20,
+                    "source": "close_bet"})  # 20*150.25=3005 < 5000
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.json()["status"], "submitted")
+            self.assertEqual(m.call_count, 2)  # 현재가+주문
+            with patch("kiwoom.us.request",
+                       return_value=_tr(_quote_data())) as m2:
+                r = self.client.post("/us/orders/strategy", json={
+                    "code": "QQQ", "side": "buy", "qty": 40,
+                    "source": "close_bet"})  # 40*150.25=6010 > 5000
+            self.assertEqual(r.status_code, 422)
+            self.assertIn("MAX_US_ORDER_USD", r.json()["detail"])
+            m2.assert_called_once()
+
+    def test_bad_max_env_buy_422_sell_passes(self):
+        # 상한값 오류면 매수는 422(설정 오류), 매도는 상한 파싱 없이 통과.
+        for bad in ("abc", "inf", "-inf", "nan", "0", "-100", "0.0"):
+            with patch.dict(os.environ, {"MAX_US_ORDER_USD": bad}):
+                with patch("kiwoom.us.request") as m:
+                    r = self.client.post("/us/orders/strategy", json={
+                        "code": "QQQ", "side": "buy", "qty": 1,
+                        "source": "close_bet"})
+                self.assertEqual(r.status_code, 422, bad)
+                self.assertIn("설정 오류", r.json()["detail"])
+                m.assert_not_called()  # 상한 파싱 실패 → 현재가 조회도 없음
+        with patch.dict(os.environ, {"MAX_US_ORDER_USD": "abc"}):
+            with patch("kiwoom.us.request",
+                       return_value=_tr({"ord_no": "000000286",
+                                         "return_msg": "ok"})) as m:
+                r = self.client.post("/us/orders/strategy", json={
+                    "code": "QQQ", "side": "sell", "qty": 100000,
+                    "trde_tp": "00", "price": 150.25, "source": "close_bet"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["status"], "submitted")
+        m.assert_called_once()
+        self.assertEqual(m.call_args.args[0], "ust20001")
 
 
 class TestUsReadRoutes(_UsOrdersTestBase):

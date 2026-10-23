@@ -7,6 +7,7 @@ structural validation but are intentionally exempt from that strategy cap.
 
 from __future__ import annotations
 
+import math
 import os
 
 from .config import Config
@@ -90,3 +91,28 @@ def check_us_strategy_order(side: str, qty: int, notional_usd: float, max_usd: f
         raise ValueError(
             f"매수 예상금액 상한 초과: {notional_usd:,.2f} > MAX_US_ORDER_USD={max_usd:,.2f}"
         )
+
+
+def check_us_profile(profile: str) -> None:
+    """미국 전략 주문은 US 계좌 broker(KIWOOM_PROFILE=US)에서만. 위반은 ValueError(라우터가 422로 변환).
+
+    허용 목록이 비어 있는 broker(:8001 등)로 미국 전략 source가 와도 여기서 막는다.
+    """
+    if profile != "US":
+        raise ValueError("US 계좌 broker(KIWOOM_PROFILE=US)에서만 미국 전략 주문")
+
+
+def parse_max_us_order_usd(raw: str | None) -> float:
+    """MAX_US_ORDER_USD 파싱 — 없거나 빈 값이면 5000. 숫자 아니거나 비유한·0 이하면 ValueError.
+
+    매수일 때만 호출한다. 매도는 상한을 쓰지 않는다.
+    """
+    if raw is None or raw.strip() == "":
+        return 5000.0
+    try:
+        value = float(raw.strip())
+    except (TypeError, ValueError):
+        raise ValueError("MAX_US_ORDER_USD 설정 오류") from None
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError("MAX_US_ORDER_USD 설정 오류")
+    return value
