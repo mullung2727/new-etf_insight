@@ -1,7 +1,7 @@
 """Early-morning US daily load for signal use (KST 06:30).
 
 Fetches the previous US session bars for a small set of tickers from Kiwoom
-usa06012 via the broker (/us/daily) and VIX/VIX3M from the official CBOE CSVs,
+usa06012 via the broker (/us/daily) and VIX/VIX3M from CBOE CSVs (Yahoo fallback),
 upserting into us_ohlcv.duckdb (etf_ohlcv/ohlcv) and us_macro.duckdb
 (index_ohlcv). The 11:00 Yahoo batch (us-daily) later overwrites with full
 history whenever its values are healthy.
@@ -22,12 +22,14 @@ from pathlib import Path
 from typing import Callable
 
 import duckdb
+import pandas as pd
 import requests
 
 from build_us_macro import DEFAULT_DB_PATH as MACRO_DB_PATH
 from build_us_macro import ensure_schema as ensure_macro_schema
 from build_us_ohlcv import DEFAULT_DB_PATH as OHLCV_DB_PATH
 from build_us_ohlcv import ETF_TICKERS
+from build_us_ohlcv import _default_download, fetch_batch
 from build_us_ohlcv import ensure_schema as ensure_ohlcv_schema
 
 CBOE_URL = "https://cdn.cboe.com/api/global/us_indices/daily_prices/{symbol}_History.csv"
@@ -147,6 +149,38 @@ def fetch_cboe(symbol: str, get: Callable[..., requests.Response] = requests.get
     return resp.text
 
 
+def fetch_yahoo_index(
+    tickers: list[str],
+    days: int,
+    download: Callable[[list[str], str, str], pd.DataFrame] | None = None,
+) -> dict[str, list[dict]]:
+    """Return recent Yahoo bars per index ticker, ascending by date.
+
+    Each row is {date: YYYYMMDD, open, high, low, close}. Rows with any OHLC
+    NaN are dropped (e.g. Yahoo's not-yet-open latest day).
+    """
+    start = (datetime.now().date() - timedelta(days=days * 2)).strftime("%Y%m%d")
+    end = (datetime.now().date() + timedelta(days=1)).strftime("%Y%m%d")
+    frames, _missing = fetch_batch(list(tickers), start, end, download or _default_download)
+    out: dict[str, list[dict]] = {ticker: [] for ticker in tickers}
+    for ticker, frame in frames.items():
+        rows: list[dict] = []
+        for index, values in frame.iterrows():
+            ohlc = [values.get(key) for key in ("Open", "High", "Low", "Close")]
+            if any(pd.isna(value) for value in ohlc):
+                continue
+            rows.append({
+                "date": pd.Timestamp(index).strftime("%Y%m%d"),
+                "open": float(ohlc[0]),
+                "high": float(ohlc[1]),
+                "low": float(ohlc[2]),
+                "close": float(ohlc[3]),
+            })
+        rows.sort(key=lambda row: row["date"])
+        out[ticker] = rows
+    return out
+
+
 def upsert_index_bars(
     con: duckdb.DuckDBPyConnection,
     ticker: str,
@@ -255,13 +289,43 @@ def main(argv: list[str] | None = None) -> int:
             updated += upd
 
         fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        yahoo: dict[str, list[dict]] = {}
+        if expected_latest is not None:
+            try:
+                yahoo = fetch_yahoo_index(
+                    [ticker for _, ticker in CBOE_TICKERS], args.days
+                )
+            except Exception as exc:
+                print(f"[us-early] 야후 fetch 실패: {type(exc).__name__}", flush=True)
         for symbol, ticker in CBOE_TICKERS:
             try:
                 rows = parse_cboe(fetch_cboe(symbol))[-args.days:]
             except Exception as exc:
                 print(f"[us-early] {ticker} CBOE fetch failed: {type(exc).__name__}", flush=True)
-                continue
+                rows = []
             ins, upd = upsert_index_bars(mcon, ticker, rows, fetched_at)
+            if expected_latest is not None:
+                try:
+                    has_latest = mcon.execute(
+                        "SELECT 1 FROM index_ohlcv WHERE date=? AND ticker=?",
+                        [expected_latest, ticker],
+                    ).fetchone()
+                    if has_latest is None:
+                        have = {
+                            row[0]
+                            for row in mcon.execute(
+                                "SELECT date FROM index_ohlcv WHERE ticker=?", [ticker]
+                            ).fetchall()
+                        }
+                        fill = [row for row in yahoo.get(ticker, []) if row["date"] not in have]
+                        if fill:
+                            fins, fupd = upsert_index_bars(mcon, ticker, fill, fetched_at)
+                            inserted += fins
+                            updated += fupd
+                            dates = " ".join(row["date"] for row in fill)
+                            print(f"[us-early] {ticker} 야후로 채움 {dates}", flush=True)
+                except Exception as exc:
+                    print(f"[us-early] {ticker} 야후 보충 실패: {type(exc).__name__}", flush=True)
             inserted += ins
             updated += upd
 
