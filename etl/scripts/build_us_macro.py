@@ -277,12 +277,14 @@ def replace_index(
     RuntimeError 로 기존 행을 보존한다.
     """
     rows: list[tuple] = []
+    nan_days: list[str] = []
     for idx, values in frame.iterrows():
         day = pd.Timestamp(idx).strftime("%Y%m%d")
         if day >= cutoff_day:
             continue
         ohlc = [values.get(key) for key in ("Open", "High", "Low", "Close")]
         if any(pd.isna(value) for value in ohlc):
+            nan_days.append(day)
             continue
         rows.append(
             (
@@ -304,7 +306,15 @@ def replace_index(
         # 야후 마지막 날이 NaN 이면 응답이 하루 짧아진다. CBOE/us-early 가 넣은 이후 행이
         # 지워지지 않게 DELETE 를 응답 마지막일 이하로 한정한다.
         last = max(row[0] for row in rows)
-        con.execute("DELETE FROM index_ohlcv WHERE ticker=? AND date <= ?", [ticker, last])
+        # 중간 날짜 NaN(yfinance #2925)도 저장 행 보존.
+        if nan_days:
+            placeholders = ",".join("?" for _ in nan_days)
+            con.execute(
+                f"DELETE FROM index_ohlcv WHERE ticker=? AND date <= ? AND date NOT IN ({placeholders})",
+                [ticker, last, *nan_days],
+            )
+        else:
+            con.execute("DELETE FROM index_ohlcv WHERE ticker=? AND date <= ?", [ticker, last])
         con.executemany("INSERT INTO index_ohlcv VALUES (?,?,?,?,?,?,?)", rows)
         con.execute("COMMIT")
     except Exception:

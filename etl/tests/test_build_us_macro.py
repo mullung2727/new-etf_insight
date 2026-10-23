@@ -204,6 +204,23 @@ class TestIndexOhlcv(unittest.TestCase):
             [("20261019", 25.0), ("20261020", 26.0), ("20261021", 27.0)],
         )
 
+    def test_v6_mid_nan_preserves_stored_row(self):
+        """중간 날짜 OHLC NaN이면 그 날 저장 행을 보존한다 (yfinance #2925)."""
+        self.con.executemany("INSERT INTO index_ohlcv VALUES (?,?,?,?,?,?,?)", [
+            ("20261019", "^VIX", 100.0, 100.0, 100.0, 100.0, T1),
+            ("20261020", "^VIX", 100.0, 100.0, 100.0, 100.0, T1),
+            ("20261021", "^VIX", 100.0, 100.0, 100.0, 100.0, T1),
+        ])
+        frame = _frame({"^VIX": [("2026-10-19", 25), ("2026-10-20", float("nan")), ("2026-10-21", 27)]})["^VIX"]
+        count = replace_index(self.con, "^VIX", frame, "20261022", T2)
+        self.assertEqual(count, 2)
+        self.assertEqual(
+            self.con.execute(
+                "SELECT date, close FROM index_ohlcv WHERE ticker='^VIX' ORDER BY date"
+            ).fetchall(),
+            [("20261019", 25.0), ("20261020", 100.0), ("20261021", 27.0)],
+        )
+
     def test_index_cutoff_day(self):
         self.assertEqual(
             index_cutoff_day(datetime(2026, 10, 2, 19, 59, tzinfo=NEW_YORK)), "20261002"
