@@ -689,6 +689,7 @@ def ensure_etf(
     for ticker, frame in frames.items():
         prices: list[tuple] = []
         divs: list[tuple] = []
+        nan_days: list[str] = []
         for index, values in frame.iterrows():
             day = _day_string(index)
             if day >= today_ny:
@@ -698,6 +699,7 @@ def ensure_etf(
                 divs.append((ticker, day, float(dividend)))
             ohlc = [values.get(key) for key in ("Open", "High", "Low", "Close")]
             if any(pd.isna(value) for value in ohlc):
+                nan_days.append(day)
                 continue
             volume_value = values.get("Volume")
             volume = None if pd.isna(volume_value) else int(volume_value)
@@ -722,14 +724,34 @@ def ensure_etf(
                 )
             # P3: 꼬리 짧은 응답(야후 마지막 날 NaN)은 실패 대신 응답 마지막일 이후 저장 행 보존.
             _tail_short = stored_last is not None and last is not None and last < stored_last
+            # 중간 날짜 NaN(yfinance #2925)도 저장 행 보존.
+            if nan_days:
+                print(
+                    f"[etf] {ticker} 야후 NaN {len(nan_days)}일 — 저장 행 보존 (첫 {nan_days[0]})",
+                    flush=True,
+                )
             if _tail_short:
                 print(
                     f"[etf] {ticker} 야후 마지막 {last} < 저장 {stored_last} — 이후 행 보존",
                     flush=True,
                 )
-                con.execute("DELETE FROM etf_ohlcv WHERE ticker=? AND date <= ?", [ticker, last])
+                if nan_days:
+                    placeholders = ",".join("?" for _ in nan_days)
+                    con.execute(
+                        f"DELETE FROM etf_ohlcv WHERE ticker=? AND date <= ? AND date NOT IN ({placeholders})",
+                        [ticker, last, *nan_days],
+                    )
+                else:
+                    con.execute("DELETE FROM etf_ohlcv WHERE ticker=? AND date <= ?", [ticker, last])
             else:
-                con.execute("DELETE FROM etf_ohlcv WHERE ticker=?", [ticker])
+                if nan_days:
+                    placeholders = ",".join("?" for _ in nan_days)
+                    con.execute(
+                        f"DELETE FROM etf_ohlcv WHERE ticker=? AND date NOT IN ({placeholders})",
+                        [ticker, *nan_days],
+                    )
+                else:
+                    con.execute("DELETE FROM etf_ohlcv WHERE ticker=?", [ticker])
             if _tail_short:
                 con.execute("DELETE FROM etf_dividends WHERE ticker=? AND date <= ?", [ticker, last])
                 # 보존한 구간의 배당은 기존 행을 유지 (PR #121 리뷰).
