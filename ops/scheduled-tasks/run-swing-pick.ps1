@@ -8,7 +8,7 @@ New-Item -Force -ItemType Directory $logDir | Out-Null
 # 19:00 스윙 후보 3종목 선정. 시각 근거: 텔레그램 close 16:00, 유튜브 evening 18:00,
 # 네이버 리서치 18:00 이후라 당일분이 다 모인다.
 # 휴장일 판정은 파이썬 쪽(run_swing_pick.py 시작 시 exit 0). 날짜 인자 없음.
-# 성공 보고는 파이썬이 직접 channel=batch 로 보낸다. 러너는 실패 알림만.
+# 성공 보고는 파이썬이 스윙 전용 채널(SWING_TRADE_DISCORD_WEBHOOK_URL)로 직접 보낸다. 러너는 실패 알림만.
 $target = (Get-Date).ToString("yyyy-MM-dd")
 $log = Join-Path $logDir ("swing-pick-" + (Get-Date).ToString("yyyyMMdd") + ".log")
 
