@@ -6,7 +6,7 @@ New-Item -Force -ItemType Directory $logDir | Out-Null
 Set-Location $etlDir
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = "1"
-# Monthly DB backup to external drive (overwrite). Script sends its own notify (success/failure/drive missing).
+# Weekly DB backup to external drive (overwrite). Script sends its own notify (success/failure/drive missing).
 $ErrorActionPreference = "Continue"
 & ".venv\Scripts\python.exe" "scripts\backup_db.py" *> (Join-Path $logDir "db-backup-$date.log")
 $code = $LASTEXITCODE
