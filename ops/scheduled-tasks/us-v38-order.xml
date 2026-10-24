@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>US v38 order batch on the US account broker :8003 (04:30 KST start, waits to NY 15:45, market sell then buy)</Description><URI>\new-etf_insight\us-v38-order</URI></RegistrationInfo>
+  <Triggers><CalendarTrigger><StartBoundary>2026-10-27T04:30:00</StartBoundary><Enabled>true</Enabled><ScheduleByWeek><WeeksInterval>1</WeeksInterval><DaysOfWeek><Tuesday/><Wednesday/><Thursday/><Friday/><Saturday/></DaysOfWeek></ScheduleByWeek></CalendarTrigger></Triggers>
+  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT2H</ExecutionTimeLimit><Enabled>true</Enabled></Settings>
+  <Actions Context="Author"><Exec><Command>powershell.exe</Command><Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-us-v38-order.ps1"</Arguments></Exec></Actions>
+</Task>
