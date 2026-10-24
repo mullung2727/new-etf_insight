@@ -41,6 +41,7 @@ STRATEGIES = {
     "rebound":    ("http://127.0.0.1:8001", "research/private/intraday_rebound/live/config.json"),
     "envelope":   ("http://127.0.0.1:8001", "research/private/envelope/live/config.json"),
     "jevq":       ("http://127.0.0.1:8001", "research/private/jev_quant_live/config.json"),
+    "swing":      ("http://127.0.0.1:8001", "research/private/swing_trade/live/config.json"),
 }
 DB = db_dir() / "watchlist.sqlite3"
 

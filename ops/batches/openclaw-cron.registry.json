@@ -692,6 +692,96 @@
       }
     },
     {
+      "id": "b88ef3fd-b90d-4e91-ab99-b5ba5d77d271",
+      "name": "swing-order",
+      "description": "Mon-Fri 08:40 start; private swing strategy pre-open buy batch on the existing account broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "40 8 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/swing-order.md",
+      "timeoutSeconds": 3600,
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-10-24).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "swing-order",
+        "xmlFile": "ops/scheduled-tasks/swing-order.xml",
+        "runnerScript": "ops/scheduled-tasks/run-swing-order.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "ab1a3127-af3e-4170-b6d5-4d957f2dfea8",
+      "name": "swing-exit",
+      "description": "Mon-Fri 09:00 start; private swing strategy exit worker 09:00-15:31 on the existing account broker :8001",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/swing-exit.md",
+      "timeoutSeconds": 25200,
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-10-24).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "swing-exit",
+        "xmlFile": "ops/scheduled-tasks/swing-exit.xml",
+        "runnerScript": "ops/scheduled-tasks/run-swing-exit.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
+      "id": "76a724a9-0e8e-4239-b50c-d6309f031a7e",
+      "name": "swing-verify",
+      "description": "Mon-Fri 16:00; private swing strategy fill check, realized P/L and summary (no orders)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 16 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "ops/batches/swing-verify.md",
+      "timeoutSeconds": 1800,
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-10-24).",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "swing-verify",
+        "xmlFile": "ops/scheduled-tasks/swing-verify.xml",
+        "runnerScript": "ops/scheduled-tasks/run-swing-verify.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "5c79240a-60e4-4c0a-9b71-45b0ea103828",
       "name": "envelope-order",
       "description": "Mon-Fri 08:20 start; envelope private-strategy order batch on the existing account broker :8001 (08:50 TP sells + open limit buys, 09:00:10 cancel unfilled buys)",
