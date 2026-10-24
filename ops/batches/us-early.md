@@ -15,12 +15,14 @@ this file with host-default shell decoding, especially Windows PowerShell 5.1
 
 ## Purpose
 
-07:30 KST year-round early load of the previous US session for signal use,
+10:15 KST year-round early load of the previous US session for signal use,
 ahead of the 11:00 Yahoo batch (`us-daily`).
 
-07:30 stays 90+ min after the US close all year: after DST ends (first
-Sunday of November) the close is KST 06:00, so 06:30 would collide with the
-broker cutoff (NY 16:30).
+10:15 is after the US after-hours session ends (NY 20:00 = KST 09:00 in
+summer, 10:00 in winter). Before that, Kiwoom's daily bar for the session
+still moves with after-hours trades: the 07:30 load gave QQQ closes +0.05%
+and +0.14% off the regular close on 2026-10-22/23, enough to flip the v38
+state. After 20:00 NY the Kiwoom bar matches Yahoo's regular-session bar.
 
 - Fetches 9 signal ETFs plus optional extra tickers (one per line, `#`
   comments; path via `US_EARLY_EXTRA_TICKERS`) from Kiwoom usa06012 through

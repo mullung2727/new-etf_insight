@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>US early daily load 07:30 KST: strategy ETFs and extra tickers from Kiwoom via broker, VIX/VIX3M from CBOE</Description><URI>\new-etf_insight\us-early</URI></RegistrationInfo>
-  <Triggers><CalendarTrigger><StartBoundary>2026-10-24T07:30:00</StartBoundary><Enabled>true</Enabled><ScheduleByWeek><WeeksInterval>1</WeeksInterval><DaysOfWeek><Tuesday/><Wednesday/><Thursday/><Friday/><Saturday/></DaysOfWeek></ScheduleByWeek></CalendarTrigger></Triggers>
+  <RegistrationInfo><Description>US early daily load 10:15 KST: strategy ETFs and extra tickers from Kiwoom via broker, VIX/VIX3M from CBOE</Description><URI>\new-etf_insight\us-early</URI></RegistrationInfo>
+  <Triggers><CalendarTrigger><StartBoundary>2026-10-27T10:15:00</StartBoundary><Enabled>true</Enabled><ScheduleByWeek><WeeksInterval>1</WeeksInterval><DaysOfWeek><Tuesday/><Wednesday/><Thursday/><Friday/><Saturday/></DaysOfWeek></ScheduleByWeek></CalendarTrigger></Triggers>
   <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
   <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><ExecutionTimeLimit>PT20M</ExecutionTimeLimit><Enabled>true</Enabled></Settings>
   <Actions Context="Author"><Exec><Command>powershell.exe</Command><Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\Users\mullu\.openclaw\workspace\etl\new-etf_insight\ops\scheduled-tasks\run-us-early.ps1"</Arguments></Exec></Actions>

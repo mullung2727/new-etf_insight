@@ -15,8 +15,8 @@ this file with host-default shell decoding, especially Windows PowerShell 5.1
 
 ## Purpose
 
-07:40 KST Tue-Sat signal batch for the US private strategy, running after the
-07:30 `us-early` load.
+10:25 KST Tue-Sat signal batch for the US private strategy, running after the
+10:15 `us-early` load (after US after-hours ends, so the bars are final).
 
 - Computes the daily signal from the freshly loaded US session data and
   appends one row per US session to the private signal log (read by
