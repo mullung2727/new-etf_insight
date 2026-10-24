@@ -457,6 +457,34 @@ class TestEtf(unittest.TestCase):
             "SELECT count(*) FROM etf_dividends WHERE ticker='SPY' AND date='20261021'"
         ).fetchone()[0], 1)
 
+    def test_e8c_mid_nan_preserves_stored_row(self):
+        """중간 날짜 OHLC NaN이면 그 날 저장 행을 보존한다 (yfinance #2925)."""
+        ensure_etf(
+            self.con, "20261022",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-10-19", 100), ("2026-10-20", 100), ("2026-10-21", 100)]
+                 for ticker in tickers}
+            ),
+            "20261022",
+            tickers=("SPY",),
+        )
+        stats = ensure_etf(
+            self.con, "20261022",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-10-19", 25), ("2026-10-20", float("nan")), ("2026-10-21", 25)]
+                 for ticker in tickers}
+            ),
+            "20261022",
+            tickers=("SPY",),
+        )
+        self.assertEqual(stats["failed_tickers"], [])
+        self.assertEqual(
+            self.con.execute(
+                "SELECT date, close FROM etf_ohlcv WHERE ticker='SPY' ORDER BY date"
+            ).fetchall(),
+            [("20261019", 25.0), ("20261020", 100.0), ("20261021", 25.0)],
+        )
+
     def test_e9_healthy_yahoo_overwrites_early_rows(self):
         """야후 응답에 마지막 날이 정상이면 us-early 행을 덮어쓴다 (P3)."""
         self.con.executemany("INSERT INTO etf_ohlcv VALUES (?,?,?,?,?,?,?)", [
