@@ -72,7 +72,6 @@ def main(argv: list[str] | None = None) -> int:
             fetch_filings=fetch_filings,
             fetch_news=fetch_news,
             generate_fn=generate_json,
-            notify_fn=notify,
             store_path=SWING_DB,
             dry_run=args.dry_run,
             skip_summary=args.skip_summary,
