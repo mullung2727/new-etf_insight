@@ -22,7 +22,9 @@ ahead of the 11:00 Yahoo batch (`us-daily`).
 summer, 10:00 in winter). Before that, Kiwoom's daily bar for the session
 still moves with after-hours trades: the 07:30 load gave QQQ closes +0.05%
 and +0.14% off the regular close on 2026-10-22/23, enough to flip the v38
-state. After 20:00 NY the Kiwoom bar matches Yahoo's regular-session bar.
+state. After 20:00 NY the Kiwoom bars match Yahoo's regular-session bars:
+checked 2026-10-24 for all 9 signal ETFs and the 5 extra tickers then
+listed, 310 sessions each since 2025-08, high/low/close within 0.1%.
 
 - Fetches 9 signal ETFs plus optional extra tickers (one per line, `#`
   comments; path via `US_EARLY_EXTRA_TICKERS`) from Kiwoom usa06012 through
