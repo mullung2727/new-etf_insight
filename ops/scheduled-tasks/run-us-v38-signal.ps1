@@ -12,20 +12,14 @@ $env:PYTHONPATH = ".."
 # US v38 signal 07:40 KST, after the 07:30 us-early load. Appends one row per
 # US session to the private signal log; a rerun appends a duplicate row.
 # No Korean trading-day guard (independent of KRX holidays); US holidays exit
-# quietly. Exit 2 on stale data. Same stderr handling as run-us-early.ps1.
-$log = Join-Path $logDir "us-v38-signal-$date.log"
+# quietly. Exit 2 on stale data.
+# The script posts its own Discord alert, so the runner sends no extra
+# alert on failure (no duplicate notification). Same stderr handling as
+# run-us-early.ps1.
 $ErrorActionPreference = "Continue"
-& ".venv\Scripts\python.exe" -m research.private.us_oas.signal_v38 *> $log
+& ".venv\Scripts\python.exe" -m research.private.us_oas.signal_v38 *> (Join-Path $logDir "us-v38-signal-$date.log")
 $code = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
 
-if ($code -ne 0) {
-  $ErrorActionPreference = "Continue"
-  try {
-    & ".\.venv\Scripts\python.exe" "scripts\send_report_messages.py" "--message" "[us-v38-signal] FAILED (log: $log)" "--best-effort" 2>&1 | Tee-Object -FilePath $log -Append | Out-Null
-  } catch {
-  }
-  $ErrorActionPreference = "Stop"
-  exit 1
-}
+if ($code -ne 0) { exit 1 }
 exit 0
