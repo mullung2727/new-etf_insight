@@ -311,8 +311,36 @@ class TestUsStrategyRoute(_UsOrdersTestBase):
         self.assertEqual(rows[0]["ticker"], "QQQ")
         self.assertEqual(rows[0]["side"], "sell")
         self.assertEqual(rows[0]["order_type"], "US:00")
-        self.assertEqual(rows[0]["price"], 150)
+        self.assertEqual(rows[0]["price"], 150.25)
         self.assertEqual(rows[0]["status"], "submitted")
+
+    def test_market_price_ignored_records_zero(self):
+        # 시장가는 요청 price=123.4 무시 → ord_uv ""·원장 price 0.
+        with patch("kiwoom.us.request",
+                   return_value=_tr({"ord_no": "000000282",
+                                     "return_msg": "ok"})) as m:
+            r = self.client.post("/us/orders/strategy", json={
+                "code": "QQQ", "side": "sell", "qty": 10, "trde_tp": "03",
+                "price": 123.4, "source": "close_bet"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(m.call_args.args[2]["ord_uv"], "")
+        rows = _trade_rows(self.db)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["price"], 0)
+
+    def test_limit_records_float_price(self):
+        # 지정가 price=150.25 → 원장 price 150.25 (소수 보존).
+        with patch("kiwoom.us.request",
+                   return_value=_tr({"ord_no": "000000282",
+                                     "return_msg": "ok"})) as m:
+            r = self.client.post("/us/orders/strategy", json={
+                "code": "QQQ", "side": "sell", "qty": 5, "trde_tp": "00",
+                "price": 150.25, "source": "close_bet"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(m.call_args.args[2]["ord_uv"], "150.25")
+        rows = _trade_rows(self.db)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["price"], 150.25)
 
     def test_limit_buy_under_cap_orders_with_quote(self):
         # 지정가 매수도 현재가 조회 후 max로 상한 계산 → 2콜(현재가+주문).

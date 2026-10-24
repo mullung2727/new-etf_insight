@@ -29,7 +29,7 @@ def record_trade(
     side: str,
     order_type: str,
     qty: int,
-    price: int,
+    price: float,
     status: str,
     source: str,
     raw: str,

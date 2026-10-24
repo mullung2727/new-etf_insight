@@ -204,8 +204,9 @@ def place_us_strategy_order(req: UsOrderRequest) -> Any:
             check_us_strategy_order(req.side, req.qty, req.qty * unit, max_usd)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+    order_price = req.price if req.trde_tp in _PRICE_REQUIRED else None
     try:
-        placed = us.place_us_order(code, req.side, req.qty, req.trde_tp, req.price)
+        placed = us.place_us_order(code, req.side, req.qty, req.trde_tp, order_price)
     except KiwoomError as exc:
         logger.warning("us order error raw: %s", exc)
         return {"status": "rejected", "order_no": "", "message": str(exc)}
@@ -219,7 +220,7 @@ def place_us_strategy_order(req: UsOrderRequest) -> Any:
                 side=req.side,
                 order_type=f"US:{req.trde_tp}",
                 qty=req.qty,
-                price=int(round(req.price)) if req.price else 0,
+                price=order_price if order_price is not None else 0,
                 status="submitted",
                 source=req.source,
                 raw=json.dumps(placed["raw"], ensure_ascii=False),
