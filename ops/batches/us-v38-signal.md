@@ -22,8 +22,9 @@ this file with host-default shell decoding, especially Windows PowerShell 5.1
   appends one row per US session to the private signal log (read by
   `us-v38-order`, which uses the last row).
 - No Korean trading-day guard: US holidays exit quietly.
-- Exit 2 when the input data is stale; any nonzero exit triggers one Discord
-  failure notice from the runner.
+- Exit 2 when the input data is stale. The signal module sends its own Discord
+  alert (OK / stale / failure); the runner only turns a nonzero result into
+  exit 1 and sends nothing.
 
 Private strategy, rules in research/private (gitignored).
 
