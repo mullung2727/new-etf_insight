@@ -2,7 +2,7 @@ import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import _bootstrap  # noqa: F401
 
-"""월 1회 외장하드 DB 백업 (slot_A/slot_B 교대 2벌).
+"""주 1회 외장하드 DB 백업 (slot_A/slot_B 교대 2벌).
 
 외장하드의 `new-etf_insight_backup` 폴더(사람이 최초 1회 생성) 아래
 slot_A/slot_B에 교대로 덮어쓰고, 완전 성공한 슬롯을 latest.txt에 기록한다.

@@ -1531,21 +1531,21 @@
     },
     {
       "id": "6cf10c63-8f75-4c91-8a90-cab0e1e70c0c",
-      "name": "monthly-db-backup",
-      "description": "Mon 05:30; DB backup to external drive (overwrite), script notifies success/failure/drive missing",
+      "name": "weekly-db-backup",
+      "description": "Sat 05:30; DB backup to external drive (overwrite), script notifies success/failure/drive missing",
       "enabled": true,
       "schedule": {
         "kind": "cron",
-        "expr": "30 5 * * 1",
+        "expr": "30 5 * * 6",
         "tz": "Asia/Seoul"
       },
-      "instructionFile": "ops/batches/monthly-db-backup.md",
+      "instructionFile": "ops/batches/weekly-db-backup.md",
       "timeoutSeconds": 21600,
-      "runNote": "Windows Task Scheduler is authoritative. Added to the registry 2026-10-17 (was registered without an entry). Name says monthly but the trigger is weekly (Mon 05:30).",
+      "runNote": "Windows Task Scheduler is authoritative. Added to the registry 2026-10-17 (was registered without an entry). Renamed from monthly-db-backup 2026-10-24 (trigger was always weekly); moved Mon→Sat 05:30 2026-10-24.",
       "windowsTask": {
         "enabled": true,
         "taskPath": "\\new-etf_insight\\",
-        "taskName": "monthly-db-backup",
+        "taskName": "weekly-db-backup",
         "xmlFile": "ops/scheduled-tasks/db-backup.xml",
         "runnerScript": "ops/scheduled-tasks/run-db-backup.ps1",
         "delivery": {
@@ -1570,7 +1570,7 @@
         "expr": "30 23 * * *",
         "tz": "Asia/Seoul"
       },
-      "instructionFile": "ops/batches/monthly-db-backup.md",
+      "instructionFile": "ops/batches/weekly-db-backup.md",
       "timeoutSeconds": 1800,
       "runNote": "Copies C-side files to NEW_ETF_DATA_ROOT/code_backup; skips when unset (PLAN_DATA_DRIVE_MOVE).",
       "windowsTask": {
