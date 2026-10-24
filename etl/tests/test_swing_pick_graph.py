@@ -22,6 +22,7 @@ from scripts.swing_pick.graph import (
     expected_prev_trading_day,
     format_message,
     node_collect,
+    node_notify,
 )
 from scripts.swing_pick.store import connect_ro
 
@@ -141,8 +142,8 @@ class FakeNotify:
     def __init__(self):
         self.calls = []
 
-    def __call__(self, message, channel="batch"):
-        self.calls.append((message, channel))
+    def __call__(self, message):
+        self.calls.append((message,))
         return True
 
 
@@ -387,7 +388,7 @@ class TestFullRun(unittest.TestCase):
 
             # 전송 채널
             self.assertEqual(len(f["notify"].calls), 1)
-            self.assertEqual(f["notify"].calls[0][1], "batch")
+
             self.assertIn("[스윙 후보] 2026-09-28", f["notify"].calls[0][0])
 
     def test_collect_calls_no_llm(self):
@@ -491,6 +492,22 @@ class TestFailureIsolation(unittest.TestCase):
             self.assertEqual(
                 [w for w in final["warnings"]
                  if w.startswith("code_errors:")], [])
+
+
+class TestNotifyChannel(unittest.TestCase):
+    def test_default_notify_uses_strategy_webhook(self):
+        with TemporaryDirectory() as tmp:
+            deps, _ = _full_deps(tmp, notify_fn=None, dry_run=False)
+            state = TestFormatMessage()._state()
+            state["saved"] = False
+            with mock.patch(
+                "scripts.swing_pick.graph.send_strategy_alert",
+                return_value=True,
+            ) as m:
+                out = node_notify(state, deps)
+            m.assert_called_once_with(
+                out["message"], "SWING_TRADE_DISCORD_WEBHOOK_URL")
+            self.assertTrue(out["notified"])
 
 
 class TestFormatMessage(unittest.TestCase):
