@@ -1111,16 +1111,16 @@
     {
       "id": "a7c2e4f1-8b3d-4e5f-9a6c-1d2e3f4a5b6c",
       "name": "us-early",
-      "description": "Tue-Sat 07:30 KST; US early daily load of signal ETFs + extra tickers (Kiwoom via broker) and VIX/VIX3M (CBOE)",
+      "description": "Tue-Sat 10:15 KST; US early daily load of signal ETFs + extra tickers (Kiwoom via broker) and VIX/VIX3M (CBOE)",
       "enabled": true,
       "schedule": {
         "kind": "cron",
-        "expr": "30 7 * * 2-6",
+        "expr": "15 10 * * 2-6",
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/us-early.md",
       "timeoutSeconds": 1200,
-      "runNote": "Windows Task Scheduler is authoritative. Safe to rerun (upsert); Discord alert only on failure.",
+      "runNote": "Windows Task Scheduler is authoritative. Safe to rerun (upsert); Discord alert only on failure. Moved 07:30→10:15 on 2026-10-24: before NY 20:00 the Kiwoom bar still includes after-hours trades.",
       "windowsTask": {
         "enabled": true,
         "taskPath": "\\new-etf_insight\\",
@@ -1141,11 +1141,11 @@
     {
       "id": "b4d7a2c1-5e6f-4a8b-9c3d-7f1e2a5b8d0e",
       "name": "us-v38-signal",
-      "description": "Tue-Sat 07:40 KST; US private-strategy signal batch after us-early, appends one row per US session to the private signal log",
+      "description": "Tue-Sat 10:25 KST; US private-strategy signal batch after us-early, appends one row per US session to the private signal log",
       "enabled": true,
       "schedule": {
         "kind": "cron",
-        "expr": "40 7 * * 2-6",
+        "expr": "25 10 * * 2-6",
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/us-v38-signal.md",
