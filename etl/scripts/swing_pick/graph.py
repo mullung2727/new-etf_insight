@@ -40,7 +40,7 @@ import requests
 from langgraph.graph import END, StateGraph
 
 from scripts.check_krx_trading_day import is_krx_trading_day
-from scripts.notify import notify as _real_notify
+from scripts.notify import send_strategy_alert
 from scripts.report_metrics.storage import connect_ro as report_connect_ro
 from scripts.report_metrics.storage import report_candidates
 from scripts.swing_pick.judge_code import judge_code, load_ohlcv, prefilter
@@ -64,6 +64,9 @@ MAX_STATUS_CHECKS = 10
 
 # 같은 사유 오류가 판정 대상의 이 비율 이상이면 경고.
 CODE_ERR_WARN_RATIO = 0.5
+
+# 스윙 후보 알림 전용 디스코드 채널 웹훅 env.
+SWING_WEBHOOK_ENV = "SWING_TRADE_DISCORD_WEBHOOK_URL"
 
 _SOURCE_LABELS = {
     "telegram": "텔레그램",
@@ -603,8 +606,10 @@ def node_notify(state: State, deps: Deps) -> dict:
     if deps.dry_run:
         # 전송 대신 문구만 state에 — dry_run 검증은 이 문구로 한다.
         return {"message": message, "notified": False}
-    notify_fn = deps.notify_fn or _real_notify
-    ok = notify_fn(message, channel="batch")
+    if deps.notify_fn is None:
+        ok = send_strategy_alert(message, SWING_WEBHOOK_ENV)
+    else:
+        ok = deps.notify_fn(message)
     if ok and state.get("saved"):
         mark_notified(deps.store_path, state["today"])
     return {"message": message, "notified": bool(ok)}
