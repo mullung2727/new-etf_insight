@@ -763,7 +763,7 @@
       },
       "instructionFile": "ops/batches/swing-verify.md",
       "timeoutSeconds": 1800,
-      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-10-24).",
+      "runNote": "Windows Task Scheduler is authoritative. No orders: reconciles fills, realized P/L and the budget reservation for the live swing strategy (user decision 2026-10-24).",
       "windowsTask": {
         "enabled": true,
         "taskPath": "\\new-etf_insight\\",
