@@ -10,7 +10,7 @@
 - [x] 구현·테스트 머지 (P1 PR #27, 배치 PR #28 2026-09-13)
 - [x] 운영 등록 (스케줄 작업·config) — high52-order·verify·exit 등록·실주문 전환 완료(2026-09-14). P5 레지스트리 편입 완료: 2026-10-26 `ops/batches/Test-OpenClawBatchRegistry.ps1` 57개 OK (레지스트리 밖은 1회용 `apply-rebound-3stage-once` 하나)
 - [x] 첫 실가동 확인 (날짜) — high52 :8002 실주문 2026-09-14~
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영 (2026-10-26 코드 대조)
 
 > 이 문서는 공개 저장소에 있다. **전략 규칙·파라미터·전략별 주문 절차는 쓰지 않는다.**
 > 전략 쪽 설계는 `research/private/high52_quiet_breakout/PLAN_LIVE.md`, 규칙 원본은 같은 폴더 `FINANCIAL_FILTER.md` §1 (둘 다 gitignore).
@@ -142,3 +142,12 @@ E. (D4) 기존 미등록 10개 작업을 registry 에 편입
 - broker 프로세스가 하나 늘어 PC 재부팅 뒤 `restart_all_servers.ps1` 에 의존하는 대상이 늘어난다
 - D3 을 안 하면 비공개 실매매 코드의 이력과 백업이 없다
 - 전략 쪽 위험은 PLAN_LIVE §7
+
+## 구현 차이
+
+2026-10-26 코드 대조. 계좌 분리(D1)·profile 폴백 없음(D2, `broker/kiwoom/config.py`)·`/health` profile·`ALLOWED_ORDER_SOURCES` 422(`broker/routers/orders.py`)·`.gitignore` 패턴·`require_profile`(`etl/scripts/trading_batch_common.py`)·high52 3작업 시각은 설계대로.
+
+- D3: 원래 `research/private/` 를 별도 로컬 git 저장소로 → 실제 2026-09-13~10-17 운용 후 폐지, 외장하드 백업(slot_A/B)과 `_backup_YYYYMMDD/` 복사로 대체 (커밋 안 된 파일 4천여 개로 이력이 반쪽, 읽기 전용 git 객체가 백업 덮어쓰기를 막음 — `research/private/README.md`)
+- 원장 위치: 원래 `etl/db/watchlist.sqlite3` → 실제 데이터 루트 `db_dir()` 아래 (`docs/done/PLAN_DATA_DRIVE_MOVE.md`, 2026-10-18)
+- 인스턴스: 원래 :8001·:8002 두 개 → 실제 :8003 미국 계좌(`KIWOOM_PROFILE=US`, `ALLOWED_ORDER_SOURCES=us_v38`, PR #124 2026-10-24) 추가. :8003 만 `KIWOOM_WS_ENABLED=0` (`PLAN_RECORDER_US_APPKEY`)
+- high52 배치: 원래 order·exit·verify 3개 → 실제 `high52-earn` 평일 19:40 추가 (실적 판정, PR #120)
