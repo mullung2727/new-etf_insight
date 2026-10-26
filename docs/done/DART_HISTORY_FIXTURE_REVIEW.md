@@ -2,7 +2,7 @@
 
 명령 실행 금지, 파일만 작성. 테스트·실행·검증은 호출 에이전트가 담당한다. 외부 도구 호출 금지.
 
-허용 편집은 etl/tests/test_pipeline_modules.py 및 docs/DART_HISTORY_PRESERVATION_PROGRESS.md만. 다른 코드와 실제 DB 수정 금지.
+허용 편집은 etl/tests/test_pipeline_modules.py 및 docs/done/DART_HISTORY_PRESERVATION_PROGRESS.md만. 다른 코드와 실제 DB 수정 금지.
 
 DailyPipelineTest에 방금 추가한 setUp/tearDown의 tempfile.TemporaryDirectory 재정의는 잘못된 우회다. `with`는 객체 인스턴스에 넣은 __enter__가 아니라 타입의 special method를 조회하므로 ctx.__enter__=_enter는 효과가 없다. 이 setUp/tearDown 전체를 제거하라. CRLF 때문에 실패하면 find 문자열에 실제 CRLF를 정확히 사용하라. 쉘 실행으로 해결 금지.
 

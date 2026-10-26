@@ -1,10 +1,10 @@
 # Codex 직접 검수 1차 보완 요청
 
-원 명세 `docs/PLAN_DART_HISTORY_PRESERVATION.md`의 구현 초안을 직접 읽었고, 현행 82 tests를 실제 실행해서 OK를 확인했다. 아래는 통과 테스트가 놓친 사용자 요구 위반이다.
+원 명세 `docs/done/PLAN_DART_HISTORY_PRESERVATION.md`의 구현 초안을 직접 읽었고, 현행 82 tests를 실제 실행해서 OK를 확인했다. 아래는 통과 테스트가 놓친 사용자 요구 위반이다.
 
 명령 실행 금지, 파일만 작성. 테스트·실행·검증은 호출 에이전트가 담당한다. 셸/외부 호출 금지.
 
-수정 허용 파일은 원 명세와 같은 네 코드·테스트 파일뿐. 조사 문서는 `docs/DART_HISTORY_PRESERVATION_PROGRESS.md`만 갱신. 직접 코드 수정은 Codex가 하지 않는다.
+수정 허용 파일은 원 명세와 같은 네 코드·테스트 파일뿐. 조사 문서는 `docs/done/DART_HISTORY_PRESERVATION_PROGRESS.md`만 갱신. 직접 코드 수정은 Codex가 하지 않는다.
 
 ## 1. history 상태 전이와 snapshot 누락
 
