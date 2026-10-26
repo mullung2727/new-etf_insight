@@ -1,4 +1,4 @@
-"""데이터 루트 공용 경로 함수 (설계: docs/PLAN_DATA_DRIVE_MOVE.md).
+"""데이터 루트 공용 경로 함수 (설계: docs/done/PLAN_DATA_DRIVE_MOVE.md).
 
 `NEW_ETF_DATA_ROOT` 가 있으면 그 아래 db/exports/runs/… 를 쓰고,
 없으면 기존 경로(저장소 etl/ 아래, D: 계열은 기존 D: 경로) 그대로 쓴다.

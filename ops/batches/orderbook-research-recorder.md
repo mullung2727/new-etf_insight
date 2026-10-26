@@ -22,7 +22,7 @@ ends itself. Holiday detection is done by the script.
 
 실매매 보호: broker WS 끊김·SSE 끊김·1000 Bye 시 당일 녹화 중단, 재접속 최대 20회, C: 여유 5GB 미만이면 중단.
 
-See `docs/PLAN_ORDERBOOK_RESEARCH_RECORDING.md` for the design.
+See `docs/done/PLAN_ORDERBOOK_RESEARCH_RECORDING.md` for the design.
 
 No orders are placed.
 

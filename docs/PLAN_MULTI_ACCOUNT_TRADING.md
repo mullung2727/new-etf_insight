@@ -8,7 +8,7 @@
 
 ## 진행
 - [x] 구현·테스트 머지 (P1 PR #27, 배치 PR #28 2026-09-13)
-- [ ] 운영 등록 (스케줄 작업·config) — high52-order·verify·exit 등록·실주문 전환 완료(2026-09-14). 남은 것: P5 기존 작업 레지스트리 편입(rights-dip·jevq·us-daily 등 이후 추가된 작업 포함)
+- [x] 운영 등록 (스케줄 작업·config) — high52-order·verify·exit 등록·실주문 전환 완료(2026-09-14). P5 레지스트리 편입 완료: 2026-10-26 `ops/batches/Test-OpenClawBatchRegistry.ps1` 57개 OK (레지스트리 밖은 1회용 `apply-rebound-3stage-once` 하나)
 - [x] 첫 실가동 확인 (날짜) — high52 :8002 실주문 2026-09-14~
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 

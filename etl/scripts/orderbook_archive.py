@@ -5,7 +5,7 @@
 sqlite 와 parquet 을 다시 읽어 비교한 뒤 전부 같을 때만 C: 원본을 지운다.
 검증 통과 시에만 C: 삭제 — D: 미연결·공간 부족·불일치면 C: 에 두고 batch 채널로 알림.
 
-설계: docs/PLAN_ORDERBOOK_RESEARCH_RECORDING.md §5 "마감 후 변환·이동·삭제".
+설계: docs/done/PLAN_ORDERBOOK_RESEARCH_RECORDING.md §5 "마감 후 변환·이동·삭제".
 
 Usage (from etl/):
     uv run python scripts/orderbook_archive.py [--src DIR] [--dst DIR] [--dry-run]

@@ -4,9 +4,9 @@
 계좌: 미국 전용 broker :8003 (`KIWOOM_PROFILE=US`).
 
 ## 진행
-- [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 — broker 재기동 (거래일 20:00~08:00), `.env` `MAX_US_ORDER_USD`
-- [ ] 첫 실가동 확인 (날짜)
+- [x] 구현·테스트 머지 (PR #124, 2026-10-24)
+- [x] 운영 등록 — broker 재기동 2026-10-24(토) 12:40, :8003 broker-us 기동. `.env` `MAX_US_ORDER_USD` 미설정 → 기본 5000 적용 중
+- [ ] 첫 실가동 확인 (날짜) — 첫 실주문 `us-v38-order` 2026-10-27 04:30 예정
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ## 1. 엔드포인트 (`broker/routers/us.py` — 기존 `/us/daily` 와 같은 라우터, `broker/kiwoom/us.py` 에 키움 호출)

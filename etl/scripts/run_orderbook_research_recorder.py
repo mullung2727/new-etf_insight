@@ -1,6 +1,6 @@
 """호가·체결 리서치 녹화기 — 직전 거래일 거래량 탑30의 0B+0D를 08:30~20:00 녹화.
 
-설계: docs/PLAN_ORDERBOOK_RESEARCH_RECORDING.md §4·§5·§6.
+설계: docs/done/PLAN_ORDERBOOK_RESEARCH_RECORDING.md §4·§5·§6.
 실행 (etl/ 에서): uv run python scripts/run_orderbook_research_recorder.py [--date YYYYMMDD]
 
 실매매 보호 (어떤 경우에도 지킨다):
