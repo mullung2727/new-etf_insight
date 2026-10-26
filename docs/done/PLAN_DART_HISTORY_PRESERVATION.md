@@ -64,7 +64,7 @@
 - `etl/tests/test_pipeline_modules.py`
 - `etl/tests/test_build_db.py`
 
-조사·변경 설명 문서는 `docs/DART_HISTORY_PRESERVATION_PROGRESS.md`만 작성.
+조사·변경 설명 문서는 `docs/done/DART_HISTORY_PRESERVATION_PROGRESS.md`만 작성.
 
 요청하지 않은 파일·경로 생성 금지. .env·실제 DB·runs 변경 금지. 셸·명령·테스트·코드 실행·외부 도구 호출 금지. 파일 읽기·편집만 허용.
 

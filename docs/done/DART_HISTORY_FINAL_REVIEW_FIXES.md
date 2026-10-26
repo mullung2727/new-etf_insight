@@ -1,7 +1,7 @@
 # 최종 검수 보완 — 파일 편집만
 
 명령 실행 금지, 파일만 작성. 테스트·실행·검증은 호출 에이전트가 담당한다. 외부 도구 호출 금지.
-수정 범위는 기존 명세의 4개 코드·테스트 파일 및 docs/DART_HISTORY_PRESERVATION_PROGRESS.md만. 실 DB, runs, 비밀 파일 변경 금지.
+수정 범위는 기존 명세의 4개 코드·테스트 파일 및 docs/done/DART_HISTORY_PRESERVATION_PROGRESS.md만. 실 DB, runs, 비밀 파일 변경 금지.
 
 ## 1. 기존 테스트 경로 격리 (필수)
 
