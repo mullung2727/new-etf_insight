@@ -45,7 +45,7 @@ credentials, `uv sync`, then `uv run python server.py`.
   - 주문 가드 (`MAX_ORDER_AMOUNT`), 주문·체결 기록, 투자노트 자동 연결
 - 매매 배치(`etl/scripts/*`)의 주문·잔고·시세 함수는 키움이 아니라 **broker 에 HTTP 로 요청**한다 (`--broker-url`). 그래서 broker 가 떠 있어야 매매가 된다
 - broker 프로세스 하나는 **계좌 하나**만 다룬다 (기동 시 `load_config()` 가 앱키·계좌를 고정). 계좌가 늘면 broker 를 포트를 달리해 하나 더 띄운다
-  (설계: `docs/PLAN_MULTI_ACCOUNT_TRADING.md`)
+  (설계: `docs/done/PLAN_MULTI_ACCOUNT_TRADING.md`)
 - broker 없이 배치가 키움을 직접 부르면 위 기능을 배치마다 다시 갖춰야 하고, 동시에 도는 배치끼리 호출 한도·토큰이 충돌할 수 있다
 
 ### 계좌별 broker 는 같은 코드다 — 다른 건 계좌와 전략뿐

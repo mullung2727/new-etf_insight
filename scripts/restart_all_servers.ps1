@@ -9,7 +9,7 @@ $logDir = Join-Path $root "ops\logs"
 Write-Host "=== KILLING existing servers ===" -ForegroundColor Yellow
 
 # broker-web 상시 = prod 빌드(.next-prod)를 :3100 에서 next start. dev(:3000)은 개발 시 수동.
-# broker 는 계좌마다 하나씩 뜬다 (docs/PLAN_MULTI_ACCOUNT_TRADING.md). 8002 = high52 계좌, 8003 = 미국(US) 계좌.
+# broker 는 계좌마다 하나씩 뜬다 (docs/done/PLAN_MULTI_ACCOUNT_TRADING.md). 8002 = high52 계좌, 8003 = 미국(US) 계좌.
 $ports = @(8000, 8001, 8002, 8003, 3100)
 $names = @{ 8000 = "api"; 8001 = "broker"; 8002 = "broker-high52"; 8003 = "broker-us"; 3100 = "broker-web" }
 
