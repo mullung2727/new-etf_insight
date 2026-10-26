@@ -49,7 +49,7 @@ ALLOWED = {
 NEW_USAGE_MSG = (
     "broker 실시간 연결(웹소켓·SSE·체결통보 구독) 사용처가 새로 생겼다.\n"
     "리서치 녹화기(run_orderbook_research_recorder.py)는 '실매매가 broker 실시간 연결을 안 쓴다'는 전제로 broker 끊김에도 녹화를 계속한다(2026-10-15).\n"
-    "실매매 코드라면: 녹화기 재접속이 broker 를 밀어낼 위험부터 검토하고 docs/PLAN_ORDERBOOK_RESEARCH_RECORDING.md 를 고친 뒤 ALLOWED 에 추가할 것.\n"
+    "실매매 코드라면: 녹화기 재접속이 broker 를 밀어낼 위험부터 검토하고 docs/done/PLAN_ORDERBOOK_RESEARCH_RECORDING.md 를 고친 뒤 ALLOWED 에 추가할 것.\n"
     "실매매와 무관하면: 이유를 주석으로 남기고 ALLOWED 에 추가.\n"
 )
 

@@ -1662,7 +1662,7 @@
       },
       "instructionFile": "ops/batches/weekly-db-backup.md",
       "timeoutSeconds": 1800,
-      "runNote": "Copies C-side files to NEW_ETF_DATA_ROOT/code_backup; skips when unset (PLAN_DATA_DRIVE_MOVE).",
+      "runNote": "Copies C-side files to NEW_ETF_DATA_ROOT/code_backup; skips when unset (docs/done/PLAN_DATA_DRIVE_MOVE).",
       "windowsTask": {
         "enabled": true,
         "taskPath": "\\new-etf_insight\\",
