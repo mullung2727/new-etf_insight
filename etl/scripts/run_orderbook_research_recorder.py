@@ -202,10 +202,14 @@ def _refresh_us_token() -> None:
         pass
 
 
+# broker-us 는 웹소켓을 안 열어 기동 때 토큰을 안 받는다 → 캐시가 없을 수도 있다 (PR #131 리뷰)
+REFRESH_REASONS = ("expired", "cache_unreadable")
+
+
 def fresh_token(root: Path, now_fn=time.time, refresh_fn=None) -> tuple:
-    """load_token + 만료 시 갱신 1회 후 재시도. 예외를 밖으로 던지지 않는다."""
+    """load_token + 만료·캐시 없음이면 갱신 1회 후 재시도. 예외를 밖으로 던지지 않는다."""
     r = load_token(root, now_fn())
-    if r[2] != "expired":
+    if r[2] not in REFRESH_REASONS:
         return r
     refresh = refresh_fn if refresh_fn is not None else _refresh_us_token
     try:
