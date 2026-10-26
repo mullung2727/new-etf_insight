@@ -4,7 +4,7 @@
 
 ## 진행
 - [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 — `scripts/restart_all_servers.ps1` 로 broker 3개 재기동 (한국 시각 20:00~08:00 만)
+- [x] 운영 등록 — `scripts/restart_all_servers.ps1` 로 broker 3개 재기동 (2026-10-26 21:27 KST, broker-us `KiwoomWSManager disabled` 확인, :8003 토큰 세션 40초 유지·:8001 재접속 없음)
 - [ ] 첫 실가동 확인 (날짜) — 녹화 trade·book 행 > 0, 끊김 `stop_kicked` 없음
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
