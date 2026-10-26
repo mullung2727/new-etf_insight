@@ -22,6 +22,7 @@ from scripts.run_orderbook_research_recorder import (
     backoff,
     close_action,
     disk_ok,
+    fresh_token,
     load_token,
     parse_real,
     pick_codes,
@@ -266,7 +267,7 @@ class LoadTokenCase(_TmpCase):
         root = self.tmp / "root"
         (root / "broker").mkdir(parents=True)
         if cache is not None:
-            (root / "broker" / ".token_cache.json").write_text(json.dumps(cache), encoding="utf-8")
+            (root / "broker" / ".token_cache.us.json").write_text(json.dumps(cache), encoding="utf-8")
         return root
 
     def test_expired(self):
@@ -294,6 +295,67 @@ class LoadTokenCase(_TmpCase):
         self.assertEqual(token, "SECRET-TOKEN-XYZ")
         self.assertTrue(url.startswith("wss://"))
         self.assertNotIn("SECRET-TOKEN-XYZ", buf.getvalue())
+
+
+    def test_legacy_cache_ignored(self):
+        root = self.tmp / "root"
+        (root / "broker").mkdir(parents=True)
+        (root / "broker" / ".token_cache.json").write_text(
+            json.dumps({"env": "paper", "token": "t", "expires_at": 10**12}),
+            encoding="utf-8")
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            self.assertEqual(load_token(root, 0), (None, None, "cache_unreadable"))
+
+
+class FreshTokenCase(_TmpCase):
+    def _root(self, cache):
+        root = self.tmp / "root"
+        (root / "broker").mkdir(parents=True)
+        if cache is not None:
+            (root / "broker" / ".token_cache.us.json").write_text(json.dumps(cache), encoding="utf-8")
+        return root
+
+    def test_expired_refresh_then_ok(self):
+        root = self._root({"env": "paper", "token": "old", "expires_at": 1000})
+        calls = []
+
+        def _refresh():
+            calls.append(1)
+            (root / "broker" / ".token_cache.us.json").write_text(
+                json.dumps({"env": "paper", "token": "new", "expires_at": 10**12}),
+                encoding="utf-8")
+
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            ws_url, token, why = fresh_token(root, now_fn=lambda: 2000, refresh_fn=_refresh)
+        self.assertEqual((token, why), ("new", "ok"))
+        self.assertTrue(ws_url.startswith("wss://"))
+        self.assertEqual(len(calls), 1)
+
+    def test_still_expired_after_refresh(self):
+        root = self._root({"env": "paper", "token": "old", "expires_at": 1000})
+        calls = []
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            r = fresh_token(root, now_fn=lambda: 2000, refresh_fn=lambda: calls.append(1))
+        self.assertEqual(r, (None, None, "expired"))
+        self.assertEqual(len(calls), 1)
+
+    def test_ok_no_refresh(self):
+        root = self._root({"env": "paper", "token": "t", "expires_at": 10**12})
+        calls = []
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            ws_url, token, why = fresh_token(root, now_fn=lambda: 0, refresh_fn=lambda: calls.append(1))
+        self.assertEqual((token, why), ("t", "ok"))
+        self.assertEqual(calls, [])
+
+    def test_refresh_error_swallowed(self):
+        root = self._root({"env": "paper", "token": "old", "expires_at": 1000})
+
+        def _boom():
+            raise RuntimeError("broker down")
+
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            r = fresh_token(root, now_fn=lambda: 2000, refresh_fn=_boom)
+        self.assertEqual(r, (None, None, "expired"))
 
 
 class CloseBackoffCase(unittest.TestCase):

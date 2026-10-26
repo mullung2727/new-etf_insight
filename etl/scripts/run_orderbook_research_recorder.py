@@ -7,7 +7,7 @@
 1. broker SSE connected를 모르면 키움 웹소켓을 열지 않는다.
 2. broker SSE가 끊기면(broker 상태를 모름) 키움 연결을 닫고 그날 녹화 종료. broker의 키움 연결 끊김(disconnected)은 횟수만 세고 녹화는 계속한다 — 실매매 전략은 broker 실시간 연결을 쓰지 않기 때문(2026-10-15). ⚠ 실매매가 broker 실시간 연결(/events·/realtime·체결통보 구독)을 쓰기 시작하면 이 규칙을 다시 검토할 것. etl/tests/test_realtime_users.py 가 그 순간 실패한다.
 3. 녹화 연결이 close 1000으로 닫히면 충돌로 보고 그날 녹화 종료(재접속 금지).
-4. 토큰은 broker/.token_cache.json 읽기만. 토큰 발급·REST 호출 없음. HTTP 요청은 로컬 broker(:8001) SSE 와 시작 시 상태 조회 1회뿐, 키움 REST 호출 없음.
+4. 토큰은 broker/.token_cache.us.json(:8003 미국 계좌 앱키) 읽기. 만료 시 :8003 `/us/deposit` 조회 1회로 broker-us 가 재발급하게 한다(키움 REST 직접 호출 없음). 앱키당 웹소켓 1개라 :8001 토큰을 쓰면 broker 재접속에 밀려난다(2026-10-26 실측). HTTP 요청은 로컬 broker(:8001) SSE 와 시작 시 상태 조회 1회뿐, 키움 REST 호출 없음.
 """
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -47,6 +47,8 @@ LOCK_PATH = OUT_DIR / "recorder.lock"
 WINDOW_START = dt_time(8, 30)
 WINDOW_END = dt_time(20, 0)  # KST
 BROKER_URL = "http://127.0.0.1:8001"
+TOKEN_CACHE = "broker/.token_cache.us.json"  # 저장소 루트 기준
+US_BROKER_URL = "http://127.0.0.1:8003"
 N_CODES = 30
 MAX_LOOKBACK_DAYS = 5
 BACKOFF = (5, 10, 20, 60)  # 초 — n번째 재접속 대기
@@ -171,7 +173,7 @@ def load_token(root: Path, now: float) -> tuple[str | None, str | None, str]:
     """broker 토큰 캐시 읽기만. (ws_url, token, reason). 예외를 밖으로 던지지 않는다."""
     try:
         want = (os.environ.get("KIWOOM_ENV") or "paper").strip().lower() or "paper"
-        raw = (Path(root) / "broker" / ".token_cache.json").read_text(encoding="utf-8")
+        raw = (Path(root) / TOKEN_CACHE).read_text(encoding="utf-8")
         cache = json.loads(raw)
         if not isinstance(cache, dict):
             return (None, None, "cache_unreadable")
@@ -190,6 +192,27 @@ def load_token(root: Path, now: float) -> tuple[str | None, str | None, str]:
         return (WS_URLS.get(want, WS_URLS["paper"]), token, "ok")
     except Exception:
         return (None, None, "cache_unreadable")
+
+
+def _refresh_us_token() -> None:
+    """broker-us(:8003)에 /us/deposit 1회 조회 → broker-us 가 US 토큰을 재발급해 캐시를 갱신한다."""
+    try:
+        requests.get(US_BROKER_URL + "/us/deposit", timeout=10)
+    except Exception:
+        pass
+
+
+def fresh_token(root: Path, now_fn=time.time, refresh_fn=None) -> tuple:
+    """load_token + 만료 시 갱신 1회 후 재시도. 예외를 밖으로 던지지 않는다."""
+    r = load_token(root, now_fn())
+    if r[2] != "expired":
+        return r
+    refresh = refresh_fn if refresh_fn is not None else _refresh_us_token
+    try:
+        refresh()
+    except Exception:
+        pass
+    return load_token(root, now_fn())
 
 
 def close_action(code, reconnects_so_far: int) -> str:
@@ -551,7 +574,7 @@ async def run_recording(
     wend = window_end or WINDOW_END
     notify_f = notify_fn or notify
     disk_f = disk_ok_fn or disk_ok
-    token_f = load_token_fn or (lambda: load_token(REPO_ROOT, time.time()))
+    token_f = load_token_fn or (lambda: fresh_token(REPO_ROOT))
     now_f = now_fn or (lambda: datetime.now(KST))
     now_ns = now_ns_fn or time.time_ns
     sleep = sleep_fn or asyncio.sleep
@@ -867,7 +890,7 @@ def _run(date: str, today: str) -> int:
             return _pre_stop(watch, date, "broker_sse_lost")
     deadline = time.monotonic() + 30 * 60
     while True:
-        ws_url, token, why = load_token(REPO_ROOT, time.time())
+        ws_url, token, why = fresh_token(REPO_ROOT)
         if why == "ok":
             break
         if why != "expired" or time.monotonic() >= deadline:
