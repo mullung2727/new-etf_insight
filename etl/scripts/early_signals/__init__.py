@@ -1,1 +1,1 @@
-"""급등 전 변화 포착 (PLAN docs/PLAN_EARLY_THEME_SIGNALS.md)."""
+"""급등 전 변화 포착 (PLAN docs/done/PLAN_EARLY_THEME_SIGNALS.md)."""
