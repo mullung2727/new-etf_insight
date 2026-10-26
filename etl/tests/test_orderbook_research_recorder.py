@@ -357,6 +357,30 @@ class FreshTokenCase(_TmpCase):
             r = fresh_token(root, now_fn=lambda: 2000, refresh_fn=_boom)
         self.assertEqual(r, (None, None, "expired"))
 
+    def test_cache_unreadable_refresh_then_ok(self):
+        root = self._root(None)
+        calls = []
+
+        def _refresh():
+            calls.append(1)
+            (root / "broker" / ".token_cache.us.json").write_text(
+                json.dumps({"env": "paper", "token": "new", "expires_at": 10**12}),
+                encoding="utf-8")
+
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            ws_url, token, why = fresh_token(root, now_fn=lambda: 0, refresh_fn=_refresh)
+        self.assertEqual((token, why), ("new", "ok"))
+        self.assertTrue(ws_url.startswith("wss://"))
+        self.assertEqual(len(calls), 1)
+
+    def test_env_mismatch_no_refresh(self):
+        root = self._root({"env": "real", "token": "t", "expires_at": 10**12})
+        calls = []
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            r = fresh_token(root, now_fn=lambda: 0, refresh_fn=lambda: calls.append(1))
+        self.assertEqual(r, (None, None, "env_mismatch"))
+        self.assertEqual(calls, [])
+
 
 class CloseBackoffCase(unittest.TestCase):
     def test_close_action(self):
