@@ -54,9 +54,24 @@ NEW_USAGE_MSG = (
 )
 
 
-def scan(root) -> list[tuple[str, int, str]]:
+US_PATTERNS = [
+    re.compile(r"""["'](F4|F5|FE|FT)["']|usa2028[01]|usa2029[01]"""),
+]
+
+# (저장소 기준 posix 경로, 줄 strip 문자열) — 미국 실시간이 아닌 확인된 사용처
+US_ALLOWED = {
+    ("research/private/rights_issue/free_dip.py", '("F1", (0,)), ("F2", (1,)), ("F3", (2,)), ("F4", (3,)),'),  # placebo 요인명, 미국 실시간 아님
+}
+
+US_NEW_USAGE_MSG = (
+    "미국 실시간/조건검색을 쓰기 시작했다 — :8003 앱키는 리서치 녹화기가 웹소켓을 쓴다(docs/PLAN_RECORDER_US_APPKEY.md). 겹침 검토 후 이 테스트를 고칠 것"
+)
+
+
+def scan(root, patterns=None) -> list[tuple[str, int, str]]:
     """root 아래 검사 대상 .py 에서 패턴에 걸린 줄 → [(posix 경로, 줄번호, 줄)]."""
     root = Path(root)
+    pats = PATTERNS if patterns is None else patterns
     hits = []
     for base in SCAN_ROOTS:
         top = root / base
@@ -73,7 +88,7 @@ def scan(root) -> list[tuple[str, int, str]]:
                 text = path.read_text(encoding="utf-8", errors="replace")
                 rel = path.relative_to(root).as_posix()
                 for n, line in enumerate(text.splitlines(), 1):
-                    if any(p.search(line) for p in PATTERNS):
+                    if any(p.search(line) for p in pats):
                         hits.append((rel, n, line))
     return hits
 
@@ -100,6 +115,34 @@ class RealtimeUsageGuardCase(unittest.TestCase):
             f.write_text('def f(base):\n    return requests.get(base + "/events")\n', encoding="utf-8")
             hits = scan(tmp)
         self.assertEqual(hits, [("etl/scripts/x.py", 2, '    return requests.get(base + "/events")')])
+
+
+class UsBrokerGuardCase(unittest.TestCase):
+    def test_us_broker_ws_disabled(self):
+        text = (REPO_ROOT / "scripts" / "restart_all_servers.ps1").read_text(encoding="utf-8-sig")
+        lines = text.splitlines()
+
+        def _env_block(name):
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped.startswith(name + " =") or stripped.startswith(name + "="):
+                    block = [line]
+                    j = i + 1
+                    while block[-1].rstrip().endswith("+") and j < len(lines):
+                        block.append(lines[j])
+                        j += 1
+                    return "\n".join(block)
+            return ""
+
+        self.assertIn("KIWOOM_WS_ENABLED=0", _env_block("$usEnv"))
+        self.assertNotIn("KIWOOM_WS_ENABLED=0", _env_block("$high52Env"))
+
+    def test_no_us_realtime_types(self):
+        hits = scan(REPO_ROOT, patterns=US_PATTERNS)
+        new = [(p, n, line) for p, n, line in hits if (p, line.strip()) not in US_ALLOWED]
+        if new:
+            self.fail(US_NEW_USAGE_MSG + "\n"
+                      + "\n".join(f"{p}:{n}: {line.strip()}" for p, n, line in new))
 
 
 if __name__ == "__main__":

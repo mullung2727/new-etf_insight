@@ -91,9 +91,17 @@ async def _idea_alert_loop() -> None:
         await asyncio.sleep(_IDEA_POLL)
 
 
+def _ws_enabled() -> bool:
+    return os.getenv("KIWOOM_WS_ENABLED", "1").strip() != "0"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await _ws_manager.start()
+    ws_enabled = _ws_enabled()
+    if ws_enabled:
+        await _ws_manager.start()
+    else:
+        logger.info("KiwoomWSManager disabled (KIWOOM_WS_ENABLED=0)")
     fill_task = asyncio.create_task(_fill_sync_loop())
     idea_task = asyncio.create_task(_idea_alert_loop())
     yield
@@ -104,7 +112,8 @@ async def lifespan(app: FastAPI):
             await task
         except asyncio.CancelledError:
             pass
-    await _ws_manager.stop()
+    if ws_enabled:
+        await _ws_manager.stop()
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),

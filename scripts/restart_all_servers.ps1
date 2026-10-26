@@ -47,8 +47,9 @@ Start-DetachedServer -Name "broker-high52" -WorkDir (Join-Path $root "broker") -
 # 미국 주식 전용 계좌(달러) broker. 비밀값(KIWOOM_US_REAL_*)은 루트 .env, 여기선 계좌별 설정만 준다.
 # 프로세스 env 가 .env 보다 우선이라(load_dotenv override=False) 공용 .env 값을 이 인스턴스만 덮는다.
 # 미국 주문 1건 상한 MAX_US_ORDER_USD(.env, 기본 5000).
+# :8003 은 국내 실시간이 필요 없고, 앱키당 웹소켓 1개라 리서치 녹화기가 이 앱키를 쓴다 → 웹소켓 끔.
 $usEnv = 'set "KIWOOM_PROFILE=US" & set "TOKEN_CACHE_PATH=.token_cache.us.json" & ' +
-    'set "NOTES_DB_PATH=notes.us.db" & set "ALLOWED_ORDER_SOURCES=us_v38" & '
+    'set "NOTES_DB_PATH=notes.us.db" & set "ALLOWED_ORDER_SOURCES=us_v38" & set "KIWOOM_WS_ENABLED=0" & '
 Start-DetachedServer -Name "broker-us" -WorkDir (Join-Path $root "broker") -Title "broker-us :8003" `
     -CommandLine ($usEnv + ".\.venv\Scripts\python.exe -m uvicorn main:app --port 8003 --host 127.0.0.1")
 
