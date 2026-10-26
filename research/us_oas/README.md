@@ -192,4 +192,4 @@ cd etl && PYTHONPATH=.. uv run python ../research/us_oas/run_cap_grid.py
 
 결과: `RESULTS_CAP_GRID.md` (실행 시 덮어쓰기).
 
-설계: `docs/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).
+설계: `docs/done/PLAN_US_MACRO_OAS.md`. 결과: `RESULTS.md` (실행 시 덮어쓰기).

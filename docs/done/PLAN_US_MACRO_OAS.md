@@ -9,7 +9,7 @@
 ## 진행
 - [x] 구현·테스트 머지 (P1·P1b·P2·P3, PR #46 2026-10-04)
 - [x] 운영 등록 (스케줄 작업·config) — `us-daily` 화~토 11:00 등록(2026-10-06). P4 는 "판정 기록" 대신 **OAS 급등 알림**(§8, 사용자 2026-10-06) — `us_oas_alert.py`·`oas_alert_log`·러너 연결 PR #56, 7일 누적 표시 PR #57. (`record_signal()`·`signal_log` 는 구현된 적 없음)
-- [ ] 첫 실가동 확인 (날짜) — us-daily 2026-10-07 11:00 정상: OAS 줄 Discord 보고(`est 3.08% chg -3.8bp, top 87.7%, 7d +15.2bp`, miss +3.5bp)·`marked reported`. 남은 것: P0 공개 시각 측정(`us-macro-publish-probe`, worktree 경로) 10-10 종료 후 D3 확정
+- [x] 첫 실가동 확인 (2026-10-07) — us-daily 11:00 정상: OAS 줄 Discord 보고(`est 3.08% chg -3.8bp, top 87.7%, 7d +15.2bp`, miss +3.5bp)·`marked reported`. P0 공개 시각 측정은 생략(2026-10-26): D8 당일 추정(NOWCAST)은 마지막 실제값에서 매일 다시 출발하므로 공개가 늦어도 추정 일수만 늘고 신호는 돈다. 측정 작업 `us-macro-publish-probe` 는 없어졌고 OAS 최초 관측 시각은 DB 에 안 남음
 - [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ## 구현 전 결정할 것
@@ -385,4 +385,5 @@ P4 매일 스케줄 `us-daily` + OAS 급등 알림 (§8, A1~A6)   ← 2026-10-06
 | 추정 놓침 계산 | A6 실제·추정 주입 → miss_bp |
 
 ## 구현 차이
+- P0 공개 시각 측정: 원래 1주 측정 후 D3 확정 → 실제 생략. D3(11:00)은 사용자 결정(10-05)으로 먼저 확정했고, D8 NOWCAST 로 T−1 공개 가정이 필요 없어짐. 늦은 공개는 us-daily 재시도 13/15/17시(PR #119)로 받음
 - 원래 P4 `record_signal()`(명세 규칙 상태·비중을 `signal_log` 에 기록) → OAS 급등 알림 + `oas_alert_log` (사용자 2026-10-06: 비중 판정은 다른 지표와 복합으로 나중에)
