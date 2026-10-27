@@ -158,8 +158,9 @@ mcp = FastApiMCP(
     app,
     name="kiwoom-broker",
     description="키움증권 매매 게이트웨이. 시세·잔고·주문·조건검색.",
+    # 토큰 회전도 리서치 녹화기 전용이라 MCP에서 뺀다.
     # 미국 전략 주문은 전략 러너 전용 REST 경로 — MCP 도구로 노출하지 않는다.
-    exclude_operations=["place_us_strategy_order"],
+    exclude_operations=["place_us_strategy_order", "rotate_us_token"],
 )
 mcp.mount()
 
