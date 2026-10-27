@@ -6,8 +6,8 @@
 실매매 보호 (어떤 경우에도 지킨다):
 1. broker SSE connected를 모르면 키움 웹소켓을 열지 않는다.
 2. broker SSE가 끊기면(broker 상태를 모름) 키움 연결을 닫고 그날 녹화 종료. broker의 키움 연결 끊김(disconnected)은 횟수만 세고 녹화는 계속한다 — 실매매 전략은 broker 실시간 연결을 쓰지 않기 때문(2026-10-15). ⚠ 실매매가 broker 실시간 연결(/events·/realtime·체결통보 구독)을 쓰기 시작하면 이 규칙을 다시 검토할 것. etl/tests/test_realtime_users.py 가 그 순간 실패한다.
-3. 녹화 연결이 close 1000으로 닫히면 충돌로 보고 그날 녹화 종료(재접속 금지).
-4. 토큰은 broker/.token_cache.us.json(:8003 미국 계좌 앱키) 읽기. 만료 시 :8003 `/us/deposit` 조회 1회로 broker-us 가 재발급하게 한다(키움 REST 직접 호출 없음). 앱키당 웹소켓 1개라 :8001 토큰을 쓰면 broker 재접속에 밀려난다(2026-10-26 실측). HTTP 요청은 로컬 broker(:8001) SSE 와 시작 시 상태 조회 1회뿐, 키움 REST 호출 없음.
+3. 녹화 연결이 close 1000으로 닫히면 충돌로 보고 그날 녹화 종료(재접속 금지). 단 그 시점 캐시 토큰이 만료면 만료로 닫힌 것으로 보고 재접속한다(2026-10-27 12:40 토큰 만료 종료 실측).
+4. 토큰은 broker/.token_cache.us.json(:8003 미국 계좌 앱키) 읽기. 만료 시 :8003 `/us/deposit` 조회 1회로 broker-us 가 재발급하게 한다(키움 REST 직접 호출 없음). 앱키당 웹소켓 1개라 :8001 토큰을 쓰면 broker 재접속에 밀려난다(2026-10-26 실측). HTTP 요청은 로컬 broker(:8001) SSE 와 시작 시 상태 조회 1회뿐, 키움 REST 호출 없음. 08:30 전 만료 예정이 녹화 창 안이면 :8003 `/us/token/rotate` 로 폐기·재발급, 만료로 1000 이 오면 재접속.
 """
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -202,6 +202,35 @@ def _refresh_us_token() -> None:
         pass
 
 
+def _rotate_us_token() -> None:
+    """:8003에 토큰 폐기·재발급 1회 요청 → 캐시 만료가 24시간 뒤로 미뤄진다."""
+    try:
+        requests.post(US_BROKER_URL + "/us/token/rotate", timeout=20)
+    except Exception:
+        pass
+
+
+def rotate_if_short(root: Path, now: float, end_epoch: float, rotate_fn=None) -> bool:
+    """캐시 토큰이 녹화 창 안에 만료 예정이면 회전 1회. 성공 시 True. 예외를 밖으로 던지지 않는다."""
+    try:
+        if load_token(root, now)[2] != "ok":
+            return False  # 만료·없음은 fresh_token 이 처리
+        data = json.loads((Path(root) / TOKEN_CACHE).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return False
+        try:
+            exp = float(data.get("expires_at") or 0)
+        except (TypeError, ValueError):
+            return False
+        if exp - TOKEN_SKEW > end_epoch:
+            return False
+        rotate = rotate_fn if rotate_fn is not None else _rotate_us_token
+        rotate()
+        return True
+    except Exception:
+        return False
+
+
 # broker-us 는 웹소켓을 안 열어 기동 때 토큰을 안 받는다 → 캐시가 없을 수도 있다 (PR #131 리뷰)
 REFRESH_REASONS = ("expired", "cache_unreadable")
 
@@ -219,8 +248,8 @@ def fresh_token(root: Path, now_fn=time.time, refresh_fn=None) -> tuple:
     return load_token(root, now_fn())
 
 
-def close_action(code, reconnects_so_far: int) -> str:
-    if code == 1000:
+def close_action(code, reconnects_so_far: int, token_expired: bool = False) -> str:
+    if code == 1000 and not token_expired:
         return "stop_kicked"
     if reconnects_so_far >= MAX_RECONNECTS:
         return "stop_limit"
@@ -568,6 +597,7 @@ async def run_recording(
     disk_ok_fn=None,
     out_dir=None,
     window_end=None,
+    token_expired_fn=None,
     flush_sec: float = FLUSH_SEC,
     disk_check_sec: float = DISK_CHECK_SEC,
 ) -> dict:
@@ -579,6 +609,13 @@ async def run_recording(
     notify_f = notify_fn or notify
     disk_f = disk_ok_fn or disk_ok
     token_f = load_token_fn or (lambda: fresh_token(REPO_ROOT))
+    expired_f = token_expired_fn or (lambda: load_token(REPO_ROOT, time.time())[2] == "expired")
+
+    def _expired() -> bool:
+        try:
+            return bool(expired_f())
+        except Exception:
+            return False
     now_f = now_fn or (lambda: datetime.now(KST))
     now_ns = now_ns_fn or time.time_ns
     sleep = sleep_fn or asyncio.sleep
@@ -666,7 +703,7 @@ async def run_recording(
                         code = sess.close_code
                     if gap_start is None:
                         gap_start, gap_code = now_ns(), code
-                    action = close_action(code, n)
+                    action = close_action(code, n, token_expired=(code == 1000 and _expired()))
                     if action == "reconnect":
                         stop = await _wait_backoff(backoff(n), watch, sleep, now_f, wend)
                         await _shut(sess)
@@ -687,7 +724,7 @@ async def run_recording(
                     if gap_start is None:
                         gap_start, gap_code = now_ns(), code
                     await _shut(sess)
-                    action = close_action(code, n)
+                    action = close_action(code, n, token_expired=(code == 1000 and _expired()))
                     if action == "reconnect":
                         stop = await _wait_backoff(backoff(n), watch, sleep, now_f, wend)
                         if stop is not None:
@@ -758,7 +795,7 @@ async def run_recording(
             await _shut(sess)
             if gap_start is None:
                 gap_start, gap_code = now_ns(), code
-            action = close_action(code, n)
+            action = close_action(code, n, token_expired=(code == 1000 and _expired()))
             if action == "reconnect":
                 stop = await _wait_backoff(backoff(n), watch, sleep, now_f, wend)
                 if stop is not None:
@@ -887,6 +924,9 @@ def _run(date: str, today: str) -> int:
             pass
         notify(msg, channel="batch")
         return 3
+    end_epoch = datetime.combine(now.date(), WINDOW_END).replace(tzinfo=KST).timestamp()
+    if rotate_if_short(REPO_ROOT, time.time(), end_epoch):
+        print(f"[orderbook_research] {date} 토큰 회전 (녹화 창 안 만료 예정)")
     start_dt = datetime.combine(now.date(), WINDOW_START).replace(tzinfo=KST)
     while datetime.now(KST) < start_dt:
         time.sleep(1)

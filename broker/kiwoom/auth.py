@@ -112,3 +112,38 @@ def get_token() -> str:
         return _token  # type: ignore[return-value]
     _issue(cfg)
     return _token  # type: ignore[return-value]
+
+
+def rotate_token() -> float:
+    """살아 있는 토큰을 폐기한 뒤 재발급해 만료를 미룬다. 새 expires_at(epoch) 반환.
+
+    살아 있는 토큰에 발급만 다시 부르면 같은 토큰·같은 만료가 돌아오므로
+    폐기(au10002) 후 발급해야 한다. 폐기 실패는 경고만 남기고 발급은 계속한다.
+    """
+    global _token, _expires_at
+    cfg = _config()
+    # 폐기할 토큰: 메모리 우선, 없으면 캐시 파일에서 같은 env 토큰 (만료 여부 무관)
+    tok = _token
+    if tok is None:
+        try:
+            data = json.loads(cfg.token_cache_path.read_text(encoding="utf-8"))
+            cached = data.get("token") if isinstance(data, dict) and data.get("env") == cfg.env else None
+            tok = cached if isinstance(cached, str) and cached else None
+        except (ValueError, OSError):
+            tok = None
+    if tok is not None:
+        try:
+            resp = httpx.post(
+                f"{cfg.rest_host}/oauth2/revoke",
+                json={"appkey": cfg.appkey, "secretkey": cfg.secretkey, "token": tok},
+                headers={"content-type": "application/json;charset=UTF-8"},
+                timeout=10.0,
+            )
+            if resp.json().get("return_code") not in (0, "0"):
+                logger.warning("kiwoom token revoke rejected (env=%s)", cfg.env)
+        except Exception as exc:  # 토큰 값은 로그에 남기지 않는다
+            logger.warning("kiwoom token revoke failed: %s", exc)
+    _token, _expires_at = None, 0.0
+    _issue(cfg)
+    logger.info("kiwoom token rotated (env=%s)", cfg.env)
+    return _expires_at

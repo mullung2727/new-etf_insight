@@ -26,6 +26,7 @@ from scripts.run_orderbook_research_recorder import (
     load_token,
     parse_real,
     pick_codes,
+    rotate_if_short,
     run_recording,
     _wait_backoff,
 )
@@ -382,11 +383,55 @@ class FreshTokenCase(_TmpCase):
         self.assertEqual(calls, [])
 
 
+class RotateIfShortCase(_TmpCase):
+    def _root(self, cache):
+        root = self.tmp / "root"
+        (root / "broker").mkdir(parents=True)
+        if cache is not None:
+            (root / "broker" / ".token_cache.us.json").write_text(json.dumps(cache), encoding="utf-8")
+        return root
+
+    def test_short_expiry_rotates(self):
+        root = self._root({"env": "paper", "token": "t", "expires_at": 5000})
+        calls = []
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            ok = rotate_if_short(root, 1000, 10000, rotate_fn=lambda: calls.append(1))
+        self.assertTrue(ok)
+        self.assertEqual(len(calls), 1)
+
+    def test_long_expiry_skips(self):
+        root = self._root({"env": "paper", "token": "t", "expires_at": 10000 + 86400})
+        calls = []
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            ok = rotate_if_short(root, 1000, 10000, rotate_fn=lambda: calls.append(1))
+        self.assertFalse(ok)
+        self.assertEqual(calls, [])
+
+    def test_expired_cache_skips(self):
+        root = self._root({"env": "paper", "token": "t", "expires_at": 1000})
+        calls = []
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            ok = rotate_if_short(root, 2000, 10000, rotate_fn=lambda: calls.append(1))
+        self.assertFalse(ok)
+        self.assertEqual(calls, [])
+
+    def test_rotate_error_swallowed(self):
+        root = self._root({"env": "paper", "token": "t", "expires_at": 5000})
+
+        def _boom():
+            raise RuntimeError("broker down")
+
+        with mock.patch.dict(os.environ, {"KIWOOM_ENV": "paper"}):
+            self.assertFalse(rotate_if_short(root, 1000, 10000, rotate_fn=_boom))
+
+
 class CloseBackoffCase(unittest.TestCase):
     def test_close_action(self):
         self.assertEqual(close_action(1000, 0), "stop_kicked")
         self.assertEqual(close_action(1006, 0), "reconnect")
         self.assertEqual(close_action(1006, 20), "stop_limit")
+        self.assertEqual(close_action(1000, 0, token_expired=True), "reconnect")
+        self.assertEqual(close_action(1000, 20, token_expired=True), "stop_limit")
 
     def test_backoff(self):
         self.assertEqual([backoff(i) for i in range(6)], [5, 10, 20, 60, 60, 60])
@@ -397,6 +442,7 @@ class LoopCase(_TmpCase):
     def _run(self, **kw):
         kw.setdefault("sleep_fn", _no_sleep)
         kw.setdefault("now_fn", _fixed_now)
+        kw.setdefault("token_expired_fn", lambda: False)  # 기본 False — 실제 캐시를 읽지 않게
         with mock.patch("asyncio.sleep", _no_sleep):
             return asyncio.run(run_recording(**kw))
 
@@ -443,6 +489,24 @@ class LoopCase(_TmpCase):
                         notify_fn=mock.Mock(), out_dir=self.tmp)
         self.assertEqual(len(connects), 1)
         self.assertEqual(res["reason"], "stop_kicked")
+
+    def test_b2_expired_1000_reconnects(self):
+        wss = []
+        async def _connect(url):
+            # 첫 연결: LOGIN·REG 응답 후 1000으로 닫힘, 두 번째: 응답 후 hang
+            ws = FakeWs(close_code=1000, hang=(len(wss) == 1))
+            wss.append(ws)
+            return ws
+        watch = FakeWatch(connected=True)
+        db = self.tmp / "day.sqlite3"
+        res = self._run(date="20261013", codes=["005930"], db_path=db, watch=watch,
+                        connect_fn=_connect,
+                        load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+                        token_expired_fn=lambda: True,
+                        notify_fn=mock.Mock(), out_dir=self.tmp,
+                        now_fn=_ticking_now(8))
+        self.assertGreaterEqual(len(wss), 2)  # 만료 1000은 밀려남이 아니라 재접속
+        self.assertNotEqual(res["reason"], "stop_kicked")
 
     def test_c_limit_1006(self):
         connects = []

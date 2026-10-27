@@ -91,6 +91,20 @@ def get_us_deposit() -> Any:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@router.post("/token/rotate", operation_id="rotate_us_token", summary="US 토큰 폐기 후 재발급 (리서치 녹화기 전용)")
+def rotate_us_token() -> Any:
+    """US 토큰을 폐기하고 재발급해 만료 시각을 미룬다. 새 만료 epoch 반환."""
+    # :8001·:8002는 국내 웹소켓이 같은 토큰을 써서 회전 금지 — US 계좌 broker(:8003)에서만.
+    if load_config().profile != "US":
+        raise HTTPException(status_code=422, detail="US 계좌 broker(KIWOOM_PROFILE=US)에서만 토큰 회전")
+    from kiwoom import auth
+    try:
+        expires_at = auth.rotate_token()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"expires_at": expires_at}
+
+
 @router.get("/fills", operation_id="get_us_fills", summary="미국 당일 주문체결 (키움 ust21510)")
 def get_us_fills() -> Any:
     """당일 주문·체결 목록을 반환한다."""
