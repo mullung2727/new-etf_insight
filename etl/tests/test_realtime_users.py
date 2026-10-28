@@ -64,7 +64,7 @@ US_ALLOWED = {
 }
 
 US_NEW_USAGE_MSG = (
-    "미국 실시간/조건검색을 쓰기 시작했다 — :8003 앱키는 리서치 녹화기가 웹소켓을 쓴다(docs/PLAN_RECORDER_US_APPKEY.md). 겹침 검토 후 이 테스트를 고칠 것"
+    "미국 실시간/조건검색을 쓰기 시작했다 — :8003 앱키는 리서치 녹화기가 웹소켓을 쓴다(docs/done/PLAN_RECORDER_US_APPKEY.md). 겹침 검토 후 이 테스트를 고칠 것"
 )
 
 
