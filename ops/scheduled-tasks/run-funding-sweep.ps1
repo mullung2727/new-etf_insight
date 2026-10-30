@@ -22,8 +22,10 @@ $ErrorActionPreference = "Continue"
 $code = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
 
-# Exit contract with funding_engine.py: 0 ok; 1 python already sent the FAIL
-# alert (no duplicate from the runner); 2 the alert itself failed.
-if ($code -eq 2) { exit 2 }
-if ($code -ne 0) { exit 1 }
-exit 0
+# Exit contract with funding_engine.py: 0 ok; 3 python already sent FAIL
+# alert (no duplicate from the runner); other codes need fallback notify.
+if ($code -eq 0) { exit 0 }
+if ($code -eq 3) { exit 1 }
+# Fallback notify for unreported failures (1, 2, other) then exit 1.
+& ".venv\Scripts\python.exe" -c "import sys; sys.path.insert(0, 'scripts'); from dotenv import load_dotenv; load_dotenv('../.env'); from notify import send_discord; send_discord(sys.argv[1])" "FAIL funding-sweep exit $code - see logs\funding-sweep-$date.log"
+exit 1

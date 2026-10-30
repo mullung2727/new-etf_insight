@@ -229,6 +229,10 @@ class FundingEngineTest(unittest.TestCase):
         self.assertIsNone(
             fe.cash_view(None, {"rebound": {"reserve": 100}}, []))
 
+    def test_cash_view_none_reservations_fail_closed(self):
+        self.assertEqual(fe.cash_view(10000000, None, []), 0)
+        self.assertIsNone(fe.cash_view(None, None, []))
+
     def test_cash_view_negative_floor(self):
         self.assertEqual(
             fe.cash_view(100, {"rebound": {"reserve": 500}}, []), 0)
@@ -265,6 +269,9 @@ class FundingEngineTest(unittest.TestCase):
         self.assertEqual(out2["etf_value"], 0)
 
 
+_UNSET_RESERVATIONS: object = object()
+
+
 class FakeIO:
     """request_funds 가짜 IO — 네트워크·실제 sleep 없음.
 
@@ -273,12 +280,14 @@ class FakeIO:
     fills_plan 은 fills 호출 순서대로 반환할 값 목록(마지막 반복).
     """
 
-    def __init__(self, *, cash=0, reservations=None, balance_qty=0,
-                 ref_price=0, now=None, sells=None, fills_plan=None,
-                 ask=None, buys=None, buy_fills_plan=None):
+    def __init__(self, *, cash=0, reservations=_UNSET_RESERVATIONS,
+                 balance_qty=0, ref_price=0, now=None, sells=None,
+                 fills_plan=None, ask=None, buys=None, buy_fills_plan=None,
+                 cancel_plan=None):
         self._cash = cash
         self._cash_i = 0
-        self._reservations = {} if reservations is None else reservations
+        self._reservations = {} if reservations is _UNSET_RESERVATIONS \
+            else reservations
         self._balance_qty = balance_qty
         self._ref_price = ref_price
         self._now = now or datetime(2026, 1, 5, 9, 30)
@@ -287,6 +296,7 @@ class FakeIO:
         self._ask = ask
         self._buys = list(buys or [])
         self._buy_fills = list(buy_fills_plan or [])
+        self._cancels = list(cancel_plan or [])
         self.sell_calls = []
         self.fills_calls = []
         self.ref_calls = []
@@ -294,6 +304,7 @@ class FakeIO:
         self.buy_calls = []
         self.buy_fills_calls = []
         self.reserve_calls = []
+        self.cancel_calls = []
 
     def cash(self):
         v = self._cash
@@ -335,6 +346,15 @@ class FakeIO:
             return {}
         return self._buy_fills[min(len(self.buy_fills_calls) - 1,
                                    len(self._buy_fills) - 1)]
+
+    def cancel_sell(self, order_no):
+        self.cancel_calls.append(order_no)
+        if not self._cancels:
+            return {"order_no": order_no, "status": "cancelled"}
+        r = dict(self._cancels[min(len(self.cancel_calls) - 1,
+                                   len(self._cancels) - 1)])
+        r.setdefault("order_no", order_no)
+        return r
 
     def ask(self):
         return self._ask
@@ -444,10 +464,11 @@ class RequestFundsTest(unittest.TestCase):
         out = self._request(5000000, io, 10000000)
         self.assertGreaterEqual((io.now() - start).total_seconds(), 240)
         self.assertEqual(self._orders(),
-                         [("S1", "submitted", 0, None),
+                         [("S1", "cancelled", 0, None),
                           ("S2", "submitted", 0, None)])
         self.assertTrue(any("미체결" in n for n in out["notes"]))
         self.assertEqual(io.sell_calls, [2, 2])
+        self.assertEqual(io.cancel_calls, ["S1"])
         self.assertEqual(out["granted"], 3000000)
 
     def test_low_fill_price_retries_once(self):
@@ -529,13 +550,14 @@ class RequestFundsTest(unittest.TestCase):
                     fills_plan=[{"S1": {"qty": 2, "price": 1073000}}])
         out = self._request(10000000, io, 10000000)
         self.assertEqual(out["sold_qty"], 2)
-        self.assertEqual(io.reserve_calls, [(10000000, 10000000)])
+        self.assertEqual(io.reserve_calls,
+                         [(7860000, 10000000), (10000000, 10000000)])
 
     def test_no_sell_no_reservation_sync(self):
         io = FakeIO(cash=4000000, ref_price=1073485)
         out = self._request(3000000, io, 5000000)
         self.assertEqual(out["sold_qty"], 0)
-        self.assertEqual(io.reserve_calls, [])
+        self.assertEqual(io.reserve_calls, [(5000000, 5000000)])
 
     def test_sell_dry_run_records_nothing(self):
         self._buy_filled("b1", 2, 1070000)
@@ -545,6 +567,60 @@ class RequestFundsTest(unittest.TestCase):
         self.assertEqual(out["notes"], ["DRY-RUN ETF 매도 2주"])
         self.assertEqual(out["filled_qty"], 0)
         self.assertEqual(self._orders(), [])
+
+    def test_none_reservations_cash_zero(self):
+        io = FakeIO(cash=5000000, reservations=None, ref_price=1073485)
+        out = self._request(3000000, io, 5000000)
+        self.assertEqual(out["granted"], 0)
+        self.assertTrue(any("팔 ETF 없음" in n for n in out["notes"]))
+
+    def test_unfilled_cancels_first_then_retries(self):
+        self._buy_filled("b1", 4, 1070000)
+        start = datetime(2026, 1, 5, 9, 30)
+        io = FakeIO(cash=3000000, balance_qty=4, ref_price=1073485,
+                    now=start,
+                    sells=[{"order_no": "S1", "status": "submitted"},
+                           {"order_no": "S2", "status": "submitted"}],
+                    fills_plan=[{}])
+        out = self._request(5000000, io, 10000000)
+        self.assertEqual(io.cancel_calls, ["S1"])
+        self.assertEqual(io.sell_calls, [2, 2])
+        self.assertEqual(self._orders(),
+                         [("S1", "cancelled", 0, None),
+                          ("S2", "submitted", 0, None)])
+        self.assertEqual(out["granted"], 3000000)
+
+    def test_cancel_failure_skips_second_sell(self):
+        self._buy_filled("b1", 4, 1070000)
+        start = datetime(2026, 1, 5, 9, 30)
+        io = FakeIO(cash=3000000, balance_qty=4, ref_price=1073485,
+                    now=start,
+                    sells=[{"order_no": "S1", "status": "submitted"},
+                           {"order_no": "S2", "status": "submitted"}],
+                    fills_plan=[{}],
+                    cancel_plan=[{"status": "failed"}])
+        out = self._request(5000000, io, 10000000)
+        self.assertEqual(io.cancel_calls, ["S1"])
+        self.assertEqual(io.sell_calls, [2])
+        self.assertIn("⚠ 첫 ETF 매도 취소 실패 — 추가 매도 안 함(이중 매도 방지)",
+                      out["notes"])
+
+    def test_cancelled_partial_first_records_pnl(self):
+        self._buy_filled("b1", 4, 1070000)
+        start = datetime(2026, 1, 5, 9, 30)
+        io = FakeIO(cash=3000000, balance_qty=4, ref_price=1073485,
+                    now=start,
+                    sells=[{"order_no": "S1", "status": "submitted"},
+                           {"order_no": "S2", "status": "submitted"}],
+                    fills_plan=[{"S1": {"qty": 1, "price": 1073000}}])
+        out = self._request(10000000, io, 10000000)
+        self.assertEqual(io.sell_calls, [4, 3])
+        self.assertEqual(io.cancel_calls, ["S1"])
+        self.assertEqual(self._orders(),
+                         [("S1", "cancelled", 1, 1073000.0),
+                          ("S2", "submitted", 0, None)])
+        self.assertEqual(fe.pnl_since(self.db, "rebound", ""), 3000)
+        self.assertEqual(out["sold_qty"], 1)
 
 
 class SweepTest(unittest.TestCase):
@@ -657,6 +733,27 @@ class SweepTest(unittest.TestCase):
                          [f"DRY-RUN ETF 매수 4주 @{self.PX:,}",
                           f"DRY-RUN ETF 매수 2주 @{self.PX:,}"])
 
+    def test_none_reservations_no_order(self):
+        self._set_unused(a=7000000)
+        io = FakeIO(cash=8000000, reservations=None, ask=self.ASK,
+                    buys=[{"order_no": "B1", "status": "submitted"}])
+        with mock.patch.dict(os.environ, {"MAX_ORDER_AMOUNT": "10000000"}):
+            out = fe.sweep(self.db, io=io, today=self.DATE)
+        self.assertEqual(out["ordered_qty"], 0)
+        self.assertEqual(io.buy_calls, [])
+
+    def test_cap_below_one_share_skips(self):
+        self._set_unused(a=7000000)
+        io = FakeIO(cash=8000000, ask=self.ASK,
+                    buys=[{"order_no": "B1", "status": "submitted"}])
+        with mock.patch.dict(os.environ, {"MAX_ORDER_AMOUNT": "1000000"}):
+            out = fe.sweep(self.db, io=io, today=self.DATE)
+        self.assertEqual(out["ordered_qty"], 0)
+        self.assertEqual(io.buy_calls, [])
+        self.assertIn(f"⚠ 1건 상한 1,000,000 < 1주 {self.PX:,} — 매수 안 함"
+                      " (MAX_ORDER_AMOUNT 확인)", out["notes"])
+        self.assertEqual(len(io.reserve_calls), 1)
+
 
 class ConfirmBuysTest(unittest.TestCase):
     DATE = "20260105"
@@ -675,10 +772,11 @@ class ConfirmBuysTest(unittest.TestCase):
             fe.add_member(self.db, strat, "20260101")
             fe.set_unused(self.db, strat, amt, f"{self.DATE}T090000")
 
-    def _buy_order(self, order_no, qty, status="submitted"):
-        fe.record_order(self.db, date=self.DATE, side="buy", qty=qty,
+    def _buy_order(self, order_no, qty, status="submitted", date=None):
+        d = date or self.DATE
+        fe.record_order(self.db, date=d, side="buy", qty=qty,
                         price=self.PX, order_no=order_no, status=status,
-                        reason="sweep", created=f"{self.DATE}T152100")
+                        reason="sweep", created=f"{d}T152100")
 
     def _buy_state(self, order_no):
         with connect_ro(self.db) as con:
@@ -702,7 +800,7 @@ class ConfirmBuysTest(unittest.TestCase):
 
     def test_expired_unfilled_cancelled(self):
         self._set_unused(a=7000000)
-        self._buy_order("B1", 4)
+        self._buy_order("B1", 4, date="20260104")
         io = FakeIO(now=datetime(2026, 1, 5, 15, 31),
                     buy_fills_plan=[{}])
         out = fe.confirm_buys(self.db, io=io, today=self.DATE)
@@ -802,7 +900,7 @@ class FundingEngineMainTest(unittest.TestCase):
                         msg.splitlines()[0])
         self.assertIn("⚠ ETF 매수 거부: 잔고 부족", msg)
 
-    def test_sweep_exception_fail_alert_returns_1(self):
+    def test_sweep_exception_fail_alert_returns_3(self):
         io = FakeIO(now=self.NOW)
         with mock.patch.object(fe, "load_dotenv"), \
                 mock.patch.object(fe, "is_krx_trading_day",
@@ -813,7 +911,7 @@ class FundingEngineMainTest(unittest.TestCase):
                 mock.patch.object(fe, "send_strategy_alert",
                                   return_value=True) as m_alert:
             rc = fe.main([])
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 3)
         msg = m_alert.call_args[0][0]
         self.assertTrue(msg.startswith("❌ 자금엔진 15:21 마감매수 — "),
                         msg.splitlines()[0])
