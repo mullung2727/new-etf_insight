@@ -30,6 +30,7 @@ from check_krx_trading_day import is_krx_trading_day
 from trading_batch_common import now_seoul, read_reservations
 from wl_sqlite import connect_ro, connect_rw
 from new_etf_insight.data_paths import db_dir
+import funding_engine as fe
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows cp949 크래시 가드
@@ -234,11 +235,22 @@ def _fmt_num(value) -> str:
         return str(value)
 
 
-def status_lines(strategies=None, balance_fn=None, db_path=None) -> list[str]:
+def status_lines(strategies=None, balance_fn=None, db_path=None, funding_db=None) -> list[str]:
     """status 출력 한 줄씩. 전략별 capital/since/extra/예약 → 계좌별 총자산·시드합 → 최근 리셋 5건."""
     strategies = STRATEGIES if strategies is None else strategies
     balance_fn = fetch_total_assets if balance_fn is None else balance_fn
     db = DB if db_path is None else Path(db_path)
+    if funding_db is None:
+        funding_db = fe.DB
+    else:
+        funding_db = Path(funding_db)
+    if Path(funding_db).exists():
+        engine_members = fe.members(funding_db)
+    else:
+        engine_members = []
+    engine_url = None
+    if engine_members and engine_members[0] in strategies:
+        engine_url = strategies[engine_members[0]][0]
     lines: list[str] = []
     per_account: dict[str, dict[str, int]] = {}
     for name, entry in strategies.items():
@@ -262,7 +274,9 @@ def status_lines(strategies=None, balance_fn=None, db_path=None) -> list[str]:
         except Exception:
             all_reservations = {}
         slot = all_reservations.get(name)
-        if isinstance(slot, dict) and "reserve" in slot:
+        if name in engine_members:
+            line += f" · 엔진 경유 — 안 쓴 몫 {fe.unused_of(funding_db, name):,} (엔진 원장)"
+        elif isinstance(slot, dict) and "reserve" in slot:
             line += (
                 f" · 예산 {_fmt_num(slot.get('capital_total'))}"
                 f" · 안 쓴 몫 {_fmt_num(slot.get('reserve'))}"
@@ -284,6 +298,24 @@ def status_lines(strategies=None, balance_fn=None, db_path=None) -> list[str]:
             f"[계좌 {url}] 총자산={total} "
             f"시드합={seed_total}(capital {account['seed']}+extra {account['extra']})",
         )
+        if engine_members and url == engine_url:
+            try:
+                engine_reservations = read_reservations(url) or {}
+            except Exception:
+                engine_reservations = {}
+            engine_slot = engine_reservations.get(fe.ENGINE_KEY)
+            position = fe.etf_position(funding_db)
+            if isinstance(engine_slot, dict) and "reserve" in engine_slot:
+                engine_part = (
+                    f"예약(engine) {_fmt_num(engine_slot.get('reserve'))}"
+                    f" (마지막 {engine_slot.get('updated')})"
+                )
+            else:
+                engine_part = "예약(engine) 미기록"
+            lines.append(
+                f"[엔진 {url}] CD ETF {position['qty']}주 원가 {position['cost']:,}"
+                f" · {engine_part} · 참여 {', '.join(engine_members)}"
+            )
         if total is not None and seed_total > total:
             lines.append("⚠️ 전략 시드 합이 총자산 초과")
     history = None
