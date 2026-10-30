@@ -284,7 +284,7 @@ def cash_view(account_cash: int | None, reservations: dict | None,
     if account_cash is None:
         return None
     if reservations is None:
-        return 0
+        return None
     skip = set(member_names) | {ENGINE_KEY}
     total = 0
     for name, v in reservations.items():
@@ -331,7 +331,7 @@ class LiveIO:
         return available_cash(self._url, exclude_reserve=False)
 
     def reservations(self) -> dict | None:
-        data, corrupt = _load_reservation_file()
+        _data, corrupt = _load_reservation_file()
         if corrupt:
             return None
         return read_reservations(self._url)
@@ -414,7 +414,7 @@ def _record_sell_pnl(db: Path, order_no: str, date: str, fq: int,
 
 def _sell_and_confirm(db: Path, qty: int, *, io, today: str,
                       preopen: bool, reason: str) -> dict:
-    """ETF 시장가 매도 후 체결 확인. {"filled_qty", "avg_price", "notes", "order_no"}."""
+    """ETF 시장가 매도 후 체결 확인. {"filled_qty", "avg_price", "notes", "order_no", "recorded"}."""
     notes: list[str] = []
     # P0 실측 대기: 장전 시장가가 안 되면 하한가 지정가로 대체 (PLAN_FUNDING_ENGINE P0-3)
     r = io.sell_market(qty)
@@ -423,12 +423,12 @@ def _sell_and_confirm(db: Path, qty: int, *, io, today: str,
     if status == "dry_run":
         notes.append(f"DRY-RUN ETF 매도 {qty}주")
         return {"filled_qty": 0, "avg_price": None, "notes": notes,
-                "order_no": order_no}
+                "order_no": order_no, "recorded": False}
     if status == "submitted":
         if not order_no:
             notes.append("⚠ ETF 매도 접수번호 없음 — 수동 확인")
             return {"filled_qty": 0, "avg_price": None, "notes": notes,
-                    "order_no": order_no}
+                    "order_no": order_no, "recorded": False}
         record_order(db, date=today, side="sell", qty=qty, price=0,
                      order_no=order_no, status="submitted", reason=reason,
                      created=io.now().isoformat())
@@ -439,11 +439,11 @@ def _sell_and_confirm(db: Path, qty: int, *, io, today: str,
                          order_no=order_no, status="unknown", reason=reason,
                          created=io.now().isoformat())
         return {"filled_qty": 0, "avg_price": None, "notes": notes,
-                "order_no": order_no}
+                "order_no": order_no, "recorded": bool(order_no)}
     else:
         notes.append(f"⚠ ETF 매도 거부: {r.get('message', '')}")
         return {"filled_qty": 0, "avg_price": None, "notes": notes,
-                "order_no": order_no}
+                "order_no": order_no, "recorded": False}
     if preopen:
         hh, mm, ss = (int(p) for p in PREOPEN_FILL_AT.split(":"))
         target = io.now().replace(hour=hh, minute=mm, second=ss,
@@ -480,7 +480,7 @@ def _sell_and_confirm(db: Path, qty: int, *, io, today: str,
         # 전량 체결 시에만 기록; 부분이면 reconcile 이 최종 시점에 기록
         _record_sell_pnl(db, order_no, today, fq, avg, pos)
     return {"filled_qty": fq, "avg_price": avg, "notes": notes,
-            "order_no": order_no}
+            "order_no": order_no, "recorded": True}
 
 
 def request_funds(db: Path, strategy: str, amount: int, *, io, today: str,
@@ -548,7 +548,7 @@ def request_funds(db: Path, strategy: str, amount: int, *, io, today: str,
         if k2 > 0:
             first_no = first.get("order_no") or ""
             proceed = True
-            if first["filled_qty"] < k and first_no:
+            if first["filled_qty"] < k and first.get("recorded"):
                 cancel_r = io.cancel_sell(first_no)
                 if cancel_r.get("status") == "cancelled":
                     pos = etf_position(db)
