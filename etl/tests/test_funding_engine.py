@@ -723,5 +723,119 @@ class ConfirmBuysTest(unittest.TestCase):
                          [(7000000 - 4 * self.PX, 7000000)])
 
 
+class FundingEngineMainTest(unittest.TestCase):
+    """main() 15:21 진입점 테스트 — 전부 patch, 네트워크·sleep 없음."""
+
+    NOW = datetime(2026, 10, 30, 15, 31, 5)  # confirm-at 지난 시각 → 대기 없음
+
+    def test_non_trading_day_skips(self):
+        with mock.patch.object(fe, "load_dotenv"), \
+                mock.patch.object(fe, "is_krx_trading_day",
+                                  return_value=False), \
+                mock.patch.object(fe, "sweep") as m_sweep, \
+                mock.patch.object(fe, "confirm_buys") as m_confirm, \
+                mock.patch.object(fe, "send_strategy_alert") as m_alert:
+            rc = fe.main([])
+        self.assertEqual(rc, 0)
+        self.assertEqual(m_sweep.call_count, 0)
+        self.assertEqual(m_confirm.call_count, 0)
+        self.assertEqual(m_alert.call_count, 0)
+
+    def test_normal_ok_headline_and_order(self):
+        io = FakeIO(now=self.NOW)
+        mgr = mock.Mock()
+        with mock.patch.object(fe, "load_dotenv"), \
+                mock.patch.object(fe, "is_krx_trading_day",
+                                  return_value=True), \
+                mock.patch.object(fe, "LiveIO", return_value=io) as m_live, \
+                mock.patch.object(
+                    fe, "sweep",
+                    return_value={"ordered_qty": 6, "notes": []}) as m_sweep, \
+                mock.patch.object(
+                    fe, "confirm_buys",
+                    return_value={"filled_qty": 6, "notes": []}) as m_confirm, \
+                mock.patch.object(
+                    fe, "etf_position",
+                    return_value={"qty": 10, "cost": 10700000}), \
+                mock.patch.object(fe, "send_strategy_alert",
+                                  return_value=True) as m_alert:
+            mgr.attach_mock(m_sweep, "sweep")
+            mgr.attach_mock(m_confirm, "confirm_buys")
+            rc = fe.main([])
+        self.assertEqual(rc, 0)
+        m_live.assert_called_once_with("http://localhost:8001", dry_run=False)
+        mgr.assert_has_calls([
+            mock.call.sweep(fe.DB, io=io, today=mock.ANY),
+            mock.call.confirm_buys(fe.DB, io=io, today=mock.ANY),
+        ])
+        self.assertEqual(io.sleeps, [])
+        self.assertEqual(m_alert.call_count, 1)
+        msg, env = m_alert.call_args[0]
+        self.assertEqual(env, "FUNDING_DISCORD_WEBHOOK_URL")
+        self.assertTrue(msg.startswith("✅ 자금엔진 15:21 마감매수 — "),
+                        msg.splitlines()[0])
+        for part in ("매수 주문: 6주", "체결: 6주", "보유: 10주",
+                     "10,700,000"):
+            self.assertIn(part, msg)
+
+    def test_warn_headline_on_warning_note(self):
+        io = FakeIO(now=self.NOW)
+        with mock.patch.object(fe, "load_dotenv"), \
+                mock.patch.object(fe, "is_krx_trading_day",
+                                  return_value=True), \
+                mock.patch.object(fe, "LiveIO", return_value=io), \
+                mock.patch.object(
+                    fe, "sweep",
+                    return_value={"ordered_qty": 0,
+                                  "notes": ["⚠ ETF 매수 거부: 잔고 부족"]}), \
+                mock.patch.object(
+                    fe, "confirm_buys",
+                    return_value={"filled_qty": 0, "notes": []}), \
+                mock.patch.object(fe, "etf_position",
+                                  return_value={"qty": 0, "cost": 0}), \
+                mock.patch.object(fe, "send_strategy_alert",
+                                  return_value=True) as m_alert:
+            rc = fe.main([])
+        self.assertEqual(rc, 0)
+        msg = m_alert.call_args[0][0]
+        self.assertTrue(msg.startswith("⚠ 자금엔진 15:21 마감매수 — "),
+                        msg.splitlines()[0])
+        self.assertIn("⚠ ETF 매수 거부: 잔고 부족", msg)
+
+    def test_sweep_exception_fail_alert_returns_1(self):
+        io = FakeIO(now=self.NOW)
+        with mock.patch.object(fe, "load_dotenv"), \
+                mock.patch.object(fe, "is_krx_trading_day",
+                                  return_value=True), \
+                mock.patch.object(fe, "LiveIO", return_value=io), \
+                mock.patch.object(fe, "sweep",
+                                  side_effect=RuntimeError("boom")), \
+                mock.patch.object(fe, "send_strategy_alert",
+                                  return_value=True) as m_alert:
+            rc = fe.main([])
+        self.assertEqual(rc, 1)
+        msg = m_alert.call_args[0][0]
+        self.assertTrue(msg.startswith("❌ 자금엔진 15:21 마감매수 — "),
+                        msg.splitlines()[0])
+
+    def test_alert_failure_returns_2(self):
+        cases = [
+            {"side_effect": RuntimeError("webhook down")},
+            {"return_value": False},
+        ]
+        for kw in cases:
+            with self.subTest(kw=kw):
+                io = FakeIO(now=self.NOW)
+                with mock.patch.object(fe, "load_dotenv"), \
+                        mock.patch.object(fe, "is_krx_trading_day",
+                                          return_value=True), \
+                        mock.patch.object(fe, "LiveIO", return_value=io), \
+                        mock.patch.object(fe, "sweep",
+                                          side_effect=RuntimeError("boom")), \
+                        mock.patch.object(fe, "send_strategy_alert", **kw):
+                    rc = fe.main([])
+                self.assertEqual(rc, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

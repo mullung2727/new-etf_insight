@@ -1169,6 +1169,36 @@
       }
     },
     {
+      "id": "7f2a9c4e-1b5d-4e8a-9f3c-6d0e2a8b5c1d",
+      "name": "funding-sweep",
+      "description": "Mon-Fri 15:21; shared funding engine — sweep idle cash into CD ETF at closing auction, confirm fills 15:31",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "21 15 * * 1-5",
+        "tz": "Asia/Seoul"
+      },
+      "instructionFile": "docs/PLAN_FUNDING_ENGINE.md",
+      "timeoutSeconds": 1200,
+      "runNote": "Windows Task Scheduler is authoritative. Added 2026-10-30.",
+      "windowsTask": {
+        "enabled": true,
+        "taskPath": "\\new-etf_insight\\",
+        "taskName": "funding-sweep",
+        "xmlFile": "ops/scheduled-tasks/funding-sweep.xml",
+        "runnerScript": "ops/scheduled-tasks/run-funding-sweep.ps1",
+        "delivery": {
+          "kind": "discordWebhook",
+          "env": "DISCORD_WEBHOOK_URL"
+        }
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "discord",
+        "to": "1513799139715190854"
+      }
+    },
+    {
       "id": "27b8d4c6-75d7-42ce-aafc-0b61843d0d7e",
       "name": "rights-dip-monitor",
       "description": "Mon-Fri 17:00; rights-dip monitor (no orders)",
