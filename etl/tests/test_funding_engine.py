@@ -230,7 +230,7 @@ class FundingEngineTest(unittest.TestCase):
             fe.cash_view(None, {"rebound": {"reserve": 100}}, []))
 
     def test_cash_view_none_reservations_fail_closed(self):
-        self.assertEqual(fe.cash_view(10000000, None, []), 0)
+        self.assertIsNone(fe.cash_view(10000000, None, []))
         self.assertIsNone(fe.cash_view(None, None, []))
 
     def test_cash_view_negative_floor(self):
@@ -568,11 +568,22 @@ class RequestFundsTest(unittest.TestCase):
         self.assertEqual(out["filled_qty"], 0)
         self.assertEqual(self._orders(), [])
 
-    def test_none_reservations_cash_zero(self):
+    def test_dry_run_sell_skips_cancel(self):
+        self._buy_filled("b1", 4, 1070000)
+        io = FakeIO(cash=3000000, balance_qty=4, ref_price=1073485,
+                    sells=[{"order_no": "DRY_1", "status": "dry_run"},
+                           {"order_no": "DRY_2", "status": "dry_run"}])
+        out = self._request(5000000, io, 10000000)
+        self.assertEqual(io.sell_calls, [2, 2])
+        self.assertEqual(io.cancel_calls, [])
+        self.assertFalse(any("취소 실패" in n for n in out["notes"]))
+
+    def test_none_reservations_no_sell(self):
         io = FakeIO(cash=5000000, reservations=None, ref_price=1073485)
         out = self._request(3000000, io, 5000000)
         self.assertEqual(out["granted"], 0)
-        self.assertTrue(any("팔 ETF 없음" in n for n in out["notes"]))
+        self.assertEqual(io.sell_calls, [])
+        self.assertIn("⚠ 주문가능 조회 실패", out["notes"])
 
     def test_unfilled_cancels_first_then_retries(self):
         self._buy_filled("b1", 4, 1070000)
@@ -741,6 +752,7 @@ class SweepTest(unittest.TestCase):
             out = fe.sweep(self.db, io=io, today=self.DATE)
         self.assertEqual(out["ordered_qty"], 0)
         self.assertEqual(io.buy_calls, [])
+        self.assertIn("⚠ 주문가능 조회 실패", out["notes"])
 
     def test_cap_below_one_share_skips(self):
         self._set_unused(a=7000000)
