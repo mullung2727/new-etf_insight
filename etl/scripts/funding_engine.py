@@ -3,9 +3,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import _bootstrap  # noqa: F401
 
 """공용 자금 엔진 1단계 — 엔진 원장 (ETF 주문·체결·보유·손익 기록·조회)."""
+import argparse
 import math
 import os
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +20,11 @@ from trading_batch_common import (
     write_reservation as _file_write_reservation,
 )
 from run_close_bet_exit import fetch_balance
+from dotenv import load_dotenv
+from check_krx_trading_day import is_krx_trading_day
+from notify import (
+    send_strategy_alert, headline, HEADLINE_OK, HEADLINE_WARN, HEADLINE_FAIL,
+)
 
 ETF_TICKER = "459580"  # KODEX CD금리액티브(합성)
 DB = db_dir() / "funding.sqlite3"
@@ -636,3 +643,65 @@ def confirm_buys(db: Path, *, io, today: str) -> dict:
         total += fq
     sync_reservation(db, io=io, today=today)
     return {"filled_qty": total, "notes": notes}
+
+
+def main(argv=None) -> int:
+    """15:21 마감매수 진입점 — sweep → confirm 시각까지 대기 → confirm → 알림.
+
+    종료 코드: 0 정상(휴장일 skip 포함), 1 예외 발생(FAIL 알림 보냄 —
+    러너 중복 알림 금지), 2 알림 자체 실패(러너가 대신 알림).
+    """
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    parser = argparse.ArgumentParser(description="공용 자금 엔진 15:21 마감매수")
+    parser.add_argument("--broker-url", default="http://localhost:8001")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--confirm-at", default="15:31:00")
+    args = parser.parse_args(argv)
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    today = now_seoul().strftime("%Y%m%d")
+    if not is_krx_trading_day(today):
+        print(f"[funding] {today}: 휴장일 — sweep skip (알림 없음)")
+        return 0
+    try:
+        io = LiveIO(args.broker_url, dry_run=args.dry_run)
+        s = sweep(DB, io=io, today=today)
+        hh, mm, ss = (int(p) for p in args.confirm_at.split(":"))
+        target = io.now().replace(hour=hh, minute=mm, second=ss,
+                                  microsecond=0)
+        while True:
+            remaining = (target - io.now()).total_seconds()
+            if remaining <= 0:
+                break
+            io.sleep(min(remaining, 30))
+        c = confirm_buys(DB, io=io, today=today)
+        notes = list(s.get("notes", [])) + list(c.get("notes", []))
+        pos = etf_position(DB)
+        mark = (HEADLINE_WARN
+                if any(n.startswith("⚠") for n in notes)
+                else HEADLINE_OK)
+        result = f"주문 {s['ordered_qty']}주·체결 {c['filled_qty']}주"
+        body = "\n".join([
+            f"매수 주문: {s['ordered_qty']}주",
+            f"체결: {c['filled_qty']}주",
+            f"보유: {pos['qty']}주 (원가 {pos['cost']:,}원)",
+            *notes,
+        ])
+        msg = headline(mark, "자금엔진", "15:21 마감매수", result, body)
+        print(msg)
+        send_strategy_alert(msg, "FUNDING_DISCORD_WEBHOOK_URL")
+        return 0
+    except Exception:
+        traceback.print_exc()
+        try:
+            fail_msg = headline(
+                HEADLINE_FAIL, "자금엔진", "15:21 마감매수", "예외 발생",
+                traceback.format_exc(limit=5)[-1500:])
+            ok = send_strategy_alert(fail_msg, "FUNDING_DISCORD_WEBHOOK_URL")
+        except Exception:
+            return 2
+        return 1 if ok else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
