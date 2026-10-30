@@ -18,6 +18,7 @@ from scripts.strategy_budget import (
     write_config,
 )
 from scripts import strategy_budget as sb
+from scripts import funding_engine as fe
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -322,6 +323,155 @@ class StatusBudgetLineTest(unittest.TestCase):
             self.assertIn("안 쓴 몫 1,500,000", by_name["rights_dip"])
             self.assertIn("예산 미기록", by_name["envelope"])
             self.assertIn("시드 보류", by_name["jevq"])
+
+
+class StatusEngineLineTest(unittest.TestCase):
+    def _engine_db(self, tmp: Path) -> Path:
+        funding_db = tmp / "funding.sqlite3"
+        fe.ensure(funding_db)
+        fe.add_member(funding_db, "rights_dip", "20261014")
+        fe.set_unused(funding_db, "rights_dip", 3000000, "2026-10-14T15:00:00+09:00")
+        fe.record_order(
+            funding_db, date="20261014", side="buy", qty=2, price=1070000,
+            order_no="E0001", status="submitted",
+            created="2026-10-14T10:00:00+09:00",
+        )
+        fe.update_fill(funding_db, "E0001", status="filled",
+                       filled_qty=2, filled_price=1070000.0)
+        return funding_db
+
+    def _two_strategies(self, tmp: Path) -> dict:
+        strategies = {}
+        cfgs = {
+            "rights_dip": {"capital": 2000000, "capital_since": "20261015"},
+            "rebound": {"capital": 6000000, "capital_since": "20261015"},
+        }
+        for name, payload in cfgs.items():
+            cfg = tmp / f"{name}.json"
+            _write_json(cfg, payload)
+            strategies[name] = ("http://127.0.0.1:8001", str(cfg))
+        return strategies
+
+    def test_engine_member_and_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            funding_db = self._engine_db(tmpdir)
+            strategies = self._two_strategies(tmpdir)
+            slots = {
+                "rights_dip": {
+                    "reserve": 0, "capital_total": 0,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+                "rebound": {
+                    "reserve": 5000000, "capital_total": 6100000,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+                "engine": {
+                    "reserve": 860000, "capital_total": 3000000,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+            }
+            with patch.object(sb, "read_reservations", return_value=slots):
+                lines = status_lines(
+                    strategies=strategies,
+                    balance_fn=lambda url: 10 ** 12,
+                    db_path=str(tmpdir / "watchlist.sqlite3"),
+                    funding_db=str(funding_db),
+                )
+            by_name = {}
+            for line in lines:
+                for name in ("rights_dip", "rebound"):
+                    if line.startswith(f"{name}:"):
+                        by_name[name] = line
+            self.assertIn("엔진 경유 — 안 쓴 몫 3,000,000", by_name["rights_dip"])
+            self.assertIn("(엔진 원장)", by_name["rights_dip"])
+            self.assertNotIn("마지막 배치", by_name["rights_dip"])
+            self.assertIn("안 쓴 몫 5,000,000", by_name["rebound"])
+            engine_lines = [line for line in lines if line.startswith("[엔진 ")]
+            self.assertEqual(len(engine_lines), 1)
+            self.assertIn("[엔진 http://127.0.0.1:8001]", engine_lines[0])
+            self.assertIn("CD ETF 2주 원가 2,140,000", engine_lines[0])
+            self.assertIn("예약(engine) 860,000", engine_lines[0])
+            self.assertIn("(마지막 2026-10-14T15:00:00+09:00)", engine_lines[0])
+            self.assertIn("참여 rights_dip", engine_lines[0])
+
+    def test_no_funding_db_hides_engine(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            strategies = self._two_strategies(tmpdir)
+            slots = {
+                "rights_dip": {
+                    "reserve": 1500000, "capital_total": 2050000,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+                "rebound": {
+                    "reserve": 5000000, "capital_total": 6100000,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+            }
+            with patch.object(sb, "read_reservations", return_value=slots):
+                lines = status_lines(
+                    strategies=strategies,
+                    balance_fn=lambda url: 10 ** 12,
+                    db_path=str(tmpdir / "watchlist.sqlite3"),
+                    funding_db=str(tmpdir / "funding.sqlite3"),  # 파일 없음
+                )
+            self.assertFalse(any(line.startswith("[엔진 ") for line in lines))
+            self.assertFalse(any("엔진 경유" in line for line in lines))
+            dip = next(line for line in lines if line.startswith("rights_dip:"))
+            self.assertIn("안 쓴 몫 1,500,000", dip)
+
+    def test_engine_line_without_reservation_slot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            funding_db = self._engine_db(tmpdir)
+            strategies = self._two_strategies(tmpdir)
+            slots = {
+                "rebound": {
+                    "reserve": 5000000, "capital_total": 6100000,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+            }
+            with patch.object(sb, "read_reservations", return_value=slots):
+                lines = status_lines(
+                    strategies=strategies,
+                    balance_fn=lambda url: 10 ** 12,
+                    db_path=str(tmpdir / "watchlist.sqlite3"),
+                    funding_db=str(funding_db),
+                )
+            engine_lines = [line for line in lines if line.startswith("[엔진 ")]
+            self.assertEqual(len(engine_lines), 1)
+            self.assertIn("CD ETF 2주 원가 2,140,000", engine_lines[0])
+            self.assertIn("예약(engine) 미기록", engine_lines[0])
+
+    def test_engine_line_only_on_first_member_account(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            funding_db = self._engine_db(tmpdir)
+            dip = tmpdir / "rights_dip.json"
+            _write_json(dip, {"capital": 2000000, "capital_since": "20261015"})
+            other = tmpdir / "rebound.json"
+            _write_json(other, {"capital": 6000000, "capital_since": "20261015"})
+            strategies = {
+                "rights_dip": ("http://127.0.0.1:8001", str(dip)),
+                "rebound": ("http://127.0.0.1:8002", str(other)),
+            }
+            slots = {
+                "engine": {
+                    "reserve": 860000, "capital_total": 3000000,
+                    "updated": "2026-10-14T15:00:00+09:00",
+                },
+            }
+            with patch.object(sb, "read_reservations", return_value=slots):
+                lines = status_lines(
+                    strategies=strategies,
+                    balance_fn=lambda url: 10 ** 12,
+                    db_path=str(tmpdir / "watchlist.sqlite3"),
+                    funding_db=str(funding_db),
+                )
+            engine_lines = [line for line in lines if line.startswith("[엔진 ")]
+            self.assertEqual(len(engine_lines), 1)
+            self.assertIn("[엔진 http://127.0.0.1:8001]", engine_lines[0])
 
 
 if __name__ == "__main__":
