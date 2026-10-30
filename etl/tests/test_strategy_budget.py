@@ -170,6 +170,13 @@ class ResetFlowTest(unittest.TestCase):
 
 
 class StatusWarningTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        fake = Path(self._tmp.name) / "funding.sqlite3"
+        p = patch.object(sb.fe, "DB", fake)
+        p.start()
+        self.addCleanup(p.stop)
     def test_seed_sum_over_assets_warns(self):
         with tempfile.TemporaryDirectory() as tmp:
             strategies = {}
@@ -278,6 +285,13 @@ class ResetAtomicityTest(unittest.TestCase):
 
 
 class StatusBudgetLineTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        fake = Path(self._tmp.name) / "funding.sqlite3"
+        p = patch.object(sb.fe, "DB", fake)
+        p.start()
+        self.addCleanup(p.stop)
     def test_budget_present_and_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             strategies = {}
