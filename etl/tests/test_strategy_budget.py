@@ -184,11 +184,12 @@ class StatusWarningTest(unittest.TestCase):
                 cfg = Path(tmp) / f"{name}.json"
                 _write_json(cfg, {"capital": capital, "capital_since": "20261015"})
                 strategies[name] = ("http://127.0.0.1:8001", str(cfg))
-            lines = status_lines(
-                strategies=strategies,
-                balance_fn=lambda url: 1000,
-                db_path=str(Path(tmp) / "watchlist.sqlite3"),
-            )
+            with patch.object(sb, "read_reservations", return_value={}):
+                lines = status_lines(
+                    strategies=strategies,
+                    balance_fn=lambda url: 1000,
+                    db_path=str(Path(tmp) / "watchlist.sqlite3"),
+                )
             self.assertTrue(any("rebound" in line for line in lines))
             self.assertTrue(any("예산 미기록" in line for line in lines))
             self.assertIn("⚠️ 전략 시드 합이 총자산 초과", lines)
