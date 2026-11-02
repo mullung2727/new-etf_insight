@@ -271,11 +271,127 @@ class TestLimitPrice(unittest.TestCase):
     def test_sell_at_1000(self):
         self.assertEqual(self._price({"buy_fpr_bid": "1000"}, "sell"), 1001)
 
+    def test_default_ignores_opp_buy(self):
+        self.assertEqual(
+            self._price({"sel_fpr_bid": "5000", "buy_fpr_bid": "4900"}, "buy"),
+            4995)
+
+    def test_default_ignores_opp_sell(self):
+        self.assertEqual(
+            self._price({"buy_fpr_bid": "5000", "sel_fpr_bid": "5100"}, "sell"),
+            5010)
+
     def test_none_when_no_quote(self):
         self.assertIsNone(self._price({"sel_fpr_bid": "0"}, "buy"))
 
     def test_none_when_result_not_positive(self):
         self.assertIsNone(self._price({"sel_fpr_bid": "1"}, "buy"))
+
+
+class TestLimitPriceInsideSpread(unittest.TestCase):
+    def _inside(self, payload, side):
+        with patch("scripts.broker_client.requests.get",
+                   return_value=_mock_response(payload)):
+            return _make_client().limit_price(
+                "005930", side, inside_spread=True)
+
+    def test_buy_wide_uses_opp(self):
+        self.assertEqual(
+            self._inside({"sel_fpr_bid": "5000", "buy_fpr_bid": "4900"}, "buy"),
+            4905)
+
+    def test_buy_narrow_uses_cur(self):
+        self.assertEqual(
+            self._inside({"sel_fpr_bid": "5000", "buy_fpr_bid": "4995"}, "buy"),
+            4995)
+
+    def test_sell_wide_uses_opp(self):
+        self.assertEqual(
+            self._inside({"buy_fpr_bid": "5000", "sel_fpr_bid": "5100"}, "sell"),
+            5090)
+
+    def test_sell_narrow_uses_cur(self):
+        self.assertEqual(
+            self._inside({"buy_fpr_bid": "5000", "sel_fpr_bid": "5005"}, "sell"),
+            5010)
+
+    def test_missing_opp_uses_cur(self):
+        self.assertEqual(self._inside({"sel_fpr_bid": "5000"}, "buy"), 4995)
+        self.assertEqual(self._inside({"buy_fpr_bid": "5000"}, "sell"), 5010)
+
+    def test_zero_opp_uses_cur(self):
+        self.assertEqual(
+            self._inside({"sel_fpr_bid": "5000", "buy_fpr_bid": "0"}, "buy"),
+            4995)
+        self.assertEqual(
+            self._inside({"buy_fpr_bid": "5000", "sel_fpr_bid": "0"}, "sell"),
+            5010)
+
+    def test_unparsable_opp_uses_cur(self):
+        self.assertEqual(
+            self._inside({"sel_fpr_bid": "5000", "buy_fpr_bid": "abc"}, "buy"),
+            4995)
+        self.assertEqual(
+            self._inside({"buy_fpr_bid": "5000", "sel_fpr_bid": "abc"}, "sell"),
+            5010)
+
+    def test_buy_inverted_uses_cur(self):
+        for opp in ("5000", "5010"):
+            with self.subTest(opp=opp):
+                self.assertEqual(
+                    self._inside({"sel_fpr_bid": "5000", "buy_fpr_bid": opp},
+                                 "buy"),
+                    4995)
+
+    def test_sell_inverted_uses_cur(self):
+        for opp in ("5000", "4990"):
+            with self.subTest(opp=opp):
+                self.assertEqual(
+                    self._inside({"buy_fpr_bid": "5000", "sel_fpr_bid": opp},
+                                 "sell"),
+                    5010)
+
+    def test_zero_base_returns_none(self):
+        self.assertIsNone(
+            self._inside({"sel_fpr_bid": "0", "buy_fpr_bid": "4900"}, "buy"))
+        self.assertIsNone(
+            self._inside({"buy_fpr_bid": "0", "sel_fpr_bid": "5100"}, "sell"))
+
+    def test_stale_returns_none(self):
+        payload = {"sel_fpr_bid": "5000", "buy_fpr_bid": "4900",
+                   "bid_req_base_tm": "115459"}
+        with _fixed_noon(), patch("scripts.broker_client.requests.get",
+                                  return_value=_mock_response(payload)):
+            self.assertIsNone(
+                _make_client().limit_price("005930", "buy",
+                                           inside_spread=True))
+
+    def test_lookup_failure_returns_none(self):
+        with patch("scripts.broker_client.requests.get",
+                   side_effect=ConnectionError("refused")):
+            self.assertIsNone(
+                _make_client().limit_price("005930", "buy",
+                                           inside_spread=True))
+
+    def test_single_http_call(self):
+        payload = {"sel_fpr_bid": "5000", "buy_fpr_bid": "4900"}
+        with patch("scripts.broker_client.requests.get",
+                   return_value=_mock_response(payload)) as mock_get:
+            _make_client().limit_price("005930", "buy", inside_spread=True)
+        mock_get.assert_called_once_with(
+            f"{_BROKER}/quotes/005930/orderbook", timeout=15)
+
+    def test_raw_only_same_result(self):
+        self.assertEqual(
+            self._inside(
+                {"raw": {"sel_fpr_bid": "5000", "buy_fpr_bid": "4900"}},
+                "buy"),
+            4905)
+        self.assertEqual(
+            self._inside(
+                {"raw": {"sel_fpr_bid": "5100", "buy_fpr_bid": "5000"}},
+                "sell"),
+            5090)
 
 
 
@@ -312,6 +428,23 @@ class TestPlaceOrders(unittest.TestCase):
                    return_value=_mock_response(body)):
             result = _make_client().place("005930", "buy", 1, 70000, "limit")
         self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["order_no"], "")
+
+    def test_422_is_rejected_with_detail(self):
+        body = {"detail": "수량 단위 오류"}
+        with patch("scripts.broker_client.requests.post",
+                   return_value=_mock_response(body, status_code=422)):
+            result = _make_client().place("005930", "buy", 1, 70000, "limit")
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["order_no"], "")
+        self.assertIn("수량 단위 오류", result["message"])
+        self.assertNotIn("HTTP 422", result["message"])
+
+    def test_500_is_unknown(self):
+        with patch("scripts.broker_client.requests.post",
+                   return_value=_mock_response({}, status_code=500)):
+            result = _make_client().place("005930", "buy", 1, 70000, "limit")
+        self.assertEqual(result["status"], "unknown")
         self.assertEqual(result["order_no"], "")
 
     def test_empty_order_no_is_failed(self):
