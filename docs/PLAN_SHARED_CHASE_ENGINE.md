@@ -261,4 +261,4 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P5 부분 체결 뒤 첫 주문 수량: 원래(Jev) 원장 수량 전량 → 실제 엔진 규칙대로 잔량(qty − 체결)만 (초과 매도 방지 쪽, 기존 테스트 밖 모서리)
 - P5 재시작 이어받기: 원래 Jev on_step 훅 → 실제 엔진 `_try_first_order` 가드(PR #88 리뷰). nos 중 살아 있는 주문이 있으면 `resumed` 이벤트 후 그 호출은 주문·정정 없음 — 모든 엔진 사용 전략의 재시작 중복 주문 방지, Jev 우회 코드 제거
 - P5 대상 0건일 때: 엔진은 state 가 없으면 시장가 시각까지 안 기다림 → Jev `run_chase` 가 엔진 뒤에 market_at 대기를 직접 유지 (기존 시각 테스트 그대로)
-- P5c 공용 추가: `BrokerClient.limit_price(..., inside_spread=True)`(호가 간격이 넓으면 반대쪽 호가 옆 가격, 기본값 False 는 기존 계산 그대로), `BrokerClient.place` 의 HTTP 422 → `rejected`(원래 `unknown`). 422 변경은 BrokerClient 를 쓰는 모든 전략에 적용 — 미접수가 확실한 주문을 결과 불명으로 남기지 않으려고
+- P5c 공용 추가: `BrokerClient.limit_price(..., inside_spread=True)`(호가 간격이 넓으면 반대쪽 호가 옆 가격, 기본값 False 는 기존 계산 그대로), `BrokerClient.place` 의 HTTP 422 는 `unknown` 유지(PR #145 리뷰). broker 가 키움 전송 실패도 422 로 돌려줘 미접수가 보장되지 않기 때문. 유증 시장가 매수는 이전 뒤 422 가 `rejected` 에서 `unknown` 으로 바뀜(재주문 안 하는 쪽). 기존 `modify`·Jev·`place_order_via_broker` 의 422 해석은 이번 범위 밖

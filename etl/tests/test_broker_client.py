@@ -430,15 +430,13 @@ class TestPlaceOrders(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["order_no"], "")
 
-    def test_422_is_rejected_with_detail(self):
+    def test_422_is_unknown(self):
         body = {"detail": "수량 단위 오류"}
         with patch("scripts.broker_client.requests.post",
                    return_value=_mock_response(body, status_code=422)):
             result = _make_client().place("005930", "buy", 1, 70000, "limit")
-        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["status"], "unknown")
         self.assertEqual(result["order_no"], "")
-        self.assertIn("수량 단위 오류", result["message"])
-        self.assertNotIn("HTTP 422", result["message"])
 
     def test_500_is_unknown(self):
         with patch("scripts.broker_client.requests.post",

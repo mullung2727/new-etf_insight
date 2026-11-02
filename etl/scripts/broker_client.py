@@ -256,11 +256,8 @@ class BrokerClient:
                       "exchange": self._exchange},
                 timeout=self._timeout,
             )
-            # 422 = broker 명시 거절(미접수 확실) — unknown 아님
-            if resp.status_code == 422:
-                msg = _reject_detail(resp)
-                print(f"[{self._tag}] {t} 주문 거절(422): {msg}")
-                return {"order_no": "", "status": "rejected", "message": msg}
+            # broker 는 키움 전송 실패도 422 로 돌려준다. 접수됐을 수 있어 unknown 으로 둔다.
+            # 미접수 확실한 거절과 구분하려면 broker 쪽에서 상태 코드를 나눠야 한다.
             resp.raise_for_status()
             data = resp.json()
             if not data.get("accepted"):
