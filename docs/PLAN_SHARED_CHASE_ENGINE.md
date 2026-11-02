@@ -138,6 +138,10 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 ### 3-5. 시세 날짜 (high52·envelope verify, P6)
 - 보유 갱신(high52 verify `update_holdings`, envelope verify)은 시세 날짜가 오늘인지 먼저 확인. 없거나 이상하거나 오늘 아니면 그 종목 갱신 건너뜀 + 알림 1줄.
 - P6 착수 전 broker `/quotes` 응답에 날짜 필드가 있는지 실측. 없으면 일봉(`ka10081`) 최신 날짜로 대체.
+- **2026-11-02 구현 안 함으로 변경 (D15).** 위 내용은 당시 설계 기록으로 남긴다. 코드 확인 결과:
+  - envelope verify: 시세로 보유를 갱신하지 않음(시가 비교 경고만). 보유일은 `is_confirmed_market_day` 를 통과해야 증가 → 검사 대상 없음.
+  - high52 verify: 시세 날짜는 안 보지만 10-05 사고 경로(휴장일 실행)는 러너 `Exit-IfNonTradingDay` + `main` 의 `is_krx_trading_day` 로 이중 차단. 고가·거래대금 0 이면 갱신 안 함.
+  - 남은 구멍: 수동 `--date 과거일` 재실행 시 오늘 시세가 그 날짜로 기록됨(스케줄 실행은 해당 없음), 거래일 판정 자체의 오판.
 
 ## 4. 단계 내용
 
@@ -221,11 +225,12 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | D7 | 순서 P3 rights → P4 rebound → P5 jevq → P6 high52·envelope → P7 종가베팅·눌림목. rebound 는 10-13 동시호가 체결로 급하지 않음 | Claude 제안 — 검토 필요 |
 | D8 | 동작 변경 없음, 예외는 4절 명시분만 | Claude 판단 |
 | D9 | `run_live_batch` 함수 1개, 종료 코드 0/1/2 | Claude 판단 (구 LIVE_BATCH_COMMON) |
-| D10 | 시세 날짜 검증 포함 | Claude 판단 (10-05 high52 원인) |
+| D10 | 시세 날짜 검증 포함 → D15 로 대체 | Claude 판단 (10-05 high52 원인) |
 | D11 | 한 전략만 쓰는 매매 동작도 공용 함수로 두고 전략은 갈아끼우기만 | 사용자 (2026-10-14) |
 | D12 | P5 Jev 는 매수·매도 추격 함께 이전(같은 루프라 쪼개지 않음), 추가 매수는 범위 밖 | 사용자 (2026-10-14) |
 | D13 | Jev 매도 `auction` 모드 채택 (하한·시각 값과 근거는 비공개 문서) | 사용자 (2026-10-14) |
 | D14 | P5 체결 확정은 Jev `_finalize` 유지, 원장 기록은 `on_event`, 이어받기는 엔진 첫 주문 가드 | Claude 판단 (동작 변경 없음) |
+| D15 | 시세 날짜 검증(3-5절) 구현 안 함. 왜: envelope 는 시세로 보유를 갱신하지 않고, high52 의 사고 경로는 거래일 가드 2중으로 막힘. 남은 위험은 수동 `--date` 재실행·거래일 오판뿐인데 `/quotes` 날짜 필드 실측부터 필요해 비용이 더 큼. 버린 안: 3-5절 그대로 구현, `--date` 가 오늘이 아니면 갱신 건너뛰기 | Claude 추천 · 사용자 승인 (2026-11-02) |
 
 ## 7. 운영 체크
 - 스케줄 작업·config 변경 없음(import·진입 함수만 바뀜). 러너 종료 코드 규약(2 = 알림 완료)은 P1 반영 시 러너와 대조.
