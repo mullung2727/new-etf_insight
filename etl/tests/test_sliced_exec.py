@@ -211,6 +211,65 @@ class SlicedRunTest(unittest.TestCase):
         self.assertFalse(any(x[0] == "place_limit" and x[1] == "buy"
                              for x in self.api.calls))
 
+    def test_stale_quote_skips_only_that_ticker(self):
+        class StaleApi(SlicedApi):
+            def best_quote(self, ticker, side):
+                return None if ticker == "000001" else super().best_quote(ticker, side)
+
+        api = StaleApi()
+        os = [order("G", "buy", 4), order("S", "buy", 4, ticker="000001")]
+        result = run_sliced(TODAY, os, api, self.clock, slices=("09:30:00",),
+                            on_event=lambda *a, **k: None,
+                            last_cut="09:31:00", cash_fn=lambda: 10_000)
+        buys = [x for x in api.calls if x[0] == "place_limit" and x[1] == "buy"]
+        self.assertEqual([x[2] for x in buys], ["005930"])
+        self.assertEqual(result["S"], 4)
+
+    def test_stale_quote_carries_to_next_slice(self):
+        clock = self.clock
+
+        class RecoverApi(SlicedApi):
+            def best_quote(self, ticker, side):
+                if ticker == "000001" and clock.now() < ch.at(TODAY, "09:32:00"):
+                    return None
+                return super().best_quote(ticker, side)
+
+        api = RecoverApi()
+        os = [order("S", "buy", 4, ticker="000001")]
+        run_sliced(TODAY, os, api, clock, slices=("09:30:00", "09:32:00"),
+                   on_event=lambda *a, **k: None,
+                   last_cut="09:33:00", cash_fn=lambda: 10_000)
+        buys = [x for x in api.calls if x[0] == "place_limit" and x[1] == "buy"]
+        self.assertEqual([x[3] for x in buys], [4])
+
+    def test_quote_checked_at_slice_time_not_before(self):
+        clock = FakeClock(ch.at(TODAY, "09:25:00"))
+
+        class EarlyStaleApi(SlicedApi):
+            def best_quote(self, ticker, side):
+                if clock.now() < ch.at(TODAY, "09:30:00"):
+                    return None
+                return super().best_quote(ticker, side)
+
+        api = EarlyStaleApi()
+        run_sliced(TODAY, [order("B", "buy", 4)], api, clock, slices=("09:30:00",),
+                   on_event=lambda *a, **k: None,
+                   last_cut="09:31:00", cash_fn=lambda: 10_000)
+        self.assertTrue(any(x[0] == "place_limit" and x[1] == "buy" for x in api.calls))
+
+    def test_cash_not_exceeded_with_stale_ticker(self):
+        class StaleApi(SlicedApi):
+            def best_quote(self, ticker, side):
+                return None if ticker == "000001" else super().best_quote(ticker, side)
+
+        api = StaleApi()
+        os = [order("G", "buy", 10), order("S", "buy", 10, ticker="000001")]
+        run_sliced(TODAY, os, api, self.clock, slices=("09:30:00",),
+                   on_event=lambda *a, **k: None,
+                   last_cut="09:31:00", cash_fn=lambda: 300)
+        buys = [x for x in api.calls if x[0] == "place_limit" and x[1] == "buy"]
+        self.assertLessEqual(sum(x[3] * x[4] for x in buys), 300)
+
 
 if __name__ == "__main__":
     unittest.main()
