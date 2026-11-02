@@ -56,6 +56,12 @@
 - [x] 구현·테스트 머지 (PR #92, 2026-10-14 · 비공개 buy_ah 같은 날 20시 반영)
 - [x] 첫 실가동 확인 (2026-10-21 첫 시장가 넘김 1건. 그 전 거래일은 추격 지정가에서 전량 체결)
 
+### P5c 무상·유상(rights) Jev 의존 제거
+- [ ] 구현·테스트 머지 (PR #)
+- [x] 운영 등록 (스케줄 작업·config) — 해당 없음 (import 만 바뀜)
+- [ ] 첫 실가동 확인 (날짜)
+- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+
 ### P6 high52 · 엔벌로프 이전
 - [ ] 구현·테스트 머지 (PR #)
 - [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
@@ -255,3 +261,4 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P5 부분 체결 뒤 첫 주문 수량: 원래(Jev) 원장 수량 전량 → 실제 엔진 규칙대로 잔량(qty − 체결)만 (초과 매도 방지 쪽, 기존 테스트 밖 모서리)
 - P5 재시작 이어받기: 원래 Jev on_step 훅 → 실제 엔진 `_try_first_order` 가드(PR #88 리뷰). nos 중 살아 있는 주문이 있으면 `resumed` 이벤트 후 그 호출은 주문·정정 없음 — 모든 엔진 사용 전략의 재시작 중복 주문 방지, Jev 우회 코드 제거
 - P5 대상 0건일 때: 엔진은 state 가 없으면 시장가 시각까지 안 기다림 → Jev `run_chase` 가 엔진 뒤에 market_at 대기를 직접 유지 (기존 시각 테스트 그대로)
+- P5c 공용 추가: `BrokerClient.limit_price(..., inside_spread=True)`(호가 간격이 넓으면 반대쪽 호가 옆 가격, 기본값 False 는 기존 계산 그대로), `BrokerClient.place` 의 HTTP 422 → `rejected`(원래 `unknown`). 422 변경은 BrokerClient 를 쓰는 모든 전략에 적용 — 미접수가 확실한 주문을 결과 불명으로 남기지 않으려고

@@ -112,8 +112,8 @@ class BrokerClient:
     def _dry_no(self, t: str) -> str:
         return f"DRY_{t}_{_now_seoul().strftime('%H%M%S')}"
 
-    def best_quote(self, t: str, side: str) -> int | None:
-        """매도1호가(buy)/매수1호가(sell) 원값. 없거나 오래되면 None."""
+    def _book(self, t: str, side: str) -> dict | None:
+        """orderbook 조회·해석. 신선도·기준 호가 판정까지 끝낸 결과 또는 None."""
         field = _QUOTE_FIELD.get(side)
         if field is None:
             print(f"[{self._tag}] {t} best_quote side 오류: {side!r}")
@@ -139,22 +139,70 @@ class BrokerClient:
             if px <= 0:
                 print(f"[{self._tag}] {t} {side} 호가 없음(0)")
                 return None
-            return px
+            return {"data": data, "raw": raw, "base": px}
         except Exception as exc:
             print(f"[{self._tag}] {t} 호가 조회 실패: {exc}")
             return None
 
-    def limit_price(self, t: str, side: str) -> int | None:
-        """추격 지정가. buy = 매도1호가 − tick_below, sell = 매수1호가 + tick_size."""
-        quote = self.best_quote(t, side)
-        if quote is None:
+    def best_quote(self, t: str, side: str) -> int | None:
+        """매도1호가(buy)/매수1호가(sell) 원값. 없거나 오래되면 None."""
+        book = self._book(t, side)
+        if book is None:
             return None
+        return book["base"]
+
+    def limit_price(self, t: str, side: str, *, inside_spread: bool = False) -> int | None:
+        """추격 지정가. buy = 매도1호가 − tick_below, sell = 매수1호가 + tick_size."""
+        if not inside_spread:
+            quote = self.best_quote(t, side)
+            if quote is None:
+                return None
+            if side == "buy":
+                px = quote - tick_below(quote)
+            elif side == "sell":
+                px = quote + tick_size(quote)
+            else:
+                return None  # best_quote가 이미 로그
+            if px <= 0:
+                print(f"[{self._tag}] {t} 추격 지정가 0 이하({px}) — 포기")
+                return None
+            return px
+        book = self._book(t, side)
+        if book is None:
+            return None
+        base = book["base"]
+        data = book["data"]
+        raw = book["raw"]
         if side == "buy":
-            px = quote - tick_below(quote)
+            opp_field = _QUOTE_FIELD["sell"]
+            opp_value = data.get(opp_field)
+            if opp_value is None:
+                opp_value = raw.get(opp_field)
+            try:
+                opp = _parse_quote(opp_value)
+            except Exception:
+                opp = 0
+            cur = base - tick_below(base)
+            if opp > 0 and base > opp:
+                px = min(cur, opp + tick_size(opp))
+            else:
+                px = cur
         elif side == "sell":
-            px = quote + tick_size(quote)
+            opp_field = _QUOTE_FIELD["buy"]
+            opp_value = data.get(opp_field)
+            if opp_value is None:
+                opp_value = raw.get(opp_field)
+            try:
+                opp = _parse_quote(opp_value)
+            except Exception:
+                opp = 0
+            cur = base + tick_size(base)
+            if opp > 0 and opp > base:
+                px = max(cur, opp - tick_below(opp))
+            else:
+                px = cur
         else:
-            return None  # best_quote가 이미 로그
+            return None  # _book이 이미 로그
         if px <= 0:
             print(f"[{self._tag}] {t} 추격 지정가 0 이하({px}) — 포기")
             return None
@@ -208,6 +256,11 @@ class BrokerClient:
                       "exchange": self._exchange},
                 timeout=self._timeout,
             )
+            # 422 = broker 명시 거절(미접수 확실) — unknown 아님
+            if resp.status_code == 422:
+                msg = _reject_detail(resp)
+                print(f"[{self._tag}] {t} 주문 거절(422): {msg}")
+                return {"order_no": "", "status": "rejected", "message": msg}
             resp.raise_for_status()
             data = resp.json()
             if not data.get("accepted"):
