@@ -36,6 +36,7 @@ def run_sliced(today, orders, api, clock, *,
         start_dt = ch.at(today, start)
         if clock.now() > start_dt:
             continue
+        clock.sleep_until(start_dt)
         next_cut = (ch.at(today, starts[i + 1]) - timedelta(minutes=1)
                     if i + 1 < len(starts) else ch.at(today, last_cut))
         cut = next_cut.strftime("%H:%M:%S")
@@ -55,15 +56,15 @@ def run_sliced(today, orders, api, clock, *,
                 asks = ({o["key"]: api.best_quote(o["ticker"], "buy")
                          for o in buys} if hasattr(api, "best_quote") else
                         {o["key"]: None for o in buys})
-                if any(not p for p in asks.values()):
-                    for o in buys:
+                priced = [o for o in buys if asks[o["key"]]]
+                for o in buys:
+                    if not asks[o["key"]]:
                         wants[o["key"]] = 0
-                else:
-                    weights = {o["key"]: wants[o["key"]] * asks[o["key"]] for o in buys}
-                    total = sum(weights.values())
-                    for o in buys:
-                        budget = int(cash * weights[o["key"]] / total) if total else 0
-                        wants[o["key"]] = min(wants[o["key"]], budget // asks[o["key"]])
+                weights = {o["key"]: wants[o["key"]] * asks[o["key"]] for o in priced}
+                total = sum(weights.values())
+                for o in priced:
+                    budget = int(cash * weights[o["key"]] / total) if total else 0
+                    wants[o["key"]] = min(wants[o["key"]], budget // asks[o["key"]])
         states = []
         by_key = {}
         for side in ("sell", "buy"):
