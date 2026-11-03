@@ -764,6 +764,22 @@ def backfill_dividends(
         for ticker in sorted(frames):
             try:
                 divs = to_dividends({ticker: frames[ticker]}, today_ny)
+                days = [
+                    day
+                    for day in (_day_string(index) for index in frames[ticker].index)
+                    if day < today_ny
+                ]
+                first = min(days, default=None)
+                last = max(days, default=None)
+                stored_first, stored_last = con.execute(
+                    "SELECT min(date), max(date) FROM stock_dividends WHERE ticker=?", [ticker]
+                ).fetchone()
+                # 잘린 응답(앞·뒤 구간 누락·빈 응답)으로 저장 배당을 통째로 날리는 걸 막는다.
+                truncated = first is None or (stored_first is not None and (first > stored_first or last < stored_last))
+                if truncated:
+                    print(f"[div-backfill] {ticker} 응답이 저장 구간을 못 덮음 — 유지", flush=True)
+                    failed.append(ticker)
+                    continue
                 con.execute("BEGIN TRANSACTION")
                 try:
                     con.execute("DELETE FROM stock_dividends WHERE ticker=?", [ticker])

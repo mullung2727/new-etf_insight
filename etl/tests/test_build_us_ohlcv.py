@@ -651,7 +651,7 @@ class TestStockDividends(unittest.TestCase):
         self.con.execute("INSERT INTO stock_dividends VALUES ('AAA','20200102',9.9)")
         self.con.execute("INSERT INTO stock_dividends VALUES ('BBB','20200102',8.8)")
         download = lambda tickers, start, end: _frame(
-            {"AAA": [("2024-01-02", 10)]},
+            {"AAA": [("2020-01-02", 10), ("2024-01-02", 10)]},
             dividends={("AAA", "2024-01-02"): 0.5},
         )
         backfill_dividends(self.con, items, "20240101", "20260912", download, "20260912")
@@ -660,6 +660,36 @@ class TestStockDividends(unittest.TestCase):
             [("AAA", "20240102", 0.5), ("BBB", "20200102", 8.8)],
         )
         self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv").fetchone()[0], 2)
+
+    def test_d8_truncated_backfill_keeps_stored_dividends(self):
+        """잘린 응답(앞 구간 누락)은 저장 배당을 지우지 않고 실패한다."""
+        self.con.execute("INSERT INTO stock_dividends VALUES ('AAA','20200102',0.4)")
+        self.con.execute("INSERT INTO stock_dividends VALUES ('AAA','20240102',0.5)")
+        download = lambda tickers, start, end: _frame(
+            {"AAA": [("2023-01-03", 10), ("2024-01-02", 10)]},
+            dividends={("AAA", "2024-01-02"): 0.6},
+        )
+        stats = backfill_dividends(self.con, self.items, "20200101", "20260912", download, "20260912")
+        self.assertEqual(
+            self.con.execute("SELECT ticker, date, amount FROM stock_dividends ORDER BY date").fetchall(),
+            [("AAA", "20200102", 0.4), ("AAA", "20240102", 0.5)],
+        )
+        self.assertIn("AAA", stats["failed_tickers"])
+        self.assertNotIn("AAA", stats["replaced"])
+
+    def test_d9_disjoint_response_keeps_stored_dividends(self):
+        """저장 구간과 겹치지 않는 응답(하루뿐)은 저장 배당을 지우지 않고 실패한다."""
+        self.con.execute("INSERT INTO stock_dividends VALUES ('AAA','20200102',0.4)")
+        self.con.execute("INSERT INTO stock_dividends VALUES ('AAA','20240102',0.5)")
+        download = lambda tickers, start, end: _frame(
+            {"AAA": [("2026-01-02", 10)]},
+        )
+        stats = backfill_dividends(self.con, self.items, "20200101", "20260912", download, "20260912")
+        self.assertEqual(
+            self.con.execute("SELECT ticker, date, amount FROM stock_dividends ORDER BY date").fetchall(),
+            [("AAA", "20200102", 0.4), ("AAA", "20240102", 0.5)],
+        )
+        self.assertIn("AAA", stats["failed_tickers"])
 
     def test_d7_ensure_etf_purges_stock_dividends(self):
         self.con.execute("INSERT INTO stock_dividends VALUES ('SPY','20260910',0.5)")
