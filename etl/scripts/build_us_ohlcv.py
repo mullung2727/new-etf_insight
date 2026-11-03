@@ -88,6 +88,12 @@ CREATE TABLE IF NOT EXISTS etf_dividends (
     PRIMARY KEY (ticker, date)
 )
 """
+_CREATE_STOCK_DIVIDENDS = """
+CREATE TABLE IF NOT EXISTS stock_dividends (
+    ticker VARCHAR, date VARCHAR, amount DOUBLE,
+    PRIMARY KEY (ticker, date)
+)
+"""
 
 
 @dataclass(frozen=True)
@@ -152,6 +158,7 @@ def ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(_CREATE_NAMES)
     con.execute(_CREATE_ETF_OHLCV)
     con.execute(_CREATE_ETF_DIVIDENDS)
+    con.execute(_CREATE_STOCK_DIVIDENDS)
 
 
 def upsert_names(con: duckdb.DuckDBPyConnection, universe: Iterable[UniverseItem]) -> None:
@@ -256,6 +263,33 @@ def to_rows(
     return rows, splits
 
 
+def to_dividends(
+    frames: dict[str, pd.DataFrame],
+    today_ny: str,
+) -> list[tuple]:
+    """야후 Dividends 열에서 (ticker, day, amount) 추출. NaN·0·today 이후 제외."""
+    divs: list[tuple] = []
+    for ticker, frame in frames.items():
+        if frame is None or frame.empty:
+            continue
+        if "Dividends" not in frame.columns:
+            continue
+        for index, values in frame.iterrows():
+            day = _day_string(index)
+            if day >= today_ny:
+                continue
+            dividend = values.get("Dividends")
+            if dividend is not None and pd.notna(dividend) and float(dividend) != 0:
+                divs.append((ticker, day, float(dividend)))
+    return divs
+
+
+def _insert_dividends(con: duckdb.DuckDBPyConnection, divs: list[tuple]) -> None:
+    if not divs:
+        return
+    con.executemany("INSERT OR REPLACE INTO stock_dividends VALUES (?,?,?)", divs)
+
+
 def _insert_rows(con: duckdb.DuckDBPyConnection, rows: list[tuple]) -> None:
     if not rows:
         return
@@ -273,8 +307,10 @@ def _replace_split_history(
     ticker: str,
     rows: list[tuple],
     splits: list[tuple],
+    dividends: list[tuple] | None = None,
 ) -> None:
     """Atomically replace one ticker after a split-triggered full refetch."""
+    dividends = dividends or []
     con.execute("BEGIN TRANSACTION")
     try:
         stored_first, stored_last = con.execute(
@@ -293,9 +329,12 @@ def _replace_split_history(
             )
         con.execute("DELETE FROM ohlcv WHERE ticker=?", [ticker])
         con.execute("DELETE FROM splits WHERE ticker=?", [ticker])
+        con.execute("DELETE FROM stock_dividends WHERE ticker=?", [ticker])
         _insert_rows(con, rows)
         if splits:
             con.executemany("INSERT INTO splits VALUES (?,?,?)", splits)
+        if dividends:
+            con.executemany("INSERT INTO stock_dividends VALUES (?,?,?)", dividends)
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")
@@ -486,9 +525,11 @@ def repair_gaps(
             except Exception:
                 continue
             rows, split_rows = to_rows(frames, markets, today_ny)
+            divs = to_dividends(frames, today_ny)
             split_tickers = {row[0] for row in split_rows}
             normal_rows = [row for row in rows if row[1] not in split_tickers]
             _insert_rows(con, normal_rows)
+            _insert_dividends(con, [d for d in divs if d[0] not in split_tickers])
             inserted += len(normal_rows)
             for ticker in sorted(split_tickers):
                 try:
@@ -501,7 +542,10 @@ def repair_gaps(
                         continue
                     full_rows, full_splits = to_rows(full_frames, markets, today_ny)
                     if full_rows:
-                        _replace_split_history(con, ticker, full_rows, full_splits)
+                        _replace_split_history(
+                            con, ticker, full_rows, full_splits,
+                            to_dividends(full_frames, today_ny),
+                        )
                         inserted += len(full_rows)
                 except Exception:
                     continue
@@ -527,6 +571,7 @@ def ensure_ohlcv(
     markets = {item.ticker: item.market for item in universe}
     failed: list[str] = []
     inserted = 0
+    dividend_rows = 0
     split_refetched: list[str] = []
     fetch_plan = plan_fetch(con, (item.ticker for item in universe), from_date)
     total_batches = sum(
@@ -556,17 +601,23 @@ def ensure_ohlcv(
                 continue
             failed.extend(missing)
             rows, split_rows = to_rows(frames, markets, today_ny)
+            divs = to_dividends(frames, today_ny)
             split_tickers = {row[0] for row in split_rows}
             normal_rows = [row for row in rows if row[1] not in split_tickers]
+            normal_divs = [d for d in divs if d[0] not in split_tickers]
             _insert_rows(con, normal_rows)
+            _insert_dividends(con, normal_divs)
             inserted += len(normal_rows)
+            dividend_rows += len(normal_divs)
             for ticker in sorted(split_tickers):
                 try:
                     ticker_rows = [row for row in rows if row[1] == ticker]
                     ticker_splits = [row for row in split_rows if row[0] == ticker]
                     if start == from_date and ticker_rows:
-                        _replace_split_history(con, ticker, ticker_rows, ticker_splits)
+                        ticker_divs = [d for d in divs if d[0] == ticker]
+                        _replace_split_history(con, ticker, ticker_rows, ticker_splits, ticker_divs)
                         inserted += len(ticker_rows)
+                        dividend_rows += len(ticker_divs)
                         split_refetched.append(ticker)
                         continue
                     full_frames, full_missing = fetch_batch([ticker], from_date, end_date, download)
@@ -577,8 +628,10 @@ def ensure_ohlcv(
                     if not full_rows:
                         failed.append(ticker)
                         continue
-                    _replace_split_history(con, ticker, full_rows, full_splits)
+                    full_divs = to_dividends(full_frames, today_ny)
+                    _replace_split_history(con, ticker, full_rows, full_splits, full_divs)
                     inserted += len(full_rows)
+                    dividend_rows += len(full_divs)
                     split_refetched.append(ticker)
                 except Exception:
                     failed.append(ticker)
@@ -592,6 +645,7 @@ def ensure_ohlcv(
     carried = carry_forward_shares(con)
     return {
         "inserted_rows": inserted,
+        "dividend_rows": dividend_rows,
         "failed_tickers": sorted(set(failed)),
         "split_refetched": split_refetched,
         "shares_carried": carried,
@@ -643,7 +697,10 @@ def backfill_ohlcv(
                 if not rows:
                     failed.append(ticker)
                     continue
-                _replace_split_history(con, ticker, rows, splits)
+                _replace_split_history(
+                    con, ticker, rows, splits,
+                    to_dividends({ticker: frames[ticker]}, today_ny),
+                )
                 replaced.append(ticker)
                 inserted += len(rows)
                 batch_rows += len(rows)
@@ -661,6 +718,79 @@ def backfill_ohlcv(
         "replaced": replaced,
         "failed_tickers": sorted(set(failed)),
         "inserted_rows": inserted,
+    }
+
+
+def backfill_dividends(
+    con: duckdb.DuckDBPyConnection,
+    universe: list[UniverseItem],
+    from_date: str,
+    end_date: str,
+    download: Callable[[list[str], str, str], pd.DataFrame] = _default_download,
+    today_ny: str | None = None,
+) -> dict[str, object]:
+    """One-shot dividends-only backfill; ohlcv/splits/shares are untouched."""
+    ensure_schema(con)
+    today_ny = today_ny or datetime.now(NEW_YORK).strftime("%Y%m%d")
+    tickers = sorted({item.ticker for item in universe})
+    failed: list[str] = []
+    replaced: list[str] = []
+    received = 0
+    inserted = 0
+    total_batches = (len(tickers) + BATCH_SIZE - 1) // BATCH_SIZE if tickers else 0
+    batch_no = 0
+    for offset in range(0, len(tickers), BATCH_SIZE):
+        batch = tickers[offset:offset + BATCH_SIZE]
+        batch_no += 1
+        started_at = time.perf_counter()
+        print(
+            f"[div-backfill {batch_no}/{total_batches}] start={from_date} "
+            f"end={end_date} tickers={len(batch)}",
+            flush=True,
+        )
+        try:
+            frames, missing = fetch_batch(batch, from_date, end_date, download)
+        except Exception as exc:
+            failed.extend(batch)
+            print(
+                f"[div-backfill {batch_no}/{total_batches}] failed "
+                f"elapsed={time.perf_counter() - started_at:.1f}s error={exc}",
+                flush=True,
+            )
+            continue
+        failed.extend(missing)
+        received += len(frames)
+        batch_rows = 0
+        for ticker in sorted(frames):
+            try:
+                divs = to_dividends({ticker: frames[ticker]}, today_ny)
+                con.execute("BEGIN TRANSACTION")
+                try:
+                    con.execute("DELETE FROM stock_dividends WHERE ticker=?", [ticker])
+                    if divs:
+                        con.executemany("INSERT INTO stock_dividends VALUES (?,?,?)", divs)
+                    con.execute("COMMIT")
+                except Exception:
+                    con.execute("ROLLBACK")
+                    raise
+                replaced.append(ticker)
+                inserted += len(divs)
+                batch_rows += len(divs)
+            except Exception:
+                failed.append(ticker)
+        print(
+            f"[div-backfill {batch_no}/{total_batches}] done "
+            f"elapsed={time.perf_counter() - started_at:.1f}s "
+            f"received={len(batch) - len(missing)} missing={len(missing)} "
+            f"rows={batch_rows} cumulative_rows={inserted}",
+            flush=True,
+        )
+    return {
+        "tickers": len(tickers),
+        "received": received,
+        "rows": inserted,
+        "replaced": replaced,
+        "failed_tickers": sorted(set(failed)),
     }
 
 
@@ -753,6 +883,7 @@ def ensure_etf(
         con.execute(f"DELETE FROM ohlcv WHERE ticker IN ({placeholders})", succeeded)
         con.execute(f"DELETE FROM splits WHERE ticker IN ({placeholders})", succeeded)
         con.execute(f"DELETE FROM stock_names WHERE code IN ({placeholders})", succeeded)
+        con.execute(f"DELETE FROM stock_dividends WHERE ticker IN ({placeholders})", succeeded)
     print(
         f"[etf] end={end_date} tickers={len(ticker_list)} "
         f"rows={inserted} dividends={dividend_rows} failed={len(set(failed))}",
@@ -780,6 +911,7 @@ def main() -> None:
     parser.add_argument("--refresh-shares", action="store_true")
     parser.add_argument("--etf-only", action="store_true")
     parser.add_argument("--backfill", action="store_true")
+    parser.add_argument("--dividends-backfill", dest="dividends_backfill", action="store_true")
     args = parser.parse_args()
     cutoff = bar_cutoff_day(datetime.now(NEW_YORK))
     to_date = args.to_date or cutoff
@@ -817,6 +949,18 @@ def main() -> None:
             f"shares_failed={len(share_stats['failed_tickers'])} -> {args.db_path}"
         )
         return
+    if args.dividends_backfill:
+        universe = load_universe()
+        args.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with duckdb.connect(str(args.db_path)) as con:
+            stats = backfill_dividends(con, universe, args.from_date, to_date, today_ny=cutoff)
+        print(
+            f"div_backfill tickers={stats['tickers']} "
+            f"received={stats['received']} "
+            f"rows={stats['rows']} "
+            f"failed={len(stats['failed_tickers'])} -> {args.db_path}"
+        )
+        return
     universe = load_universe()
     args.db_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(args.db_path)) as con:
@@ -832,6 +976,7 @@ def main() -> None:
     print(
         f"universe={len(universe)} inserted={stats['inserted_rows']} "
         f"failed={len(stats['failed_tickers'])} splits={len(stats['split_refetched'])} "
+        f"stock_div={stats['dividend_rows']} "
         f"gap_candidates={gap_stats['candidate_tickers']} "
         f"gap_unresolved={len(gap_stats['unresolved'])} "
         f"shares_updated={share_stats['updated_rows']} "
