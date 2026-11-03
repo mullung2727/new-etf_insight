@@ -155,7 +155,7 @@ def run(
         univ = con.execute(
             "SELECT corp_code, stock_code FROM corps ORDER BY corp_code"
         ).fetchall()
-        if stock_codes:
+        if stock_codes is not None:
             by_stock = {sc: cc for cc, sc in univ}
             targets: list[tuple[str, str]] = []
             seen: set[str] = set()
@@ -203,8 +203,8 @@ def run(
                         con, expand_rows(rows, year, reprt, stock_code)
                     )
                 stats["done"] += 1
-            time.sleep(DELAY)
             con.commit()  # corp 단위 보존 → 중단 시 재실행 이어받기
+            time.sleep(DELAY)
             if idx % 100 == 0:
                 print(f"[dividends {year} {reprt}][{idx}/{len(targets)}]"
                       f" done={stats['done']} rows={stats['rows']}")
