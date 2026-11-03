@@ -14,6 +14,7 @@ from scripts.build_us_ohlcv import (
     _replace_split_history,
     apply_share_history,
     audit_gaps,
+    backfill_dividends,
     backfill_ohlcv,
     bar_cutoff_day,
     carry_forward_shares,
@@ -25,6 +26,7 @@ from scripts.build_us_ohlcv import (
     load_universe,
     plan_fetch,
     repair_gaps,
+    to_dividends,
     to_rows,
 )
 
@@ -572,6 +574,107 @@ class TestBarCutoff(unittest.TestCase):
         )
         self.assertEqual(
             bar_cutoff_day(datetime(2026, 10, 2, 20, 1, tzinfo=NEW_YORK)), "20261003"
+        )
+
+
+class TestStockDividends(unittest.TestCase):
+    def setUp(self):
+        self.con = duckdb.connect(":memory:")
+        ensure_schema(self.con)
+        self.items = [UniverseItem("AAA", "Alpha", "NASDAQ")]
+
+    def tearDown(self):
+        self.con.close()
+
+    def test_d1_to_dividends_filters_zero_and_nan(self):
+        frames = {"AAA": _frame({"AAA": [
+            ("2026-09-09", 10), ("2026-09-10", 10), ("2026-09-11", 10),
+        ]}, dividends={
+            ("AAA", "2026-09-09"): 0.0,
+            ("AAA", "2026-09-10"): float("nan"),
+            ("AAA", "2026-09-11"): 0.5,
+        })["AAA"]}
+        self.assertEqual(to_dividends(frames, "20260912"), [("AAA", "20260911", 0.5)])
+
+    def test_d2_to_dividends_excludes_today_and_later(self):
+        frames = {"AAA": _frame({"AAA": [
+            ("2026-09-10", 10), ("2026-09-11", 10), ("2026-09-12", 10),
+        ]}, dividends={
+            ("AAA", "2026-09-10"): 0.5,
+            ("AAA", "2026-09-11"): 0.6,
+            ("AAA", "2026-09-12"): 0.7,
+        })["AAA"]}
+        self.assertEqual(to_dividends(frames, "20260911"), [("AAA", "20260910", 0.5)])
+
+    def test_d3_to_dividends_without_column_is_empty(self):
+        frame = _frame({"AAA": [("2026-09-10", 10)]})["AAA"].drop(columns=["Dividends"])
+        self.assertEqual(to_dividends({"AAA": frame}, "20260912"), [])
+
+    def test_d4_ensure_ohlcv_saves_dividends(self):
+        download = lambda tickers, start, end: _frame(
+            {ticker: [("2026-09-10", 10), ("2026-09-11", 10)] for ticker in tickers},
+            dividends={("AAA", "2026-09-10"): 0.5},
+        )
+        stats = ensure_ohlcv(self.con, self.items, "20260101", "20260912", download, "20260912")
+        self.assertEqual(
+            self.con.execute("SELECT ticker, date, amount FROM stock_dividends").fetchall(),
+            [("AAA", "20260910", 0.5)],
+        )
+        self.assertEqual(stats["dividend_rows"], 1)
+
+    def test_d5_split_refetch_replaces_dividends(self):
+        _insert_rows(self.con, [_row("20240102", "AAA", 400)])
+        self.con.execute("INSERT INTO stock_dividends VALUES ('AAA','20200102',9.9)")
+
+        def download(tickers, start, end):
+            if start == "20240102":
+                return _frame(
+                    {"AAA": [("2024-06-10", 25)]},
+                    splits={("AAA", "2024-06-10"): 4},
+                    dividends={("AAA", "2024-06-10"): 0.1},
+                )
+            return _frame(
+                {"AAA": [("2024-01-02", 100), ("2024-06-10", 25)]},
+                splits={("AAA", "2024-06-10"): 4},
+                dividends={("AAA", "2024-06-10"): 0.5},
+            )
+
+        ensure_ohlcv(self.con, self.items, "20240101", "20260912", download, "20260912")
+        self.assertEqual(
+            self.con.execute("SELECT ticker, date, amount FROM stock_dividends ORDER BY date").fetchall(),
+            [("AAA", "20240610", 0.5)],
+        )
+
+    def test_d6_dividends_backfill_replaces_only_received(self):
+        items = [UniverseItem("AAA", "Alpha", "NASDAQ"), UniverseItem("BBB", "Beta", "NYSE")]
+        _insert_rows(self.con, [_row("20240102", "AAA", 10), _row("20240102", "BBB", 20)])
+        self.con.execute("INSERT INTO stock_dividends VALUES ('AAA','20200102',9.9)")
+        self.con.execute("INSERT INTO stock_dividends VALUES ('BBB','20200102',8.8)")
+        download = lambda tickers, start, end: _frame(
+            {"AAA": [("2024-01-02", 10)]},
+            dividends={("AAA", "2024-01-02"): 0.5},
+        )
+        backfill_dividends(self.con, items, "20240101", "20260912", download, "20260912")
+        self.assertEqual(
+            self.con.execute("SELECT ticker, date, amount FROM stock_dividends ORDER BY ticker").fetchall(),
+            [("AAA", "20240102", 0.5), ("BBB", "20200102", 8.8)],
+        )
+        self.assertEqual(self.con.execute("SELECT count(*) FROM ohlcv").fetchone()[0], 2)
+
+    def test_d7_ensure_etf_purges_stock_dividends(self):
+        self.con.execute("INSERT INTO stock_dividends VALUES ('SPY','20260910',0.5)")
+        self.con.execute("INSERT INTO stock_dividends VALUES ('AAA','20260910',0.3)")
+        ensure_etf(
+            self.con, "20260912",
+            lambda tickers, start, end: _frame(
+                {ticker: [("2026-09-10", 100)] for ticker in tickers}
+            ),
+            "20260912",
+            tickers=("SPY",),
+        )
+        self.assertEqual(
+            self.con.execute("SELECT ticker FROM stock_dividends").fetchall(),
+            [("AAA",)],
         )
 
 
