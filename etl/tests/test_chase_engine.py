@@ -1033,5 +1033,82 @@ class OnEventRequiredTest(unittest.TestCase):
                            "old_price": 10050}])
 
 
+class CancelConfirmedTest(unittest.TestCase):
+    """공용 cancel_confirmed — 취소 확인 3종 이벤트."""
+
+    def test_ok_cancelled(self):
+        api = FakeApi()
+        api.books["buy"] = unfilled(("0000123", "005930"))
+        ev = EventLog()
+        ok = ch.cancel_confirmed(api, "0000123", "005930", side="buy",
+                                 on_event=ev)
+        self.assertTrue(ok)
+        self.assertEqual(ev.kinds(), ["cancelled"])
+        self.assertEqual(ev.fields_of("cancelled"), [{"no": "0000123"}])
+        self.assertEqual(api.calls,
+                         [("cancel", "0000123"), ("unfilled", "buy")])
+
+    def test_cancel_failed(self):
+        api = FakeApi()
+        api.books["buy"] = unfilled(("0000123", "005930"))
+        api.fail.add("cancel")
+        ev = EventLog()
+        ok = ch.cancel_confirmed(api, "0000123", "005930", side="buy",
+                                 on_event=ev)
+        self.assertFalse(ok)
+        self.assertEqual(ev.kinds(), ["cancel_failed"])
+        self.assertEqual(ev.fields_of("cancelled"), [])
+        self.assertEqual(api.calls, [("cancel", "0000123")])
+
+    def test_unfilled_failed(self):
+        api = FakeApi()
+        api.books["buy"] = unfilled(("0000123", "005930"))
+        api.fail.add("unfilled")
+        ev = EventLog()
+        ok = ch.cancel_confirmed(api, "0000123", "005930", side="buy",
+                                 on_event=ev)
+        self.assertFalse(ok)
+        self.assertEqual(ev.kinds(), ["cancel_unconfirmed"])
+        self.assertEqual(ev.fields_of("cancelled"), [])
+
+    def test_cancel_keeps_unconfirmed(self):
+        api = FakeApi()
+        api.books["buy"] = unfilled(("0000123", "005930"))
+        api.cancel_keeps = True
+        ev = EventLog()
+        ok = ch.cancel_confirmed(api, "0000123", "005930", side="buy",
+                                 on_event=ev)
+        self.assertFalse(ok)
+        self.assertEqual(ev.kinds(), ["cancel_unconfirmed"])
+        self.assertEqual(ev.fields_of("cancelled"), [])
+
+    def test_note_appended(self):
+        api = FakeApi()
+        api.books["buy"] = unfilled(("0000123", "005930"))
+        ev = EventLog(note="x")
+        notes: list[str] = []
+        ok = ch.cancel_confirmed(api, "0000123", "005930", side="buy",
+                                 on_event=ev, notes=notes)
+        self.assertTrue(ok)
+        self.assertEqual(notes, ["x"])
+
+    def test_no_on_event_ok(self):
+        api = FakeApi()
+        api.books["buy"] = unfilled(("0000123", "005930"))
+        ok = ch.cancel_confirmed(api, "0000123", "005930", side="buy",
+                                 on_event=None)
+        self.assertTrue(ok)
+
+    def test_unnormalized_no_still_detects_residue(self):
+        api = FakeApi()
+        api.books["buy"] = unfilled(("0000123", "005930"))
+        api.cancel_keeps = True
+        ev = EventLog()
+        ok = ch.cancel_confirmed(api, "123", "005930", side="buy",
+                                 on_event=ev)
+        self.assertFalse(ok)
+        self.assertEqual(ev.kinds(), ["cancel_unconfirmed"])
+
+
 if __name__ == "__main__":
     unittest.main()
