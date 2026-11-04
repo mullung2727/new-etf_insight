@@ -353,8 +353,10 @@ def reconcile_day(
 
     비교 후 그날 ohlcv 행 전부 DELETE → KRX rows INSERT → provisional 기록 삭제.
     결과 행은 KRX 단독 적재와 같다. 한 트랜잭션.
+    KRX rows 의 date 가 요청 date 와 하나라도 다르면 쓰지 않고
+    {"status": "partial", "reason": "date_mismatch", ...} 반환.
     KRX rows 에 provisional 시장의 일부가 빠졌으면 쓰지 않고
-    {"status": "partial", "missing_markets": [...]} 반환.
+    {"status": "partial", "reason": "missing_market", "missing_markets": [...]} 반환.
     """
     if not _table_exists(con, "ohlcv_provisional"):
         return None
@@ -363,6 +365,14 @@ def reconcile_day(
     ).fetchone()[0]
     if not hit:
         return None
+    row_dates = sorted({row[0] for row in rows})
+    if any(d != date for d in row_dates):
+        return {
+            "status": "partial",
+            "reason": "date_mismatch",
+            "expected": date,
+            "got": row_dates,
+        }
     cols = ["ticker", *_COMPARE_COLS]
     prov = {}
     for r in con.execute(
@@ -377,7 +387,11 @@ def reconcile_day(
     krx_markets = {v["market"] for v in krx.values()}
     missing_markets = sorted(prov_markets - krx_markets)
     if missing_markets:
-        return {"status": "partial", "missing_markets": missing_markets}
+        return {
+            "status": "partial",
+            "reason": "missing_market",
+            "missing_markets": missing_markets,
+        }
     if _table_exists(con, "ohlcv_provisional_no1530"):
         no1530 = {
             r[0]
@@ -469,7 +483,9 @@ def format_reconcile(date: str, rec: dict) -> str:
     else:
         close_all = {entry[0] for entry in rec["price_changed"] if entry[1] == "close"}
         n1 = len(close_all - set(rec["close_changed_1530"]))
-        n2 = n - n1
+        n2 = len(
+            {entry[0] for entry in rec["price_changed"] if entry[1] in ("open", "high", "low")}
+        )
         first = (
             f"✅ [KRX OHLCV] {date} KRX 대조 — "
             f"종가 {n1}종목(15:30 봉 없음)·그 밖 가격 {n2}종목·추가 {a}·삭제 {r}, 평소 범위"
@@ -496,11 +512,10 @@ def format_reconcile(date: str, rec: dict) -> str:
         by_ticker: dict[str, list[tuple]] = {}
         for entry in rec["price_changed"]:
             by_ticker.setdefault(entry[0], []).append(entry)
-        ordered: list[tuple] = []
+        ordered: list[tuple] = list(rec["market_changed"])
         for t in rec["close_changed_1530"]:
             if t in by_ticker:
                 ordered.extend(by_ticker.pop(t))
-        ordered.extend(rec["market_changed"])
         for entries in by_ticker.values():
             ordered.extend(entries)
         for ticker, col, prov_v, krx_v in ordered[:20]:
@@ -628,8 +643,11 @@ def ensure_ohlcv(
             continue
         rec = reconcile_day(con, date, rows)
         if rec is not None and rec.get("status") == "partial":
-            missing = ",".join(rec["missing_markets"])
-            print(f"  {date}: KRX partial ({missing}) - keep minute rows (retry next run)")
+            if rec.get("reason") == "date_mismatch":
+                print(f"  {date}: KRX date mismatch - keep minute rows (retry next run)")
+            else:
+                missing_markets = ",".join(rec["missing_markets"])
+                print(f"  {date}: KRX partial ({missing_markets}) - keep minute rows (retry next run)")
             failed_days += 1
             continue
         if rec is None:

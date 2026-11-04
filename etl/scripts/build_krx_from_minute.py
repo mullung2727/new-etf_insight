@@ -45,7 +45,7 @@ def aggregate_day(mcon: duckdb.DuckDBPyConnection, date: str) -> pd.DataFrame:
     status 칸이 없는 옛 DB에선 JOIN만 하고 status 조건은 뺀다.
     """
     cols = {r[1] for r in mcon.execute("PRAGMA table_info('minute_fetched')").fetchall()}
-    status_filter = " AND f.status IN ('complete', 'empty')" if "status" in cols else ""
+    status_filter = " AND f.status = 'complete'" if "status" in cols else ""
     return mcon.execute(
         f"""
         SELECT b.ticker AS ticker,

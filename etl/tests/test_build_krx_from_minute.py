@@ -117,6 +117,16 @@ class TestAggregateDay(_TempDbTest):
         df = aggregate_day(self.mcon, "20250106")
         self.assertEqual(sorted(df["ticker"].tolist()), ["A"])
 
+    def test_empty_status_with_bars_excluded(self):
+        self._insert_bars([
+            _bar("A", "20250106", "090000", 100, 110, 90, 105, 1000),
+            _bar("B", "20250106", "090000", 200, 210, 190, 205, 500),
+        ])
+        self._mark_fetched("A", "20250106")
+        self._mark_fetched("B", "20250106", status="empty")
+        df = aggregate_day(self.mcon, "20250106")
+        self.assertEqual(sorted(df["ticker"].tolist()), ["A"])
+
 
 class TestBuildRows(_TempDbTest):
     def _agg(self, ticker="A", close=500, **kw):
