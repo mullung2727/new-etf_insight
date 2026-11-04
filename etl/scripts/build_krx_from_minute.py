@@ -39,20 +39,28 @@ def prev_trading_day(today: str) -> str:
 
 
 def aggregate_day(mcon: duckdb.DuckDBPyConnection, date: str) -> pd.DataFrame:
-    """그날 정규장 분봉 → 종목별 OHLC·합산량 (시간외 제외)."""
+    """그날 정규장 분봉 → 종목별 OHLC·합산량 (시간외 제외).
+
+    minute_fetched 에 완료 표시된 (ticker, scope, date)만 집계한다.
+    status 칸이 없는 옛 DB에선 JOIN만 하고 status 조건은 뺀다.
+    """
+    cols = {r[1] for r in mcon.execute("PRAGMA table_info('minute_fetched')").fetchall()}
+    status_filter = " AND f.status IN ('complete', 'empty')" if "status" in cols else ""
     return mcon.execute(
-        """
-        SELECT ticker,
-            arg_min(open, time) AS open,
-            max(high) AS high,
-            min(low) AS low,
-            arg_max(close, time) AS close,
-            sum(volume) AS volume,
-            sum(close * volume) AS trading_value,
-            bool_or(time = '153000') AS has1530
-        FROM minute_bars
-        WHERE scope = '1' AND date = ? AND time BETWEEN '090000' AND '153000'
-        GROUP BY ticker
+        f"""
+        SELECT b.ticker AS ticker,
+            arg_min(b.open, b.time) AS open,
+            max(b.high) AS high,
+            min(b.low) AS low,
+            arg_max(b.close, b.time) AS close,
+            sum(b.volume) AS volume,
+            sum(b.close * b.volume) AS trading_value,
+            bool_or(b.time = '153000') AS has1530
+        FROM minute_bars AS b
+        INNER JOIN minute_fetched AS f
+          ON f.ticker = b.ticker AND f.scope = b.scope AND f.date = b.date
+        WHERE b.scope = '1' AND b.date = ? AND b.time BETWEEN '090000' AND '153000'{status_filter}
+        GROUP BY b.ticker
         """,
         [date],
     ).fetchdf()
@@ -142,19 +150,25 @@ def run(
     rows, skipped_corp = build_rows(kcon, agg, target)
     if len(rows) == 0:
         return {"status": "no_minute", "date": target}
-    _insert_ohlcv_rows(kcon, rows)
     now = datetime.now(KST).isoformat(timespec="seconds")
-    kcon.execute(
-        "INSERT OR REPLACE INTO ohlcv_provisional VALUES (?, ?, ?, ?)",
-        [target, len(rows), skipped_corp, now],
-    )
     no1530 = [t for t, h in zip(agg["ticker"], agg["has1530"]) if not h]
-    kcon.execute("DELETE FROM ohlcv_provisional_no1530 WHERE date = ?", [target])
-    if no1530:
-        kcon.executemany(
-            "INSERT INTO ohlcv_provisional_no1530 VALUES (?, ?)",
-            [(target, t) for t in no1530],
+    kcon.execute("BEGIN")
+    try:
+        _insert_ohlcv_rows(kcon, rows)
+        kcon.execute(
+            "INSERT OR REPLACE INTO ohlcv_provisional VALUES (?, ?, ?, ?)",
+            [target, len(rows), skipped_corp, now],
         )
+        kcon.execute("DELETE FROM ohlcv_provisional_no1530 WHERE date = ?", [target])
+        if no1530:
+            kcon.executemany(
+                "INSERT INTO ohlcv_provisional_no1530 VALUES (?, ?)",
+                [(target, t) for t in no1530],
+            )
+        kcon.execute("COMMIT")
+    except Exception:
+        kcon.execute("ROLLBACK")
+        raise
     return {
         "status": "loaded",
         "date": target,

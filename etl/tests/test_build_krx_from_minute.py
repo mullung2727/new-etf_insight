@@ -24,6 +24,14 @@ CREATE TABLE minute_bars (
 )
 """
 
+_CREATE_MINUTE_FETCHED = """
+CREATE TABLE minute_fetched (
+    ticker VARCHAR, scope VARCHAR, date VARCHAR,
+    status VARCHAR DEFAULT 'complete',
+    PRIMARY KEY (ticker, scope, date)
+)
+"""
+
 
 def _bar(ticker, date, time, o, h, l, c, v, scope="1"):
     return (ticker, scope, date + time, date, time, o, h, l, c, v)
@@ -40,6 +48,7 @@ class _TempDbTest(unittest.TestCase):
         self.mcon = duckdb.connect(str(Path(self.tmp.name) / "minute_bars.duckdb"))
         self.kcon = duckdb.connect(str(Path(self.tmp.name) / "krx_ohlcv.duckdb"))
         self.mcon.execute(_CREATE_MINUTE_BARS)
+        self.mcon.execute(_CREATE_MINUTE_FETCHED)
         self.kcon.execute(_CREATE_OHLCV)
         ensure_provisional_table(self.kcon)
 
@@ -51,6 +60,12 @@ class _TempDbTest(unittest.TestCase):
     def _insert_bars(self, bars):
         self.mcon.executemany(
             "INSERT INTO minute_bars VALUES (?,?,?,?,?,?,?,?,?,?)", bars
+        )
+
+    def _mark_fetched(self, ticker, date, scope="1", status="complete"):
+        self.mcon.execute(
+            "INSERT INTO minute_fetched VALUES (?,?,?,?)",
+            [ticker, scope, date, status],
         )
 
     def _insert_ohlcv(self, row):
@@ -65,6 +80,7 @@ class TestAggregateDay(_TempDbTest):
             _bar("A", "20250106", "153000", 115, 118, 112, 117, 3000),
             _bar("A", "20250106", "160000", 117, 130, 117, 130, 9999),
         ])
+        self._mark_fetched("A", "20250106")
         df = aggregate_day(self.mcon, "20250106")
         self.assertEqual(len(df), 1)
         row = df.iloc[0]
@@ -82,6 +98,7 @@ class TestAggregateDay(_TempDbTest):
             _bar("A", "20250106", "090000", 100, 110, 90, 105, 1000),
             _bar("A", "20250106", "152000", 105, 112, 103, 110, 500),
         ])
+        self._mark_fetched("A", "20250106")
         df = aggregate_day(self.mcon, "20250106")
         row = df.iloc[0]
         self.assertEqual(row["close"], 110)
@@ -90,6 +107,15 @@ class TestAggregateDay(_TempDbTest):
     def test_empty_day_returns_empty(self):
         df = aggregate_day(self.mcon, "20250106")
         self.assertEqual(len(df), 0)
+
+    def test_unmarked_ticker_excluded(self):
+        self._insert_bars([
+            _bar("A", "20250106", "090000", 100, 110, 90, 105, 1000),
+            _bar("B", "20250106", "090000", 200, 210, 190, 205, 500),
+        ])
+        self._mark_fetched("A", "20250106")
+        df = aggregate_day(self.mcon, "20250106")
+        self.assertEqual(sorted(df["ticker"].tolist()), ["A"])
 
 
 class TestBuildRows(_TempDbTest):
@@ -151,6 +177,8 @@ class TestRun(_TempDbTest):
             _bar("A", "20250106", "153000", 2000, 2050, 1950, 2000, 200),
             _bar("B", "20250106", "090000", 90, 110, 85, 100, 50),
         ])
+        self._mark_fetched("A", "20250106")
+        self._mark_fetched("B", "20250106")
         res = run("20250107", self.kcon, self.mcon)
         self.assertEqual(res, {"status": "no_minute", "date": "20250106"})
         self.assertEqual(
@@ -173,6 +201,8 @@ class TestRun(_TempDbTest):
             _bar("B", "20250106", "090000", 105, 108, 102, 107, 50),
             _bar("B", "20250106", "152000", 107, 112, 106, 110, 60),
         ])
+        self._mark_fetched("A", "20250106")
+        self._mark_fetched("B", "20250106")
         res = run("20250107", self.kcon, self.mcon)
         self.assertEqual(res["status"], "loaded")
         self.assertEqual(res["date"], "20250106")
