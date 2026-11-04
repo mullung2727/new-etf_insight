@@ -559,7 +559,10 @@ class TestReconcileDay(unittest.TestCase):
         con.execute("INSERT INTO ohlcv_provisional VALUES ('20250103', 2, 0, 'ts')")
         krx_a = ("20250103", "A", "KOSPI", 90, 110, 85, 100, 1000, 100000, 10000, 100, 5)
         rec = reconcile_day(con, "20250103", [krx_a])
-        self.assertEqual(rec, {"status": "partial", "missing_markets": ["KOSDAQ"]})
+        self.assertEqual(
+            rec,
+            {"status": "partial", "reason": "missing_market", "missing_markets": ["KOSDAQ"]},
+        )
         got = con.execute(
             "SELECT date, ticker, market, open, high, low, close, volume, "
             "trading_value, market_cap, list_shrs, cmp_prev "
@@ -568,6 +571,27 @@ class TestReconcileDay(unittest.TestCase):
         self.assertEqual(got, [prov_a, prov_b])
         self.assertEqual(
             con.execute("SELECT COUNT(*) FROM ohlcv_provisional WHERE date = '20250103'").fetchone()[0], 1)
+
+    def test_date_mismatch_returns_partial_and_writes_nothing(self):
+        con = self.con
+        prov_a = ("20250103", "A", "KOSPI", 90, 110, 85, 100, 1000, 100000, 10000, 100, 5)
+        con.execute("INSERT INTO ohlcv VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", prov_a)
+        con.execute("INSERT INTO ohlcv_provisional VALUES ('20250103', 1, 0, 'ts')")
+        krx = [("20250106", "A", "KOSPI", 90, 110, 85, 100, 1000,
+                100000, 10000, 100, 5)]
+        rec = reconcile_day(con, "20250103", krx)
+        self.assertEqual(rec["status"], "partial")
+        self.assertEqual(rec["reason"], "date_mismatch")
+        got = con.execute(
+            "SELECT date, ticker, market, open, high, low, close, volume, "
+            "trading_value, market_cap, list_shrs, cmp_prev "
+            "FROM ohlcv WHERE date = '20250103'"
+        ).fetchall()
+        self.assertEqual(got, [prov_a])
+        self.assertEqual(
+            con.execute("SELECT COUNT(*) FROM ohlcv_provisional WHERE date = '20250103'").fetchone()[0], 1)
+        self.assertEqual(
+            con.execute("SELECT COUNT(*) FROM ohlcv WHERE date = '20250106'").fetchone()[0], 0)
 
     def test_price_changed_records_every_column(self):
         con = self.con
@@ -654,6 +678,24 @@ class TestReconcileDay(unittest.TestCase):
         self.assertTrue(first.startswith("✅"), first)
         self.assertIn("종가 2종목(15:30 봉 없음)·그 밖 가격 1종목", first)
 
+    def test_ok_line_counts_close_and_ohl_for_same_ticker(self):
+        con = self.con
+        con.execute(
+            "INSERT INTO ohlcv VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("20250103", "T1", "KOSPI", 90, 110, 85, 100, 1000,
+             100000, 10000, 100, 5),
+        )
+        con.execute("INSERT INTO ohlcv_provisional VALUES ('20250103', 1, 0, 'ts')")
+        con.execute("INSERT INTO ohlcv_provisional_no1530 VALUES ('20250103', 'T1')")
+        krx = [("20250103", "T1", "KOSPI", 90, 115, 85, 101, 1000,
+                100000, 10000, 100, 5)]
+        rec = reconcile_day(con, "20250103", krx)
+        self.assertEqual(rec["close_changed_1530"], [])
+        s = format_reconcile("20250103", rec)
+        first = s.splitlines()[0]
+        self.assertTrue(first.startswith("✅"), first)
+        self.assertIn("종가 1종목(15:30 봉 없음)·그 밖 가격 1종목", first)
+
 
 class TestFormatReconcile(unittest.TestCase):
     def _rec(self, **kw):
@@ -704,6 +746,21 @@ class TestFormatReconcile(unittest.TestCase):
         detail = [l for l in lines if l.startswith("  주식수 ")]
         self.assertEqual(detail, ["  주식수 BIG 1000→1060 (+6.0%)"])
 
+    def test_warn_lists_market_change_before_price_lines(self):
+        tickers = [f"T{i:02d}" for i in range(25)]
+        pc = [(t, "close", 100, 101) for t in tickers]
+        s = format_reconcile("20250103", self._rec(
+            price_changed=pc,
+            close_changed_1530=list(tickers),
+            market_changed=[("M", "market", "KOSPI", "KOSDAQ")]))
+        lines = s.splitlines()
+        self.assertTrue(lines[0].startswith("⚠"), lines[0])
+        self.assertIn("M market KOSPI→KOSDAQ", lines)
+        self.assertLess(
+            lines.index("M market KOSPI→KOSDAQ"),
+            lines.index("T00 close 100→101"),
+        )
+
 
 class TestEnsureOhlcvReconcilePath(unittest.TestCase):
     def test_provisional_date_takes_reconcile_path(self):
@@ -748,6 +805,7 @@ class TestEnsureOhlcvReconcilePath(unittest.TestCase):
             with patch("scripts.build_krx_ohlcv.fetch_day", return_value=krx):
                 stats = ensure_ohlcv(con, "20250103", "20250103", "k")
             self.assertEqual(stats["failed_days"], 1)
+            self.assertEqual(stats["missing_days"], 1)
             self.assertNotIn("20250103", stats["reconciled"])
             got = con.execute(
                 "SELECT date, ticker, market, open, high, low, close, volume, "
@@ -757,6 +815,35 @@ class TestEnsureOhlcvReconcilePath(unittest.TestCase):
             self.assertEqual(got, [prov_a, prov_b])
             self.assertEqual(
                 con.execute("SELECT COUNT(*) FROM ohlcv_provisional").fetchone()[0], 1)
+        finally:
+            con.close()
+
+    def test_date_mismatch_counts_failed_and_keeps_rows(self):
+        con = duckdb.connect(":memory:")
+        try:
+            con.execute(_CREATE_OHLCV)
+            ensure_provisional_table(con)
+            prov_a = ("20250103", "A", "KOSPI", 90, 110, 85, 100, 1000,
+                      100000, 10000, 100, 5)
+            con.execute("INSERT INTO ohlcv VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", prov_a)
+            con.execute("INSERT INTO ohlcv_provisional VALUES ('20250103', 1, 0, 'ts')")
+            krx = [("20250106", "A", "KOSPI", 90, 110, 85, 100, 1000,
+                    100000, 10000, 100, 5)]
+            with patch("scripts.build_krx_ohlcv.fetch_day", return_value=krx):
+                stats = ensure_ohlcv(con, "20250103", "20250103", "k")
+            self.assertEqual(stats["failed_days"], 1)
+            self.assertEqual(stats["missing_days"], 1)
+            self.assertNotIn("20250103", stats["reconciled"])
+            got = con.execute(
+                "SELECT date, ticker, market, open, high, low, close, volume, "
+                "trading_value, market_cap, list_shrs, cmp_prev "
+                "FROM ohlcv WHERE date = '20250103'"
+            ).fetchall()
+            self.assertEqual(got, [prov_a])
+            self.assertEqual(
+                con.execute("SELECT COUNT(*) FROM ohlcv_provisional").fetchone()[0], 1)
+            self.assertEqual(
+                con.execute("SELECT COUNT(*) FROM ohlcv WHERE date = '20250106'").fetchone()[0], 0)
         finally:
             con.close()
 
