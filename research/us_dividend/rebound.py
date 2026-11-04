@@ -388,9 +388,6 @@ def run_slots(trades: list[dict], close_by_ticker: dict, n_days: int,
                         dv = float(arr[d])
                         if np.isfinite(dv) and dv:
                             cash += dv * h["shares"] * (1 - div_tax)
-        for h in [x for x in holds if x["exit_i"] == d]:
-            cash += h["shares"] * h["exit_px"] * (1 - fee)
-            holds.remove(h)
         eq_prev = 1.0 if d == 0 else equity[d - 1]
         for t in sorted(by_entry.get(d, []), key=lambda z: z["depth"]):
             if len(holds) >= slots or t["ticker"] in {x["ticker"] for x in holds}:
@@ -409,6 +406,9 @@ def run_slots(trades: list[dict], close_by_ticker: dict, n_days: int,
             cash -= alloc
             taken += 1
             taken_trades.append(t)
+        for h in [x for x in holds if x["exit_i"] == d]:
+            cash += h["shares"] * h["exit_px"] * (1 - fee)
+            holds.remove(h)
         hv = 0.0
         for h in holds:
             cc = close_by_ticker[h["ticker"]]
@@ -497,16 +497,13 @@ def _load_spy(db=US_OHLCV_DB) -> dict[str, float]:
 
 def _load_spy_div(db=US_OHLCV_DB) -> dict[str, float]:
     """날짜 → SPY 주당 배당 (etf_dividends, 없으면 {})."""
+    con = duckdb.connect(str(db), read_only=True)
     try:
-        con = duckdb.connect(str(db), read_only=True)
-        try:
-            df = con.execute(
-                "SELECT date, amount FROM etf_dividends"
-                " WHERE ticker = 'SPY'").fetchdf()
-        finally:
-            con.close()
-    except Exception:
-        return {}
+        df = con.execute(
+            "SELECT date, amount FROM etf_dividends"
+            " WHERE ticker = 'SPY'").fetchdf()
+    finally:
+        con.close()
     if df.empty:
         return {}
     df["date"] = df["date"].astype(str)
@@ -731,18 +728,15 @@ def _load_data(axis: list[str], all_stocks: bool = False,
     divmap: dict[str, list[tuple[str, float]]] = {}
     raws = sorted(set(keymap.values()))
     if raws:
+        con = duckdb.connect(str(US_OHLCV_DB), read_only=True)
         try:
-            con = duckdb.connect(str(US_OHLCV_DB), read_only=True)
-            try:
-                ddf = con.execute(
-                    "SELECT ticker,date,amount FROM stock_dividends"
-                    f" WHERE ticker IN ({','.join('?' * len(raws))})",
-                    raws).fetchdf()
-            finally:
-                con.close()
-        except Exception:
-            ddf = None
-        if ddf is not None and not ddf.empty:
+            ddf = con.execute(
+                "SELECT ticker,date,amount FROM stock_dividends"
+                f" WHERE ticker IN ({','.join('?' * len(raws))})",
+                raws).fetchdf()
+        finally:
+            con.close()
+        if not ddf.empty:
             ddf["ticker"] = ddf["ticker"].astype(str)
             ddf["date"] = ddf["date"].astype(str)
             ddf["amount"] = pd.to_numeric(ddf["amount"], errors="coerce")
@@ -853,10 +847,11 @@ def _run_default(axis: list[str], data: dict, spy: dict) -> None:
             for y, g in sorted(df40.groupby(df40["date"].str[:4])):
                 lines.append(f"|{y}|{label}|{len(g)}|"
                              f"{_pct(day_weighted_mean(g, 'ret'))}|")
-    lines += ["", "## P1 무작위 대조 (200 draws)", "", P1_NOTE, "",
+    fixed_only = [t for t in TP_LIST if t[1] == "fixed"]
+    lines += ["", "## P1 무작위 대조 (200 draws, 고정 목표만)", "", P1_NOTE, "",
               "|X|목표|draws평균|실제백분위|", "|---|---|---|---|"]
     for x in X_LIST:
-        for label, kind, val in TP_LIST:
+        for label, kind, val in fixed_only:
             ts = cells[(x, MAX_HOLD, label)]
             df = _cell_df(ts, axis, spy)
             actual = day_weighted_mean(df, "ret")
@@ -1077,6 +1072,14 @@ def _run_regime(axis: list[str], data: dict, spy: dict,
             " 최신 FY end ≥ 신호일−550일·연속, filed < 신호일,"
             " SIC 67xx·없음 제외, 전일 종가 ≥ $1, 20일 평균 거래대금 ≥ $1M)"
             if universe_note is None else universe_note)
+    uncl = []
+    for ver_u, win_u in (("포함", None), ("제외", FOCUS_COVID_OUT)):
+        for name_u in strats:
+            ts_u = all_trades[name_u]
+            if win_u is not None:
+                ts_u = drop_entry_window(ts_u, axis, win_u[0], win_u[1])
+            uncl.append(f"{name_u}/{ver_u} "
+                        f"{sum(1 for t in ts_u if t['reason'] == 'unclosed')}건")
     lines = [title, "",
              "생존편향: 현재 상장 종목만 — 상한",
              "배당: 주가만 / 배당 포함(배당락일 현금 수령, 원천징수 15%) 두 버전. 양도세 미포함", "",
@@ -1095,7 +1098,8 @@ def _run_regime(axis: list[str], data: dict, spy: dict,
              "| 신호 몰림 | 같은 진입일이면 신호일 낙폭(종가/1년 고점) 큰 순 |",
              "| 지표 | 계좌 연 복리·일별 MDD·샤프, 평균 투자 비중, 체결·건너뜀, 연도별 |",
              "| 기간 | 2016~현재 |",
-             "| 코로나 제외 | 2020-02-01~2020-06-30 진입 제외 버전 병기 |", "",
+             "| 코로나 제외 | 2020-02-01~2020-06-30 진입 제외 버전 병기 |",
+             f"| 미청산 | 마지막 구간 +25% 미도달·120일 미경과 신호는 계좌 모의에서 제외: {', '.join(uncl)} |", "",
              "## A 급락기 날짜 (START 이후)", "",
              "| 상태 | 급락기 일수 | 구간 |", "|---|---|---|"]
     for key, label in (("hi252", "①1년고점"), ("fast20", "②속도20일")):
@@ -1505,8 +1509,6 @@ def _run_univ(axis: list[str], data: dict, spy: dict) -> None:
     hold_list = [60, 120]
     groups = ("안정배당", "불안정배당", "무배당")
     cells = _build_cells(data, axis, [0.70], hold_list, tp_list)
-    cells = {k: [t for t in ts if t["reason"] != "unclosed"]
-             for k, ts in cells.items()}
     spy_arr = pd.Series([spy.get(d, np.nan) for d in axis],
                         dtype=float).ffill().to_numpy()
     spy_hi = _rolling_hi(spy_arr, LOOKBACK)
@@ -1547,29 +1549,35 @@ def _run_univ(axis: list[str], data: dict, spy: dict) -> None:
         for h in hold_list:
             for label, _, _ in tp_list:
                 for grp in groups:
-                    g = [t for t in vtrades[(ver, h, label)]
-                         if t["grp"] == grp]
+                    gg = [t for t in vtrades[(ver, h, label)]
+                          if t["grp"] == grp]
+                    g = [t for t in gg if t["reason"] != "unclosed"]
                     df = _cell_df(g, axis, spy)
+                    nuncl = len(gg) - len(g)
                     uq = len({t["ticker"] for t in g})
                     lines.append("|" + "|".join(
-                        [ver, str(h), label, grp, *_cell_row(df, 0),
+                        [ver, str(h), label, grp, *_cell_row(df, nuncl),
                          str(uq)]) + "|")
     lines += ["", "## B 종목 첫 진입만 (코로나 제외, 그룹 안에서)", "",
               "|" + "|".join(["보유", "목표", "그룹", *hdr, "고유 종목"]) + "|",
               "|" + "|".join(["---"] * (3 + len(hdr) + 1)) + "|"]
     for h, label in ((120, "+25%"), (60, "만료만")):
         for grp in groups:
+            gg = [t for t in vtrades[("제외", h, label)]
+                  if t["grp"] == grp]
             g = first_entry_per_ticker(
-                [t for t in vtrades[("제외", h, label)] if t["grp"] == grp])
+                [t for t in gg if t["reason"] != "unclosed"])
             df = _cell_df(g, axis, spy)
+            nuncl = sum(1 for t in gg if t["reason"] == "unclosed")
             uq = len({t["ticker"] for t in g})
             lines.append("|" + "|".join(
-                [str(h), label, grp, *_cell_row(df, 0), str(uq)]) + "|")
+                [str(h), label, grp, *_cell_row(df, nuncl), str(uq)]) + "|")
     print("[info] univ A·B done", flush=True)
     lines += ["", "## C 시장 상태 × 그룹 (코로나 포함, 120일·+25%)", "",
               "|시장 상태|그룹|n|고유 종목|평균ret|승률|mae하위10%|",
               "|---|---|---|---|---|---|---|"]
-    g_c = cells[(0.70, 120, "+25%")]
+    g_c = [t for t in cells[(0.70, 120, "+25%")]
+           if t["reason"] != "unclosed"]
     for mkt, mlabel in ((True, "동반"), (False, "개별")):
         for grp in groups:
             g = [t for t in g_c if t["mkt"] == mkt and t["grp"] == grp]

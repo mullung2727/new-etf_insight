@@ -564,5 +564,38 @@ class TestPayerMask(unittest.TestCase):
         self.assertTrue(m.all())
 
 
+class TestRunSlotsSameDay(unittest.TestCase):
+    def test_50_slot_blocked(self):
+        """같은 날 A 청산·B 진입, slots=1 → B 건너뜀 (시가 진입이 청산 입금보다 먼저)."""
+        n = 8
+        cb = {t: np.full(n, 100.0) for t in "AB"}
+        r = run_slots(
+            [{"ticker": "A", "entry_i": 1, "exit_i": 3, "entry": 100.0,
+              "exit_px": 110.0, "depth": -0.5},
+             {"ticker": "B", "entry_i": 3, "exit_i": 5, "entry": 100.0,
+              "exit_px": 110.0, "depth": -0.6}],
+            cb, n, slots=1)
+        self.assertEqual(r["taken"], 1)
+        self.assertEqual(r["skipped"], 1)
+        self.assertEqual([t["ticker"] for t in r["taken_trades"]], ["A"])
+
+    def test_51_cash_not_reused(self):
+        """칸 2개·A만 보유·현금 0에서 같은 날 A 청산금이 C 진입에 안 쓰임 → C 건너뜀."""
+        n = 8
+        cb = {t: np.full(n, 100.0) for t in "ABC"}
+        # B는 전일 0원 청산으로 현금 0 세팅용.
+        r = run_slots(
+            [{"ticker": "A", "entry_i": 1, "exit_i": 3, "entry": 100.0,
+              "exit_px": 110.0, "depth": -0.5},
+             {"ticker": "B", "entry_i": 1, "exit_i": 2, "entry": 100.0,
+              "exit_px": 0.0, "depth": -0.4},
+             {"ticker": "C", "entry_i": 3, "exit_i": 5, "entry": 100.0,
+              "exit_px": 110.0, "depth": -0.6}],
+            cb, n, slots=2)
+        self.assertEqual(r["taken"], 2)
+        self.assertEqual(r["skipped"], 1)
+        self.assertNotIn("C", [t["ticker"] for t in r["taken_trades"]])
+
+
 if __name__ == "__main__":
     unittest.main()
