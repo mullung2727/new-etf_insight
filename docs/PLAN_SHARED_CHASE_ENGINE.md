@@ -74,6 +74,12 @@
 - [ ] 첫 실가동 확인 (날짜)
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
+### P8 취소 → 원장 기록 공용화 (2026-11-04 추가, 순서: 공용 함수 → rebound → rights → envelope)
+- [ ] 구현·테스트 머지 (PR #) — 공용 `cancel_confirmed` (git)
+- [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
+- [ ] 첫 실가동 확인 (날짜) — 전략별: rebound 2·3단 취소가 원장 `cancelled` 로 남는 날
+- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+
 ## 1. 왜
 
 | 사고·문제 | 근거 |
@@ -191,6 +197,31 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
   - jevq-report 는 그 시각 체결내역으로 확정하므로 시가 체결분은 그대로 보고, 추격 구간 체결분은 다음 보고에 반영.
 - P7 은 git 코드라 worktree 브랜치로만 작업, 머지 = 반영.
 
+### P8 취소 → 원장 기록 공용화 (사용자 2026-11-04: "취소되면 당연히 db가 바뀌어야지, 이 전략만이 아니라")
+- 계기: 11-04 rebound 3단 첫 실가동. 047040 목표가 매도 뒤 2·3단(0014279·0014282) 취소는 broker 로그상 `200 OK` 인데
+  원장 `st2`·`st3` 은 `submitted` 그대로. `exit.py` 가 엔진을 안 거치고 `io.cancel()` 을 직접 불러 취소 이벤트·기록이 없음.
+- 11-04 전수 조사 (전략이 `cancel()` 을 직접 부르는 곳):
+
+| 전략 | 지점 | 지금 원장 | P8 대상 |
+|---|---|---|---|
+| rebound | `exit.py` 매도 완료 뒤 남은 매수 취소, 15:15 매수 취소 2곳 | 1단 체결 0 일 때만 `st1=expired`, 2·3단 안 바뀜 | ○ |
+| rights | `expire.py` `cancel_tp`, `cancel_buys`(첫 트랜치·TP 당일 체결 뒤) | 무상 우선 취소만 기록, 나머지는 알림만 | ○ |
+| envelope | `expire.py` `cancel_tp` | `tp_status` 가 다음날 08:20 초기화 전까지 `submitted` | ○ |
+| envelope | `order.py` `cancel_rest` 매수 잔량 | 16:00 verify 가 체결로 `expired`·`confirmed` 정리 | ○ (취소 즉시 기록, verify 는 그대로) |
+| swing | `exit.py` | 취소 뒤 `status` 기록함 | 공용 함수로만 교체 |
+| msig·high52·us v38 | 엔진 경유 / 직접 취소 없음 | `on_event` 로 기록 | 해당 없음 |
+
+- 공용 함수 (`etl/scripts/chase_engine.py`): `cancel_confirmed(api, no, t, *, side, on_event=None, state=None) -> bool`
+  1. `api.cancel(no, t)` 실패 → `on_event(state, "cancel_failed", no=no)`, False.
+  2. 미체결 재조회(`side`) 실패(None) → `"cancel_unconfirmed"`, False. 재조회에 `no` 남음 → `"cancel_unconfirmed"`, False.
+  3. 사라짐 → `on_event(state, "cancelled", no=no)`, True.
+  - 기존 `_market_step` 의 취소·재조회 확인도 이 함수를 쓰게 바꿈(동작 같음, 이벤트 이름 `market_cancel_failed`·`market_cancel_unconfirmed` 유지).
+- 전략 쪽 (`research/private`, 스테이징 → 20:00 이후 반영, 한 번에 한 전략):
+  - 직접 `cancel()` 호출을 `cancel_confirmed` 로 교체, `on_event` 콜백에서 그 주문번호의 원장 칸을 `cancelled` 로 기록
+    (rebound `stN`, rights·envelope `tp_status`·매수 상태 칸). 칸 이름·값은 전략 원장 그대로, 새 값 `cancelled` 만 추가.
+  - `cancelled` 를 읽는 쪽(verify·다음날 초기화·리포트)이 새 값을 기존 "끝난 주문"과 같게 다루는지 전략별로 grep 해서 명세에 적음.
+- 동작 변경: 취소 뒤 재조회 1회 추가(rebound·rights·envelope `cancel_rest`). 주문·매도 판단은 그대로.
+
 ## 5. 요구사항 → 테스트
 
 | 요구사항 | 테스트 |
@@ -217,6 +248,11 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | `place_first_orders` fail closed | 미체결/체결 조회 None → 주문 0, 이미 전량 체결 → done·주문 0, 불명 → unknown·재주문 0 |
 | `place_market_orders` | 미주문 → 잔량 시장가, 살아 있는 지정가 → 취소 확인 후 잔량, 전량 체결·조회 실패·`end_at` 이후 → 0건 |
 | `BrokerClient.base_price` | 정상 응답 → 부호 뗀 int, HTTP 실패·값 없음·0 → None |
+| P8 `cancel_confirmed` 확인된 취소만 기록 | 취소 OK·재조회에 없음 → `cancelled` 1회·True / 취소 실패 → `cancel_failed`·False / 재조회 None·잔류 → `cancel_unconfirmed`·False, 셋 다 `cancelled` 0회 |
+| P8 기존 시장가 동작 그대로 | `_market_step` 기존 테스트 기대값 수정 없이 통과 |
+| P8 rebound 2·3단 취소 → 원장 | 목표 매도 완료 뒤 2·3단 미체결 → `st2`·`st3`=`cancelled`, 15:15 1단만 미체결 → `st1` 기존대로 `expired`·나머지 `cancelled` |
+| P8 취소 미확인이면 `cancelled` 안 씀 | 재조회 잔류 → 원장 `submitted` 유지 |
+| P8 rights·envelope TP 취소 → 원장 | `cancel_tp` 성공 → `tp_status`=`cancelled`, 실패·미확인 → 그대로 + 기존 알림 |
 
 ## 6. 결정
 
@@ -236,6 +272,7 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | D12 | P5 Jev 는 매수·매도 추격 함께 이전(같은 루프라 쪼개지 않음), 추가 매수는 범위 밖 | 사용자 (2026-10-14) |
 | D13 | Jev 매도 `auction` 모드 채택 (하한·시각 값과 근거는 비공개 문서) | 사용자 (2026-10-14) |
 | D14 | P5 체결 확정은 Jev `_finalize` 유지, 원장 기록은 `on_event`, 이어받기는 엔진 첫 주문 가드 | Claude 판단 (동작 변경 없음) |
+| D16 | P8 추가: 취소는 공용 `cancel_confirmed` 로만, 확인된 취소는 `on_event("cancelled")` → 전략 원장에 `cancelled`. 순서 rebound → rights → envelope. 버린 안: rebound 만 원장 한 줄 수정 | 사용자 지시 · Claude 설계 (2026-11-04) |
 | D15 | 시세 날짜 검증(3-5절) 구현 안 함. 왜: envelope 는 시세로 보유를 갱신하지 않고, high52 의 사고 경로는 거래일 가드 2중으로 막힘. 남은 위험은 수동 `--date` 재실행·거래일 오판뿐인데 `/quotes` 날짜 필드 실측부터 필요해 비용이 더 큼. 버린 안: 3-5절 그대로 구현, `--date` 가 오늘이 아니면 갱신 건너뛰기 | Claude 추천 · 사용자 승인 (2026-11-02) |
 
 ## 7. 운영 체크
