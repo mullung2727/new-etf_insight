@@ -39,9 +39,29 @@ function Send-Report([string]$Message) {
 }
 
 try {
+  if ($now.Hour -eq 7) {
+    "[$(Get-Date -Format o)] minute daily" | Tee-Object -FilePath $log -Append | Out-Null
+    $eapMd = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $mdOut = & ".\.venv\Scripts\python.exe" @("scripts\build_krx_from_minute.py") 2>&1 | ForEach-Object { "$_" }
+    $mdCode = $LASTEXITCODE
+    $ErrorActionPreference = $eapMd
+    $mdOut | Tee-Object -FilePath $log -Append | Out-Null
+    "minute-daily exit=$mdCode" | Tee-Object -FilePath $log -Append | Out-Null
+    $mdText = ($mdOut -join "`n")
+    if ($mdText -match "MINUTE_DAILY status=loaded date=(\d+) rows=(\d+) skipped_corp=(\d+)") {
+      Send-Report ("[KRX OHLCV] " + $Matches[1] + " 분봉 일봉 선적재 " + $Matches[2] + "종목 (기업행위 의심 제외 " + $Matches[3] + ") — KRX 오면 대조·교정")
+    } elseif ($mdText -match "MINUTE_DAILY status=(no_minute|minute_locked)") {
+      Send-Report ("❌ [KRX OHLCV] 분봉 일봉 실패(" + $Matches[1] + ") — 08:00 KRX 대기")
+    }
+  }
   $build = Invoke-Step "build KRX OHLCV $from~$today" ".\.venv\Scripts\python.exe" @("scripts\build_krx_ohlcv.py", "--from", $from, "--to", $today)
   $fetched = 0
   if ($build -match "fetched=(\d+)d") { $fetched = [int]$Matches[1] }
+  $recBlocks = [regex]::Matches($build, '(?s)RECONCILE_BEGIN\r?\n(.*?)\r?\nRECONCILE_END')
+  foreach ($m in $recBlocks) {
+    Send-Report ($m.Groups[1].Value.Trim())
+  }
 
   $status = @'
 import duckdb
@@ -52,9 +72,14 @@ latest = con.execute("SELECT max(date) FROM ohlcv").fetchone()[0]
 cnt, min_t, max_t, total_tv = con.execute(
     "SELECT COUNT(*), MIN(ticker), MAX(ticker), SUM(trading_value) FROM ohlcv WHERE date=?", [latest]).fetchone()
 has_yday = con.execute("SELECT COUNT(*) FROM ohlcv WHERE date=?", [yday]).fetchone()[0] > 0
+try:
+    is_prov = con.execute("SELECT COUNT(*) FROM ohlcv_provisional WHERE date=?", [yday]).fetchone()[0] > 0
+except Exception:
+    is_prov = False
 con.close()
 print(latest)
 print("1" if has_yday else "0")
+print("1" if is_prov else "0")
 print(
     "[KRX OHLCV] " + latest + "\n"
     + f"- rows: {cnt}\n"
@@ -66,18 +91,22 @@ print(
 '@.Replace("__YDAY__", $yday)
   $lines = @($status | .\.venv\Scripts\python.exe -)
   if ($LASTEXITCODE -ne 0) { throw "status query failed with exit code $LASTEXITCODE" }
-  $latest, $hasYday = $lines[0], $lines[1]
-  $report = ($lines | Select-Object -Skip 2) -join "`n"
-  "fetched=$fetched latest=$latest has_yday=$hasYday final=$isFinal" | Tee-Object -FilePath $log -Append | Out-Null
+  $latest, $hasYday, $isProv = $lines[0], $lines[1], $lines[2]
+  $report = ($lines | Select-Object -Skip 3) -join "`n"
+  "fetched=$fetched latest=$latest has_yday=$hasYday is_prov=$isProv final=$isFinal" | Tee-Object -FilePath $log -Append | Out-Null
 
   if ($fetched -gt 0) {
     Send-Report $report
   }
   # 성공 보고와 따로 판단 — 옛 누락일을 채운 실행이어도 전일분이 없으면 경고해야 한다 (CodeRabbit PR #34)
-  if ($isFinal -and $hasYday -ne "1" -and $now.AddDays(-1).DayOfWeek -notin @("Saturday", "Sunday")) {
-    # 마지막 시도까지 전일분 없음 — 휴장이면 무시해도 되고, 아니면 수동 적재 필요
-    $tail = ($build -split "`n" | Where-Object { $_ -match "fetch failed|KRX empty|retry" }) -join "`n"
-    Send-Report "[KRX OHLCV] $yday 일봉 없음 (08:30 마지막 시도) — 휴장이 아니면 수동 적재 필요`n최신 적재일 $latest`n$tail`nlog: $log"
+  if ($isFinal -and $now.AddDays(-1).DayOfWeek -notin @("Saturday", "Sunday")) {
+    if ($hasYday -ne "1") {
+      # 마지막 시도까지 전일분 없음 — 휴장이면 무시해도 되고, 아니면 수동 적재 필요
+      $tail = ($build -split "`n" | Where-Object { $_ -match "fetch failed|KRX empty|retry" }) -join "`n"
+      Send-Report "[KRX OHLCV] $yday 일봉 없음 (08:30 마지막 시도) — 휴장이 아니면 수동 적재 필요`n최신 적재일 $latest`n$tail`nlog: $log"
+    } elseif ($isProv -eq "1") {
+      Send-Report "⚠ [KRX OHLCV] $yday KRX 미도착 — 분봉 일봉으로 운영 중, 22:00·내일 재시도"
+    }
   }
   exit 0
 } catch {

@@ -10,6 +10,7 @@ KRX OpenAPI는 기준일자(basDd) 단위 조회만 지원 — 기간/종목 필
   - 나중 데이터가 없는 빈 날짜(당일 미공시 가능)는 기록하지 않고 다음 실행에서 재시도.
 
 캐시에 없는 거래일만 KRX에서 가져와 upsert 한다(자기치유 갭필).
+분봉 선적재 날짜(ohlcv_provisional)는 미적재로 보고 KRX 도착 시 reconcile_day 로 대조·교정한다.
 
 Usage (from etl/):
     uv run python scripts/build_krx_ohlcv.py                       # 최근 ~100일 → 오늘
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import statistics
 import sys
 import time
 from datetime import datetime, timedelta
@@ -96,6 +98,35 @@ CREATE TABLE IF NOT EXISTS etf_ohlcv (
 """
 
 
+_CREATE_PROVISIONAL = """
+CREATE TABLE IF NOT EXISTS ohlcv_provisional (
+    date VARCHAR PRIMARY KEY,
+    rows INTEGER,
+    skipped_corp INTEGER,
+    created_at VARCHAR
+)
+"""
+
+_CREATE_PROVISIONAL_NO1530 = """
+CREATE TABLE IF NOT EXISTS ohlcv_provisional_no1530 (
+    date VARCHAR,
+    ticker VARCHAR,
+    PRIMARY KEY (date, ticker)
+)
+"""
+
+_OHLCV_COLS = (
+    "date", "ticker", "market", "open", "high", "low", "close",
+    "volume", "trading_value", "market_cap", "list_shrs", "cmp_prev",
+)
+
+_COMPARE_COLS = (
+    "open", "high", "low", "close", "market", "list_shrs",
+    "market_cap", "cmp_prev", "volume", "trading_value",
+)
+_PRICE_COLS = ("open", "high", "low", "close")
+
+
 def load_api_key() -> str:
     load_dotenv(ENV_PATH)
     key = os.environ.get("KRX_API_KEY")
@@ -121,8 +152,8 @@ def get_trading_calendar(from_date: str, to_date: str) -> list[str]:
     return out
 
 
-def held_dates(con: duckdb.DuckDBPyConnection, from_date: str, to_date: str) -> set[str]:
-    """캐시에 이미 1행 이상 적재된 거래일 집합."""
+def _held_dates_all(con: duckdb.DuckDBPyConnection, from_date: str, to_date: str) -> set[str]:
+    """ohlcv 에 1행 이상 있는 날짜 전부 (provisional 포함, held_dates 가 걸러냄)."""
     rows = con.execute(
         "SELECT DISTINCT date FROM ohlcv WHERE date BETWEEN ? AND ?",
         [from_date, to_date],
@@ -137,6 +168,38 @@ def holiday_dates(con: duckdb.DuckDBPyConnection, from_date: str, to_date: str) 
         [from_date, to_date],
     ).fetchall()
     return {r[0] for r in rows}
+
+
+def _table_exists(con: duckdb.DuckDBPyConnection, name: str) -> bool:
+    """information_schema 로 표 존재 확인."""
+    return (
+        con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
+            [name],
+        ).fetchone()[0]
+        > 0
+    )
+
+
+def ensure_provisional_table(con: duckdb.DuckDBPyConnection) -> None:
+    """분봉 출처 기록 표 2종 생성 (build_krx_from_minute 와 공용)."""
+    con.execute(_CREATE_PROVISIONAL)
+    con.execute(_CREATE_PROVISIONAL_NO1530)
+
+
+def held_dates(con: duckdb.DuckDBPyConnection, from_date: str, to_date: str) -> set[str]:
+    """캐시에 이미 1행 이상 적재된 거래일 집합 (분봉 출처 날짜는 제외 → KRX 재시도)."""
+    held = _held_dates_all(con, from_date, to_date)
+    if not _table_exists(con, "ohlcv_provisional"):
+        return held
+    prov = {
+        r[0]
+        for r in con.execute(
+            "SELECT date FROM ohlcv_provisional WHERE date BETWEEN ? AND ?",
+            [from_date, to_date],
+        ).fetchall()
+    }
+    return held - prov
 
 
 def _parse_int(value: str | None) -> int | None:
@@ -283,6 +346,153 @@ def _insert_etf_ohlcv_rows(con: duckdb.DuckDBPyConnection, rows: list) -> None:
     con.execute("INSERT OR REPLACE INTO etf_ohlcv SELECT * FROM _etf_ohlcv_staging")
 
 
+def reconcile_day(
+    con: duckdb.DuckDBPyConnection, date: str, rows: list[tuple]
+) -> dict | None:
+    """분봉 출처 날짜를 KRX 값으로 대조·교정. provisional 날짜가 아니면 None.
+
+    비교 후 그날 ohlcv 행 전부 DELETE → KRX rows INSERT → provisional 기록 삭제.
+    결과 행은 KRX 단독 적재와 같다. 한 트랜잭션.
+    """
+    if not _table_exists(con, "ohlcv_provisional"):
+        return None
+    hit = con.execute(
+        "SELECT COUNT(*) FROM ohlcv_provisional WHERE date = ?", [date]
+    ).fetchone()[0]
+    if not hit:
+        return None
+    cols = ["ticker", *_COMPARE_COLS]
+    prov = {}
+    for r in con.execute(
+        f"SELECT {', '.join(cols)} FROM ohlcv WHERE date = ?", [date]
+    ).fetchall():
+        prov[r[0]] = dict(zip(_COMPARE_COLS, r[1:]))
+    krx = {}
+    for row in rows:
+        rec = dict(zip(_OHLCV_COLS, row))
+        krx[rec["ticker"]] = {c: rec[c] for c in _COMPARE_COLS}
+    if _table_exists(con, "ohlcv_provisional_no1530"):
+        no1530 = {
+            r[0]
+            for r in con.execute(
+                "SELECT ticker FROM ohlcv_provisional_no1530 WHERE date = ?", [date]
+            ).fetchall()
+        }
+    else:
+        no1530 = set()
+    price_changed: list[tuple] = []
+    close_changed_1530: list[str] = []
+    market_changed: list[tuple] = []
+    shares_changed: list[tuple] = []
+    vol_ratios: list[float] = []
+    tv_ratios: list[float] = []
+    for ticker in sorted(set(prov) | set(krx)):
+        if ticker not in prov or ticker not in krx:
+            continue
+        p, k = prov[ticker], krx[ticker]
+        for c in _PRICE_COLS:
+            if p[c] != k[c]:
+                price_changed.append((ticker, c, p[c], k[c]))
+                break
+        if p["close"] != k["close"] and ticker not in no1530:
+            close_changed_1530.append(ticker)
+        if p["market"] != k["market"]:
+            market_changed.append((ticker, "market", p["market"], k["market"]))
+        if (
+            p["list_shrs"] is not None
+            and k["list_shrs"] is not None
+            and p["list_shrs"] != k["list_shrs"]
+        ):
+            shares_changed.append((ticker, p["list_shrs"], k["list_shrs"]))
+        if k["volume"] is not None and k["volume"] > 0 and p["volume"] is not None:
+            vol_ratios.append(p["volume"] / k["volume"])
+        if (
+            k["trading_value"] is not None
+            and k["trading_value"] > 0
+            and p["trading_value"] is not None
+        ):
+            tv_ratios.append(p["trading_value"] / k["trading_value"])
+    rec = {
+        "price_changed": price_changed,
+        "close_changed_1530": close_changed_1530,
+        "market_changed": market_changed,
+        "shares_changed": shares_changed,
+        "added": sorted(set(krx) - set(prov)),
+        "removed": sorted(set(prov) - set(krx)),
+        "vol_ratio_median": statistics.median(vol_ratios) if vol_ratios else None,
+        "tv_ratio_median": statistics.median(tv_ratios) if tv_ratios else None,
+    }
+    con.execute("BEGIN")
+    try:
+        con.execute("DELETE FROM ohlcv WHERE date = ?", [date])
+        _insert_ohlcv_rows(con, rows)
+        con.execute("DELETE FROM ohlcv_provisional WHERE date = ?", [date])
+        if _table_exists(con, "ohlcv_provisional_no1530"):
+            con.execute("DELETE FROM ohlcv_provisional_no1530 WHERE date = ?", [date])
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    return rec
+
+
+def _fmt_ratio(value) -> str:
+    return f"{value:.2f}x" if value is not None else "-"
+
+
+def _fmt_val(value) -> str:
+    return "-" if value is None else str(value)
+
+
+def format_reconcile(date: str, rec: dict) -> str:
+    """대조 결과 알림 문자열 (순수 함수). 첫 줄 ⚠/✅ 요약 + 비율·증감·변경 목록."""
+    n = len(rec["price_changed"])
+    k = len(rec["market_changed"])
+    j = len(rec["close_changed_1530"])
+    a = len(rec["added"])
+    r = len(rec["removed"])
+    s = len(rec["shares_changed"])
+    if j >= 1 or k >= 1 or n > 30:
+        first = (
+            f"⚠ [KRX OHLCV] {date} 분봉 일봉 교정 — "
+            f"가격 {n}종목·시장 {k}종목 변경 (15:30 봉 종가 변경 {j})"
+        )
+        emphasis = True
+    else:
+        first = (
+            f"✅ [KRX OHLCV] {date} KRX 대조 — "
+            f"가격 {n}종목(15:30 봉 없는 종목만)·추가 {a}·삭제 {r}, 평소 범위"
+        )
+        emphasis = False
+    lines = [
+        first,
+        f"- 거래량 비율 중앙 {_fmt_ratio(rec['vol_ratio_median'])} / 거래대금 {_fmt_ratio(rec['tv_ratio_median'])}",
+        f"- 추가 {a} · 삭제 {r}",
+        f"- 주식수 변경 {s}종목(평소 범위)",
+    ]
+    listed = 0
+    for ticker, prov_v, krx_v in rec["shares_changed"]:
+        if listed >= 10:
+            break
+        if prov_v is None or krx_v is None or prov_v == 0:
+            continue
+        ratio = krx_v / prov_v
+        if abs(ratio - 1) >= 0.05:
+            lines.append(f"  주식수 {ticker} {prov_v}→{krx_v} ({(ratio - 1) * 100:+.1f}%)")
+            listed += 1
+    if emphasis:
+        by_ticker = {entry[0]: entry for entry in rec["price_changed"]}
+        ordered: list[tuple] = []
+        for t in rec["close_changed_1530"]:
+            if t in by_ticker:
+                ordered.append(by_ticker.pop(t))
+        ordered.extend(rec["market_changed"])
+        ordered.extend(by_ticker.values())
+        for ticker, col, prov_v, krx_v in ordered[:20]:
+            lines.append(f"{ticker} {col} {_fmt_val(prov_v)}→{_fmt_val(krx_v)}")
+    return "\n".join(lines)
+
+
 def ensure_etf_ohlcv(
     con: duckdb.DuckDBPyConnection,
     from_date: str,
@@ -367,10 +577,11 @@ def ensure_ohlcv(
     날짜 단위 네트워크 오류는 해당 날짜만 건너뛰고 계속 진행(다음 실행에서 재시도).
 
     Returns: 통계 dict (calendar_days/held_days/missing_days/fetched_days/
-             inserted_rows/holiday_days/failed_days).
+             inserted_rows/holiday_days/failed_days/reconciled).
     """
     con.execute(_CREATE_OHLCV)
     con.execute(_CREATE_HOLIDAYS)
+    ensure_provisional_table(con)
     # 기존 DB 마이그레이션 — 새 컬럼 없으면 추가
     existing_cols = {r[1] for r in con.execute("PRAGMA table_info('ohlcv')").fetchall()}
     for col, dtype in [("market_cap", "BIGINT"), ("list_shrs", "BIGINT"), ("cmp_prev", "INTEGER")]:
@@ -387,6 +598,7 @@ def ensure_ohlcv(
     inserted_rows = 0
     failed_days = 0
     empty_dates: list[str] = []
+    reconciled: dict[str, dict] = {}
     latest_names: list[tuple[str, str]] = []   # 최신 fetch 거래일의 (code, name)
     for date in missing:
         day_names: list[tuple[str, str]] = []
@@ -399,7 +611,11 @@ def ensure_ohlcv(
         if not rows:
             empty_dates.append(date)
             continue
-        _insert_ohlcv_rows(con, rows)
+        rec = reconcile_day(con, date, rows)
+        if rec is None:
+            _insert_ohlcv_rows(con, rows)
+        else:
+            reconciled[date] = rec
         fetched_days += 1
         inserted_rows += len(rows)
         latest_names = day_names   # missing 오름차순 → 마지막이 최신 거래일
@@ -417,7 +633,12 @@ def ensure_ohlcv(
 
     # 휴장일 확정: 빈 응답 날짜보다 나중 날짜에 데이터가 있으면 휴장일.
     # (마지막 빈 날짜는 당일 미공시일 수 있으므로 기록하지 않고 재시도 대상으로 남김)
-    max_data_date = con.execute("SELECT max(date) FROM ohlcv").fetchone()[0]
+    if _table_exists(con, "ohlcv_provisional"):
+        max_data_date = con.execute(
+            "SELECT max(date) FROM ohlcv WHERE date NOT IN (SELECT date FROM ohlcv_provisional)"
+        ).fetchone()[0]
+    else:
+        max_data_date = con.execute("SELECT max(date) FROM ohlcv").fetchone()[0]
     new_holidays = [d for d in empty_dates if max_data_date and d < max_data_date]
     if new_holidays:
         con.executemany(
@@ -436,6 +657,7 @@ def ensure_ohlcv(
         "fetched_days": fetched_days,
         "inserted_rows": inserted_rows,
         "holiday_days": len(new_holidays),
+        "reconciled": reconciled,
         "failed_days": failed_days,
     }
 
@@ -486,6 +708,10 @@ def main() -> None:
         f"holidays+{stats['holiday_days']} failed={stats['failed_days']} "
         f"→ {args.db_path} {etf_str}"
     )
+    for _rec_date in sorted(stats.get("reconciled", {})):
+        print("RECONCILE_BEGIN")
+        print(format_reconcile(_rec_date, stats["reconciled"][_rec_date]))
+        print("RECONCILE_END")
 
 
 if __name__ == "__main__":
