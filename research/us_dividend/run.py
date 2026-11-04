@@ -344,7 +344,9 @@ def _attach_market(m: pd.DataFrame, t, dates: list[str],
     px["close"] = pd.to_numeric(px["close"], errors="coerce")
     px["trading_value"] = pd.to_numeric(px["trading_value"], errors="coerce")
     cp = px[px["date"] == prev].set_index("ticker")["close"]
-    adv = px[px["date"].isin(win20)].groupby("ticker")["trading_value"].mean()
+    _g = px[px["date"].isin(win20)].groupby("ticker")["trading_value"].agg(
+        ["mean", "count"])
+    adv = _g["mean"].where(_g["count"] >= len(win20))
     m["px"] = pd.to_numeric(m["ticker"].map(cp), errors="coerce")
     m["adv20"] = pd.to_numeric(m["ticker"].map(adv), errors="coerce")
     if idx - 1 - 252 >= 0:
@@ -531,9 +533,9 @@ def _weights(idx, cols, picks_by_reb):
     have = set(cols)
     for t in sorted(picks_by_reb):
         picks = [c for c in picks_by_reb[t] if c in have]
+        w.loc[t, :] = 0.0
         if not picks:
             continue
-        w.loc[t, :] = 0.0
         w.loc[t, picks] = 1.0 / len(picks)
     return w.ffill().fillna(0.0)
 

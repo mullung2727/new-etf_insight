@@ -7,6 +7,7 @@ import unittest
 import pandas as pd
 
 from research.us_dividend.run import (
+    _weights,
     cash_covered,
     dd_bucket,
     div_add,
@@ -217,6 +218,18 @@ class TestDivAdd(unittest.TestCase):
         """(2.52,100,1.0)→0.0001, 0.85→0.000085."""
         self.assertAlmostEqual(div_add(2.52, 100, 1.0), 0.0001)
         self.assertAlmostEqual(div_add(2.52, 100, 0.85), 0.000085)
+
+
+class TestWeightsEmpty(unittest.TestCase):
+    def test_empty_reb_zero(self):
+        """빈 picks 리밸런싱일 → 그날 이후 비중 전부 0 (현금)."""
+        idx = ["20200101", "20200102", "20200103", "20200104"]
+        w = _weights(idx, ["A", "B"],
+                     {"20200102": ["A"], "20200103": []})
+        self.assertEqual(w.loc["20200102", "A"], 1.0)
+        self.assertEqual(w.loc["20200102", "B"], 0.0)
+        self.assertTrue((w.loc["20200103"] == 0.0).all())
+        self.assertTrue((w.loc["20200104"] == 0.0).all())
 
 
 if __name__ == "__main__":
