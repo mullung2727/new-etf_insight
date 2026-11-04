@@ -53,6 +53,8 @@ try {
       Send-Report ("[KRX OHLCV] " + $Matches[1] + " 분봉 일봉 선적재 " + $Matches[2] + "종목 (기업행위 의심 제외 " + $Matches[3] + ") — KRX 오면 대조·교정")
     } elseif ($mdText -match "MINUTE_DAILY status=(no_minute|minute_locked)") {
       Send-Report ("❌ [KRX OHLCV] 분봉 일봉 실패(" + $Matches[1] + ") — 08:00 KRX 대기")
+    } elseif ($mdCode -ne 0 -and $mdText -notmatch "MINUTE_DAILY status=") {
+      Send-Report ("❌ [KRX OHLCV] 분봉 일봉 실패(exit " + $mdCode + ") — 08:00 KRX 대기`nlog: " + $log)
     }
   }
   $build = Invoke-Step "build KRX OHLCV $from~$today" ".\.venv\Scripts\python.exe" @("scripts\build_krx_ohlcv.py", "--from", $from, "--to", $today)

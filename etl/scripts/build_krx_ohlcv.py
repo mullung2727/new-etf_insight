@@ -353,6 +353,8 @@ def reconcile_day(
 
     비교 후 그날 ohlcv 행 전부 DELETE → KRX rows INSERT → provisional 기록 삭제.
     결과 행은 KRX 단독 적재와 같다. 한 트랜잭션.
+    KRX rows 에 provisional 시장의 일부가 빠졌으면 쓰지 않고
+    {"status": "partial", "missing_markets": [...]} 반환.
     """
     if not _table_exists(con, "ohlcv_provisional"):
         return None
@@ -371,6 +373,11 @@ def reconcile_day(
     for row in rows:
         rec = dict(zip(_OHLCV_COLS, row))
         krx[rec["ticker"]] = {c: rec[c] for c in _COMPARE_COLS}
+    prov_markets = {v["market"] for v in prov.values()}
+    krx_markets = {v["market"] for v in krx.values()}
+    missing_markets = sorted(prov_markets - krx_markets)
+    if missing_markets:
+        return {"status": "partial", "missing_markets": missing_markets}
     if _table_exists(con, "ohlcv_provisional_no1530"):
         no1530 = {
             r[0]
@@ -384,6 +391,7 @@ def reconcile_day(
     close_changed_1530: list[str] = []
     market_changed: list[tuple] = []
     shares_changed: list[tuple] = []
+    cap_changed = 0
     vol_ratios: list[float] = []
     tv_ratios: list[float] = []
     for ticker in sorted(set(prov) | set(krx)):
@@ -393,17 +401,14 @@ def reconcile_day(
         for c in _PRICE_COLS:
             if p[c] != k[c]:
                 price_changed.append((ticker, c, p[c], k[c]))
-                break
         if p["close"] != k["close"] and ticker not in no1530:
             close_changed_1530.append(ticker)
         if p["market"] != k["market"]:
             market_changed.append((ticker, "market", p["market"], k["market"]))
-        if (
-            p["list_shrs"] is not None
-            and k["list_shrs"] is not None
-            and p["list_shrs"] != k["list_shrs"]
-        ):
+        if p["list_shrs"] != k["list_shrs"]:
             shares_changed.append((ticker, p["list_shrs"], k["list_shrs"]))
+        if p["market_cap"] != k["market_cap"]:
+            cap_changed += 1
         if k["volume"] is not None and k["volume"] > 0 and p["volume"] is not None:
             vol_ratios.append(p["volume"] / k["volume"])
         if (
@@ -417,6 +422,7 @@ def reconcile_day(
         "close_changed_1530": close_changed_1530,
         "market_changed": market_changed,
         "shares_changed": shares_changed,
+        "cap_changed": cap_changed,
         "added": sorted(set(krx) - set(prov)),
         "removed": sorted(set(prov) - set(krx)),
         "vol_ratio_median": statistics.median(vol_ratios) if vol_ratios else None,
@@ -446,12 +452,14 @@ def _fmt_val(value) -> str:
 
 def format_reconcile(date: str, rec: dict) -> str:
     """대조 결과 알림 문자열 (순수 함수). 첫 줄 ⚠/✅ 요약 + 비율·증감·변경 목록."""
-    n = len(rec["price_changed"])
+    price_tickers = {entry[0] for entry in rec["price_changed"]}
+    n = len(price_tickers)
     k = len(rec["market_changed"])
     j = len(rec["close_changed_1530"])
     a = len(rec["added"])
     r = len(rec["removed"])
     s = len(rec["shares_changed"])
+    c = rec["cap_changed"]
     if j >= 1 or k >= 1 or n > 30:
         first = (
             f"⚠ [KRX OHLCV] {date} 분봉 일봉 교정 — "
@@ -459,9 +467,12 @@ def format_reconcile(date: str, rec: dict) -> str:
         )
         emphasis = True
     else:
+        close_all = {entry[0] for entry in rec["price_changed"] if entry[1] == "close"}
+        n1 = len(close_all - set(rec["close_changed_1530"]))
+        n2 = n - n1
         first = (
             f"✅ [KRX OHLCV] {date} KRX 대조 — "
-            f"가격 {n}종목(15:30 봉 없는 종목만)·추가 {a}·삭제 {r}, 평소 범위"
+            f"종가 {n1}종목(15:30 봉 없음)·그 밖 가격 {n2}종목·추가 {a}·삭제 {r}, 평소 범위"
         )
         emphasis = False
     lines = [
@@ -469,25 +480,29 @@ def format_reconcile(date: str, rec: dict) -> str:
         f"- 거래량 비율 중앙 {_fmt_ratio(rec['vol_ratio_median'])} / 거래대금 {_fmt_ratio(rec['tv_ratio_median'])}",
         f"- 추가 {a} · 삭제 {r}",
         f"- 주식수 변경 {s}종목(평소 범위)",
+        f"- 시총 교정 {c}종목",
     ]
     listed = 0
     for ticker, prov_v, krx_v in rec["shares_changed"]:
         if listed >= 10:
             break
-        if prov_v is None or krx_v is None or prov_v == 0:
+        if prov_v is None or krx_v is None or prov_v <= 0:
             continue
         ratio = krx_v / prov_v
         if abs(ratio - 1) >= 0.05:
             lines.append(f"  주식수 {ticker} {prov_v}→{krx_v} ({(ratio - 1) * 100:+.1f}%)")
             listed += 1
     if emphasis:
-        by_ticker = {entry[0]: entry for entry in rec["price_changed"]}
+        by_ticker: dict[str, list[tuple]] = {}
+        for entry in rec["price_changed"]:
+            by_ticker.setdefault(entry[0], []).append(entry)
         ordered: list[tuple] = []
         for t in rec["close_changed_1530"]:
             if t in by_ticker:
-                ordered.append(by_ticker.pop(t))
+                ordered.extend(by_ticker.pop(t))
         ordered.extend(rec["market_changed"])
-        ordered.extend(by_ticker.values())
+        for entries in by_ticker.values():
+            ordered.extend(entries)
         for ticker, col, prov_v, krx_v in ordered[:20]:
             lines.append(f"{ticker} {col} {_fmt_val(prov_v)}→{_fmt_val(krx_v)}")
     return "\n".join(lines)
@@ -612,6 +627,11 @@ def ensure_ohlcv(
             empty_dates.append(date)
             continue
         rec = reconcile_day(con, date, rows)
+        if rec is not None and rec.get("status") == "partial":
+            missing = ",".join(rec["missing_markets"])
+            print(f"  {date}: KRX partial ({missing}) - keep minute rows (retry next run)")
+            failed_days += 1
+            continue
         if rec is None:
             _insert_ohlcv_rows(con, rows)
         else:
