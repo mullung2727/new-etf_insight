@@ -1,5 +1,9 @@
 ﻿# Project Instructions
 
+## 세션 역할
+
+- 세션 이름이 전략명(예: envelope)이면 시작 직후 `research/private/<이름>/CLAUDE.md` 를 먼저 읽고, 그 전략 폴더와 관련 코드만 다룬다. 이름 없는 세션은 총괄이다.
+
 ## Skills
 
 - 코드 작성·수정 전 `skills/muse-codegen/SKILL.md`를 먼저 읽는다. 한 줄 수정도 Muse에 맡기고, 검수·테스트·실행은 호출 에이전트가 직접 수행한다.
