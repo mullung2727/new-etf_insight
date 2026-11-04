@@ -75,7 +75,7 @@
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P8 취소 → 원장 기록 공용화 (2026-11-04 추가, 순서: 공용 함수 → rebound → rights → envelope)
-- [ ] 구현·테스트 머지 (PR #) — 공용 `cancel_confirmed` (git)
+- [ ] 구현·테스트 머지 (PR #) — 공용 `cancel_confirmed` (git, 브랜치 feat/cancel-confirmed), 전략별 반영은 아래 순서
 - [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
 - [ ] 첫 실가동 확인 (날짜) — 전략별: rebound 2·3단 취소가 원장 `cancelled` 로 남는 날
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
@@ -299,3 +299,4 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P5 재시작 이어받기: 원래 Jev on_step 훅 → 실제 엔진 `_try_first_order` 가드(PR #88 리뷰). nos 중 살아 있는 주문이 있으면 `resumed` 이벤트 후 그 호출은 주문·정정 없음 — 모든 엔진 사용 전략의 재시작 중복 주문 방지, Jev 우회 코드 제거
 - P5 대상 0건일 때: 엔진은 state 가 없으면 시장가 시각까지 안 기다림 → Jev `run_chase` 가 엔진 뒤에 market_at 대기를 직접 유지 (기존 시각 테스트 그대로)
 - P5c 공용 추가: `BrokerClient.limit_price(..., inside_spread=True)`(호가 간격이 넓으면 반대쪽 호가 옆 가격, 기본값 False 는 기존 계산 그대로), `BrokerClient.place` 의 HTTP 422 는 `unknown` 유지(PR #145 리뷰). broker 가 키움 전송 실패도 422 로 돌려줘 미접수가 보장되지 않기 때문. 유증 시장가 매수는 이전 뒤 422 가 `rejected` 에서 `unknown` 으로 바뀜(재주문 안 하는 쪽). 기존 `modify`·Jev·`place_order_via_broker` 의 422 해석은 이번 범위 밖
+- P8 `_market_step`·`_cancel_only_step`: 원래 `cancel_confirmed` 로 교체 → 실제 그대로 둠 (이벤트 이름·실패 처리(`unknown`)가 달라 교체해도 줄이 안 줄고 기존 시장가 동작 위험만 생김)

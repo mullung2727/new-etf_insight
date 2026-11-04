@@ -39,6 +39,7 @@ notes에 append하고, None이면 무시한다. kind와 fields:
   market_cancel_failed() / market_cancel_unconfirmed() / market_past_end()
   market_order(no, qty) / market_unknown(qty, message)
   market_rejected(status, message)
+  cancel_failed(no) / cancel_unconfirmed(no) / cancelled(no) — cancel_confirmed 전용
   late_start() — state 대신 None 전달. modifies_summary(count).
 
 place_first_orders는 첫 주문만 1회 내고 끝난다(대기·정정·시장가 없음).
@@ -348,6 +349,22 @@ def _market_step(today: str, states: list[dict], api, clock, end: datetime,
             _emit(on_event, s, "market_rejected", notes,
                   status=str(res.get("status")),
                   message=str(res.get("message", "")))
+
+
+def cancel_confirmed(api, no: str, t: str, *, side: str,
+                     on_event: Callable | None = None, state: dict | None = None,
+                     notes: list[str] | None = None) -> bool:
+    """취소 요청 → 미체결 재조회로 사라짐 확인. 확인된 취소만 cancelled 이벤트."""
+    _notes = notes if notes is not None else []
+    if not api.cancel(no, t):
+        _emit(on_event, state, "cancel_failed", _notes, no=no)
+        return False
+    u = api.unfilled(side)
+    if u is None or _entry(u, no) is not None:
+        _emit(on_event, state, "cancel_unconfirmed", _notes, no=no)
+        return False
+    _emit(on_event, state, "cancelled", _notes, no=no)
+    return True
 
 
 def _cancel_only_step(today: str, states: list[dict], api, notes: list[str],
