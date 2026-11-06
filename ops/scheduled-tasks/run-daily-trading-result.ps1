@@ -13,6 +13,9 @@ Set-Location $etlDir
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = "1"
 
+. (Join-Path $PSScriptRoot "lib_trading_day_guard.ps1")
+Wait-SessionShift -Tag "daily-trading-result"
+
 try {
   $reportArgs = @("scripts\report_daily_trading_result.py", "--cause")
   if ($Date) {

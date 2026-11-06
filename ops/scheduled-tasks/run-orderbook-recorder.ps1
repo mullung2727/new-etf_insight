@@ -11,6 +11,9 @@ Set-Location $etlDir
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = "1"
 
+. (Join-Path $PSScriptRoot "lib_trading_day_guard.ps1")
+Wait-SessionShift -Tag "orderbook-recorder"
+
 # 오전·오후가 같은 날짜 로그를 쓰므로 -Append. stderr(경고·traceback)를 로그에 합칠 때
 # EAP=Stop 이면 PS 5.1 이 첫 stderr 줄에서 러너를 죽이므로 호출 구간만 Continue.
 $ErrorActionPreference = "Continue"
