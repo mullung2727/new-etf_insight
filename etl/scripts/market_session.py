@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 from check_krx_trading_day import is_krx_trading_day
 
-__all__ = ["load", "session", "shift", "at", "wait_until", "main"]
+__all__ = ["load", "session", "shift", "at", "wait_until", "csat_missing", "main"]
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -143,6 +143,17 @@ def at(day: str, hms: str, anchor: str | None = None,
     base = datetime.strptime(day, "%Y%m%d").replace(
         tzinfo=KST, hour=h, minute=minute, second=sec, microsecond=0)
     return base + timedelta(seconds=shift(day, hms, anchor, sessions))
+
+
+def csat_missing(day: str, sessions: dict[str, tuple[str, str]] | None = None) -> bool:
+    """day(YYYYMMDD)가 10월 이후인데 그해 수능일(마감이 평소와 다른 날) 줄이 없으면 True."""
+    if int(day[4:6]) < 10:
+        return False
+    if sessions is None:
+        sessions = load()
+    year = day[:4]
+    return not any(key.startswith(year) and close != NORMAL_CLOSE
+                   for key, (_open, close) in sessions.items())
 
 
 def wait_until(day: str, hms: str, anchor: str | None = None,

@@ -155,3 +155,8 @@
 - P3: 함수는 12벌이 아니라 13곳이다. `trading_batch_common.in_order_window`(유증 주문이 씀)가 하나 더 있었다. 문자열 시각 비교 3곳도 바꿨다: `run_pullback_exit.is_exit_window_started`, high52 exit `--stop-time`, 자금 엔진 대기 2곳.
   - 각 함수는 `market_session.at(...)` 결과에 기준 datetime 의 tzinfo 를 다시 붙인다. 예전 `.replace(hour=...)` 와 같은 시간대를 돌려줘야 naive 시계를 쓰는 테스트와 호출부가 그대로 돈다.
   - 엔벌로프는 중지 상태라 제외했다.
+- P4: 연초 누락 알림은 만들지 않았다. 연초 첫 거래일은 `session()` 이 공휴일 달력으로 자동 판정해서 파일에 없어도 된다.
+  - 대신 수능일 누락 알림을 넣었다: `market_session.csat_missing`.
+    - 10월 1일부터 그해 마감이 15:30 이 아닌 줄이 파일에 없으면 15:25 정산 보고 끝에 ⚠ 한 줄을 붙인다.
+    - 사용자 결정 11-07.
+  - 분봉 일봉 집계(`build_krx_from_minute.aggregate_day`)는 정규장 범위와 종가 봉을 `session(date)` 로 자른다.
