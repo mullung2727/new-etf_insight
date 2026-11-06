@@ -75,7 +75,7 @@
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P8 취소 → 원장 기록 공용화 (2026-11-04 추가, 순서: 공용 함수 → rebound → rights → envelope)
-- [x] 구현·테스트 머지 (PR #150) — 공용 `cancel_confirmed`. 전략 반영: rebound 2026-11-06 20:05 (백업 `_backup_20261106_rebound_cancel`), rights TP 만 2026-11-06 20:26 (백업 `_backup_20261106_rights_tpcancel`), envelope 남음
+- [x] 구현·테스트 머지 (PR #150) — 공용 `cancel_confirmed`. 전략 반영: rebound 2026-11-06 20:05 (백업 `_backup_20261106_rebound_cancel`), rights TP 만 2026-11-06 20:26 (백업 `_backup_20261106_rights_tpcancel`), envelope 는 2026-11-06 전략 중지(config off·작업 Disabled)로 보류 — 재개 시 `expire.cancel_tp`·`order.cancel_rest` 에 적용
 - [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
 - [ ] 첫 실가동 확인 (날짜) — rebound: 2·3단 취소 뒤 `st2`·`st3`=`cancelled` / rights: 정리일 TP 취소 뒤 `tp_status`=`cancelled`
 - [x] 설계와 달라진 점을 "구현 차이" 절에 반영
@@ -302,3 +302,4 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P5c 공용 추가: `BrokerClient.limit_price(..., inside_spread=True)`(호가 간격이 넓으면 반대쪽 호가 옆 가격, 기본값 False 는 기존 계산 그대로), `BrokerClient.place` 의 HTTP 422 는 `unknown` 유지(PR #145 리뷰). broker 가 키움 전송 실패도 422 로 돌려줘 미접수가 보장되지 않기 때문. 유증 시장가 매수는 이전 뒤 422 가 `rejected` 에서 `unknown` 으로 바뀜(재주문 안 하는 쪽). 기존 `modify`·Jev·`place_order_via_broker` 의 422 해석은 이번 범위 밖
 - P8 `_market_step`·`_cancel_only_step`: 원래 `cancel_confirmed` 로 교체 → 실제 그대로 둠 (이벤트 이름·실패 처리(`unknown`)가 달라 교체해도 줄이 안 줄고 기존 시장가 동작 위험만 생김)
 - P8 rights: 원래 `cancel_tp`·`cancel_buys` 를 `cancel_confirmed` 로 교체하고 TP·매수 둘 다 기록 → 실제 TP 만, `expire._run` 정리 루프에서 `cancel_tp` 가 확인한 취소 뒤 `tp_status=cancelled` 한 줄 (D17). `cancel_tp` 는 이미 재조회로 확인하고, 실패 사유 3종(취소 실패·재조회 실패·잔류) 문구를 테스트가 고정해 교체하면 문구가 합쳐짐. `rights_dip_orders` tp 행 status 는 그대로(verify 체결 대조가 그 행을 봄)
+- P8 envelope: 원래 rights 다음 반영 → 실제 보류. 2026-11-06 전략 중지(`enabled=false`·capital 0·작업 3개 Disabled)로 취소가 안 생겨 확인 불가. 재개할 때 rebound·rights 방식(확인된 취소 뒤 원장 `cancelled`)으로 적용. swing 은 이미 취소 뒤 `status` 를 기록해 교체 안 함
