@@ -23,6 +23,7 @@ import pandas as pd
 from new_etf_insight.data_paths import db_dir
 from build_krx_ohlcv import _CREATE_OHLCV, _insert_ohlcv_rows, ensure_provisional_table
 from check_krx_trading_day import is_krx_trading_day
+import market_session
 
 KST = timezone(timedelta(hours=9))
 
@@ -43,7 +44,10 @@ def aggregate_day(mcon: duckdb.DuckDBPyConnection, date: str) -> pd.DataFrame:
 
     minute_fetched 에 완료 표시된 (ticker, scope, date)만 집계한다.
     status 칸이 없는 옛 DB에선 JOIN만 하고 status 조건은 뺀다.
+    정규장 범위·종가 봉은 market_session.session(date) (수능·연초 반영).
     """
+    op, cl = market_session.session(date)
+    t_open, t_close = op.replace(":", "") + "00", cl.replace(":", "") + "00"
     cols = {r[1] for r in mcon.execute("PRAGMA table_info('minute_fetched')").fetchall()}
     status_filter = " AND f.status = 'complete'" if "status" in cols else ""
     return mcon.execute(
@@ -55,14 +59,14 @@ def aggregate_day(mcon: duckdb.DuckDBPyConnection, date: str) -> pd.DataFrame:
             arg_max(b.close, b.time) AS close,
             sum(b.volume) AS volume,
             sum(b.close * b.volume) AS trading_value,
-            bool_or(b.time = '153000') AS has1530
+            bool_or(b.time = ?) AS has1530
         FROM minute_bars AS b
         INNER JOIN minute_fetched AS f
           ON f.ticker = b.ticker AND f.scope = b.scope AND f.date = b.date
-        WHERE b.scope = '1' AND b.date = ? AND b.time BETWEEN '090000' AND '153000'{status_filter}
+        WHERE b.scope = '1' AND b.date = ? AND b.time BETWEEN ? AND ?{status_filter}
         GROUP BY b.ticker
         """,
-        [date],
+        [t_close, date, t_open, t_close],
     ).fetchdf()
 
 

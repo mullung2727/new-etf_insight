@@ -128,6 +128,28 @@ class TestAggregateDay(_TempDbTest):
         self.assertEqual(sorted(df["ticker"].tolist()), ["A"])
 
 
+class TestAggregateDayMarketSession(_TempDbTest):
+    def test_suneung_day_session_range(self):
+        # 20261119 = 수능일 10:00~16:30 (market_sessions.json)
+        self._insert_bars([
+            _bar("A", "20261119", "093000", 50, 999, 1, 55, 9999),
+            _bar("A", "20261119", "100000", 100, 110, 90, 105, 1000),
+            _bar("A", "20261119", "160000", 105, 200, 100, 150, 2000),
+            _bar("A", "20261119", "163000", 150, 155, 148, 177, 3000),
+        ])
+        self._mark_fetched("A", "20261119")
+        df = aggregate_day(self.mcon, "20261119")
+        self.assertEqual(len(df), 1)
+        row = df.iloc[0]
+        self.assertEqual(row["open"], 100)
+        self.assertEqual(row["high"], 200)
+        self.assertEqual(row["low"], 90)
+        self.assertEqual(row["close"], 177)
+        self.assertEqual(row["volume"], 6000)
+        self.assertEqual(row["trading_value"], 105 * 1000 + 150 * 2000 + 177 * 3000)
+        self.assertTrue(bool(row["has1530"]))
+
+
 class TestBuildRows(_TempDbTest):
     def _agg(self, ticker="A", close=500, **kw):
         base = {"ticker": ticker, "open": 460, "high": 510, "low": 455,
