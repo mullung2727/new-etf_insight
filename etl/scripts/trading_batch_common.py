@@ -14,6 +14,10 @@ from zoneinfo import ZoneInfo
 import requests
 from new_etf_insight.data_paths import db_dir
 
+try:
+    from scripts import market_session
+except ImportError:  # scripts/ 직접 실행
+    import market_session
 
 REQUEST_TIMEOUT = 15
 
@@ -35,8 +39,7 @@ def now_seoul() -> datetime:
 
 def in_order_window(now: datetime, start: str, deadline: str) -> bool:
     def at(value: str) -> datetime:
-        hour, minute, second = (int(part) for part in value.split(":"))
-        return now.replace(hour=hour, minute=minute, second=second, microsecond=0)
+        return market_session.at(now.strftime("%Y%m%d"), value).replace(tzinfo=now.tzinfo)
     return at(start) <= now < at(deadline)
 
 

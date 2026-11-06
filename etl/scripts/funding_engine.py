@@ -27,6 +27,11 @@ from notify import (
     send_strategy_alert, headline, HEADLINE_OK, HEADLINE_WARN, HEADLINE_FAIL,
 )
 
+try:
+    from scripts import market_session
+except ImportError:  # scripts/ 직접 실행
+    import market_session
+
 ETF_TICKER = "459580"  # KODEX CD금리액티브(합성)
 DB = db_dir() / "funding.sqlite3"
 ORDER_STATUS = ("submitted", "partial", "filled", "cancelled", "rejected", "unknown")
@@ -445,9 +450,8 @@ def _sell_and_confirm(db: Path, qty: int, *, io, today: str,
         return {"filled_qty": 0, "avg_price": None, "notes": notes,
                 "order_no": order_no, "recorded": False}
     if preopen:
-        hh, mm, ss = (int(p) for p in PREOPEN_FILL_AT.split(":"))
-        target = io.now().replace(hour=hh, minute=mm, second=ss,
-                                  microsecond=0)
+        now = io.now()
+        target = market_session.at(now.strftime("%Y%m%d"), PREOPEN_FILL_AT).replace(tzinfo=now.tzinfo)
         while True:
             remaining = (target - io.now()).total_seconds()
             if remaining <= 0:
@@ -726,9 +730,8 @@ def main(argv=None) -> int:
     try:
         io = LiveIO(args.broker_url, dry_run=args.dry_run)
         s = sweep(DB, io=io, today=today)
-        hh, mm, ss = (int(p) for p in args.confirm_at.split(":"))
-        target = io.now().replace(hour=hh, minute=mm, second=ss,
-                                  microsecond=0)
+        now = io.now()
+        target = market_session.at(now.strftime("%Y%m%d"), args.confirm_at).replace(tzinfo=now.tzinfo)
         while True:
             remaining = (target - io.now()).total_seconds()
             if remaining <= 0:

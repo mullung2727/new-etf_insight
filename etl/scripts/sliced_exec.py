@@ -1,6 +1,6 @@
 """여러 회차로 나눠 지정가 주문을 실행한다."""
 from __future__ import annotations
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 try:
     from scripts import chase_engine as ch
@@ -37,9 +37,9 @@ def run_sliced(today, orders, api, clock, *,
         if clock.now() > start_dt:
             continue
         clock.sleep_until(start_dt)
-        next_cut = (ch.at(today, starts[i + 1]) - timedelta(minutes=1)
-                    if i + 1 < len(starts) else ch.at(today, last_cut))
-        cut = next_cut.strftime("%H:%M:%S")
+        cut = ((datetime.strptime(starts[i + 1], "%H:%M:%S") - timedelta(minutes=1)).strftime("%H:%M:%S")
+               if i + 1 < len(starts) else last_cut)
+
         wants = {}
         for o in orders:
             q = (0 if o["key"] in blocked else

@@ -79,6 +79,11 @@ try:
 except ImportError:  # 다른 실행 경로 대비
     from trading_batch_common import now_seoul
 
+try:
+    from scripts import market_session
+except ImportError:  # scripts/ 직접 실행
+    import market_session
+
 __all__ = ["Clock", "at", "run_chase", "place_first_orders", "ClientEngineApi"]
 
 
@@ -95,10 +100,7 @@ class Clock:
 
 def at(today: str, hms: str) -> datetime:
     """YYYYMMDD + 시분초 문자열 → KST datetime."""
-    h, m, s = (int(x) for x in hms.split(":"))
-    day = datetime.strptime(today, "%Y%m%d")
-    return now_seoul().replace(year=day.year, month=day.month, day=day.day,
-                               hour=h, minute=m, second=s, microsecond=0)
+    return market_session.at(today, hms).replace(tzinfo=now_seoul().tzinfo)
 
 
 def _submitted(res: dict) -> bool:
