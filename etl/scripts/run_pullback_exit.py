@@ -12,6 +12,11 @@ import requests
 from dotenv import load_dotenv
 
 try:
+    from scripts import market_session
+except ImportError:  # scripts/ 직접 실행
+    import market_session
+
+try:
     from scripts.pullback_config import load
     from scripts.run_pullback_order import DEFAULT_WATCHLIST_DB, create_pullback_orders_table
     from scripts.run_pullback_verify import aggregate_fills
@@ -260,7 +265,7 @@ def is_exit_window_started(now: datetime, start_hms: str) -> bool:
     2026-09-04 써니전자: 08:53 장전 호가가 TP 기준을 넘겨 시장가 매도가 나갔고,
     시초 단일가 2,055원에 체결돼 원장은 'tp'인데 실현손익은 +0.02%였다.
     """
-    return now.strftime("%H:%M:%S") >= start_hms
+    return now >= market_session.at(now.strftime("%Y%m%d"), start_hms).replace(tzinfo=now.tzinfo)
 
 
 def run_loop_step(now: datetime, args, broker_url: str, config: dict[str, Any], dry_run: bool,

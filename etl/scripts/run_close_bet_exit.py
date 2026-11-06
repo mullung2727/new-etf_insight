@@ -57,6 +57,11 @@ except ImportError:
     from run_pullback_order import _fallback_tick_size as tick_size
 from new_etf_insight.data_paths import db_dir
 
+try:
+    from scripts import market_session
+except ImportError:  # scripts/ 직접 실행
+    import market_session
+
 ROOT =Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
 DEFAULT_WATCHLIST_DB = db_dir() / "watchlist.sqlite3"
@@ -90,14 +95,8 @@ def decide_exit(
     return None
 
 
-def _parse_hms(hms: str) -> tuple[int, int, int]:
-    h, m, s = (int(x) for x in hms.split(":"))
-    return h, m, s
-
-
 def _at(now: datetime, hms: str) -> datetime:
-    h, m, s = _parse_hms(hms)
-    return now.replace(hour=h, minute=m, second=s, microsecond=0)
+    return market_session.at(now.strftime("%Y%m%d"), hms).replace(tzinfo=now.tzinfo)
 
 
 def is_force_time(now: datetime, force_hms: str) -> bool:

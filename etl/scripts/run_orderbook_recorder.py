@@ -34,6 +34,11 @@ from orderbook_symbols import WATCHLIST_DB, plan_additions, resolve_symbols  # n
 from wl_sqlite import connect_rw  # noqa: E402
 from new_etf_insight.data_paths import db_dir
 
+try:
+    from scripts import market_session
+except ImportError:  # scripts/ 직접 실행
+    import market_session
+
 KST = timezone(timedelta(hours=9))
 VENUE = "KRX"
 LOCK_PATH = db_dir() / "orderbook.lock"
@@ -217,7 +222,7 @@ class Grid:
 
 # ── 수명주기 도우미 ──────────────────────────────────────────────────────────
 def _at(date: str, hms: str) -> float:
-    return datetime.strptime(date + hms, "%Y%m%d%H:%M:%S").replace(tzinfo=KST).timestamp()
+    return market_session.at(date, hms).timestamp()
 
 
 def _iso(epoch: float) -> str:
