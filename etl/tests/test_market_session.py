@@ -13,7 +13,9 @@ from pathlib import Path
 from unittest import mock
 from zoneinfo import ZoneInfo
 
-from scripts.market_session import at, load, main, session, shift, wait_until
+from scripts.market_session import (
+    at, csat_missing, load, main, session, shift, wait_until,
+)
 
 KST = ZoneInfo("Asia/Seoul")
 SAT = {"20261119": ("10:00", "16:30")}  # 수능일 시간표
@@ -149,6 +151,23 @@ class CliTest(unittest.TestCase):
                     rc = main(["--shift", "15:10", "--date", "20261119"])
         self.assertEqual(rc, 2)
         self.assertIn("시간표", err.getvalue())
+
+
+class CsatMissingTest(unittest.TestCase):
+    def test_october_empty_is_missing(self):
+        self.assertTrue(csat_missing("20261001", {}))
+
+    def test_september_empty_is_not_missing(self):
+        self.assertFalse(csat_missing("20260930", {}))
+
+    def test_csat_line_present(self):
+        self.assertFalse(csat_missing("20261001", SAT))
+
+    def test_last_year_line_does_not_count(self):
+        self.assertTrue(csat_missing("20271001", SAT))
+
+    def test_new_year_line_is_not_csat(self):
+        self.assertTrue(csat_missing("20271001", {"20270104": ("10:00", "15:30")}))
 
 
 if __name__ == "__main__":
