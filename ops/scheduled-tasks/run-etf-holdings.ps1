@@ -13,6 +13,9 @@ Set-Location $etlDir
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $env:PYTHONUTF8 = "1"
 
+. (Join-Path $PSScriptRoot "lib_trading_day_guard.ps1")
+Wait-SessionShift -Tag "etf-holdings"
+
 function Invoke-Step {
   param([string]$Label, [string]$Exe, [string[]]$StepArgs)
   "[$(Get-Date -Format o)] $Label" | Tee-Object -FilePath $log -Append | Out-Null
