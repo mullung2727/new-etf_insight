@@ -604,7 +604,7 @@
     {
       "id": "3cbec369-3a41-414c-9549-2bb709e21dcf",
       "name": "rebound-order",
-      "description": "Mon-Fri 08:40 start; rebound private-strategy buy batch on the existing account broker :8001 (limit buys 09:01, cutoff 09:05)",
+      "description": "Mon-Fri 08:40 start; rebound private-strategy buy batch on the existing account broker :8001 (limit buys 09:01, cutoff 09:05; late-open VI/CB orders until 10:30)",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -612,7 +612,7 @@
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/rebound-order.md",
-      "timeoutSeconds": 3600,
+      "timeoutSeconds": 10800,
       "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-09-20).",
       "windowsTask": {
         "enabled": true,
