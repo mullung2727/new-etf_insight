@@ -75,10 +75,10 @@
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P8 취소 → 원장 기록 공용화 (2026-11-04 추가, 순서: 공용 함수 → rebound → rights → envelope)
-- [ ] 구현·테스트 머지 (PR #) — 공용 `cancel_confirmed` (git, 브랜치 feat/cancel-confirmed), 전략별 반영은 아래 순서
+- [x] 구현·테스트 머지 (PR #150) — 공용 `cancel_confirmed`. 전략 반영: rebound 2026-11-06 20:05 (백업 `_backup_20261106_rebound_cancel`), rights TP 만 2026-11-06 20:26 (백업 `_backup_20261106_rights_tpcancel`), envelope 남음
 - [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
-- [ ] 첫 실가동 확인 (날짜) — 전략별: rebound 2·3단 취소가 원장 `cancelled` 로 남는 날
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [ ] 첫 실가동 확인 (날짜) — rebound: 2·3단 취소 뒤 `st2`·`st3`=`cancelled` / rights: 정리일 TP 취소 뒤 `tp_status`=`cancelled`
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ## 1. 왜
 
@@ -272,6 +272,7 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | D12 | P5 Jev 는 매수·매도 추격 함께 이전(같은 루프라 쪼개지 않음), 추가 매수는 범위 밖 | 사용자 (2026-10-14) |
 | D13 | Jev 매도 `auction` 모드 채택 (하한·시각 값과 근거는 비공개 문서) | 사용자 (2026-10-14) |
 | D14 | P5 체결 확정은 Jev `_finalize` 유지, 원장 기록은 `on_event`, 이어받기는 엔진 첫 주문 가드 | Claude 판단 (동작 변경 없음) |
+| D17 | P8 rights 는 TP 취소만 원장 기록, 매수 취소 기록은 보류. 왜: 매수 주문 행을 `cancelled` 로 바꾸면 (1) verify `confirm_buys` 가 `submitted·unconfirmed` 행만 대조해 부분 체결 뒤 취소분이 원장에서 빠지고 (2) `strategy_cash`·`strategy_main_cash` 의 미체결 매수금(pend)에서 빠져 같은 날 가용 현금이 늘어 15:18 무상 sizer 금액이 바뀜. 매수까지 하려면 verify 필터·예산 변화를 함께 설계해야 함. 버린 안: A(TP·매수 둘 다, verify·예산 함께 수정) | Claude 추천 · 사용자 선택 B (2026-11-06) |
 | D16 | P8 추가: 취소는 공용 `cancel_confirmed` 로만, 확인된 취소는 `on_event("cancelled")` → 전략 원장에 `cancelled`. 순서 rebound → rights → envelope. 버린 안: rebound 만 원장 한 줄 수정 | 사용자 지시 · Claude 설계 (2026-11-04) |
 | D15 | 시세 날짜 검증(3-5절) 구현 안 함. 왜: envelope 는 시세로 보유를 갱신하지 않고, high52 의 사고 경로는 거래일 가드 2중으로 막힘. 남은 위험은 수동 `--date` 재실행·거래일 오판뿐인데 `/quotes` 날짜 필드 실측부터 필요해 비용이 더 큼. 버린 안: 3-5절 그대로 구현, `--date` 가 오늘이 아니면 갱신 건너뛰기 | Claude 추천 · 사용자 승인 (2026-11-02) |
 
@@ -300,3 +301,4 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P5 대상 0건일 때: 엔진은 state 가 없으면 시장가 시각까지 안 기다림 → Jev `run_chase` 가 엔진 뒤에 market_at 대기를 직접 유지 (기존 시각 테스트 그대로)
 - P5c 공용 추가: `BrokerClient.limit_price(..., inside_spread=True)`(호가 간격이 넓으면 반대쪽 호가 옆 가격, 기본값 False 는 기존 계산 그대로), `BrokerClient.place` 의 HTTP 422 는 `unknown` 유지(PR #145 리뷰). broker 가 키움 전송 실패도 422 로 돌려줘 미접수가 보장되지 않기 때문. 유증 시장가 매수는 이전 뒤 422 가 `rejected` 에서 `unknown` 으로 바뀜(재주문 안 하는 쪽). 기존 `modify`·Jev·`place_order_via_broker` 의 422 해석은 이번 범위 밖
 - P8 `_market_step`·`_cancel_only_step`: 원래 `cancel_confirmed` 로 교체 → 실제 그대로 둠 (이벤트 이름·실패 처리(`unknown`)가 달라 교체해도 줄이 안 줄고 기존 시장가 동작 위험만 생김)
+- P8 rights: 원래 `cancel_tp`·`cancel_buys` 를 `cancel_confirmed` 로 교체하고 TP·매수 둘 다 기록 → 실제 TP 만, `expire._run` 정리 루프에서 `cancel_tp` 가 확인한 취소 뒤 `tp_status=cancelled` 한 줄 (D17). `cancel_tp` 는 이미 재조회로 확인하고, 실패 사유 3종(취소 실패·재조회 실패·잔류) 문구를 테스트가 고정해 교체하면 문구가 합쳐짐. `rights_dip_orders` tp 행 status 는 그대로(verify 체결 대조가 그 행을 봄)
