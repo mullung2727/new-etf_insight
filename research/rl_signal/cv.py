@@ -56,7 +56,7 @@ def main(argv=None) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True, choices=["logit", "hgb"])
+    ap.add_argument("--model", required=True, choices=["logit", "hgb", "hgb_adv"])
     ap.add_argument("--by", required=True, choices=["code", "day"])
     ap.add_argument("--folds", type=int, default=5)
     ap.add_argument("--reps", type=int, default=50)
@@ -85,19 +85,22 @@ def main(argv=None) -> None:
         tr_by_day: dict[str, list] = {}
         for d, c in train_u:
             tr_by_day.setdefault(d, []).append(c)
-        Xtr, ytr = [], []
+        Xtr, ytr, atr = [], [], []
         for d in sorted(tr_by_day):
             sub = {c: cells_by_day[d][c] for c in tr_by_day[d]}
-            Xd, yd, _ = samples(sub, rng)
+            Xd, yd, _, advd = samples(sub, rng)
             Xtr.append(Xd)
             ytr.append(yd)
+            atr.append(advd)
         if not Xtr:
             print(f"fold {i} skip: no train samples")
             continue
         Xtr = np.concatenate(Xtr)
         ytr = np.concatenate(ytr)
+        atr = np.concatenate(atr)
         scaler = Scaler().fit(Xtr, names)
-        model = make(args.model).fit(scaler.transform(Xtr, names), ytr)
+        model = make(args.model)
+        model.fit(scaler.transform(Xtr, names), ytr, atr, names.index("pos"))
         te_by_day: dict[str, list] = {}
         for d, c in test_u:
             te_by_day.setdefault(d, []).append(c)
@@ -111,8 +114,8 @@ def main(argv=None) -> None:
                "model": float(np.mean([s["model"] for s in ds])),
                "bh": float(np.mean([s["bh"] for s in ds])),
                "oracle": float(np.mean([s["oracle"] for s in ds])),
-               "capture": _nanmean([s["capture"] for s in ds]),
-               "pct_random": float(np.mean([s["pct_random"] for s in ds])),
+               "capture": _nanmean([s["diag_capture"] for s in ds]),
+               "pct_random": float(np.mean([s["diag_pct_random"] for s in ds])),
                "pct_timing": float(np.mean([s["pct_timing"] for s in ds]))}
         recs.append(rec)
         print(f"fold {i} n={rec['n_test']} model={rec['model']:+.4%} bh={rec['bh']:+.4%} "

@@ -41,14 +41,17 @@ class TestNanmean(unittest.TestCase):
 
 
 def _entry(model, bh, oracle, pr, pt, trades=1):
-    return {"model": model, "trades": trades, "bh": bh, "oracle": oracle,
-            "pr": np.array(pr, dtype=float), "pt": np.array(pt, dtype=float)}
+    return {"model": model, "model_slip1": model - 0.001, "trades": trades,
+            "log_total": model, "log_total_slip1": model - 0.001,
+            "bh": bh, "oracle": oracle,
+            "pr": np.array(pr, dtype=float), "pt": np.array(pt, dtype=float),
+            "ps": np.array(pr, dtype=float)}
 
 
 class TestSeenUnseenContract(unittest.TestCase):
     """main()이 의존하는 식의 계약 고정 (main 자체는 parquet 없이 실행 불가).
 
-    seen 합집합 분리 + summarize(per, seen/unseen) + json seen/unseen 키(n·model·bh·capture).
+    seen 합집합 분리 + summarize(per, seen/unseen) + json seen/unseen 키(n·model·bh·diag_capture).
     """
 
     def test_split_and_json_keys(self):
@@ -66,7 +69,7 @@ class TestSeenUnseenContract(unittest.TestCase):
         self.assertEqual(s_unseen["n"], 1)
         self.assertAlmostEqual(s_unseen["model"], 0.04)
         for s in (s_seen, s_unseen):
-            for k in ("n", "model", "bh", "capture"):
+            for k in ("n", "model", "bh", "diag_capture"):
                 self.assertIn(k, s)
 
     def test_empty_side(self):
