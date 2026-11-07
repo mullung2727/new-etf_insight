@@ -107,6 +107,28 @@ def _default_end() -> str:
     return (datetime.now(KST) - timedelta(days=1)).strftime("%Y%m%d")
 
 
+def _etf_adj_dates() -> list[str]:
+    """etf_daily_adj ticker='069500' DISTINCT date (2002년~). DB 없으면 [] + 경고."""
+    db_path = db_dir() / "etf_adj_daily.duckdb"
+    if not db_path.exists():
+        print(f"경고: {db_path} 없음 — market_dates만 사용")
+        return []
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        rows = con.execute(
+            "SELECT DISTINCT date FROM etf_daily_adj WHERE ticker='069500' ORDER BY date"
+        ).fetchall()
+    finally:
+        con.close()
+    return [str(r[0]) for r in rows]
+
+
+def trading_dates(start: str, end: str) -> list[str]:
+    """market_dates ∪ etf_adj(069500) 합집합, 기간 필터, 정렬·중복 제거."""
+    dates = set(market_dates()) | set(_etf_adj_dates())
+    return sorted(d for d in dates if start <= d <= end)
+
+
 def _extract_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
     """응답 JSON에서 업종 행 리스트를 꺼낸다."""
     for key in _ROW_LIST_KEYS:
@@ -244,7 +266,7 @@ def run(args: argparse.Namespace, *, db_path: Path | None = None,
     """적재 본체. dates/db_path 주입은 테스트용 (실행 시 None → 실데이터)."""
     db_path = db_path or db_dir() / "investor_flows.duckdb"
     if dates is None:
-        dates = [d for d in market_dates() if args.start <= d <= args.end]
+        dates = trading_dates(args.start, args.end)
     markets = [MARKETS[args.market]] if args.market != "both" else list(MARKETS.values())
 
     con = _connect(db_path)

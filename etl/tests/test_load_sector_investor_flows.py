@@ -108,3 +108,19 @@ class SectorInvestorFlowsTest(unittest.TestCase):
                     )
             finally:
                 con.close()
+
+    def test_trading_dates_union_sort_filter(self):
+        with mock.patch.object(mod, "market_dates",
+                               return_value=["20240103", "20240102"]):
+            with mock.patch.object(mod, "_etf_adj_dates",
+                                   return_value=["20240102", "20100104"]):
+                self.assertEqual(mod.trading_dates("20100104", "20240103"),
+                                 ["20100104", "20240102", "20240103"])
+                self.assertEqual(mod.trading_dates("20240102", "20240102"),
+                                 ["20240102"])
+                self.assertEqual(mod.trading_dates("20250101", "20250131"), [])
+
+    def test_etf_adj_dates_missing_db_returns_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(mod, "db_dir", return_value=Path(tmp)):
+                self.assertEqual(mod._etf_adj_dates(), [])
