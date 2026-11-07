@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from scripts import chase_engine as ch
 from scripts.sliced_exec import passive_price_fn, run_sliced, slice_qty
@@ -269,6 +269,26 @@ class SlicedRunTest(unittest.TestCase):
                    last_cut="09:31:00", cash_fn=lambda: 300)
         buys = [x for x in api.calls if x[0] == "place_limit" and x[1] == "buy"]
         self.assertLessEqual(sum(x[3] * x[4] for x in buys), 300)
+
+    def test_cut_before_noon_slice_on_first_trading_day(self):
+        day = "20270104"
+        api = SlicedApi()
+        clock = FakeClock(ch.at(day, "09:00:00"))
+        orders = [{"key": "B", "ticker": "005930", "side": "buy", "qty": 2,
+                   "cap_qty": None, "final": False}]
+        market_ats = []
+
+        def fake_run(today, states, *a, **k):
+            market_ats.append(k["market_at"])
+            for s in states:
+                s["status"] = "done"
+
+        with patch.object(ch, "run_chase", side_effect=fake_run):
+            run_sliced(day, orders, api, clock,
+                       on_event=lambda *a, **k: None,
+                       slices=("10:00:00", "12:00:00"))
+        self.assertEqual(market_ats[0], "10:59:00")
+        self.assertLess(ch.at(day, "10:59:00"), ch.at(day, "12:00:00"))
 
 
 if __name__ == "__main__":

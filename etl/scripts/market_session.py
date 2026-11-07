@@ -12,6 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import _bootstrap  # noqa: F401  (cp949 가드 + path)
 
 import argparse
+import functools
 import json
 import re
 import time
@@ -96,6 +97,7 @@ def load(path: str | Path = SESSIONS_FILE) -> dict[str, tuple[str, str]]:
     return out
 
 
+@functools.lru_cache(maxsize=None)
 def _first_trading_day(year: int) -> str:
     """그해 1월 1일부터 처음 거래일인 날(YYYYMMDD)."""
     day = date(year, 1, 1)

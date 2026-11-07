@@ -325,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
             report = f"{report}\n- ⚠️ 등락 원인 분석 실패: {type(exc).__name__}"
 
     try:
-        if market_session.csat_missing(date_kst.replace("-", "")):
+        if market_session.csat_missing(datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d")):
             report = (f"{report}\n- ⚠️ 올해 수능일 장 시간이 etl/scripts/market_sessions.json 에 없음"
                       " — 공지 확인 후 추가 (개장·마감 +1h)")
     except Exception as exc:  # noqa: BLE001 — 정산 보고를 죽이지 않는다

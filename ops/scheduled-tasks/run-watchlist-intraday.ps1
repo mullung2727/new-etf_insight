@@ -15,7 +15,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = "1"
 
 . (Join-Path $PSScriptRoot "lib_trading_day_guard.ps1")
-Wait-SessionShift -Tag "watchlist-intraday"
+Wait-SessionShift -Tag "watchlist-intraday" -TaskName "daily-etf-watchlist-intraday-kiwoom"
 
 function Invoke-Step {
   param([string]$Label, [string]$Exe, [string[]]$StepArgs)

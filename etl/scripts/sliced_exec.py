@@ -7,6 +7,11 @@ try:
 except ImportError:
     import chase_engine as ch
 
+try:
+    from scripts import market_session
+except ImportError:
+    import market_session
+
 
 def slice_qty(remaining: int, slices_left: int, cap: int | None = None) -> int:
     if remaining <= 0 or slices_left <= 0:
@@ -37,8 +42,15 @@ def run_sliced(today, orders, api, clock, *,
         if clock.now() > start_dt:
             continue
         clock.sleep_until(start_dt)
-        cut = ((datetime.strptime(starts[i + 1], "%H:%M:%S") - timedelta(minutes=1)).strftime("%H:%M:%S")
-               if i + 1 < len(starts) else last_cut)
+        if i + 1 < len(starts):
+            nxt = starts[i + 1]
+            c = datetime.strptime(nxt, "%H:%M:%S") - timedelta(minutes=1)
+            # ch.at 이 cut 을 다시 민다 → 다음 회차와 이동 폭이 다르면(정오를 걸침) 그 차이를 미리 뺀다
+            c += timedelta(seconds=market_session.shift(today, nxt)
+                           - market_session.shift(today, c.strftime("%H:%M:%S")))
+            cut = c.strftime("%H:%M:%S")
+        else:
+            cut = last_cut
 
         wants = {}
         for o in orders:

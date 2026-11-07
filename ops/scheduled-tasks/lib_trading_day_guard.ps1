@@ -47,11 +47,27 @@ function Exit-IfNonTradingDay {
 }
 
 function Wait-SessionShift {
-  param([Parameter(Mandatory = $true)][string]$Tag)
+  param([Parameter(Mandatory = $true)][string]$Tag,
+        [string]$TaskName = $Tag)
 
   $root = $script:TradingGuardRoot
-  $date = Get-Date -Format "yyyyMMdd"
-  $hhmm = Get-Date -Format "HH:mm"
+  $now = Get-Date
+  $date = $now.ToString("yyyyMMdd")
+  # Late start (retry, wake from sleep): wait only the rest of the shift from the scheduled start.
+  $sched = $null
+  try {
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop | Select-Object -First 1
+    $sched = $task.Triggers |
+      Where-Object { $_.StartBoundary } |
+      ForEach-Object { $now.Date.Add(([datetime]$_.StartBoundary).TimeOfDay) } |
+      Where-Object { $_ -le $now } |
+      Sort-Object |
+      Select-Object -Last 1
+  } catch {
+    $sched = $null
+  }
+  if ($null -eq $sched) { $sched = $now }
+  $hhmm = $sched.ToString("HH:mm")
   $py = Join-Path $root "etl\.venv\Scripts\python.exe"
   $ms = Join-Path $root "etl\scripts\market_session.py"
 
@@ -86,6 +102,7 @@ function Wait-SessionShift {
     exit 2
   }
 
+  $sec = $sec - [int][math]::Floor(($now - $sched).TotalSeconds)
   if ($sec -gt 0) {
     $msg = "[$Tag] $date SESSION_SHIFT +${sec}s from $hhmm"
     $msg | Out-File -Encoding utf8 -Append -FilePath $log
