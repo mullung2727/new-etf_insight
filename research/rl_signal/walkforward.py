@@ -15,9 +15,9 @@ from . import bars
 from . import daily as daily_mod
 from .costs import FEE, SELL_TAX
 from .dataset import EXTRA_COLS, day_cells, samples
-from .models import decide_fn, make
+from .evaluate import eval_codes, summarize
+from .models import make
 from .oracle import K_MAX
-from .replay import placebo_random, placebo_timing, policy_run
 from .scale import Scaler
 
 RESULTS = Path(__file__).resolve().parents[1] / "private" / "rl_signal" / "results"
@@ -47,6 +47,12 @@ def _trade_days(root: Path) -> list[str]:
     return sorted(days)
 
 
+def _nanmean(xs) -> float:
+    a = np.asarray(list(xs), dtype=float)
+    a = a[~np.isnan(a)]
+    return float(a.mean()) if a.size else float("nan")
+
+
 def main(argv=None) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -70,10 +76,12 @@ def main(argv=None) -> None:
     rows = []
     for train_days, test_day in splits(days, args.min_train):
         Xtr, ytr = [], []
+        seen: set[str] = set()
         for d in train_days:
             cells = day_cells(d, tbl)
             if not cells:
                 continue
+            seen.update(cells)
             Xd, yd, _ = samples(cells, rng)
             Xtr.append(Xd)
             ytr.append(yd)
@@ -89,39 +97,47 @@ def main(argv=None) -> None:
         if not codes:
             print(f"{test_day} skip: no test codes")
             continue
-        rets, orets, pr_cols, pt_cols, trades = [], [], [], [], 0
-        for c in codes:
-            e = cells[c]
-            tot, nb, _ = policy_run(decide_fn(model, scaler, e["feat"], bars.FEATURES),
-                                    e["ask1"], e["bid1"], c)
-            rets.append(np.exp(tot) - 1)
-            trades += nb
-            orets.append(np.exp(float(e["q"][0, 0, K_MAX].max())) - 1)
-            pr_cols.append(np.exp(placebo_random(e["ask1"], e["bid1"], c, args.reps, rng)) - 1)
-            pt_cols.append(np.exp(placebo_timing(nb, e["ask1"], e["bid1"], c, args.reps, rng)) - 1)
-        model_ret = float(np.mean(rets))
-        pr_day = np.mean(pr_cols, axis=0)
-        pt_day = np.mean(pt_cols, axis=0)
+        per = eval_codes(model, scaler, bars.FEATURES, cells, codes, args.reps, rng)
+        tot = summarize(per)
+        s_seen = summarize(per, [c for c in codes if c in seen])
+        s_unseen = summarize(per, [c for c in codes if c not in seen])
         rec = {"day": test_day, "train_days": train_days, "n_codes": len(codes),
-               "model_ret": model_ret, "model_trades": int(trades),
-               "oracle_ret": float(np.mean(orets)),
-               "pct_random": float((pr_day < model_ret).mean()),
-               "pct_timing": float((pt_day < model_ret).mean()),
-               "placebo_random_median": float(np.median(pr_day)),
-               "placebo_timing_median": float(np.median(pt_day))}
+               "model_ret": tot["model"], "model_trades": int(tot["trades"]),
+               "oracle_ret": tot["oracle"],
+               "bh_ret": tot["bh"], "capture": tot["capture"],
+               "pct_random": tot["pct_random"],
+               "pct_timing": tot["pct_timing"],
+               "placebo_random_median": tot["pr_med"],
+               "placebo_timing_median": tot["pt_med"],
+               "seen": {"n": s_seen["n"], "model": s_seen["model"],
+                        "bh": s_seen["bh"], "capture": s_seen["capture"]},
+               "unseen": {"n": s_unseen["n"], "model": s_unseen["model"],
+                          "bh": s_unseen["bh"], "capture": s_unseen["capture"]}}
         (outdir / f"{test_day}.json").write_text(
             json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
         rows.append(rec)
-        print(f"{test_day} n={len(codes)} train={len(train_days)} model={model_ret:+.4%} "
-              f"trades={trades} oracle={rec['oracle_ret']:+.4%} "
-              f"pct_r={rec['pct_random']:.2f} pct_t={rec['pct_timing']:.2f}")
+        print(f"{test_day} n={len(codes)} train={len(train_days)} model={tot['model']:+.4%} "
+              f"bh={tot['bh']:+.4%} trades={int(tot['trades'])} oracle={tot['oracle']:+.4%} "
+              f"cap={tot['capture']:.2f} pct_r={tot['pct_random']:.2f} pct_t={tot['pct_timing']:.2f} "
+              f"seen={s_seen['model']:+.4%}(n={s_seen['n']}) "
+              f"unseen={s_unseen['model']:+.4%}(n={s_unseen['n']})")
     if rows:
         mr = np.mean([r["model_ret"] for r in rows])
+        bh = np.mean([r["bh_ret"] for r in rows])
+        ora = np.mean([r["oracle_ret"] for r in rows])
+        cap = _nanmean([r["capture"] for r in rows])
+        beat_bh = np.mean([r["model_ret"] > r["bh_ret"] for r in rows])
+        sn = [r["seen"]["model"] for r in rows if r["seen"]["n"] > 0]
+        un = [r["unseen"]["model"] for r in rows if r["unseen"]["n"] > 0]
+        sm = float(np.mean(sn)) if sn else float("nan")
+        um = float(np.mean(un)) if un else float("nan")
         pr = np.mean([r["pct_random"] for r in rows])
         pt = np.mean([r["pct_timing"] for r in rows])
         br = np.mean([r["model_ret"] > r["placebo_random_median"] for r in rows])
         bt = np.mean([r["model_ret"] > r["placebo_timing_median"] for r in rows])
-        print(f"total days={len(rows)} avg_ret={mr:+.4%} avg_pct_r={pr:.2f} avg_pct_t={pt:.2f} "
+        print(f"total days={len(rows)} avg_model={mr:+.4%} avg_bh={bh:+.4%} "
+              f"avg_oracle={ora:+.4%} avg_cap={cap:.2f} beat_bh={beat_bh:.2f} "
+              f"seen={sm:+.4%} unseen={um:+.4%} avg_pct_r={pr:.2f} avg_pct_t={pt:.2f} "
               f"beat_r={br:.2f} beat_t={bt:.2f}")
 
 
