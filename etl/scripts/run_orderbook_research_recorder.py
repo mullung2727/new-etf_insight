@@ -910,10 +910,10 @@ def _run(date: str, today: str) -> int:
         return 0
     src, codes = pick_codes(db_dir() / "watchlist.sqlite3", date)
     if not codes:
-        msg = f"[orderbook_research] {date} 종목 없음(source_date={src})"
+        # 순위가 없어도 지수 ETF 는 녹화한다 (PR #156 리뷰)
+        msg = f"[orderbook_research] {date} 종목 없음(source_date={src}) — ETF만 녹화"
         print(msg)
         notify(msg, channel="batch")
-        return 3
     codes = with_etfs(codes)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     if not disk_ok(OUT_DIR):
