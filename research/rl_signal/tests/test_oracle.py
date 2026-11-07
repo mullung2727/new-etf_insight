@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from research.rl_signal.costs import FEE, UNIT_KRW, sell_cost, tick
+from research.rl_signal.costs import FEE, UNIT_KRW, buy_cost, sell_cost, tick
 from research.rl_signal.oracle import BUY, HOLD, K_MAX, SELL, solve, step_rewards
 
 SAW = [100.0 if t % 2 == 0 else 102.0 for t in range(20)]
@@ -213,6 +213,56 @@ class TestMark0(unittest.TestCase):
         bq = np.zeros(2, dtype=np.int64)
         hold_r, _, _, _, _ = step_rewards(ask, bid, aq, bq, "069500")
         self.assertEqual(hold_r[0], 0.0)
+
+
+class TestCostMult(unittest.TestCase):
+    def test_mult1_same_as_default(self):
+        res_d, _ = _solve([100, 101, 102, 103, 104])
+        res_1, _ = _solve([100, 101, 102, 103, 104], cost_mult=1.0)
+        self.assertEqual(res_d["total"], res_1["total"])
+        self.assertEqual(res_d["trades"], res_1["trades"])
+        np.testing.assert_array_equal(res_d["q"], res_1["q"])
+        np.testing.assert_array_equal(res_d["action"], res_1["action"])
+        r_d = _rewards([100, 101, 102, 103, 104])
+        r_1 = _rewards([100, 101, 102, 103, 104], cost_mult=1.0)
+        for a, b in zip(r_d, r_1):
+            np.testing.assert_array_equal(a, b)
+
+    def test_mult2_smaller_gain(self):
+        bids = [100, 101, 102, 103, 104]
+        res1, _ = _solve(bids, cost_mult=1.0)
+        res2, _ = _solve(bids, cost_mult=2.0)
+        t = len(bids) - 2
+        g1 = float(res1["q"][t, 0, K_MAX, BUY] - res1["q"][t, 0, K_MAX, HOLD])
+        g2 = float(res2["q"][t, 0, K_MAX, BUY] - res2["q"][t, 0, K_MAX, HOLD])
+        self.assertTrue(math.isfinite(g1) and math.isfinite(g2))
+        self.assertLess(g2, g1)
+        self.assertLess(res2["total"], res1["total"])
+        _, b1, s1, _, _ = _rewards(bids, cost_mult=1.0)
+        _, b2, s2, _, _ = _rewards(bids, cost_mult=2.0)
+        self.assertTrue(bool((b2[np.isfinite(b1)] < b1[np.isfinite(b1)]).all()))
+        self.assertTrue(bool((s2[np.isfinite(s1)] < s1[np.isfinite(s1)]).all()))
+
+    def test_mult2_scales_fee_and_tax(self):
+        bid = np.array([100.0])
+        ask = bid + 0.01
+        aq = np.full(1, 20000, dtype=np.int64)
+        bq = np.full(1, 20000, dtype=np.int64)
+        _, buy_r, sell_r, _, _ = step_rewards(ask, bid, aq, bq, "005930", cost_mult=2.0)
+        exp_buy = math.log(100.0 / 100.01) - math.log(1 + 2 * buy_cost("005930"))
+        exp_sell = math.log(1 - 2 * sell_cost("005930"))
+        self.assertAlmostEqual(buy_r[0], exp_buy, places=9)
+        self.assertAlmostEqual(sell_r[0], exp_sell, places=9)
+
+    def test_mult2_locked_close(self):
+        ask = np.array([100.01, 101.0])
+        bid = np.array([100.0, 0.0])
+        aq = np.array([20000, 20000], dtype=np.int64)
+        bq = np.array([20000, 0], dtype=np.int64)
+        res = solve(ask, bid, aq, bq, "069500", cost_mult=2.0)
+        expected = (math.log(100.0 / 100.01) - math.log(1 + 2 * FEE)
+                    + math.log(101.0 / 100.0) + math.log(1 - 2 * FEE))
+        self.assertAlmostEqual(res["total"], expected, places=9)
 
 
 if __name__ == "__main__":

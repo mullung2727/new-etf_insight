@@ -2,6 +2,7 @@
 
 FEE = 0.00015        # 편도 수수료 — BACKTEST_DATA.md 6-1 실측(왕복 0.2306% − 세금 0.1998%)/2 ≈ 0.015%
 SELL_TAX = 0.0020    # 매도 거래세+농특세 — BACKTEST_DATA.md 6-1 실측 0.1998%
+LABEL_COST_MULT = 2.0  # 학습 정답지만 비용 2배 — 큰 흐름만 노리게(안전마진). 평가는 실제 비용 (2026-11-08 사용자 결정)
 # ponytail: 녹화기(scripts/run_orderbook_research_recorder.ETF_CODES)와 같은 6종. 탑30 안의 다른 ETF 는 종목 비용(보수적 과대). ETF 목록 DB 생기면 교체
 ETF_CODES = frozenset({"069500", "122630", "114800", "229200", "233740", "251340"})
 UNIT_KRW = 1_000_000   # 1단위 주문 금액 — 잔량 검사용 (내 판단, PLAN §10)
