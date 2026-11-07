@@ -1,4 +1,4 @@
-"""호가·체결 리서치 녹화기 — 직전 거래일 거래량 탑30의 0B+0D를 08:30~20:00 녹화.
+"""호가·체결 리서치 녹화기 — 직전 거래일 거래량 탑30 + 지수 ETF 6종의 0B+0D를 08:30~20:00 녹화.
 
 설계: docs/done/PLAN_ORDERBOOK_RESEARCH_RECORDING.md §4·§5·§6.
 실행 (etl/ 에서): uv run python scripts/run_orderbook_research_recorder.py [--date YYYYMMDD]
@@ -50,6 +50,8 @@ BROKER_URL = "http://127.0.0.1:8001"
 TOKEN_CACHE = "broker/.token_cache.us.json"  # 저장소 루트 기준
 US_BROKER_URL = "http://127.0.0.1:8003"
 N_CODES = 30
+# 지수 ETF 상시 녹화 — 초단타 리서치용 (2026-11-07 사용자 결정, 252670 은 호가 한 칸 ~1% 라 제외)
+ETF_CODES = ("069500", "122630", "114800", "229200", "233740", "251340")
 MAX_LOOKBACK_DAYS = 5
 BACKOFF = (5, 10, 20, 60)  # 초 — n번째 재접속 대기
 MAX_RECONNECTS = 20  # 하루
@@ -167,6 +169,11 @@ def pick_codes(db_path, today: str) -> tuple[str | None, list[str]]:
     if not codes:
         return (None, [])
     return (src, codes[:N_CODES])
+
+
+def with_etfs(codes: list[str]) -> list[str]:
+    """탑30 뒤에 ETF_CODES 를 붙인다 (이미 있으면 한 번만)."""
+    return list(codes) + [c for c in ETF_CODES if c not in codes]
 
 
 def load_token(root: Path, now: float) -> tuple[str | None, str | None, str]:
@@ -907,6 +914,7 @@ def _run(date: str, today: str) -> int:
         print(msg)
         notify(msg, channel="batch")
         return 3
+    codes = with_etfs(codes)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     if not disk_ok(OUT_DIR):
         msg = f"[orderbook_research] {date} 녹화 중단: disk_low"
