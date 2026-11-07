@@ -115,7 +115,7 @@ def _planes(aq: np.ndarray, bq: np.ndarray, buy_vol: np.ndarray, sell_vol: np.nd
 
 def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
           planes: bool = False, daily: dict | None = None) -> dict[str, dict]:
-    """종목별 칸 데이터 {code: {...}}. 칸 하나라도 무효면 제외, "_excluded"에 [(code, 이유)]. daily = for_day 결과(없으면 일봉 4개 NaN)."""
+    """종목별 칸 데이터 {code: {...}}. _excluded=[(code, 이유)], _reasons={이유: 건수}. daily = for_day 결과."""
     bounds = grid(day)
     n = len(bounds)
     bad_cell = _gap_bad(bounds, gaps)
@@ -125,7 +125,8 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
     if "code" in trade.columns:
         codes.update(trade["code"].dropna().unique().tolist())
     if book.empty or book["rt"].to_numpy(dtype=np.int64).max() < bounds[-1]:
-        return {"_excluded": [(c, "short_day") for c in sorted(codes)]}
+        exc = [(c, "short_day") for c in sorted(codes)]
+        return {"_excluded": exc, "_reasons": {"short_day": len(exc)} if exc else {}}
     out: dict[str, dict] = {}
     excluded = []
     for code in sorted(codes):
@@ -142,10 +143,15 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
         bp = np.empty((n, 10), dtype=np.int64)
         aq = np.empty((n, 10), dtype=np.int64)
         bq = np.empty((n, 10), dtype=np.int64)
+        ex_ask1 = np.zeros(n, dtype=np.float64)
+        ex_bid1 = np.zeros(n, dtype=np.float64)
+        ex_aq1 = np.zeros(n, dtype=np.int64)
+        ex_bq1 = np.zeros(n, dtype=np.int64)
         buy_vol = np.zeros(n, dtype=np.int64)
         sell_vol = np.zeros(n, dtype=np.int64)
         bin_pq = np.zeros(n, dtype=np.float64)
         bin_q = np.zeros(n, dtype=np.float64)
+        stale_cells = 0
         bad = None
         for i, b in enumerate(bounds):
             j = int(np.searchsorted(brt, b, side="left")) - 1
@@ -156,12 +162,27 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
                 bad = "gap"
                 break
             row = bmat[j]
-            a1, b1 = row[0], row[10]
-            if a1 <= 0 or b1 <= 0 or a1 <= b1 or row[20] <= 0 or row[30] <= 0:
-                bad = "bad_quote"
-                break
-            ask1[i], bid1[i] = a1, b1
-            ap[i], bp[i], aq[i], bq[i] = row[0:10], row[10:20], row[20:30], row[30:40]
+            a1, b1 = int(row[0]), int(row[10])
+            ask_ok = a1 > 0 and int(row[20]) > 0
+            bid_ok = b1 > 0 and int(row[30]) > 0
+            if ask_ok and bid_ok and a1 <= b1:
+                ask_ok = bid_ok = False
+            if not ask_ok and not bid_ok:
+                if i == 0:
+                    bad = "no_book"
+                    break
+                ask1[i], bid1[i] = ask1[i - 1], bid1[i - 1]
+                ap[i], bp[i], aq[i], bq[i] = ap[i - 1], bp[i - 1], aq[i - 1], bq[i - 1]
+                stale_cells += 1
+            else:
+                ask1[i] = float(a1) if ask_ok else 0.0
+                bid1[i] = float(b1) if bid_ok else 0.0
+                ap[i], bp[i], aq[i], bq[i] = row[0:10], row[10:20], row[20:30], row[30:40]
+            k = int(np.searchsorted(brt, b, side="left"))
+            if k < len(brt) and brt[k] < b + STEP_NS:
+                erow = bmat[k]
+                ex_ask1[i], ex_bid1[i] = float(erow[0]), float(erow[10])
+                ex_aq1[i], ex_bq1[i] = int(erow[20]), int(erow[30])
             l = int(np.searchsorted(trt, b - STEP_NS, side="left"))
             r = int(np.searchsorted(trt, b, side="left"))
             if r > l:
@@ -174,7 +195,8 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
         if bad is not None:
             excluded.append((code, bad))
             continue
-        mid = (ask1 + bid1) / 2.0
+        both = (ask1 > 0) & (bid1 > 0)
+        mid = np.where(both, (ask1 + bid1) / 2.0, np.where(ask1 > 0, ask1, bid1))
         logmid = np.log(mid)
         cols = []
         for k in (1, 2, 10, 30):
@@ -182,7 +204,9 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
             if k < n:
                 r[k:] = logmid[k:] - logmid[:-k]
             cols.append(r)
-        cols.append((ask1 - bid1) / mid * 1e4)
+        spread = np.zeros(n)
+        spread[both] = (ask1[both] - bid1[both]) / mid[both] * 1e4
+        cols.append(spread)
         for w in (1, 5):
             sb = bq[:, :w].sum(axis=1)
             sa = aq[:, :w].sum(axis=1)
@@ -242,11 +266,19 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
         entry = {
             "ask1": ask1, "bid1": bid1,
             "ap": ap, "bp": bp, "aq": aq, "bq": bq,
+            "ex_ask1": ex_ask1, "ex_bid1": ex_bid1,
+            "ex_aq1": ex_aq1, "ex_bq1": ex_bq1,
             "buy_vol": buy_vol, "sell_vol": sell_vol,
             "feat": np.column_stack(cols).astype(np.float32),
+            "stale_cells": int(stale_cells),
+            "ex_dead": bool(ex_ask1[0] <= 0 and ex_bid1[0] <= 0),
         }
         if planes:
             entry["planes"] = _planes(aq, bq, buy_vol, sell_vol)
         out[code] = entry
     out["_excluded"] = excluded
+    reasons: dict[str, int] = {}
+    for _, rsn in excluded:
+        reasons[rsn] = reasons.get(rsn, 0) + 1
+    out["_reasons"] = reasons
     return out

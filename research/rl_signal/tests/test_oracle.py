@@ -7,15 +7,26 @@ import unittest
 
 import numpy as np
 
-from research.rl_signal.costs import FEE
+from research.rl_signal.costs import FEE, UNIT_KRW, tick
 from research.rl_signal.oracle import BUY, HOLD, K_MAX, SELL, solve, step_rewards
 
 SAW = [100.0 if t % 2 == 0 else 102.0 for t in range(20)]
 
 
-def _solve(bids, code="069500", spread=0.01, **kw):
+def _solve(bids, code="069500", spread=0.01, qty=20000, **kw):
     bid = np.array(bids, dtype=np.float64)
-    return solve(bid + spread, bid, code, **kw), bid
+    ask = bid + spread
+    aq = np.full(len(bid), qty, dtype=np.int64)
+    bq = np.full(len(bid), qty, dtype=np.int64)
+    return solve(ask, bid, aq, bq, code, **kw), bid
+
+
+def _rewards(bids, code="069500", spread=0.01, qty=20000, **kw):
+    bid = np.array(bids, dtype=np.float64)
+    ask = bid + spread
+    aq = np.full(len(bid), qty, dtype=np.int64)
+    bq = np.full(len(bid), qty, dtype=np.int64)
+    return step_rewards(ask, bid, aq, bq, code, **kw)
 
 
 class TestOracle(unittest.TestCase):
@@ -78,7 +89,9 @@ class TestOracle(unittest.TestCase):
     def test_q_consistency(self):
         res, bid = _solve([100, 98, 96, 98, 100])
         self.assertEqual(res["total"], float(res["q"][0, 0, K_MAX].max()))
-        hold_r, buy_r, sell_r = step_rewards(bid + 0.01, bid, "069500")
+        aq = np.full(len(bid), 20000, dtype=np.int64)
+        bq = np.full(len(bid), 20000, dtype=np.int64)
+        hold_r, buy_r, sell_r, _, _ = step_rewards(bid + 0.01, bid, aq, bq, "069500")
         s, pos = 0.0, 0
         for t, a in enumerate(res["action"]):
             if a == BUY:
@@ -90,6 +103,81 @@ class TestOracle(unittest.TestCase):
             if t < len(bid) - 1 and pos == 1:
                 s += hold_r[t]
         self.assertAlmostEqual(s, res["total"], places=9)
+
+
+class TestExecFeasibility(unittest.TestCase):
+    def test_no_exec_cell(self):
+        ask = np.array([100.01, 0.0, 102.01])
+        bid = np.array([100.0, 0.0, 102.0])
+        aq = np.array([20000, 0, 20000], dtype=np.int64)
+        bq = np.array([20000, 0, 20000], dtype=np.int64)
+        _, _, _, can_buy, can_sell = step_rewards(ask, bid, aq, bq, "069500")
+        self.assertTrue(can_buy[0] and can_sell[0])
+        self.assertFalse(can_buy[1])
+        self.assertFalse(can_sell[1])
+        self.assertTrue(can_buy[2] and can_sell[2])
+
+    def test_limit_up_no_buy(self):
+        bid = np.array([100.0, 101.0, 102.0, 103.0, 104.0])
+        ask = bid + 0.01
+        ask[0] = 0.0
+        aq = np.full(5, 20000, dtype=np.int64)
+        bq = np.full(5, 20000, dtype=np.int64)
+        _, _, _, can_buy, _ = step_rewards(ask, bid, aq, bq, "069500")
+        self.assertFalse(can_buy[0])
+        res = solve(ask, bid, aq, bq, "069500")
+        self.assertNotEqual(int(res["action"][0]), BUY)
+
+    def test_limit_down_hold(self):
+        bid = np.array([100.0, 101.0, 0.0, 103.0, 104.0])
+        ask = np.array([100.01, 101.01, 102.01, 103.01, 104.01])
+        aq = np.full(5, 20000, dtype=np.int64)
+        bq = np.array([20000, 20000, 0, 20000, 20000], dtype=np.int64)
+        _, _, _, _, can_sell = step_rewards(ask, bid, aq, bq, "069500")
+        self.assertFalse(can_sell[2])
+        res = solve(ask, bid, aq, bq, "069500")
+        self.assertEqual(int(res["action"][0]), BUY)
+        self.assertEqual(int(res["action"][2]), HOLD)
+
+    def test_locked_close(self):
+        ask = np.array([100.01, 101.0])
+        bid = np.array([100.0, 0.0])
+        aq = np.array([20000, 20000], dtype=np.int64)
+        bq = np.array([20000, 0], dtype=np.int64)
+        res = solve(ask, bid, aq, bq, "069500")
+        self.assertEqual(int(res["action"][-1]), SELL)
+        expected = (math.log(100.0 / 100.01) - math.log(1 + FEE)
+                    + math.log(101.0 / 100.0) + math.log(1 - FEE))
+        self.assertAlmostEqual(res["total"], expected, places=9)
+
+    def test_qty_insufficient(self):
+        ask = np.array([100.0])
+        bid = np.array([99.99])
+        need = math.ceil(UNIT_KRW / 100.0)
+        aq = np.array([need - 1], dtype=np.int64)
+        bq = np.array([20000], dtype=np.int64)
+        _, _, _, can_buy, can_sell = step_rewards(ask, bid, aq, bq, "069500")
+        self.assertFalse(can_buy[0])
+        self.assertTrue(can_sell[0])
+
+    def test_slip(self):
+        bids = [100, 101, 102, 103, 104]
+        res0, _ = _solve(bids, slip=0)
+        res1, _ = _solve(bids, slip=1)
+        self.assertLess(res1["total"], res0["total"])
+        bid = np.array(bids, dtype=np.float64)
+        ask = bid + 0.01
+        aq = np.full(5, 20000, dtype=np.int64)
+        bq = np.full(5, 20000, dtype=np.int64)
+        h0, b0, s0, _, _ = step_rewards(ask, bid, aq, bq, "069500", slip=0)
+        h1, b1, s1, _, _ = step_rewards(ask, bid, aq, bq, "069500", slip=1)
+        t = tick("069500", ask[0])
+        exp_buy = math.log(bid[0] / (ask[0] + t)) - math.log(1 + FEE)
+        exp_sell = math.log((bid[0] - tick("069500", bid[0])) / bid[0]) + math.log(1 - FEE)
+        self.assertAlmostEqual(b1[0], exp_buy, places=9)
+        self.assertAlmostEqual(s1[0], exp_sell, places=9)
+        self.assertLess(b1[0], b0[0])
+        self.assertLess(s1[0], s0[0])
 
 
 if __name__ == "__main__":

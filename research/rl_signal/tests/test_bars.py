@@ -134,10 +134,14 @@ class TestBuild(unittest.TestCase):
         res = build(DAY, trade, book, _empty_gaps())
         self.assertEqual(res["_excluded"], [(CODE, "short_day")])
 
-    def test_bad_quote_zero_qty(self):
+    def test_one_sided_zero_qty(self):
         res = build(DAY, _empty_trade(), _cover_book(aq1=0), _empty_gaps())
-        self.assertNotIn(CODE, res)
-        self.assertIn((CODE, "bad_quote"), res["_excluded"])
+        self.assertIn(CODE, res)
+        d = res[CODE]
+        self.assertTrue((d["ask1"] == 0).all())
+        self.assertTrue((d["bid1"] == 99).all())
+        self.assertTrue((d["feat"][:, FEATURES.index("spread_bp")] == 0).all())
+        self.assertEqual(res["_reasons"], {})
 
     def test_imb_sign(self):
         d = build(DAY, _empty_trade(), _cover_book(aq1=10, bq1=30), _empty_gaps())[CODE]
@@ -183,6 +187,86 @@ class TestBuild(unittest.TestCase):
                       _cover_book(), _empty_gaps(), planes=True)[CODE]
         self.assertNotEqual(float(small["planes"][100, 2, 9, 19]),
                             float(large["planes"][100, 2, 9, 19]))
+
+
+class TestExecSnapshot(unittest.TestCase):
+    def test_exec_after_boundary(self):
+        j, b = 100, int(grid(DAY)[100])
+        book = pd.concat([_cover_book(),
+                          pd.DataFrame([_book_row(b - 1, ap1=100, bp1=99),
+                                        _book_row(b, ap1=200, bp1=199)],
+                                       columns=_BOOK_COLS)], ignore_index=True)
+        d = build(DAY, _empty_trade(), book, _empty_gaps())[CODE]
+        self.assertEqual(float(d["ask1"][j]), 100.0)
+        self.assertEqual(float(d["bid1"][j]), 99.0)
+        self.assertEqual(float(d["ex_ask1"][j]), 200.0)
+        self.assertEqual(float(d["ex_bid1"][j]), 199.0)
+        self.assertEqual(d["ex_ask1"].dtype, np.float64)
+        self.assertEqual(d["ex_aq1"].dtype, np.int64)
+
+    def test_exec_missing(self):
+        d = build(DAY, _empty_trade(), _cover_book(), _empty_gaps())[CODE]
+        self.assertEqual(float(d["ex_ask1"][100]), 0.0)
+        self.assertEqual(float(d["ex_bid1"][100]), 0.0)
+        self.assertEqual(int(d["ex_aq1"][100]), 0)
+        self.assertEqual(int(d["ex_bq1"][100]), 0)
+
+
+class TestOneSidedStale(unittest.TestCase):
+    def test_limit_up_uses_bid(self):
+        res = build(DAY, _empty_trade(), _cover_book(ap1=0, aq1=0), _empty_gaps())
+        self.assertIn(CODE, res)
+        d = res[CODE]
+        self.assertTrue((d["ask1"] == 0).all())
+        self.assertTrue((d["bid1"] == 99).all())
+        self.assertTrue((d["feat"][:, FEATURES.index("spread_bp")] == 0).all())
+        keep = [j for j, nm in enumerate(FEATURES)
+                if nm not in ("ret_prev", "ma20_gap", "ret5", "vol20")]
+        self.assertTrue(np.isfinite(d["feat"][:, keep]).all())
+
+    def test_limit_down_uses_ask(self):
+        res = build(DAY, _empty_trade(), _cover_book(bp1=0, bq1=0), _empty_gaps())
+        self.assertIn(CODE, res)
+        d = res[CODE]
+        self.assertTrue((d["bid1"] == 0).all())
+        self.assertTrue((d["ask1"] == 100).all())
+        self.assertTrue((d["feat"][:, FEATURES.index("spread_bp")] == 0).all())
+
+    def test_stale_copies_previous(self):
+        j, b = 100, int(grid(DAY)[100])
+        book = pd.concat([_cover_book(),
+                          pd.DataFrame([_book_row(b - 1, ap1=0, bp1=0, aq1=0, bq1=0),
+                                        _book_row(b, ap1=100, bp1=99)],
+                                       columns=_BOOK_COLS)], ignore_index=True)
+        d = build(DAY, _empty_trade(), book, _empty_gaps())[CODE]
+        self.assertEqual(float(d["ask1"][j]), float(d["ask1"][j - 1]))
+        self.assertEqual(float(d["bid1"][j]), float(d["bid1"][j - 1]))
+        self.assertGreaterEqual(int(d["stale_cells"]), 1)
+
+    def test_stale_cross(self):
+        j, b = 100, int(grid(DAY)[100])
+        book = pd.concat([_cover_book(),
+                          pd.DataFrame([_book_row(b - 1, ap1=99, bp1=100),
+                                        _book_row(b, ap1=100, bp1=99)],
+                                       columns=_BOOK_COLS)], ignore_index=True)
+        d = build(DAY, _empty_trade(), book, _empty_gaps())[CODE]
+        self.assertEqual(float(d["ask1"][j]), float(d["ask1"][j - 1]))
+        self.assertGreaterEqual(int(d["stale_cells"]), 1)
+
+    def test_stale_first_cell_no_book(self):
+        res = build(DAY, _empty_trade(), _cover_book(ap1=0, bp1=0), _empty_gaps())
+        self.assertNotIn(CODE, res)
+        self.assertIn((CODE, "no_book"), res["_excluded"])
+        self.assertEqual(res["_reasons"], {"no_book": 1})
+
+    def test_reasons(self):
+        b = int(grid(DAY)[10])
+        gaps = pd.DataFrame([{"conn": "x", "start_rt": b - 15_000_000_000,
+                              "end_rt": b, "reason": "t"}], columns=_GAP_COLS)
+        res = build(DAY, _empty_trade(), _cover_book(), gaps)
+        self.assertEqual(res["_reasons"], {"gap": 1})
+        ok = build(DAY, _empty_trade(), _cover_book(), _empty_gaps())
+        self.assertEqual(ok["_reasons"], {})
 
 
 class TestNewFeatures(unittest.TestCase):

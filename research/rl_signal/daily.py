@@ -52,7 +52,9 @@ def _shifted(px: pd.DataFrame, P: np.ndarray, r: np.ndarray) -> pd.DataFrame:
             ratio = P[5:] / P[:-5]
         ok = cont & np.isfinite(ratio)
         ret5[np.flatnonzero(ok) + 5] = ratio[ok] - 1
-    vol = pd.Series(r).rolling(20).std(ddof=1).to_numpy(dtype=float, na_value=np.nan)
+    vol = (pd.Series(r).groupby(tic).rolling(20).std(ddof=1)
+           .reset_index(level=0, drop=True).sort_index()
+           .to_numpy(dtype=float, na_value=np.nan))
     out = pd.DataFrame({"date": px["date"].to_numpy(), "ticker": tic})
     prev = np.zeros(n, dtype=bool)
     prev[1:] = (tic[1:] == tic[:-1]) & (ms[1:] == ms[:-1] + 1)
@@ -68,7 +70,7 @@ def _shifted(px: pd.DataFrame, P: np.ndarray, r: np.ndarray) -> pd.DataFrame:
 def daily_table(px_stock: pd.DataFrame, px_etf: pd.DataFrame) -> pd.DataFrame:
     """(date, ticker) 마다 그날 **장 시작 전** 알 수 있는 값 = 전 거래일까지로 계산.
 
-    prev_close = 전 거래일 원종가(보정 안 함 — 장중 가격과 같은 기준)
+    prev_close = 종목: D 기준가(close-cmp_prev, 결측이면 전일 원종가). ETF: 전일 원종가(보정 안 함)
     ma20_gap  = 전일 보정가 / 전일까지 20일 보정가 평균 − 1   (adjust.ma_n)
     ret5      = 전일 보정가 / 6거래일 전 보정가 − 1
     vol20     = 전일까지 20개 보정 일수익 표준편차(ddof=1), 결측 섞이면 NaN
@@ -78,7 +80,17 @@ def daily_table(px_stock: pd.DataFrame, px_etf: pd.DataFrame) -> pd.DataFrame:
     if px_stock is not None and len(px_stock):
         s = px_stock.sort_values(["ticker", "date"]).reset_index(drop=True)
         r = adj_returns(s)
-        frames.append(_shifted(s, adj_price(s["ticker"], r), r))
+        tbl = _shifted(s, adj_price(s["ticker"], r), r)
+        if "cmp_prev" in s.columns:
+            # 종목 prev_close = D 기준가(close-cmp_prev, 장 시작 전 확정값). 권리락일 원종가 수익률 왜곡 방지 — BACKTEST_DATA 체크리스트 4
+            close_s = pd.to_numeric(s["close"], errors="coerce").to_numpy(dtype=float)
+            cmp_s = pd.to_numeric(s["cmp_prev"], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
+            ref = close_s - cmp_s
+            ok = np.isfinite(ref) & (ref > 0) & np.isfinite(cmp_s)
+            prev_arr = tbl["prev_close"].to_numpy(dtype=float)
+            prev_arr[ok] = ref[ok]
+            tbl["prev_close"] = prev_arr
+        frames.append(tbl)
     if px_etf is not None and len(px_etf):
         # ponytail: ETF 는 분할 드묾, 분배락 미보정
         e = px_etf.sort_values(["ticker", "date"]).reset_index(drop=True)
