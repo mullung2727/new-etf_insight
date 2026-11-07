@@ -23,10 +23,10 @@
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P4 야간 재학습 배치
-- [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (registry → `ops/scheduled-tasks/rl-signal-train.xml` → Register-ScheduledTask)
+- [x] 구현·테스트 머지 (PR #159, 2026-11-08)
+- [x] 운영 등록 (2026-11-08 등록, 일요일 시험 실행 = 휴장 건너뜀 확인) (registry → `ops/scheduled-tasks/rl-signal-train.xml` → Register-ScheduledTask)
 - [ ] 첫 실가동 확인 (날짜)
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ## 0. 결정 기록 (2026-11-07 인터뷰)
 
@@ -121,7 +121,8 @@
 ## 7. 야간 배치 (P4)
 
 - **20:45**, 거래일만 (`Exit-IfNonTradingDay`, 수능일 등은 `Wait-SessionShift` 로 밀림). 러너 `ops/scheduled-tasks/run-rl-signal-train.ps1`, 작업 `
-ew-etf_insightl-signal-train` (IgnoreNew, PT4H), 레지스트리 `rl-signal-train`.
+ew-etf_insight
+l-signal-train` (IgnoreNew, PT4H), 레지스트리 `rl-signal-train`.
 - 시각 근거(11-07 확인): 20:15 호가 보관이 20:16:30 쯤 끝남. 뒤 21:00 테마 알림·22:00 일봉 적재는 가벼움. 새벽은 02:00 분봉 백필(최대 3h40m)·04:30 미국 v38 실주문이 있어 피함.
 - 순서: `walkforward --version v2 --model hgb_adv --incremental --shuffle-reps 20` (결과 json 없는 테스트일만 계산 = 그날 평가 + 그날까지 재학습은 다음 날 평가 때) → `report` 가 디스코드(`RL_SIGNAL_DISCORD_WEBHOOK_URL`, 없으면 기본 채널) 한 줄: 그날 층별 수익·매매·장중 보유, 확인 구간 누적 n/60일, 기준 1~4. 실패면 ❌ 한 번.
 - 모델 파일은 저장 안 함 — 매일 전체 재학습이라 결과 json 만 남김.
