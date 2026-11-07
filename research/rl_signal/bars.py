@@ -124,6 +124,8 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
         codes.update(book["code"].dropna().unique().tolist())
     if "code" in trade.columns:
         codes.update(trade["code"].dropna().unique().tolist())
+    if book.empty or book["rt"].to_numpy(dtype=np.int64).max() < bounds[-1]:
+        return {"_excluded": [(c, "short_day") for c in sorted(codes)]}
     out: dict[str, dict] = {}
     excluded = []
     for code in sorted(codes):

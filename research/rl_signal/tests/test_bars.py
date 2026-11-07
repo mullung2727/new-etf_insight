@@ -45,7 +45,9 @@ def _trade_row(rt, qty, code=CODE, price=100):
 
 
 def _cover_book(**kw):
-    return pd.DataFrame([_book_row(int(grid(DAY)[0]) - 1, **kw)], columns=_BOOK_COLS)
+    g = grid(DAY)
+    return pd.DataFrame([_book_row(int(g[0]) - 1, **kw), _book_row(int(g[-1]), **kw)],
+                        columns=_BOOK_COLS)
 
 
 def _empty_trade():
@@ -110,9 +112,27 @@ class TestBuild(unittest.TestCase):
 
     def test_no_book_excludes(self):
         trade = pd.DataFrame([_trade_row(int(grid(DAY)[50]), 5)], columns=_TRADE_COLS)
-        res = build(DAY, trade, pd.DataFrame([], columns=_BOOK_COLS), _empty_gaps())
+        res = build(DAY, trade, _cover_book(code="OTHER"), _empty_gaps())
         self.assertNotIn(CODE, res)
         self.assertIn((CODE, "no_book"), res["_excluded"])
+
+    def test_short_day_excludes_all(self):
+        g = grid(DAY)
+        book = pd.DataFrame([_book_row(int(g[0]) - 1)], columns=_BOOK_COLS)
+        trade = pd.DataFrame([_trade_row(int(g[50]), 5),
+                              _trade_row(int(g[50]), 5, code="OTHER")],
+                             columns=_TRADE_COLS)
+        res = build(DAY, trade, book, _empty_gaps())
+        self.assertEqual(sorted(res["_excluded"]), [(CODE, "short_day"), ("OTHER", "short_day")])
+        self.assertNotIn(CODE, res)
+        self.assertNotIn("OTHER", res)
+
+    def test_short_day_empty_book(self):
+        g = grid(DAY)
+        trade = pd.DataFrame([_trade_row(int(g[50]), 5)], columns=_TRADE_COLS)
+        book = pd.DataFrame([], columns=_BOOK_COLS)
+        res = build(DAY, trade, book, _empty_gaps())
+        self.assertEqual(res["_excluded"], [(CODE, "short_day")])
 
     def test_bad_quote_zero_qty(self):
         res = build(DAY, _empty_trade(), _cover_book(aq1=0), _empty_gaps())

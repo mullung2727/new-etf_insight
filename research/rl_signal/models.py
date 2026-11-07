@@ -14,11 +14,12 @@ from .oracle import BUY, HOLD, K_MAX, SELL
 
 def make(name: str):
     """logit → LogisticRegression, hgb → HistGradientBoostingClassifier."""
+    # 정답 대부분이 관망 — 균형 가중은 매수를 과대 예측해 매일 상한 5회 매매 (11-07 전진 검증)
     if name == "logit":
-        return LogisticRegression(max_iter=2000, class_weight="balanced")
+        return LogisticRegression(max_iter=2000)
     if name == "hgb":
         return HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05,
-                                              class_weight="balanced", random_state=0)
+                                              random_state=0)
     raise ValueError(f"unknown model: {name}")
 
 
