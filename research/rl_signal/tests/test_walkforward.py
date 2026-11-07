@@ -16,7 +16,7 @@ from research.rl_signal.dataset import samples
 from research.rl_signal.evaluate import summarize
 from research.rl_signal.oracle import BUY, HOLD, SELL
 from research.rl_signal import walkforward as wf_mod
-from research.rl_signal.walkforward import _nanmean, eval_rng, main, splits
+from research.rl_signal.walkforward import _nanmean, eval_rng, main, splits, src_hash
 
 DAYS = ["2026110%d" % i for i in range(1, 8)]
 
@@ -164,12 +164,23 @@ class TestIncremental(unittest.TestCase):
                 main(argv)
             return buf.getvalue()
 
+    def _run_argv(self, td, argv):
+        with contextlib.ExitStack() as st:
+            for p in self._patches(td):
+                st.enter_context(p)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                main(argv)
+            return buf.getvalue()
+
     def test_full_then_incremental_same_bytes(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / "t" / "hgb_adv"
             self._run_all(td)
-            before = {p.name: p.read_bytes() for p in sorted(d.glob("*.json"))}
+            before = {p.name: p.read_bytes() for p in sorted(d.glob("*.json"))
+                      if p.name != "_config.json"}
             self.assertEqual(set(before), {"20261110.json", "20261111.json"})
+            self.assertTrue((d / "_config.json").exists())
             (d / "20261111.json").unlink()
             out = self._run_all(td, "--incremental")
             self.assertIn("20261110 skip: exists (incremental)", out)
@@ -192,6 +203,63 @@ class TestIncremental(unittest.TestCase):
             (d / "19990101.json").write_text("{}", encoding="utf-8")
             self._run_all(td)
             self.assertFalse((d / "19990101.json").exists())
+
+    def test_incremental_same_config_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            self._run_all(td)
+            try:
+                out = self._run_all(td, "--incremental")
+            except SystemExit as e:
+                self.fail(f"same config should not exit, got {e.code}")
+            self.assertNotIn("코드·설정이 바뀜", out)
+
+    def test_incremental_reps_diff_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            self._run_all(td)
+            argv = ["--model", "hgb_adv", "--version", "t", "--min-train", "1",
+                    "--reps", "1", "--shuffle-reps", "1", "--seed", "0",
+                    "--incremental"]
+            with contextlib.ExitStack() as st:
+                for p in self._patches(td):
+                    st.enter_context(p)
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    with self.assertRaises(SystemExit) as cm:
+                        main(argv)
+                out = buf.getvalue()
+            self.assertEqual(cm.exception.code, 2)
+            self.assertIn("reps", out)
+            self.assertIn("코드·설정이 바뀜 — 새 판정 버전 필요", out)
+
+    def test_dev_skips_config(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "dev" / "hgb_adv"
+            full = ["--model", "hgb_adv", "--version", "dev", "--min-train", "1",
+                    "--reps", "0", "--shuffle-reps", "1", "--seed", "0"]
+            self._run_argv(td, full)
+            self.assertFalse((d / "_config.json").exists())
+            inc = ["--model", "hgb_adv", "--version", "dev", "--min-train", "1",
+                   "--reps", "1", "--shuffle-reps", "1", "--seed", "0",
+                   "--incremental"]
+            try:
+                self._run_argv(td, inc)
+            except SystemExit as e:
+                self.fail(f"dev should skip config check, got exit {e.code}")
+            self.assertFalse((d / "_config.json").exists())
+
+
+class TestSrcHash(unittest.TestCase):
+    def test_excludes_tests(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            (base / "a.py").write_text("x=1", encoding="utf-8")
+            (base / "tests").mkdir()
+            (base / "tests" / "test_a.py").write_text("y=2", encoding="utf-8")
+            h1 = src_hash(base)
+            (base / "tests" / "test_a.py").write_text("y=3", encoding="utf-8")
+            self.assertEqual(src_hash(base), h1)
+            (base / "a.py").write_text("x=2", encoding="utf-8")
+            self.assertNotEqual(src_hash(base), h1)
 
 
 if __name__ == "__main__":

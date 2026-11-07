@@ -21,7 +21,7 @@ from notify import (  # noqa: E402
 )
 
 from .dataset import day_reasons
-from .judge import stratum_summary
+from .judge import judge_both
 from .walkforward import RESULTS
 
 WEBHOOK_ENV = "RL_SIGNAL_DISCORD_WEBHOOK_URL"
@@ -63,8 +63,8 @@ def build_message(version: str, model: str, day: str, start: str) -> str:
         return headline(HEADLINE_WARN, LABEL, STAGE, f"{day} 결과 없음", f"제외 사유: {detail}")
     rec = json.loads(p.read_text(encoding="utf-8"))
     first = f"{day} " + " · ".join(_first_part(s, rec[s]) for s in ("stock", "etf"))
-    body = "\n".join(_summary_line(s, stratum_summary(version, model, s, start))
-                     for s in ("stock", "etf"))
+    res = judge_both(version, model, start)
+    body = "\n".join(_summary_line(s, res[s]) for s in ("stock", "etf"))
     return headline(HEADLINE_OK, LABEL, STAGE, first, body)
 
 
@@ -78,10 +78,17 @@ def main(argv=None) -> None:
     ap.add_argument("--start", required=True)
     ap.add_argument("--failed", default=None)
     args = ap.parse_args(argv)
+    build_failed = False
     if args.failed is not None:
         msg = headline(HEADLINE_FAIL, LABEL, STAGE, f"실패: {args.failed}")
     else:
-        msg = build_message(args.version, args.model, args.day, args.start)
+        try:
+            msg = build_message(args.version, args.model, args.day, args.start)
+        except Exception as exc:
+            detail = str(exc).strip()
+            summary = detail.splitlines()[0][:300] if detail else type(exc).__name__
+            msg = headline(HEADLINE_FAIL, LABEL, STAGE, f"알림 생성 실패: {summary}")
+            build_failed = True
     print(msg)
     try:
         ok = send_strategy_alert(msg, WEBHOOK_ENV)
@@ -90,6 +97,8 @@ def main(argv=None) -> None:
     else:
         if not ok:
             print("[report] alert send failed")
+    if build_failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

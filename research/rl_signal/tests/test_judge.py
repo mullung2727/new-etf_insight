@@ -13,7 +13,7 @@ from unittest import mock
 import numpy as np
 
 from research.rl_signal import judge as judge_mod
-from research.rl_signal.judge import block_boot_lower, holm2, main, pct_half, required_days, verdict
+from research.rl_signal.judge import block_boot_lower, holm2, judge_both, main, pct_half, required_days, verdict
 
 
 class TestPctHalf(unittest.TestCase):
@@ -90,6 +90,55 @@ def _run(argv, td):
     return buf.getvalue()
 
 
+def _stats_004(recs, block, boot, rng):
+    if not recs:
+        return None
+    return {"n": 60, "mean": 0.001, "sd": 0.003, "med": 0.001, "drop": 0.001,
+            "lower": 0.0005, "p1": 0.04, "q2": 0.96, "p2": 0.04,
+            "q3": 0.96, "p3": 0.04, "trades": 200, "bp1": 10.0,
+            "c4": True, "n_star": 50}
+
+
+class TestJudgeBoth(unittest.TestCase):
+    def test_holm_when_both_present(self):
+        with tempfile.TemporaryDirectory() as td:
+            _write(td, "v1", "hgb_adv", [_rec("20261110"), _rec("20261111")])
+            with mock.patch.object(judge_mod, "RESULTS", Path(td)), \
+                    mock.patch.object(judge_mod, "_stats", side_effect=_stats_004):
+                res = judge_both("v1", "hgb_adv", "20261110")
+        self.assertFalse(res["stock"]["c1"])
+        self.assertFalse(res["etf"]["c1"])
+        self.assertFalse(res["stock"]["c2"])
+        self.assertFalse(res["stock"]["c3"])
+        self.assertTrue(res["stock"]["c4"])
+        self.assertIn("1", res["stock"]["verdict"])
+
+    def test_single_when_one_missing(self):
+        rec = {"day": "20261110", "version": "v1", "model": "hgb_adv",
+               "stock": {"n": 1, "model": 0.002, "trades": 10,
+                         "log_sum_slip1": 0.01, "ps_day": [0.0], "sh_day": [0.0]},
+               "etf": {"n": 0, "model": 0.0, "trades": 0,
+                       "log_sum_slip1": 0.0, "ps_day": [], "sh_day": []}}
+        with tempfile.TemporaryDirectory() as td:
+            _write(td, "v1", "hgb_adv", [rec])
+            with mock.patch.object(judge_mod, "RESULTS", Path(td)), \
+                    mock.patch.object(judge_mod, "_stats", side_effect=_stats_004):
+                res = judge_both("v1", "hgb_adv", "20261110")
+        self.assertTrue(res["stock"]["c1"])
+        self.assertEqual(res["etf"]["n"], 0)
+        self.assertEqual(res["etf"]["verdict"], "보류")
+
+    def test_skips_config_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            _write(td, "v1", "hgb_adv", [_rec("20261110")])
+            (Path(td) / "v1" / "hgb_adv" / "_config.json").write_text(
+                '{"src_hash": "x"}', encoding="utf-8")
+            with mock.patch.object(judge_mod, "RESULTS", Path(td)):
+                res = judge_both("v1", "hgb_adv", "20261110", boot=100)
+        self.assertEqual(res["stock"]["n"], 1)
+        self.assertEqual(res["etf"]["n"], 1)
+
+
 class TestMain(unittest.TestCase):
     def test_min_days_rejected(self):
         with tempfile.TemporaryDirectory() as td:
@@ -132,6 +181,23 @@ class TestMain(unittest.TestCase):
             out = _run(["--version", "dev", "--model", "hgb_adv", "--stratum", "stock",
                         "--min-days", "60", "--boot", "100"], td)
         self.assertIn("판정 보류", out)
+
+    def test_both_uses_holm(self):
+        with tempfile.TemporaryDirectory() as td:
+            _write(td, "v1", "hgb_adv", [_rec("20261110")])
+            with mock.patch.object(judge_mod, "RESULTS", Path(td)), \
+                    mock.patch.object(judge_mod, "_stats", side_effect=_stats_004):
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    main(["--version", "v1", "--model", "hgb_adv",
+                          "--stratum", "both", "--start", "20261110",
+                          "--boot", "100"])
+                out = buf.getvalue()
+        self.assertIn("stratum=stock", out)
+        self.assertIn("stratum=etf", out)
+        self.assertEqual(out.count("기준 1 블록부트"), 2)
+        self.assertEqual(out.count("미달"), 6)
+        self.assertEqual(out.count("충족"), 2)
 
 
 if __name__ == "__main__":

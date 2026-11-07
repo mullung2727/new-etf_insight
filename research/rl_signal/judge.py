@@ -94,29 +94,66 @@ def _stats(recs: list, block: int, boot: int, rng: np.random.Generator) -> dict 
             "n_star": required_days(sd)}
 
 
-def stratum_summary(version: str, model: str, stratum: str, start: str | None) -> dict:
-    """층별 확인 구간 요약 + 기준 1~4 충족 여부 (단일 층 기준, report CLI 공용).
+def judge_both(version: str, model: str, start: str | None, min_days: int = 60,
+               boot: int = 10000, block: int = 5, seed: int = 0) -> dict[str, dict]:
+    """both 모드 공용 판정: stock/etf 각각 stats + c1~c4 + verdict.
 
-    judge CLI 와 같은 _stats·verdict 사용. boot/block/seed/min_days 는 CLI 기본값.
-    결과 없으면 n=0, c1~c4 False, verdict "보류".
+    CLI both 경로와 report 가 같이 쓴다. 주 모델·둘 다 결과 있을 때 기준 1~3 은
+    Holm, 아니면 단일 기준(p<0.05). 결과 없으면 n=0, c1~c4 False, verdict "보류".
     """
-    recs = []
+    strata = ["stock", "etf"]
+    recs: dict[str, list] = {s: [] for s in strata}
     for p in sorted((RESULTS / version / model).glob("*.json")):
+        if p.name == "_config.json":
+            continue
         d = json.loads(p.read_text(encoding="utf-8"))
         if start is not None and str(d.get("day", p.stem)) < start:
             continue
-        e = d[stratum]
-        if e["n"] > 0:
-            recs.append(e)
-    if not recs:
-        return {"n": 0, "mean": float("nan"), "c1": False, "c2": False, "c3": False,
-                "c4": False, "verdict": "보류"}
-    st = _stats(recs, 5, 10000, np.random.default_rng(0))
-    assert st is not None
-    c1, c2, c3, c4 = st["p1"] < 0.05, st["p2"] < 0.05, st["p3"] < 0.05, st["c4"]
-    required = max(60, st["n_star"])
-    return {"n": st["n"], "mean": st["mean"], "c1": c1, "c2": c2, "c3": c3, "c4": c4,
-            "verdict": verdict(st["n"], c1, c2, c3, c4, required)}
+        for s in strata:
+            e = d[s]
+            if e["n"] > 0:
+                recs[s].append(e)
+    rng = np.random.default_rng(seed)
+    stats = {s: _stats(recs[s], block, boot, rng) for s in strata}
+    ok: dict[str, tuple[bool, bool, bool, bool] | None] = {}
+    if model == MAIN_MODEL and all(stats[s] is not None for s in strata):
+        for s in strata:
+            st = stats[s]
+            assert st is not None
+            o = [holm2(stats["stock"][f"p{i}"], stats["etf"][f"p{i}"])[0 if s == "stock" else 1]
+                 for i in (1, 2, 3)]
+            ok[s] = (o[0], o[1], o[2], st["c4"])
+    else:
+        for s in strata:
+            st = stats[s]
+            ok[s] = None if st is None else (st["p1"] < 0.05, st["p2"] < 0.05,
+                                             st["p3"] < 0.05, st["c4"])
+    out: dict[str, dict] = {}
+    for s in strata:
+        st = stats[s]
+        if st is None:
+            out[s] = {"n": 0, "mean": float("nan"), "c1": False, "c2": False,
+                      "c3": False, "c4": False, "verdict": "보류", "required": min_days}
+            continue
+        c1, c2, c3, c4 = ok[s] or (False, False, False, False)
+        required = max(min_days, st["n_star"])
+        out[s] = {"n": st["n"], "mean": st["mean"], "sd": st["sd"], "med": st["med"],
+                  "drop": st["drop"], "lower": st["lower"], "p1": st["p1"],
+                  "q2": st["q2"], "p2": st["p2"], "q3": st["q3"], "p3": st["p3"],
+                  "trades": st["trades"], "bp1": st["bp1"],
+                  "c1": c1, "c2": c2, "c3": c3, "c4": c4, "n_star": st["n_star"],
+                  "required": required,
+                  "verdict": verdict(st["n"], c1, c2, c3, c4, required)}
+    return out
+
+
+def stratum_summary(version: str, model: str, stratum: str, start: str | None) -> dict:
+    """층별 확인 구간 요약 + 기준 1~4 충족 여부 (judge_both 공용, report CLI용).
+
+    둘 다 결과 있으면 기준 1~3 은 Holm. boot/block/seed/min_days 는 CLI 기본값.
+    결과 없으면 n=0, c1~c4 False, verdict "보류".
+    """
+    return judge_both(version, model, start)[stratum]
 
 
 def main(argv=None) -> None:
@@ -139,28 +176,40 @@ def main(argv=None) -> None:
     if args.start is not None and (len(args.start) != 8 or not args.start.isdigit()):
         ap.error("--start must be YYYYMMDD")
     strata = ["stock", "etf"] if args.stratum == "both" else [args.stratum]
-    recs: dict[str, list] = {s: [] for s in strata}
-    for p in sorted((RESULTS / args.version / args.model).glob("*.json")):
-        d = json.loads(p.read_text(encoding="utf-8"))
-        if args.start is not None and str(d.get("day", p.stem)) < args.start:
-            continue
-        for s in strata:
-            e = d[s]
-            if e["n"] > 0:
-                recs[s].append(e)
     diag = args.model != MAIN_MODEL
-    rng = np.random.default_rng(args.seed)
-    stats = {s: _stats(recs[s], args.block, args.boot, rng) for s in strata}
+    stats: dict[str, dict | None]
     ok: dict[str, tuple[bool, bool, bool, bool] | None] = {}
-    if not diag:
-        if len(strata) == 2 and all(stats[s] is not None for s in strata):
+    if len(strata) == 2:
+        res = judge_both(args.version, args.model, args.start, min_days=args.min_days,
+                         boot=args.boot, block=args.block, seed=args.seed)
+        stats = {}
+        for s in strata:
+            r = res[s]
+            if r["n"] == 0:
+                stats[s] = None
+                if not diag:
+                    ok[s] = None
+            else:
+                stats[s] = {k: r[k] for k in ("n", "mean", "sd", "med", "drop", "lower",
+                                              "p1", "q2", "p2", "q3", "p3",
+                                              "trades", "bp1", "n_star", "c4")}
+                if not diag:
+                    ok[s] = (r["c1"], r["c2"], r["c3"], r["c4"])
+    else:
+        recs: dict[str, list] = {s: [] for s in strata}
+        for p in sorted((RESULTS / args.version / args.model).glob("*.json")):
+            if p.name == "_config.json":
+                continue
+            d = json.loads(p.read_text(encoding="utf-8"))
+            if args.start is not None and str(d.get("day", p.stem)) < args.start:
+                continue
             for s in strata:
-                st = stats[s]
-                assert st is not None
-                o = [holm2(stats["stock"][f"p{i}"], stats["etf"][f"p{i}"])[0 if s == "stock" else 1]
-                     for i in (1, 2, 3)]
-                ok[s] = (o[0], o[1], o[2], st["c4"])
-        else:
+                e = d[s]
+                if e["n"] > 0:
+                    recs[s].append(e)
+        rng = np.random.default_rng(args.seed)
+        stats = {s: _stats(recs[s], args.block, args.boot, rng) for s in strata}
+        if not diag:
             for s in strata:
                 st = stats[s]
                 ok[s] = None if st is None else (st["p1"] < 0.05, st["p2"] < 0.05,

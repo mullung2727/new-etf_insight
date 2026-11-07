@@ -83,6 +83,23 @@ class TestBuildMessage(unittest.TestCase):
         self.assertTrue(msg.startswith("⚠"))
         self.assertIn("없음", msg)
 
+    def test_uses_judge_both(self):
+        fake = {
+            "stock": {"n": 60, "mean": 0.001, "c1": False, "c2": True,
+                      "c3": True, "c4": True, "verdict": "불통과: 기준 1"},
+            "etf": {"n": 60, "mean": 0.002, "c1": False, "c2": True,
+                    "c3": True, "c4": True, "verdict": "불통과: 기준 1"},
+        }
+        with tempfile.TemporaryDirectory() as td:
+            _write(td, "v2", "hgb_adv", [_rec("20261110")])
+            with mock.patch.object(report_mod, "RESULTS", Path(td)), \
+                    mock.patch.object(report_mod, "judge_both",
+                                      return_value=fake) as jb:
+                msg = build_message("v2", "hgb_adv", "20261110", "20261109")
+                jb.assert_called_once_with("v2", "hgb_adv", "20261109")
+        self.assertIn("1미달", msg)
+        self.assertIn("2충족", msg)
+
 
 class TestMain(unittest.TestCase):
     def test_failed(self):
@@ -112,6 +129,24 @@ class TestMain(unittest.TestCase):
                 main(["--version", "v2", "--model", "hgb_adv", "--day", "20261110",
                       "--start", "20261109", "--failed", "x"])
         self.assertIn("alert send failed", buf.getvalue())
+
+    def test_build_failure_exits_1(self):
+        with mock.patch.object(report_mod, "build_message",
+                               side_effect=RuntimeError("boom")):
+            with mock.patch.object(report_mod, "send_strategy_alert",
+                                   return_value=True) as send:
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    with self.assertRaises(SystemExit) as cm:
+                        main(["--version", "v2", "--model", "hgb_adv",
+                              "--day", "20261110", "--start", "20261109"])
+                self.assertEqual(cm.exception.code, 1)
+        send.assert_called_once()
+        msg, env = send.call_args.args
+        self.assertTrue(msg.startswith("❌"))
+        self.assertIn("RL신호 야간학습", msg)
+        self.assertIn("알림 생성 실패", msg)
+        self.assertIn("boom", msg)
 
 
 if __name__ == "__main__":
