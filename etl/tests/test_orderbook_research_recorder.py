@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from scripts.run_orderbook_research_recorder import (
     BACKOFF,
     BrokerWatch,
+    ETF_CODES,
     backoff,
     close_action,
     disk_ok,
@@ -28,6 +29,7 @@ from scripts.run_orderbook_research_recorder import (
     pick_codes,
     rotate_if_short,
     run_recording,
+    with_etfs,
     _wait_backoff,
 )
 
@@ -261,6 +263,16 @@ class PickCodesCase(_TmpCase):
         self.assertIn("0010F0", codes)
         self.assertNotIn("00593", codes)
         self.assertNotIn("abc123", codes)
+
+    def test_with_etfs_appends_six(self):
+        self.assertEqual(with_etfs(["005930"]), ["005930", *ETF_CODES])
+        self.assertEqual(len(with_etfs(["005930"])), 7)
+
+    def test_with_etfs_no_duplicate(self):
+        res = with_etfs(["122630", "005930"])
+        self.assertEqual(res.count("122630"), 1)
+        self.assertEqual(len(res), 7)
+        self.assertEqual(res[:2], ["122630", "005930"])
 
 
 class LoadTokenCase(_TmpCase):
