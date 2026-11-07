@@ -19,7 +19,6 @@ from zoneinfo import ZoneInfo
 from scripts.run_orderbook_research_recorder import (
     BACKOFF,
     BrokerWatch,
-    ETF_CODES,
     backoff,
     close_action,
     disk_ok,
@@ -265,7 +264,10 @@ class PickCodesCase(_TmpCase):
         self.assertNotIn("abc123", codes)
 
     def test_with_etfs_appends_six(self):
-        self.assertEqual(with_etfs(["005930"]), ["005930", *ETF_CODES])
+        self.assertEqual(
+            with_etfs(["005930"]),
+            ["005930", "069500", "122630", "114800", "229200", "233740", "251340"],
+        )
         self.assertEqual(len(with_etfs(["005930"])), 7)
 
     def test_with_etfs_no_duplicate(self):
@@ -273,6 +275,35 @@ class PickCodesCase(_TmpCase):
         self.assertEqual(res.count("122630"), 1)
         self.assertEqual(len(res), 7)
         self.assertEqual(res[:2], ["122630", "005930"])
+
+    def test_run_no_ranking_still_records_etfs(self):
+        import scripts.run_orderbook_research_recorder as rec
+
+        class _FixedDT(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 11, 9, 8, 0, tzinfo=ZoneInfo("Asia/Seoul"))
+
+        with tempfile.TemporaryDirectory() as td:
+            with (
+                mock.patch.object(rec, "datetime", _FixedDT),
+                mock.patch.object(rec, "trading_day_status", return_value=(True, "")),
+                mock.patch.object(rec, "pick_codes", return_value=(None, [])),
+                mock.patch.object(rec, "notify") as notify_m,
+                mock.patch.object(rec, "disk_ok", return_value=False),
+                mock.patch.object(rec, "OUT_DIR", Path(td)),
+                mock.patch.object(rec, "with_etfs", wraps=rec.with_etfs) as with_etfs_m,
+            ):
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    res = rec._run("20261109", "20261109")
+        self.assertEqual(res, 3)
+        with_etfs_m.assert_called_once_with([])
+        first_msg = notify_m.call_args_list[0][0][0]
+        last_msg = notify_m.call_args_list[-1][0][0]
+        self.assertIn("종목 없음", first_msg)
+        self.assertIn("ETF만 녹화", first_msg)
+        self.assertIn("disk_low", last_msg)
 
 
 class LoadTokenCase(_TmpCase):
