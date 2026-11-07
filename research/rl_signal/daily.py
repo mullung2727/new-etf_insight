@@ -71,6 +71,7 @@ def daily_table(px_stock: pd.DataFrame, px_etf: pd.DataFrame) -> pd.DataFrame:
     """(date, ticker) 마다 그날 **장 시작 전** 알 수 있는 값 = 전 거래일까지로 계산.
 
     prev_close = 종목: D 기준가(close-cmp_prev, 결측이면 전일 원종가). ETF: 전일 원종가(보정 안 함)
+    종목 수익률 = KRX 기준가 모드(같은 날 close·cmp_prev 만, cmp_prev 결측이면 NaN)
     ma20_gap  = 전일 보정가 / 전일까지 20일 보정가 평균 − 1   (adjust.ma_n)
     ret5      = 전일 보정가 / 6거래일 전 보정가 − 1
     vol20     = 전일까지 20개 보정 일수익 표준편차(ddof=1), 결측 섞이면 NaN
@@ -79,7 +80,8 @@ def daily_table(px_stock: pd.DataFrame, px_etf: pd.DataFrame) -> pd.DataFrame:
     frames = []
     if px_stock is not None and len(px_stock):
         s = px_stock.sort_values(["ticker", "date"]).reset_index(drop=True)
-        r = adj_returns(s)
+        # 기준가 모드 — 주식수 매칭(±30행)은 이후 정보를 써서 쓰지 않음 (PR #158 리뷰)
+        r = adj_returns(s, use_krx_reference=True)
         tbl = _shifted(s, adj_price(s["ticker"], r), r)
         if "cmp_prev" in s.columns:
             # 종목 prev_close = D 기준가(close-cmp_prev, 장 시작 전 확정값). 권리락일 원종가 수익률 왜곡 방지 — BACKTEST_DATA 체크리스트 4

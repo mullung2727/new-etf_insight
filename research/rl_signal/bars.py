@@ -56,8 +56,8 @@ def _read_parquet(path: Path) -> pd.DataFrame:
         con.close()
 
 
-def load_day(day: str, root: Path | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """(trade, book, gaps). root 기본 = orderbook_dir(). gaps 파일 없으면 빈 DF."""
+def day_paths(day: str, root: Path | None = None) -> tuple[Path, Path, Path]:
+    """그날 trade/book/gaps parquet 경로. root 기본 = orderbook_dir()."""
     if root is None:
         try:
             from new_etf_insight.data_paths import orderbook_dir
@@ -66,9 +66,14 @@ def load_day(day: str, root: Path | None = None) -> tuple[pd.DataFrame, pd.DataF
             from new_etf_insight.data_paths import orderbook_dir
         root = orderbook_dir()
     sub = Path(root) / day[:4] / day[4:6]
-    trade = _read_parquet(sub / f"trade_{day}.parquet")
-    book = _read_parquet(sub / f"book_{day}.parquet")
-    gaps_path = sub / f"gaps_{day}.parquet"
+    return sub / f"trade_{day}.parquet", sub / f"book_{day}.parquet", sub / f"gaps_{day}.parquet"
+
+
+def load_day(day: str, root: Path | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """(trade, book, gaps). root 기본 = orderbook_dir(). gaps 파일 없으면 빈 DF."""
+    trade_p, book_p, gaps_path = day_paths(day, root)
+    trade = _read_parquet(trade_p)
+    book = _read_parquet(book_p)
     gaps = _read_parquet(gaps_path) if gaps_path.exists() else pd.DataFrame()
     return trade, book, gaps
 
@@ -181,8 +186,10 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
             k = int(np.searchsorted(brt, b, side="left"))
             if k < len(brt) and brt[k] < b + STEP_NS:
                 erow = bmat[k]
-                ex_ask1[i], ex_bid1[i] = float(erow[0]), float(erow[10])
-                ex_aq1[i], ex_bq1[i] = int(erow[20]), int(erow[30])
+                ea1, eb1 = float(erow[0]), float(erow[10])
+                if not (ea1 > 0 and eb1 > 0 and ea1 <= eb1):
+                    ex_ask1[i], ex_bid1[i] = ea1, eb1
+                    ex_aq1[i], ex_bq1[i] = int(erow[20]), int(erow[30])
             l = int(np.searchsorted(trt, b - STEP_NS, side="left"))
             r = int(np.searchsorted(trt, b, side="left"))
             if r > l:
@@ -271,7 +278,6 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
             "buy_vol": buy_vol, "sell_vol": sell_vol,
             "feat": np.column_stack(cols).astype(np.float32),
             "stale_cells": int(stale_cells),
-            "ex_dead": bool(ex_ask1[0] <= 0 and ex_bid1[0] <= 0),
         }
         if planes:
             entry["planes"] = _planes(aq, bq, buy_vol, sell_vol)

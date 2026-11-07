@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 import numpy as np
@@ -15,56 +16,79 @@ from .oracle import BUY, HOLD, K_MAX, SELL
 
 CACHE = Path(__file__).resolve().parents[1] / "private" / "rl_signal" / "cache"
 EXTRA_COLS = ["pos", "k5"]
-CACHE_VERSION = "v2"
+CACHE_VERSION = "v4"
 
 
 def cache_tag() -> str:
-    """sha1(FEATURES·FEE·SELL_TAX·K_MAX·UNIT_KRW·"v2") 앞 8자리."""
+    """sha1(FEATURES·FEE·SELL_TAX·K_MAX·UNIT_KRW·"v4") 앞 8자리."""
     payload = repr((bars.FEATURES, costs.FEE, costs.SELL_TAX,
                     oracle.K_MAX, costs.UNIT_KRW, CACHE_VERSION)).encode("utf-8")
     return hashlib.sha1(payload).hexdigest()[:8]
 
 
-def _cache_path(day: str) -> Path:
-    return CACHE / f"cells_{day}_{cache_tag()}.npz"
+def cache_key(day: str, daily_tbl=None, root=None) -> str:
+    """tag + 일자 h 8자리. h = sha1(그날 trade/book/gaps 크기·mtime_ns + repr(for_day)) 앞 8자리."""
+    parts: list = []
+    for p in bars.day_paths(day, root):
+        try:
+            st = os.stat(p)
+        except OSError:
+            parts.append(None)
+        else:
+            parts.append((st.st_size, st.st_mtime_ns))
+    parts.append(None if daily_tbl is None else repr(daily_mod.for_day(daily_tbl, day)))
+    h = hashlib.sha1(repr(parts).encode("utf-8")).hexdigest()[:8]
+    return cache_tag() + h
+
+
+def _cache_path(day: str, key: str) -> Path:
+    return CACHE / f"cells_{day}_{key}.npz"
 
 
 def day_reasons(day: str) -> dict[str, int]:
-    """캐시에서 _reasons 읽기. 캐시 없으면 {}."""
-    p = _cache_path(day)
-    if not p.exists():
+    """캐시에서 _reasons 읽기. 캐시 없으면 {}. 같은 날 파일이 여러 개면 최신."""
+    cands = [p for p in CACHE.glob(f"cells_{day}_*.npz") if not p.name.endswith(".tmp.npz")]
+    if not cands:
         return {}
+    p = max(cands, key=lambda q: q.stat().st_mtime_ns)
     try:
-        z = np.load(str(p))
+        with np.load(str(p)) as z:
+            if "reasons_keys" not in z or "reasons_vals" not in z:
+                return {}
+            keys = [str(k) for k in z["reasons_keys"].tolist()]
+            vals = z["reasons_vals"].tolist()
     except Exception:
         return {}
-    if "reasons_keys" not in z or "reasons_vals" not in z:
-        return {}
-    keys = [str(k) for k in z["reasons_keys"].tolist()]
-    vals = z["reasons_vals"].tolist()
     return {k: int(v) for k, v in zip(keys, vals)}
 
 
 def day_cells(day: str, daily_tbl, root=None, refresh: bool = False) -> dict:
-    """bars.load_day + daily.for_day + bars.build → 종목별 {feat, ask1, bid1, ex_*, q, q_slip1}.
+    """bars.load_day + daily.for_day + bars.build → 종목별 {feat, ask1, bid1, ex_*, q, q_slip1, mark0}.
 
-    npz 캐시 CACHE/cells_{day}_{tag}.npz (tag=cache_tag()). 있으면 읽기.
-    ex_dead 종목은 제외(사유 no_exec). _reasons는 캐시에 저장, day_reasons()로 읽기.
+    npz 캐시 CACHE/cells_{day}_{key}.npz (key=cache_key()). 있으면 읽기, 읽기 실패면 지우고 다시 만듦.
+    하루 내내 체결 스냅샷이 하나도 없는 종목은 제외(사유 no_exec). _reasons는 캐시에 저장, day_reasons()로 읽기.
     """
     CACHE.mkdir(parents=True, exist_ok=True)
-    p = _cache_path(day)
+    p = _cache_path(day, cache_key(day, daily_tbl, root))
     if not refresh and p.exists():
-        z = np.load(str(p))
-        codes = [str(c) for c in z["codes"].tolist()]
-        if not codes:
-            return {}
-        req = ("feat", "ask1", "bid1", "ex_ask1", "ex_bid1", "ex_aq1", "ex_bq1", "q", "q_slip1")
-        if all(k in z for k in req):
-            return {c: {"feat": z["feat"][i], "ask1": z["ask1"][i],
-                        "bid1": z["bid1"][i], "ex_ask1": z["ex_ask1"][i],
-                        "ex_bid1": z["ex_bid1"][i], "ex_aq1": z["ex_aq1"][i],
-                        "ex_bq1": z["ex_bq1"][i], "q": z["q"][i], "q_slip1": z["q_slip1"][i]}
-                    for i, c in enumerate(codes)}
+        try:
+            with np.load(str(p)) as z:
+                codes = [str(c) for c in z["codes"].tolist()]
+                req = ("feat", "ask1", "bid1", "ex_ask1", "ex_bid1", "ex_aq1", "ex_bq1",
+                       "q", "q_slip1", "mark0")
+                if codes and all(k in z for k in req):
+                    arr = {k: z[k] for k in req}
+                    return {c: {"feat": arr["feat"][i], "ask1": arr["ask1"][i],
+                                "bid1": arr["bid1"][i], "ex_ask1": arr["ex_ask1"][i],
+                                "ex_bid1": arr["ex_bid1"][i], "ex_aq1": arr["ex_aq1"][i],
+                                "ex_bq1": arr["ex_bq1"][i], "q": arr["q"][i],
+                                "q_slip1": arr["q_slip1"][i], "mark0": float(arr["mark0"][i])}
+                            for i, c in enumerate(codes)}
+                if not codes:
+                    return {}
+        except Exception:
+            pass
+        p.unlink(missing_ok=True)
     trade, book, gaps = bars.load_day(day, root)
     built = bars.build(day, trade, book, gaps, daily=daily_mod.for_day(daily_tbl, day))
     reasons = dict(built.get("_reasons", {}))
@@ -73,36 +97,32 @@ def day_cells(day: str, daily_tbl, root=None, refresh: bool = False) -> dict:
     no_exec = 0
     for c in sorted(k for k in built if not k.startswith("_")):
         e = built[c]
-        if e.get("ex_dead"):
+        if not ((np.asarray(e["ex_ask1"]) > 0) | (np.asarray(e["ex_bid1"]) > 0)).any():
             no_exec += 1
             continue
         codes.append(c)
-        q0 = oracle.solve(e["ex_ask1"], e["ex_bid1"], e["ex_aq1"], e["ex_bq1"], c)["q"]
-        q1 = oracle.solve(e["ex_ask1"], e["ex_bid1"], e["ex_aq1"], e["ex_bq1"], c, slip=1)["q"]
+        a0, b0 = float(e["ask1"][0]), float(e["bid1"][0])
+        mark0 = (a0 + b0) / 2 if (a0 > 0 and b0 > 0) else (a0 if a0 > 0 else b0)
+        q0 = oracle.solve(e["ex_ask1"], e["ex_bid1"], e["ex_aq1"], e["ex_bq1"], c, mark0=mark0)["q"]
+        q1 = oracle.solve(e["ex_ask1"], e["ex_bid1"], e["ex_aq1"], e["ex_bq1"], c,
+                          slip=1, mark0=mark0)["q"]
         cells[c] = {"feat": e["feat"], "ask1": e["ask1"], "bid1": e["bid1"],
                     "ex_ask1": e["ex_ask1"], "ex_bid1": e["ex_bid1"],
                     "ex_aq1": e["ex_aq1"], "ex_bq1": e["ex_bq1"],
-                    "q": q0, "q_slip1": q1}
+                    "q": q0, "q_slip1": q1, "mark0": float(mark0)}
     if no_exec:
         reasons["no_exec"] = reasons.get("no_exec", 0) + no_exec
     rk = sorted(reasons.keys())
-    rkeys = np.array(rk)
-    rvals = np.array([reasons[k] for k in rk], dtype=np.int64)
+    payload: dict = {"codes": np.array(codes),
+                     "reasons_keys": np.array(rk),
+                     "reasons_vals": np.array([reasons[k] for k in rk], dtype=np.int64)}
     if codes:
-        np.savez_compressed(str(p),
-                            codes=np.array(codes),
-                            feat=np.stack([cells[c]["feat"] for c in codes]),
-                            ask1=np.stack([cells[c]["ask1"] for c in codes]),
-                            bid1=np.stack([cells[c]["bid1"] for c in codes]),
-                            ex_ask1=np.stack([cells[c]["ex_ask1"] for c in codes]),
-                            ex_bid1=np.stack([cells[c]["ex_bid1"] for c in codes]),
-                            ex_aq1=np.stack([cells[c]["ex_aq1"] for c in codes]),
-                            ex_bq1=np.stack([cells[c]["ex_bq1"] for c in codes]),
-                            q=np.stack([cells[c]["q"] for c in codes]),
-                            q_slip1=np.stack([cells[c]["q_slip1"] for c in codes]),
-                            reasons_keys=rkeys, reasons_vals=rvals)
-    else:
-        np.savez_compressed(str(p), codes=np.array([]), reasons_keys=rkeys, reasons_vals=rvals)
+        for k in ("feat", "ask1", "bid1", "ex_ask1", "ex_bid1", "ex_aq1", "ex_bq1", "q", "q_slip1"):
+            payload[k] = np.stack([cells[c][k] for c in codes])
+        payload["mark0"] = np.array([cells[c]["mark0"] for c in codes], dtype=np.float64)
+    tmp = p.with_name(p.stem + ".tmp.npz")
+    np.savez_compressed(str(tmp), **payload)
+    os.replace(tmp, p)
     return cells
 
 

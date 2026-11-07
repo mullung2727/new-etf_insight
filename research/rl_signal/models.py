@@ -25,6 +25,26 @@ def make(name: str):
     raise ValueError(f"unknown model: {name}")
 
 
+class _ConstClf:
+    """단일 라벨 분류기. predict_proba → (n, 1) 1.0, classes_ = [label]."""
+
+    def __init__(self, label: int) -> None:
+        self.classes_ = np.array([label])
+
+    def predict_proba(self, X):
+        return np.ones((len(np.asarray(X)), 1), dtype=np.float64)
+
+
+class _ConstReg:
+    """상수 회귀. predict → 항상 value."""
+
+    def __init__(self, value: float) -> None:
+        self.value = value
+
+    def predict(self, X):
+        return np.full(len(np.asarray(X)), self.value, dtype=np.float64)
+
+
 class ClassModel:
     """분류기 얇은 래퍼. fit(X, y, adv, pos_col) + decide_fn — 내부는 기존 predict_proba 최대 그대로."""
 
@@ -32,7 +52,11 @@ class ClassModel:
         self.est = est
 
     def fit(self, X, y, adv, pos_col: int) -> "ClassModel":
-        self.est.fit(X, y)
+        yu = np.unique(np.asarray(y))
+        if len(yu) == 1:
+            self.est = _ConstClf(int(yu[0]))
+        else:
+            self.est.fit(X, y)
         return self
 
     def decide_fn(self, scaler, feat: np.ndarray, names: list[str]) -> Callable[[int, int, int], int]:
@@ -40,11 +64,13 @@ class ClassModel:
 
 
 class AdvModel:
-    """이득 회귀: pos=0 행 adv → 매수 회귀, pos=1 행 → 매도 회귀. 예측 이득 > 0 일 때만 매매."""
+    """이득 회귀: pos=0 행 adv → 매수 회귀, pos=1 행 → 매도 회귀. 예측 이득 > 0 일 때만 매매.
+
+    유한 이득 행이 0인 쪽은 상수 −1 예측기(그쪽 매매 안 함)."""
 
     def __init__(self) -> None:
-        self._buy: HistGradientBoostingRegressor | None = None
-        self._sell: HistGradientBoostingRegressor | None = None
+        self._buy: HistGradientBoostingRegressor | _ConstReg | None = None
+        self._sell: HistGradientBoostingRegressor | _ConstReg | None = None
 
     @staticmethod
     def _regressor() -> HistGradientBoostingRegressor:
@@ -57,8 +83,8 @@ class AdvModel:
         pos = X[:, pos_col]
         mb = (pos == 0) & np.isfinite(adv)
         ms = (pos == 1) & np.isfinite(adv)
-        self._buy = self._regressor().fit(X[mb], adv[mb])
-        self._sell = self._regressor().fit(X[ms], adv[ms])
+        self._buy = self._regressor().fit(X[mb], adv[mb]) if mb.sum() else _ConstReg(-1.0)
+        self._sell = self._regressor().fit(X[ms], adv[ms]) if ms.sum() else _ConstReg(-1.0)
         return self
 
     def decide_fn(self, scaler, feat: np.ndarray, names: list[str]) -> Callable[[int, int, int], int]:

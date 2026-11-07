@@ -211,6 +211,35 @@ class TestExecSnapshot(unittest.TestCase):
         self.assertEqual(int(d["ex_aq1"][100]), 0)
         self.assertEqual(int(d["ex_bq1"][100]), 0)
 
+    def test_exec_cross(self):
+        j, b = 100, int(grid(DAY)[100])
+        book = pd.concat([_cover_book(),
+                          pd.DataFrame([_book_row(b, ap1=99, bp1=100)],
+                                       columns=_BOOK_COLS)], ignore_index=True)
+        d = build(DAY, _empty_trade(), book, _empty_gaps())[CODE]
+        self.assertEqual(float(d["ex_ask1"][j]), 0.0)
+        self.assertEqual(float(d["ex_bid1"][j]), 0.0)
+        self.assertEqual(int(d["ex_aq1"][j]), 0)
+        self.assertEqual(int(d["ex_bq1"][j]), 0)
+
+    def test_exec_one_sided_kept(self):
+        j, b = 100, int(grid(DAY)[100])
+        book = pd.concat([_cover_book(),
+                          pd.DataFrame([_book_row(b, ap1=0, aq1=0)],
+                                       columns=_BOOK_COLS)], ignore_index=True)
+        d = build(DAY, _empty_trade(), book, _empty_gaps())[CODE]
+        self.assertEqual(float(d["ex_ask1"][j]), 0.0)
+        self.assertEqual(float(d["ex_bid1"][j]), 99.0)
+        self.assertEqual(int(d["ex_bq1"][j]), 30)
+
+    def test_first_cell_no_exec_keeps_code(self):
+        res = build(DAY, _empty_trade(), _cover_book(), _empty_gaps())
+        self.assertIn(CODE, res)
+        d = res[CODE]
+        self.assertNotIn("ex_dead", d)
+        self.assertEqual(float(d["ex_ask1"][0]), 0.0)
+        self.assertEqual(float(d["ex_bid1"][0]), 0.0)
+
 
 class TestOneSidedStale(unittest.TestCase):
     def test_limit_up_uses_bid(self):

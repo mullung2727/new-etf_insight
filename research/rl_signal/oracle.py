@@ -6,18 +6,19 @@ import math
 
 import numpy as np
 
-from .costs import UNIT_KRW, buy_cost, sell_cost, tick
+from .costs import UNIT_KRW, buy_cost, sell_cost, tick, tick_below
 
 HOLD, BUY, SELL = 0, 1, 2
 K_MAX = 5
 
 
 def step_rewards(ex_ask1, ex_bid1, ex_aq1, ex_bq1, code: str,
-                 unit_krw=UNIT_KRW, slip=0) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """칸별 로그 보상 조각. v[t]=bid>0이면 bid, 아니면 ask. 둘 다 0이면 v[t-1].
+                 unit_krw=UNIT_KRW, slip=0, mark0: float = 0.0,
+                 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """칸별 로그 보상 조각. v[t]=bid>0이면 bid, 아니면 ask. 둘 다 0이면 v[t-1], 첫 칸이면 mark0(판단 mid).
 
     hold_r[t]=log(v[t+1]/v[t]), buy_r=log(v/매수가)-log(1+buy_cost), sell_r=log(매도가/v)+log(1-sell_cost).
-    매수=ask+slip*.tick, 매도=bid-slip* tick. can_buy/can_sell=가격>0 and 1호가 잔량>=ceil(unit_krw/가격).
+    매수=ask+slip*tick, 매도=bid-slip*tick_below. can_buy/can_sell=가격>0 and 1호가 잔량>=ceil(unit_krw/가격).
     """
     ask = np.asarray(ex_ask1, dtype=np.float64)
     bid = np.asarray(ex_bid1, dtype=np.float64)
@@ -32,6 +33,8 @@ def step_rewards(ex_ask1, ex_bid1, ex_aq1, ex_bq1, code: str,
             v[t] = ask[t]
         elif t > 0:
             v[t] = v[t - 1]
+        else:
+            v[t] = mark0
     can_buy = np.zeros(n, dtype=bool)
     can_sell = np.zeros(n, dtype=bool)
     for t in range(n):
@@ -55,7 +58,7 @@ def step_rewards(ex_ask1, ex_bid1, ex_aq1, ex_bq1, code: str,
             else:
                 can_buy[t] = False
         if bid[t] > 0 and v[t] > 0:
-            px = bid[t] - slip * tick(code, bid[t])
+            px = bid[t] - slip * tick_below(code, bid[t])
             if px > 0:
                 sell_r[t] = math.log(px / v[t]) + log_sc
             else:
@@ -63,8 +66,9 @@ def step_rewards(ex_ask1, ex_bid1, ex_aq1, ex_bq1, code: str,
     return hold_r, buy_r, sell_r, can_buy, can_sell
 
 
-def solve(ex_ask1, ex_bid1, ex_aq1, ex_bq1, code: str, k_max: int = K_MAX, slip=0) -> dict:
-    """동적계획법. BUY는 can_buy[t]일 때만, SELL은 can_sell[t]일 때만.
+def solve(ex_ask1, ex_bid1, ex_aq1, ex_bq1, code: str, k_max: int = K_MAX, slip=0,
+          mark0: float = 0.0) -> dict:
+    """동적계획법. BUY는 can_buy[t]일 때만, SELL은 can_sell[t]일 때만. mark0=첫 칸 체결가 없을 때 판단 mid.
 
     마지막 칸: pos=1이면 SELL 강제(HOLD -inf), pos=0이면 HOLD 강제(BUY 금지).
     마지막 칸 보유인데 can_sell False면 v 평가 청산+sell_cost만.
@@ -75,7 +79,8 @@ def solve(ex_ask1, ex_bid1, ex_aq1, ex_bq1, code: str, k_max: int = K_MAX, slip=
     aq = np.asarray(ex_aq1, dtype=np.int64)
     bq = np.asarray(ex_bq1, dtype=np.int64)
     n = len(ask)
-    hold_r, buy_r, sell_r, can_buy, can_sell = step_rewards(ask, bid, aq, bq, code, slip=slip)
+    hold_r, buy_r, sell_r, can_buy, can_sell = step_rewards(ask, bid, aq, bq, code,
+                                                              slip=slip, mark0=mark0)
     nk = k_max + 1
     q = np.full((n, 2, nk, 3), -np.inf)
     v = np.zeros((n + 1, 2, nk))

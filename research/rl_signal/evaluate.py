@@ -39,9 +39,11 @@ def eval_codes(model, scaler, names, cells: dict, codes: list[str], reps: int, r
     for c in codes:
         e = cells[c]
         ask, bid, aq, bq = e["ex_ask1"], e["ex_bid1"], e["ex_aq1"], e["ex_bq1"]
-        tot, nb, act = policy_run(model.decide_fn(scaler, e["feat"], names), ask, bid, aq, bq, c)
-        tot_s1, _, _ = run(act, ask, bid, aq, bq, c, slip=1)
-        bh_log, _, _ = run(_buy_and_hold(len(np.asarray(ask))), ask, bid, aq, bq, c)
+        m0 = float(e.get("mark0", 0.0))
+        tot, nb, act = policy_run(model.decide_fn(scaler, e["feat"], names), ask, bid, aq, bq, c,
+                                  mark0=m0)
+        tot_s1, _, _ = run(act, ask, bid, aq, bq, c, slip=1, mark0=m0)
+        bh_log, _, _ = run(_buy_and_hold(len(np.asarray(ask))), ask, bid, aq, bq, c, mark0=m0)
         per[c] = {
             "model": float(np.exp(tot) - 1),
             "model_slip1": float(np.exp(tot_s1) - 1),
@@ -50,9 +52,9 @@ def eval_codes(model, scaler, names, cells: dict, codes: list[str], reps: int, r
             "log_total_slip1": float(tot_s1),
             "bh": float(np.exp(bh_log) - 1),
             "oracle": float(np.exp(float(e["q"][0, 0, K_MAX].max())) - 1),
-            "pr": np.exp(placebo_random(ask, bid, aq, bq, c, reps, rng)) - 1,
-            "pt": np.exp(placebo_timing(nb, ask, bid, aq, bq, c, reps, rng)) - 1,
-            "ps": np.exp(placebo_shift(act, ask, bid, aq, bq, c, reps, rng)) - 1,
+            "pr": np.exp(placebo_random(ask, bid, aq, bq, c, reps, rng, mark0=m0)) - 1,
+            "pt": np.exp(placebo_timing(nb, ask, bid, aq, bq, c, reps, rng, mark0=m0)) - 1,
+            "ps": np.exp(placebo_shift(act, ask, bid, aq, bq, c, reps, rng, mark0=m0)) - 1,
         }
     return per
 

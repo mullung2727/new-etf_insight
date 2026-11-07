@@ -42,6 +42,25 @@ class TestAdvModel(unittest.TestCase):
         m = AdvModel()
         self.assertIs(m.fit(X, np.zeros(len(X), dtype=int), adv, 1), m)
 
+    def test_sell_empty_no_trade(self):
+        X, adv = _adv_data()
+        adv = np.where(X[:, 1] == 1, np.nan, adv)
+        m = AdvModel().fit(X, np.zeros(len(X), dtype=int), adv, 1)
+        dec = m.decide_fn(_IdScaler(), np.array([[2.0], [-2.0]]), ["f0"])
+        for t in (0, 1):
+            for k in range(K_MAX + 1):
+                self.assertEqual(dec(t, 1, k), HOLD)
+
+    def test_both_empty_no_trade(self):
+        X, _ = _adv_data()
+        adv = np.full(len(X), np.nan)
+        m = AdvModel().fit(X, np.zeros(len(X), dtype=int), adv, 1)
+        dec = m.decide_fn(_IdScaler(), np.array([[2.0], [-2.0]]), ["f0"])
+        for t in (0, 1):
+            for k in range(K_MAX + 1):
+                self.assertEqual(dec(t, 0, k), HOLD)
+                self.assertEqual(dec(t, 1, k), HOLD)
+
 
 class TestClassModel(unittest.TestCase):
     def test_same_as_decide_fn(self):
@@ -63,6 +82,20 @@ class TestClassModel(unittest.TestCase):
         X = np.random.default_rng(2).normal(size=(30, 3))
         y = (X[:, 0] > 0).astype(int)
         self.assertIs(m.fit(X, y, None, 0), m)
+
+    def test_single_label(self):
+        rng = np.random.default_rng(3)
+        X = rng.normal(size=(40, 3)).astype(np.float32)
+        m = make("hgb")
+        m.fit(X, np.zeros(40, dtype=int), None, 0)
+        pr = m.est.predict_proba(X)
+        self.assertEqual(pr.shape, (40, 1))
+        np.testing.assert_allclose(pr, 1.0)
+        dec = m.decide_fn(_IdScaler(), rng.normal(size=(4, 1)), ["f0"])
+        for t in range(3):
+            for pos in (0, 1):
+                for k in range(K_MAX + 1):
+                    self.assertEqual(dec(t, pos, k), HOLD)
 
 
 class TestMake(unittest.TestCase):

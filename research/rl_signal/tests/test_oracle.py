@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from research.rl_signal.costs import FEE, UNIT_KRW, tick
+from research.rl_signal.costs import FEE, UNIT_KRW, sell_cost, tick
 from research.rl_signal.oracle import BUY, HOLD, K_MAX, SELL, solve, step_rewards
 
 SAW = [100.0 if t % 2 == 0 else 102.0 for t in range(20)]
@@ -178,6 +178,41 @@ class TestExecFeasibility(unittest.TestCase):
         self.assertAlmostEqual(s1[0], exp_sell, places=9)
         self.assertLess(b1[0], b0[0])
         self.assertLess(s1[0], s0[0])
+
+
+class TestSellTickBelow(unittest.TestCase):
+    def test_stock_boundary(self):
+        log_sc = math.log(1 - sell_cost("005930"))
+        for bid_px, want in ((50000.0, 49950.0), (50100.0, 50000.0)):
+            ask = np.array([bid_px + 100.0])
+            bid = np.array([bid_px])
+            aq = np.array([20000], dtype=np.int64)
+            bq = np.array([20000], dtype=np.int64)
+            _, _, sell_r, _, can_sell = step_rewards(ask, bid, aq, bq, "005930", slip=1)
+            self.assertTrue(can_sell[0])
+            self.assertAlmostEqual(bid_px * math.exp(sell_r[0] - log_sc), want, places=6)
+
+
+class TestMark0(unittest.TestCase):
+    def test_first_missing_uses_mark0(self):
+        ask = np.array([0.0, 102.0])
+        bid = np.array([0.0, 101.0])
+        aq = np.zeros(2, dtype=np.int64)
+        bq = np.zeros(2, dtype=np.int64)
+        hold_r, _, _, can_buy, can_sell = step_rewards(ask, bid, aq, bq, "069500", mark0=100.0)
+        self.assertAlmostEqual(hold_r[0], math.log(101.0 / 100.0), places=9)
+        self.assertFalse(can_buy[0])
+        self.assertFalse(can_sell[0])
+        res = solve(ask, bid, aq, bq, "069500", mark0=100.0)
+        self.assertTrue(math.isfinite(res["total"]))
+
+    def test_default_zero(self):
+        ask = np.array([0.0, 102.0])
+        bid = np.array([0.0, 101.0])
+        aq = np.zeros(2, dtype=np.int64)
+        bq = np.zeros(2, dtype=np.int64)
+        hold_r, _, _, _, _ = step_rewards(ask, bid, aq, bq, "069500")
+        self.assertEqual(hold_r[0], 0.0)
 
 
 if __name__ == "__main__":

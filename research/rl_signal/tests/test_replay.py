@@ -27,6 +27,20 @@ class TestReplay(unittest.TestCase):
         self.assertEqual(buys, sol["trades"])
         np.testing.assert_array_equal(act, sol["action"])
 
+    def test_oracle_match_mark0_first_cell_missing(self):
+        ask = ASK.copy()
+        bid = BID.copy()
+        ask[0], bid[0] = 0.0, 0.0
+        aq = AQ.copy()
+        bq = BQ.copy()
+        aq[0], bq[0] = 0, 0
+        m = 99.5
+        sol = oracle.solve(ask, bid, aq, bq, CODE, mark0=m)
+        tot, _, _ = run(sol["action"], ask, bid, aq, bq, CODE, mark0=m)
+        self.assertAlmostEqual(tot, sol["total"], places=9)
+        self.assertTrue(math.isfinite(tot))
+        self.assertTrue(math.isfinite(sol["total"]))
+
     def test_infeasible_hold(self):
         tot, buys, act = run(np.full(5, BUY), ASK, BID, AQ, BQ, CODE)
         np.testing.assert_array_equal(act, [BUY, HOLD, HOLD, HOLD, SELL])
