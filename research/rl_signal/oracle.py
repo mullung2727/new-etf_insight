@@ -14,7 +14,7 @@ def step_rewards(ask1, bid1, code: str) -> tuple[np.ndarray, np.ndarray, np.ndar
     """칸별 로그 보상 조각 (전부 길이 n). 가치 = 청산 가능액(매수1호가 기준).
 
     hold_r[t] = log(bid1[t+1]/bid1[t]) (t=0..n-2, 보유 중 t→t+1; 마지막 원소 0.0 미사용)
-    buy_r[t] = log(bid1[t]/ask1[t]) + log(1 − buy_cost(code)) (t 칸 매수 즉시 평가)
+    buy_r[t] = log(bid1[t]/ask1[t]) − log(1 + buy_cost(code)) (t 칸 매수 즉시 평가)
     sell_r[t] = log(1 − sell_cost(code)) (t 칸 bid1 에 매도)
     """
     ask = np.asarray(ask1, dtype=np.float64)
@@ -22,7 +22,7 @@ def step_rewards(ask1, bid1, code: str) -> tuple[np.ndarray, np.ndarray, np.ndar
     n = len(ask)
     hold_r = np.zeros(n)
     hold_r[:-1] = np.log(bid[1:] / bid[:-1])
-    buy_r = np.log(bid / ask) + np.log(1.0 - buy_cost(code))
+    buy_r = np.log(bid / ask) - np.log(1.0 + buy_cost(code))
     sell_r = np.full(n, np.log(1.0 - sell_cost(code)))
     return hold_r, buy_r, sell_r
 

@@ -81,13 +81,12 @@ def _gap_bad(bounds: np.ndarray, gaps: pd.DataFrame) -> np.ndarray:
 
 
 def _planes(aq: np.ndarray, bq: np.ndarray, buy_vol: np.ndarray, sell_vol: np.ndarray) -> np.ndarray:
-    """(n, 4, 20, 20) float32. 행 = 매도10~1·매수1~10, 시간축 끝 = 현재 칸."""
+    """(n, 4, 20, 20) float32. 행 = 매도10~1·매수1~10, 시간축 끝 = 현재 칸. 채널2·3 = 체결/그 칸 잔량합(매수→매도1행, 매도→매수1행)."""
     n = aq.shape[0]
     qty = np.concatenate([aq[:, ::-1], bq], axis=1).astype(np.float64)
     tot = qty.sum(axis=1)
     buy = buy_vol.astype(np.float64)
     sell = sell_vol.astype(np.float64)
-    vol = buy + sell
     out = np.zeros((n, 4, 20, 20), dtype=np.float32)
     for tau in range(20):
         c = np.arange(n) - (19 - tau)
@@ -103,15 +102,12 @@ def _planes(aq: np.ndarray, bq: np.ndarray, buy_vol: np.ndarray, sell_vol: np.nd
         nz = valid & (s != 0)
         out[nz, 0, :, tau] = q[nz] / s[nz, None]
         out[nz, 1, :, tau] = (q[nz] - p[nz]) / s[nz, None]
-        v = np.zeros(n)
-        v[valid] = vol[cv]
-        nt = v != 0
         bb = np.zeros(n)
         bb[valid] = buy[cv]
         ss = np.zeros(n)
         ss[valid] = sell[cv]
-        out[nt, 2, 9, tau] = bb[nt] / v[nt]
-        out[nt, 3, 10, tau] = ss[nt] / v[nt]
+        out[nz, 2, 9, tau] = bb[nz] / s[nz]
+        out[nz, 3, 10, tau] = ss[nz] / s[nz]
     return out
 
 
@@ -154,7 +150,7 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
                 break
             row = bmat[j]
             a1, b1 = row[0], row[10]
-            if a1 <= 0 or b1 <= 0 or a1 <= b1:
+            if a1 <= 0 or b1 <= 0 or a1 <= b1 or row[20] <= 0 or row[30] <= 0:
                 bad = "bad_quote"
                 break
             ask1[i], bid1[i] = a1, b1
@@ -186,7 +182,10 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
             imb[m] = (sb[m] - sa[m]) / den[m]
             cols.append(imb)
         tot = (buy_vol + sell_vol).astype(np.float64)
-        mean = np.cumsum(tot) / np.arange(1, n + 1)
+        # ponytail: 당일 직전 칸 평균 기준. 전일까지 20일 기준은 P2 일봉 지표와 함께 (PLAN §5)
+        mean = np.zeros(n)
+        if n > 1:
+            mean[1:] = np.cumsum(tot)[:-1] / np.arange(1, n)
         vol_rel = np.ones(n)
         m = mean != 0
         vol_rel[m] = tot[m] / mean[m]

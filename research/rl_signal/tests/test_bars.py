@@ -114,11 +114,25 @@ class TestBuild(unittest.TestCase):
         self.assertNotIn(CODE, res)
         self.assertIn((CODE, "no_book"), res["_excluded"])
 
+    def test_bad_quote_zero_qty(self):
+        res = build(DAY, _empty_trade(), _cover_book(aq1=0), _empty_gaps())
+        self.assertNotIn(CODE, res)
+        self.assertIn((CODE, "bad_quote"), res["_excluded"])
+
     def test_imb_sign(self):
         d = build(DAY, _empty_trade(), _cover_book(aq1=10, bq1=30), _empty_gaps())[CODE]
         imb = d["feat"][:, FEATURES.index("imb_1")]
         self.assertTrue((imb > 0).all())
         self.assertAlmostEqual(float(imb[0]), 0.5, places=6)
+
+    def test_vol_rel_prior_mean(self):
+        g = grid(DAY)
+        trade = pd.DataFrame([_trade_row(int(g[0]) - 1, 10), _trade_row(int(g[1]) - 1, 30)],
+                             columns=_TRADE_COLS)
+        d = build(DAY, trade, _cover_book(), _empty_gaps())[CODE]
+        vr = d["feat"][:, FEATURES.index("vol_rel")]
+        self.assertAlmostEqual(float(vr[0]), 1.0, places=6)
+        self.assertAlmostEqual(float(vr[1]), 3.0, places=6)
 
     def test_planes(self):
         d = build(DAY, _empty_trade(), _cover_book(), _empty_gaps(), planes=True)[CODE]
@@ -129,6 +143,26 @@ class TestBuild(unittest.TestCase):
         self.assertEqual(float(pl[0, 0, :, 0].sum()), 0.0)
         d_off = build(DAY, _empty_trade(), _cover_book(), _empty_gaps())[CODE]
         self.assertNotIn("planes", d_off)
+        g = grid(DAY)
+        book = pd.concat([_cover_book(),
+                          pd.DataFrame([_book_row(int(g[-2]), aq1=20)], columns=_BOOK_COLS)],
+                         ignore_index=True)
+        trade = pd.DataFrame([_trade_row(int(g[-1]) - 1, 5), _trade_row(int(g[-1]) - 2, -3)],
+                             columns=_TRADE_COLS)
+        dd = build(DAY, trade, book, _empty_gaps(), planes=True)[CODE]
+        tot_last = float(dd["aq"][-1].sum() + dd["bq"][-1].sum())
+        self.assertAlmostEqual(float(dd["planes"][-1, 1, 9, 19]), (20 - 10) / tot_last, places=6)
+        self.assertAlmostEqual(float(dd["planes"][-1, 2, 9, 19]), 5 / tot_last, places=6)
+        self.assertAlmostEqual(float(dd["planes"][-1, 3, 10, 19]), 3 / tot_last, places=6)
+        b = int(g[100])
+        small = build(DAY, pd.DataFrame([_trade_row(b - 1, 1), _trade_row(b - 2, -1)],
+                                        columns=_TRADE_COLS),
+                      _cover_book(), _empty_gaps(), planes=True)[CODE]
+        large = build(DAY, pd.DataFrame([_trade_row(b - 1, 100000), _trade_row(b - 2, -100000)],
+                                        columns=_TRADE_COLS),
+                      _cover_book(), _empty_gaps(), planes=True)[CODE]
+        self.assertNotEqual(float(small["planes"][100, 2, 9, 19]),
+                            float(large["planes"][100, 2, 9, 19]))
 
 
 if __name__ == "__main__":

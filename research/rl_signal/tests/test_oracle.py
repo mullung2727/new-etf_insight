@@ -24,7 +24,7 @@ class TestOracle(unittest.TestCase):
         self.assertEqual(int(res["action"][0]), BUY)
         self.assertEqual(int(res["action"][-1]), SELL)
         self.assertEqual(res["trades"], 1)
-        expected = math.log(104 / 100.01) + math.log(1 - FEE) + math.log(1 - FEE)
+        expected = math.log(104 / 100.01) - math.log(1 + FEE) + math.log(1 - FEE)
         self.assertAlmostEqual(res["total"], expected, places=9)
 
     def test_falling(self):
@@ -45,10 +45,13 @@ class TestOracle(unittest.TestCase):
         self.assertEqual(res["trades"], 0)
 
     def test_trade_cap(self):
+        expected = math.log(102 / 100.01) + math.log(1 - FEE) - math.log(1 + FEE)
         res, _ = _solve(SAW)
-        self.assertLessEqual(res["trades"], 5)
+        self.assertEqual(res["trades"], 5)
+        self.assertAlmostEqual(res["total"], 5 * expected, places=9)
         res1, _ = _solve(SAW, k_max=1)
-        self.assertLessEqual(res1["trades"], 1)
+        self.assertEqual(res1["trades"], 1)
+        self.assertAlmostEqual(res1["total"], expected, places=9)
         self.assertEqual(res["q"].shape, (20, 2, K_MAX + 1, 3))
 
     def test_last_cell_flat(self):
