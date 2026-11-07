@@ -8,12 +8,13 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
+import pandas as pd
 
 from research.rl_signal import bars
 from research.rl_signal import costs as costs_mod
 from research.rl_signal import dataset as ds_mod
-from research.rl_signal.dataset import cache_tag, day_cells, day_reasons, samples
-from research.rl_signal.oracle import BUY, HOLD, SELL
+from research.rl_signal.dataset import cache_key, cache_tag, day_cells, day_reasons, samples
+from research.rl_signal.oracle import BUY, HOLD, SELL, step_rewards
 
 F = len(bars.FEATURES)
 
@@ -169,8 +170,8 @@ class TestDayReasonsCache(unittest.TestCase):
     def test_day_cells_loads_new_arrays(self):
         with tempfile.TemporaryDirectory() as td:
             with mock.patch.object(ds_mod, "CACHE", Path(td)):
-                tag = cache_tag()
-                p = Path(td) / f"cells_20261109_{tag}.npz"
+                key = cache_key("20261109", None)
+                p = Path(td) / f"cells_20261109_{key}.npz"
                 n, nf = 5, len(bars.FEATURES)
                 feat = np.zeros((1, n, nf), dtype=np.float32)
                 ask1 = np.ones((1, n)) * 100.0
@@ -181,16 +182,95 @@ class TestDayReasonsCache(unittest.TestCase):
                 ex_bq = np.ones((1, n), dtype=np.int64) * 20000
                 q = np.zeros((1, n, 2, 6, 3))
                 q1 = np.ones((1, n, 2, 6, 3))
+                m0 = np.array([99.5])
                 np.savez_compressed(str(p), codes=np.array(["AAA"]), feat=feat,
                                     ask1=ask1, bid1=bid1, ex_ask1=ex_ask, ex_bid1=ex_bid,
-                                    ex_aq1=ex_aq, ex_bq1=ex_bq, q=q, q_slip1=q1,
+                                    ex_aq1=ex_aq, ex_bq1=ex_bq, q=q, q_slip1=q1, mark0=m0,
                                     reasons_keys=np.array([]), reasons_vals=np.array([], dtype=np.int64))
                 cells = day_cells("20261109", None)
                 self.assertIn("AAA", cells)
                 e = cells["AAA"]
-                for k in ("ex_ask1", "ex_bid1", "ex_aq1", "ex_bq1", "q", "q_slip1"):
+                for k in ("ex_ask1", "ex_bid1", "ex_aq1", "ex_bq1", "q", "q_slip1", "mark0"):
                     self.assertIn(k, e)
                 np.testing.assert_array_equal(e["q_slip1"], q1[0])
+                self.assertAlmostEqual(float(e["mark0"]), 99.5)
+
+
+def _tbl(prev_close=100.0):
+    return pd.DataFrame({"date": ["20261109"], "ticker": ["AAA"],
+                         "prev_close": [prev_close], "ma20_gap": [0.0],
+                         "ret5": [0.0], "vol20": [0.01]})
+
+
+def _root_with(td, size):
+    sub = Path(td) / "2026" / "11"
+    sub.mkdir(parents=True)
+    for nm in ("trade", "book", "gaps"):
+        (sub / f"{nm}_20261109.parquet").write_bytes(b"x" * size)
+    return td
+
+
+def _built(n=3):
+    def entry(ex_on):
+        ex = np.array(ex_on, dtype=np.float64)
+        return {"feat": np.zeros((n, F), dtype=np.float32),
+                "ask1": np.full(n, 100.0), "bid1": np.full(n, 99.0),
+                "ex_ask1": np.where(ex, 101.0, 0.0),
+                "ex_bid1": np.where(ex, 100.0, 0.0),
+                "ex_aq1": np.where(ex, 20000, 0).astype(np.int64),
+                "ex_bq1": np.where(ex, 20000, 0).astype(np.int64)}
+    return {"_reasons": {},
+            "AAA": entry([False, True, True]),
+            "BBB": entry([False, False, False])}
+
+
+class TestCacheKey(unittest.TestCase):
+    def test_size_changes_key(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            ka = cache_key("20261109", None, root=_root_with(a, 10))
+            kb = cache_key("20261109", None, root=_root_with(b, 11))
+            self.assertNotEqual(ka, kb)
+
+    def test_daily_changes_key(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = _root_with(td, 10)
+            ka = cache_key("20261109", _tbl(100.0), root=root)
+            kb = cache_key("20261109", _tbl(101.0), root=root)
+            self.assertNotEqual(ka, kb)
+
+
+class TestDayCellsExec(unittest.TestCase):
+    def test_first_cell_missing_kept_all_missing_dropped(self):
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(ds_mod, "CACHE", Path(td)):
+                with mock.patch.object(ds_mod.bars, "load_day", return_value=(None, None, None)), \
+                        mock.patch.object(ds_mod.bars, "build", return_value=_built()):
+                    cells = day_cells("20261109", _tbl(), root=td)
+                self.assertIn("AAA", cells)
+                self.assertNotIn("BBB", cells)
+                self.assertEqual(day_reasons("20261109"), {"no_exec": 1})
+                e = cells["AAA"]
+                self.assertAlmostEqual(float(e["mark0"]), 99.5)
+                _, _, _, can_buy, can_sell = step_rewards(
+                    e["ex_ask1"], e["ex_bid1"], e["ex_aq1"], e["ex_bq1"], "AAA", mark0=99.5)
+                self.assertTrue(can_buy[1:].all())
+                self.assertTrue(can_sell[1:].all())
+
+    def test_corrupt_cache_rebuilt(self):
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(ds_mod, "CACHE", Path(td)):
+                key = cache_key("20261109", _tbl(), root=td)
+                p = Path(td) / f"cells_20261109_{key}.npz"
+                p.write_bytes(b"not a npz")
+                with mock.patch.object(ds_mod.bars, "load_day", return_value=(None, None, None)), \
+                        mock.patch.object(ds_mod.bars, "build", return_value=_built()):
+                    cells = day_cells("20261109", _tbl(), root=td)
+                self.assertIn("AAA", cells)
+                self.assertIn("mark0", cells["AAA"])
+                with np.load(str(p)) as z:
+                    self.assertIn("AAA", [str(c) for c in z["codes"].tolist()])
+                    self.assertIn("mark0", z)
+                self.assertEqual(list(Path(td).glob("*.tmp.npz")), [])
 
 
 if __name__ == "__main__":

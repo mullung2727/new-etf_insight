@@ -72,11 +72,15 @@ def main(argv=None) -> None:
     if not days:
         return
     tbl = daily_mod.daily_table(load_px(), daily_mod.load_etf_px())
-    rng = np.random.default_rng(args.seed)
+    # 학습 상태 표본은 일자별 시드 [seed, day] 로 직접 뽑아 섞기가 같은 X 를 재현 (아래 day_rng)
+    rng_train = np.random.default_rng(args.seed)
+    rng_eval = np.random.default_rng(args.seed + 1)
     names = list(bars.FEATURES) + list(EXTRA_COLS)
     pos_col = names.index("pos")
     outdir = RESULTS / args.version / args.model
     outdir.mkdir(parents=True, exist_ok=True)
+    for p in outdir.glob("*.json"):
+        p.unlink()
     rows = []
     for train_days, test_day in splits(days, args.min_train):
         Xtr, ytr, atr = [], [], []
@@ -88,7 +92,8 @@ def main(argv=None) -> None:
                 continue
             n_train_days += 1
             seen.update(cells)
-            Xd, yd, _, advd = samples(cells, rng)
+            day_rng = np.random.default_rng([args.seed, int(d)])
+            Xd, yd, _, advd = samples(cells, day_rng)
             Xtr.append(Xd)
             ytr.append(yd)
             atr.append(advd)
@@ -106,17 +111,17 @@ def main(argv=None) -> None:
         if not codes:
             print(f"{test_day} skip: no test codes")
             continue
-        per = eval_codes(model, scaler, bars.FEATURES, cells, codes, args.reps, rng)
+        per = eval_codes(model, scaler, bars.FEATURES, cells, codes, args.reps, rng_eval)
         st = strata(codes)
         sh: dict[str, list] = {"stock": [], "etf": []}
         for r in range(args.shuffle_reps):
-            s_rng = np.random.default_rng(args.seed * 1000 + r)
             Xs, ys, av = [], [], []
             for d in train_days:
                 tcells = day_cells(d, tbl)
                 if not tcells:
                     continue
-                Xd, yd, _, advd = samples(tcells, rng, s_rng)
+                Xd, yd, _, advd = samples(tcells, np.random.default_rng([args.seed, int(d)]),
+                                          np.random.default_rng([args.seed, int(d), 1000 + r]))
                 Xs.append(Xd)
                 ys.append(yd)
                 av.append(advd)
@@ -126,7 +131,7 @@ def main(argv=None) -> None:
             sc_sh = Scaler().fit(Xsh, names)
             m_sh = make(args.model)
             m_sh.fit(sc_sh.transform(Xsh, names), ysh, ash, pos_col)
-            per_sh = eval_codes(m_sh, sc_sh, bars.FEATURES, cells, codes, 0, rng)
+            per_sh = eval_codes(m_sh, sc_sh, bars.FEATURES, cells, codes, 0, rng_eval)
             for sname, sc in st.items():
                 if sc:
                     sh[sname].append(float(np.mean([per_sh[c]["model"] for c in sc])))

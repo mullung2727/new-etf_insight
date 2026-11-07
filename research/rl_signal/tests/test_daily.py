@@ -14,7 +14,8 @@ def _stock_px(n=30, ticker="000000"):
     dates = pd.date_range("2026-01-01", periods=n).strftime("%Y%m%d").tolist()
     close = np.arange(100, 100 + n, dtype=float)
     return pd.DataFrame({"date": dates, "ticker": ticker, "ms": np.arange(n),
-                         "close": close, "market_cap": close * 10000})
+                         "close": close, "market_cap": close * 10000,
+                         "cmp_prev": np.ones(n)})
 
 
 def _etf_px(n=30, ticker="069500"):
@@ -28,7 +29,9 @@ class TestDailyTable(unittest.TestCase):
         px, etf = _stock_px(), _etf_px()
         tbl = daily_table(px, etf)
         px2 = px.copy()
-        px2.loc[25, "close"] = 130.0  # D 종가 변경(소폭, 기업행위·클립 없음)
+        # D 종가 변경 + cmp_prev 같이 조정(D 기준가 124 유지, 기업행위·클립 없음)
+        px2.loc[25, "close"] = 130.0
+        px2.loc[25, "cmp_prev"] = 6.0
         tbl2 = daily_table(px2, etf)
         d, d1 = px.loc[25, "date"], px.loc[26, "date"]
         r0 = tbl[tbl["date"] == d].iloc[0]
@@ -39,7 +42,10 @@ class TestDailyTable(unittest.TestCase):
         p0 = tbl[(tbl["date"] == d1) & (tbl["ticker"] == "000000")].iloc[0]["prev_close"]
         p1 = tbl2[(tbl2["date"] == d1) & (tbl2["ticker"] == "000000")].iloc[0]["prev_close"]
         self.assertEqual(p0, 125.0)
-        self.assertEqual(p1, 130.0)
+        self.assertEqual(p1, 125.0)  # 기준가 모드: D+1 기준가는 D 종가와 무관
+        t0 = tbl[(tbl["date"] == d1) & (tbl["ticker"] == "000000")].iloc[0]["ret5"]
+        t1 = tbl2[(tbl2["date"] == d1) & (tbl2["ticker"] == "000000")].iloc[0]["ret5"]
+        self.assertNotEqual(t0, t1)  # D+1 지표는 D 수익률 변화를 반영
 
     def test_ret5_value(self):
         tbl = daily_table(_stock_px(), pd.DataFrame())
@@ -86,6 +92,18 @@ class TestVolBoundary(unittest.TestCase):
         self.assertTrue(np.isnan(b.loc[1, "vol20"]))
         a = tbl[tbl["ticker"] == "AAA"].reset_index(drop=True)
         self.assertTrue(np.isnan(a.loc[1, "vol20"]))
+
+
+class TestCmpMissing(unittest.TestCase):
+    def test_nan_stays_nan(self):
+        px = _stock_px()
+        px.loc[15, "cmp_prev"] = np.nan
+        tbl = daily_table(px, pd.DataFrame())
+        s = tbl[tbl["ticker"] == "000000"].reset_index(drop=True)
+        self.assertTrue(np.isnan(s.loc[21, "vol20"]))
+        full = daily_table(_stock_px(), pd.DataFrame())
+        f = full[full["ticker"] == "000000"].reset_index(drop=True)
+        self.assertTrue(np.isfinite(f.loc[21, "vol20"]))
 
 
 class TestPrevCloseReference(unittest.TestCase):

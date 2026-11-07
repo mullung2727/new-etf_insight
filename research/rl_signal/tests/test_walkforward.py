@@ -6,7 +6,10 @@ import unittest
 
 import numpy as np
 
+from research.rl_signal.bars import FEATURES
+from research.rl_signal.dataset import samples
 from research.rl_signal.evaluate import summarize
+from research.rl_signal.oracle import BUY, HOLD, SELL
 from research.rl_signal.walkforward import _nanmean, splits
 
 DAYS = ["2026110%d" % i for i in range(1, 8)]
@@ -77,6 +80,26 @@ class TestSeenUnseenContract(unittest.TestCase):
         s = summarize(per, [])
         self.assertEqual(s["n"], 0)
         self.assertTrue(np.isnan(s["model"]))
+
+
+class TestShuffleSeeds(unittest.TestCase):
+    """main()의 일자별 시드 계약: 같은 day 섞기 표본 X = 원 표본 X, 라벨만 다름."""
+
+    def test_same_day_same_x(self):
+        n = 8
+        q = np.full((n, 2, 6, 3), -np.inf)
+        for t in range(n):
+            q[t, :, :, HOLD] = 0.0
+            q[t, :, :, BUY] = float(t)
+            q[t, :, :, SELL] = float(t)
+        cells = {"AAA": {"feat": np.random.default_rng(0).normal(size=(n, len(FEATURES))).astype(np.float32),
+                         "q": q}}
+        seed, day = 0, "20261110"
+        X0, y0, _, _ = samples(cells, np.random.default_rng([seed, int(day)]))
+        X1, y1, _, _ = samples(cells, np.random.default_rng([seed, int(day)]),
+                               np.random.default_rng([seed, int(day), 1000]))
+        np.testing.assert_array_equal(X1, X0)
+        self.assertFalse((y1 == y0).all())
 
 
 if __name__ == "__main__":

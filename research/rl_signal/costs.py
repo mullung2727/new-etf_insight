@@ -15,6 +15,14 @@ def tick(code: str, price: float) -> int:
     return tick_size(price)
 
 
+def tick_below(code: str, price: float) -> int:
+    """매도 1틱 불리 체결용: price 바로 아래 가격대 호가단위. ETF: 2000 이하면 1, 아니면 5."""
+    if code in ETF_CODES:
+        return 1 if float(price) <= 2000 else 5
+    from research.backtest_minute.ticks import tick_below as stock_tick_below
+    return stock_tick_below(price)
+
+
 def buy_cost(code: str) -> float:
     return FEE
 
