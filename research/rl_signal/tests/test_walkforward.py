@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
@@ -10,7 +15,8 @@ from research.rl_signal.bars import FEATURES
 from research.rl_signal.dataset import samples
 from research.rl_signal.evaluate import summarize
 from research.rl_signal.oracle import BUY, HOLD, SELL
-from research.rl_signal.walkforward import _nanmean, splits
+from research.rl_signal import walkforward as wf_mod
+from research.rl_signal.walkforward import _nanmean, eval_rng, main, splits
 
 DAYS = ["2026110%d" % i for i in range(1, 8)]
 
@@ -93,13 +99,99 @@ class TestShuffleSeeds(unittest.TestCase):
             q[t, :, :, BUY] = float(t)
             q[t, :, :, SELL] = float(t)
         cells = {"AAA": {"feat": np.random.default_rng(0).normal(size=(n, len(FEATURES))).astype(np.float32),
-                         "q": q}}
+                         "q": q, "q_train": q}}
         seed, day = 0, "20261110"
         X0, y0, _, _ = samples(cells, np.random.default_rng([seed, int(day)]))
         X1, y1, _, _ = samples(cells, np.random.default_rng([seed, int(day)]),
                                np.random.default_rng([seed, int(day), 1000]))
         np.testing.assert_array_equal(X1, X0)
         self.assertFalse((y1 == y0).all())
+
+
+class TestEvalRng(unittest.TestCase):
+    """일자별 평가 난수 계약: 같은 (seed, 일) → 같은 스트림, 다른 일 → 다른 스트림."""
+
+    def test_same_day_same_stream(self):
+        a = eval_rng(0, "20261110").random(5)
+        b = np.random.default_rng([1, 20261110]).random(5)
+        np.testing.assert_array_equal(a, b)
+
+    def test_diff_day_diff_stream(self):
+        a = eval_rng(0, "20261110").random(5)
+        b = eval_rng(0, "20261111").random(5)
+        self.assertFalse(bool((a == b).all()))
+
+
+def _fake_eval(model, scaler, names, cells, codes, reps, rng):
+    """rng 1회 소비 + 그 값으로 결과 생성: 순차 rng 면 전체≠증분, 일자별이면 전체=증분."""
+    v = float(rng.random())
+    return {c: {"model": v, "model_slip1": v, "trades": 2,
+                "log_total": v, "log_total_slip1": v,
+                "bh": 0.001, "oracle": 0.05,
+                "pr": np.zeros(2), "pt": np.zeros(2), "ps": np.zeros(2)}
+            for c in codes}
+
+
+class TestIncremental(unittest.TestCase):
+    """--incremental: 기존 json 유지 + 있는 날 건너뛰기, 재계산 결과는 전체 실행과 동일."""
+
+    def _patches(self, td):
+        days = ["20261109", "20261110", "20261111"]
+        return [
+            mock.patch.object(wf_mod, "RESULTS", Path(td)),
+            mock.patch.object(wf_mod, "_trade_days", return_value=days),
+            mock.patch.object(wf_mod, "load_px", return_value=None),
+            mock.patch.object(wf_mod.daily_mod, "daily_table", return_value={}),
+            mock.patch.object(wf_mod.daily_mod, "load_etf_px", return_value=None),
+            mock.patch.object(wf_mod, "day_cells", return_value={"AAA": {}}),
+            mock.patch.object(wf_mod, "day_reasons", return_value={}),
+            mock.patch.object(wf_mod, "samples",
+                              return_value=(np.zeros((2, 3)), np.zeros(2),
+                                            [], np.zeros(2))),
+            mock.patch.object(wf_mod, "Scaler"),
+            mock.patch.object(wf_mod, "make"),
+            mock.patch.object(wf_mod, "eval_codes", side_effect=_fake_eval),
+        ]
+
+    def _run_all(self, td, *extra):
+        argv = ["--model", "hgb_adv", "--version", "t", "--min-train", "1",
+               "--reps", "0", "--shuffle-reps", "1", "--seed", "0", *extra]
+        with contextlib.ExitStack() as st:
+            for p in self._patches(td):
+                st.enter_context(p)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                main(argv)
+            return buf.getvalue()
+
+    def test_full_then_incremental_same_bytes(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "t" / "hgb_adv"
+            self._run_all(td)
+            before = {p.name: p.read_bytes() for p in sorted(d.glob("*.json"))}
+            self.assertEqual(set(before), {"20261110.json", "20261111.json"})
+            (d / "20261111.json").unlink()
+            out = self._run_all(td, "--incremental")
+            self.assertIn("20261110 skip: exists (incremental)", out)
+            self.assertEqual((d / "20261110.json").read_bytes(), before["20261110.json"])
+            self.assertEqual((d / "20261111.json").read_bytes(), before["20261111.json"])
+
+    def test_incremental_keeps_existing_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "t" / "hgb_adv"
+            d.mkdir(parents=True)
+            (d / "19990101.json").write_text("{}", encoding="utf-8")
+            self._run_all(td, "--incremental")
+            self.assertTrue((d / "19990101.json").exists())
+            self.assertTrue((d / "20261110.json").exists())
+
+    def test_full_wipes_existing_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "t" / "hgb_adv"
+            d.mkdir(parents=True)
+            (d / "19990101.json").write_text("{}", encoding="utf-8")
+            self._run_all(td)
+            self.assertFalse((d / "19990101.json").exists())
 
 
 if __name__ == "__main__":

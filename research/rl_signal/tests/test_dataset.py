@@ -23,7 +23,8 @@ def _cells(qfn):
     out = {}
     for c in ("AAA", "BBB"):
         out[c] = {"feat": np.random.default_rng(0).normal(size=(5, F)).astype(np.float32),
-                  "q": qfn()}
+                  "q": qfn(),
+                  "q_train": qfn()}
     return out
 
 
@@ -79,6 +80,21 @@ class TestSamples(unittest.TestCase):
         _, y, _, _ = samples(_cells(no_hold), np.random.default_rng(0))
         self.assertTrue((y == BUY).all())
 
+    def test_uses_q_train_not_q(self):
+        cells = _cells(_flat_q)
+        for c in cells:
+            qt = np.full((5, 2, 6, 3), -np.inf)
+            qt[..., HOLD] = 0.0
+            qt[..., BUY] = 1.0
+            cells[c]["q_train"] = qt
+        _, y, _, _ = samples(cells, np.random.default_rng(0))
+        self.assertTrue((y == BUY).all())
+
+    def test_missing_q_train_raises(self):
+        cells = {"AAA": {"feat": np.zeros((5, F), dtype=np.float32), "q": _flat_q()}}
+        with self.assertRaises(KeyError):
+            samples(cells, np.random.default_rng(0))
+
     def test_uses_q_not_q_slip1(self):
         cells = _cells(_flat_q)
         for c in cells:
@@ -100,7 +116,7 @@ class TestAdv(unittest.TestCase):
         cells = _cells(qfn)
         X, _, meta, adv = samples(cells, np.random.default_rng(0))
         for i, (c, t) in enumerate(meta):
-            q = cells[c]["q"]
+            q = cells[c]["q_train"]
             pos = int(round(float(X[i, -2])))
             k = int(round(float(X[i, -1]) * 5))
             a = BUY if pos == 0 else SELL
@@ -150,6 +166,16 @@ class TestCacheTag(unittest.TestCase):
             costs_mod.FEE = old
         self.assertNotEqual(t0, t1)
 
+    def test_label_cost_mult_changes_tag(self):
+        t0 = cache_tag()
+        old = costs_mod.LABEL_COST_MULT
+        try:
+            costs_mod.LABEL_COST_MULT = old + 1.0
+            t1 = cache_tag()
+        finally:
+            costs_mod.LABEL_COST_MULT = old
+        self.assertNotEqual(t0, t1)
+
 
 class TestDayReasonsCache(unittest.TestCase):
     def test_missing_day(self):
@@ -182,17 +208,19 @@ class TestDayReasonsCache(unittest.TestCase):
                 ex_bq = np.ones((1, n), dtype=np.int64) * 20000
                 q = np.zeros((1, n, 2, 6, 3))
                 q1 = np.ones((1, n, 2, 6, 3))
+                qt = np.full((1, n, 2, 6, 3), 2.0)
                 m0 = np.array([99.5])
                 np.savez_compressed(str(p), codes=np.array(["AAA"]), feat=feat,
                                     ask1=ask1, bid1=bid1, ex_ask1=ex_ask, ex_bid1=ex_bid,
-                                    ex_aq1=ex_aq, ex_bq1=ex_bq, q=q, q_slip1=q1, mark0=m0,
+                                    ex_aq1=ex_aq, ex_bq1=ex_bq, q=q, q_slip1=q1, q_train=qt, mark0=m0,
                                     reasons_keys=np.array([]), reasons_vals=np.array([], dtype=np.int64))
                 cells = day_cells("20261109", None)
                 self.assertIn("AAA", cells)
                 e = cells["AAA"]
-                for k in ("ex_ask1", "ex_bid1", "ex_aq1", "ex_bq1", "q", "q_slip1", "mark0"):
+                for k in ("ex_ask1", "ex_bid1", "ex_aq1", "ex_bq1", "q", "q_slip1", "q_train", "mark0"):
                     self.assertIn(k, e)
                 np.testing.assert_array_equal(e["q_slip1"], q1[0])
+                np.testing.assert_array_equal(e["q_train"], qt[0])
                 self.assertAlmostEqual(float(e["mark0"]), 99.5)
 
 
@@ -267,9 +295,11 @@ class TestDayCellsExec(unittest.TestCase):
                     cells = day_cells("20261109", _tbl(), root=td)
                 self.assertIn("AAA", cells)
                 self.assertIn("mark0", cells["AAA"])
+                self.assertIn("q_train", cells["AAA"])
                 with np.load(str(p)) as z:
                     self.assertIn("AAA", [str(c) for c in z["codes"].tolist()])
                     self.assertIn("mark0", z)
+                    self.assertIn("q_train", z)
                 self.assertEqual(list(Path(td).glob("*.tmp.npz")), [])
 
 

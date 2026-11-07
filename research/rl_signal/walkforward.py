@@ -29,6 +29,11 @@ def splits(days: list[str], min_train: int) -> list[tuple[list[str], str]]:
     return [(days[:i], days[i]) for i in range(len(days)) if i >= min_train]
 
 
+def eval_rng(seed: int, test_day: str) -> np.random.Generator:
+    """테스트일별 평가 난수: [seed + 1, int(test_day)]. 그날 eval_codes·라벨섞기 재생이 공유."""
+    return np.random.default_rng([seed + 1, int(test_day)])
+
+
 def _orderbook_dir() -> Path:
     try:
         from new_etf_insight.data_paths import orderbook_dir
@@ -63,9 +68,11 @@ def main(argv=None) -> None:
     ap.add_argument("--reps", type=int, default=200)
     ap.add_argument("--shuffle-reps", type=int, default=20)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--incremental", action="store_true",
+                    help="기존 json 유지 + 있는 테스트일 건너뛰기 (기본: 폴더 비우고 전체 실행)")
     args = ap.parse_args(argv)
     print(f"model={args.model} version={args.version} min_train={args.min_train} reps={args.reps} "
-          f"shuffle_reps={args.shuffle_reps} seed={args.seed} "
+          f"shuffle_reps={args.shuffle_reps} seed={args.seed} incremental={args.incremental} "
           f"FEE={FEE} SELL_TAX={SELL_TAX} K_MAX={K_MAX}")
     days = _trade_days(_orderbook_dir())
     print(f"days: {len(days)}")
@@ -74,15 +81,20 @@ def main(argv=None) -> None:
     tbl = daily_mod.daily_table(load_px(), daily_mod.load_etf_px())
     # 학습 상태 표본은 일자별 시드 [seed, day] 로 직접 뽑아 섞기가 같은 X 를 재현 (아래 day_rng)
     rng_train = np.random.default_rng(args.seed)
-    rng_eval = np.random.default_rng(args.seed + 1)
+    # (평가는 일자별로 아래 day 루프에서 eval_rng 생성)
+    # 구 rng_eval 순차 스트림 제거 (전체·증분 실행 동일 결과용)
     names = list(bars.FEATURES) + list(EXTRA_COLS)
     pos_col = names.index("pos")
     outdir = RESULTS / args.version / args.model
     outdir.mkdir(parents=True, exist_ok=True)
-    for p in outdir.glob("*.json"):
-        p.unlink()
+    if not args.incremental:
+        for p in outdir.glob("*.json"):
+            p.unlink()
     rows = []
     for train_days, test_day in splits(days, args.min_train):
+        if args.incremental and (outdir / f"{test_day}.json").exists():
+            print(f"{test_day} skip: exists (incremental)")
+            continue
         Xtr, ytr, atr = [], [], []
         seen: set[str] = set()
         n_train_days = 0
@@ -111,6 +123,7 @@ def main(argv=None) -> None:
         if not codes:
             print(f"{test_day} skip: no test codes")
             continue
+        rng_eval = eval_rng(args.seed, test_day)
         per = eval_codes(model, scaler, bars.FEATURES, cells, codes, args.reps, rng_eval)
         st = strata(codes)
         sh: dict[str, list] = {"stock": [], "etf": []}

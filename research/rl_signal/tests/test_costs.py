@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from research.backtest_minute.ticks import tick_size
-from research.rl_signal.costs import FEE, SELL_TAX, UNIT_KRW, buy_cost, sell_cost, tick, tick_below
+from research.rl_signal.costs import FEE, LABEL_COST_MULT, SELL_TAX, UNIT_KRW, buy_cost, sell_cost, tick, tick_below
 
 
 class TestCosts(unittest.TestCase):
@@ -35,6 +35,10 @@ class TestCosts(unittest.TestCase):
         for px in (1000, 1999, 2000, 3000, 4999, 5000, 10000, 19999, 20000,
                    30000, 49999, 50000, 100000, 199999, 200000, 300000, 600000):
             self.assertEqual(tick("005930", px), tick_size(px), px)
+
+
+    def test_label_cost_mult(self):
+        self.assertEqual(LABEL_COST_MULT, 2.0)
 
 
 class TestTickBelow(unittest.TestCase):

@@ -94,6 +94,31 @@ def _stats(recs: list, block: int, boot: int, rng: np.random.Generator) -> dict 
             "n_star": required_days(sd)}
 
 
+def stratum_summary(version: str, model: str, stratum: str, start: str | None) -> dict:
+    """층별 확인 구간 요약 + 기준 1~4 충족 여부 (단일 층 기준, report CLI 공용).
+
+    judge CLI 와 같은 _stats·verdict 사용. boot/block/seed/min_days 는 CLI 기본값.
+    결과 없으면 n=0, c1~c4 False, verdict "보류".
+    """
+    recs = []
+    for p in sorted((RESULTS / version / model).glob("*.json")):
+        d = json.loads(p.read_text(encoding="utf-8"))
+        if start is not None and str(d.get("day", p.stem)) < start:
+            continue
+        e = d[stratum]
+        if e["n"] > 0:
+            recs.append(e)
+    if not recs:
+        return {"n": 0, "mean": float("nan"), "c1": False, "c2": False, "c3": False,
+                "c4": False, "verdict": "보류"}
+    st = _stats(recs, 5, 10000, np.random.default_rng(0))
+    assert st is not None
+    c1, c2, c3, c4 = st["p1"] < 0.05, st["p2"] < 0.05, st["p3"] < 0.05, st["c4"]
+    required = max(60, st["n_star"])
+    return {"n": st["n"], "mean": st["mean"], "c1": c1, "c2": c2, "c3": c3, "c4": c4,
+            "verdict": verdict(st["n"], c1, c2, c3, c4, required)}
+
+
 def main(argv=None) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
