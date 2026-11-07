@@ -15,6 +15,8 @@ FEATURES = [
     "ret_1", "ret_2", "ret_10", "ret_30",
     "spread_bp", "imb_1", "imb_5",
     "vol_rel", "buy_ratio", "t_frac",
+    "rv_10", "rv_30", "ret_open", "hl_pos", "ret_prev",
+    "ma20_gap", "ret5", "vol20", "vwap_gap", "ma30_gap",
 ]
 
 _AP = [f"ap{i}" for i in range(1, 11)]
@@ -112,8 +114,8 @@ def _planes(aq: np.ndarray, bq: np.ndarray, buy_vol: np.ndarray, sell_vol: np.nd
 
 
 def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
-          planes: bool = False) -> dict[str, dict]:
-    """종목별 칸 데이터 {code: {...}}. 칸 하나라도 무효면 제외, "_excluded"에 [(code, 이유)]."""
+          planes: bool = False, daily: dict | None = None) -> dict[str, dict]:
+    """종목별 칸 데이터 {code: {...}}. 칸 하나라도 무효면 제외, "_excluded"에 [(code, 이유)]. daily = for_day 결과(없으면 일봉 4개 NaN)."""
     bounds = grid(day)
     n = len(bounds)
     bad_cell = _gap_bad(bounds, gaps)
@@ -131,6 +133,7 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
         bmat = bsub[_SNAP_COLS].to_numpy(dtype=np.int64)
         trt = tsub["rt"].to_numpy(dtype=np.int64)
         tq = tsub["qty"].to_numpy(dtype=np.int64)
+        tpr = tsub["price"].to_numpy(dtype=np.float64)
         ask1 = np.empty(n)
         bid1 = np.empty(n)
         ap = np.empty((n, 10), dtype=np.int64)
@@ -139,6 +142,8 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
         bq = np.empty((n, 10), dtype=np.int64)
         buy_vol = np.zeros(n, dtype=np.int64)
         sell_vol = np.zeros(n, dtype=np.int64)
+        bin_pq = np.zeros(n, dtype=np.float64)
+        bin_q = np.zeros(n, dtype=np.float64)
         bad = None
         for i, b in enumerate(bounds):
             j = int(np.searchsorted(brt, b, side="left")) - 1
@@ -161,6 +166,9 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
                 seg = tq[l:r]
                 buy_vol[i] = seg[seg > 0].sum()
                 sell_vol[i] = -seg[seg < 0].sum()
+                aq_ = np.abs(seg)
+                bin_q[i] = aq_.sum()
+                bin_pq[i] = (tpr[l:r] * aq_).sum()
         if bad is not None:
             excluded.append((code, bad))
             continue
@@ -195,6 +203,40 @@ def build(day: str, trade: pd.DataFrame, book: pd.DataFrame, gaps: pd.DataFrame,
         br[m] = buy_vol[m].astype(np.float64) / tot[m]
         cols.append(br)
         cols.append(np.zeros(n) if n <= 1 else np.arange(n) / (n - 1))
+        r1 = np.zeros(n)
+        r1[1:] = logmid[1:] - logmid[:-1]
+        csq = np.zeros(n + 1)
+        csq[1:] = np.cumsum(r1 ** 2)
+        for k in (10, 30):
+            lo = np.maximum(0, np.arange(n) - k + 1)
+            cols.append(np.sqrt(csq[1:] - csq[lo]))
+        cols.append(logmid - logmid[0])
+        cumlo, cumhi = np.minimum.accumulate(mid), np.maximum.accumulate(mid)
+        hl = np.full(n, 0.5)
+        m = cumhi != cumlo
+        hl[m] = (mid[m] - cumlo[m]) / (cumhi[m] - cumlo[m])
+        cols.append(hl)
+        dd = (daily or {}).get(code, {})
+        try:
+            pc = float(dd.get("prev_close", np.nan))
+        except (TypeError, ValueError):
+            pc = np.nan
+        cols.append(np.log(mid / pc) if np.isfinite(pc) and pc > 0 else np.full(n, np.nan))
+        for key in ("ma20_gap", "ret5", "vol20"):
+            try:
+                v = float(dd.get(key, np.nan))
+            except (TypeError, ValueError):
+                v = np.nan
+            cols.append(np.full(n, v))
+        cum_pq, cum_q = np.cumsum(bin_pq), np.cumsum(bin_q)
+        vg = np.zeros(n)
+        m = cum_q > 0
+        vg[m] = np.log(mid[m] / (cum_pq[m] / cum_q[m]))
+        cols.append(vg)
+        cm = np.zeros(n + 1)
+        cm[1:] = np.cumsum(mid)
+        lo = np.maximum(0, np.arange(n) - 29)
+        cols.append(logmid - np.log((cm[1:] - cm[lo]) / (np.arange(n) - lo + 1)))
         entry = {
             "ask1": ask1, "bid1": bid1,
             "ap": ap, "bp": bp, "aq": aq, "bq": bq,

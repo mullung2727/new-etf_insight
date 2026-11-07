@@ -165,5 +165,55 @@ class TestBuild(unittest.TestCase):
                             float(large["planes"][100, 2, 9, 19]))
 
 
+class TestNewFeatures(unittest.TestCase):
+    def test_features_20(self):
+        self.assertEqual(len(FEATURES), 20)
+        self.assertEqual(FEATURES[10:], ["rv_10", "rv_30", "ret_open", "hl_pos", "ret_prev",
+                                        "ma20_gap", "ret5", "vol20", "vwap_gap", "ma30_gap"])
+
+    def test_new_features_no_leak(self):
+        j, b = 100, int(grid(DAY)[100])
+        day = {CODE: {"prev_close": 99.0, "ma20_gap": 0.01, "ret5": 0.02, "vol20": 0.03}}
+        base = build(DAY, _empty_trade(), _cover_book(), _empty_gaps(), daily=day)[CODE]
+        mod_book = pd.concat([_cover_book(), pd.DataFrame([_book_row(b, ap1=200, bp1=199)],
+                                                          columns=_BOOK_COLS)], ignore_index=True)
+        mod_trade = pd.DataFrame([_trade_row(b, 1000, price=500)], columns=_TRADE_COLS)
+        mod = build(DAY, mod_trade, mod_book, _empty_gaps(), daily=day)[CODE]
+        np.testing.assert_array_equal(mod["feat"][:j + 1], base["feat"][:j + 1])
+
+    def test_vwap_value(self):
+        j, b = 100, int(grid(DAY)[100])
+        trade = pd.DataFrame([_trade_row(b - 1, 2, price=100),
+                              _trade_row(b - 2, -1, price=110)], columns=_TRADE_COLS)
+        d = build(DAY, trade, _cover_book(), _empty_gaps())[CODE]
+        vg = d["feat"][:, FEATURES.index("vwap_gap")]
+        self.assertAlmostEqual(float(vg[j - 1]), 0.0, places=6)
+        self.assertAlmostEqual(float(vg[j]), np.log(99.5 / (310 / 3)), places=6)
+
+    def test_hl_pos_range(self):
+        g = grid(DAY)
+        book = pd.concat([_cover_book(),
+                          pd.DataFrame([_book_row(int(g[200]), ap1=110, bp1=109)],
+                                       columns=_BOOK_COLS)], ignore_index=True)
+        d = build(DAY, _empty_trade(), book, _empty_gaps())[CODE]
+        hl = d["feat"][:, FEATURES.index("hl_pos")]
+        self.assertTrue(((hl >= 0) & (hl <= 1)).all())
+        self.assertAlmostEqual(float(hl[0]), 0.5, places=6)
+        self.assertAlmostEqual(float(hl[201]), 1.0, places=6)
+
+    def test_daily_none_nan(self):
+        d = build(DAY, _empty_trade(), _cover_book(), _empty_gaps())[CODE]
+        for name in ("ret_prev", "ma20_gap", "ret5", "vol20"):
+            self.assertTrue(np.isnan(d["feat"][:, FEATURES.index(name)]).all(), name)
+
+    def test_daily_const(self):
+        day = {CODE: {"prev_close": 100.0, "ma20_gap": 0.01, "ret5": 0.02, "vol20": 0.03}}
+        d = build(DAY, _empty_trade(), _cover_book(), _empty_gaps(), daily=day)[CODE]
+        for name, v in (("ma20_gap", 0.01), ("ret5", 0.02), ("vol20", 0.03)):
+            np.testing.assert_allclose(d["feat"][:, FEATURES.index(name)], v, rtol=1e-6)
+        np.testing.assert_allclose(d["feat"][:, FEATURES.index("ret_prev")],
+                                   np.log(99.5 / 100.0), rtol=1e-6)
+
+
 if __name__ == "__main__":
     unittest.main()
