@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -14,13 +15,14 @@ from research.backtest_daily.data import load_px
 from . import bars
 from . import daily as daily_mod
 from .costs import FEE, SELL_TAX
-from .dataset import EXTRA_COLS, day_cells, day_reasons, samples
+from .dataset import EXTRA_COLS, cache_tag, day_cells, day_reasons, samples
 from .evaluate import eval_codes, strata, summarize
 from .models import make
 from .oracle import K_MAX
 from .scale import Scaler
 
 RESULTS = Path(__file__).resolve().parents[1] / "private" / "rl_signal" / "results"
+CONFIG_NAME = "_config.json"
 
 
 def splits(days: list[str], min_train: int) -> list[tuple[list[str], str]]:
@@ -32,6 +34,24 @@ def splits(days: list[str], min_train: int) -> list[tuple[list[str], str]]:
 def eval_rng(seed: int, test_day: str) -> np.random.Generator:
     """테스트일별 평가 난수: [seed + 1, int(test_day)]. 그날 eval_codes·라벨섞기 재생이 공유."""
     return np.random.default_rng([seed + 1, int(test_day)])
+
+
+def src_hash(base: Path | None = None) -> str:
+    """research/rl_signal 아래 tests 제외 *.py 내용 sha1 (파일명 정렬)."""
+    b = Path(__file__).resolve().parent if base is None else Path(base)
+    files = sorted(
+        (p for p in b.rglob("*.py") if "tests" not in p.relative_to(b).parts),
+        key=lambda p: p.relative_to(b).as_posix(),
+    )
+    h = hashlib.sha1()
+    for p in files:
+        h.update(p.read_bytes())
+    return h.hexdigest()
+
+
+def _current_config(args) -> dict:
+    return {"src_hash": src_hash(), "reps": args.reps, "shuffle_reps": args.shuffle_reps,
+            "seed": args.seed, "min_train": args.min_train, "cache_tag": cache_tag()}
 
 
 def _orderbook_dir() -> Path:
@@ -87,7 +107,27 @@ def main(argv=None) -> None:
     pos_col = names.index("pos")
     outdir = RESULTS / args.version / args.model
     outdir.mkdir(parents=True, exist_ok=True)
-    if not args.incremental:
+    if args.version != "dev":
+        cfg_path = outdir / CONFIG_NAME
+        cur = _current_config(args)
+        if not args.incremental:
+            for p in outdir.glob("*.json"):
+                p.unlink()
+            cfg_path.write_text(json.dumps(cur, ensure_ascii=False, indent=1, sort_keys=True),
+                                encoding="utf-8")
+        elif not cfg_path.exists():
+            cfg_path.write_text(json.dumps(cur, ensure_ascii=False, indent=1, sort_keys=True),
+                                encoding="utf-8")
+        else:
+            old = json.loads(cfg_path.read_text(encoding="utf-8"))
+            if old != cur:
+                for k in sorted(set(old) | set(cur)):
+                    ov, cv = old.get(k), cur.get(k)
+                    if ov != cv:
+                        print(f"{k}: {ov!r} != {cv!r}")
+                print("코드·설정이 바뀜 — 새 판정 버전 필요")
+                sys.exit(2)
+    elif not args.incremental:
         for p in outdir.glob("*.json"):
             p.unlink()
     rows = []
