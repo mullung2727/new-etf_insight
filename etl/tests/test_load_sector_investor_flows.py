@@ -124,3 +124,53 @@ class SectorInvestorFlowsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(mod, "db_dir", return_value=Path(tmp)):
                 self.assertEqual(mod._etf_adj_dates(), [])
+
+    def test_main_exit_code(self):
+        argv = ["--start", "20240101", "--end", "20240102"]
+        with mock.patch.object(mod, "run", return_value={"failed": ["x"]}):
+            self.assertEqual(mod.main(argv), 1)
+        with mock.patch.object(mod, "run", return_value={"failed": []}):
+            self.assertEqual(mod.main(argv), 0)
+
+    def test_parse_args_rejects_bad_dates(self):
+        with self.assertRaises(SystemExit) as cm:
+            mod.parse_args(["--start", "20240131", "--end", "20240101"])
+        self.assertEqual(cm.exception.code, 2)
+        with self.assertRaises(SystemExit) as cm:
+            mod.parse_args(["--start", "20240230", "--end", "20240301"])
+        self.assertEqual(cm.exception.code, 2)
+        with self.assertRaises(SystemExit) as cm:
+            mod.parse_args(["--start", "20240101", "--end", "notadate"])
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_unknown_response_preserves_existing(self):
+        for bad_data in ({"foo": []}, {"inds_netprps": "not-a-list"}):
+            with self.subTest(bad_data=bad_data):
+                with tempfile.TemporaryDirectory() as tmp:
+                    db = Path(tmp) / "investor_flows.duckdb"
+                    con = duckdb.connect(str(db))
+                    try:
+                        con.execute(mod._SCHEMA)
+                        save_day(con, "20240102", "KOSPI",
+                                 [parse_row(_raw(), "20240102", "KOSPI", "ts")])
+                    finally:
+                        con.close()
+                    page = SimpleNamespace(data=bad_data, cont_yn="N", next_key="")
+                    with mock.patch.object(mod, "request", return_value=page), \
+                            mock.patch.object(mod, "RETRY_WAIT", 0):
+                        res = run(_args(market="kospi", refresh=True),
+                                  db_path=db, dates=["20240102"])
+                    self.assertEqual(len(res["failed"]), 1)
+                    con = duckdb.connect(str(db))
+                    try:
+                        self.assertEqual(
+                            con.execute("SELECT count(*) FROM sector_investor_daily"
+                                        ).fetchone()[0], 1)
+                    finally:
+                        con.close()
+
+    def test_empty_trading_dates_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "investor_flows.duckdb"
+            res = run(_args(), db_path=db, dates=[])
+            self.assertEqual(len(res["failed"]), 1)

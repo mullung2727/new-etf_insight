@@ -113,11 +113,12 @@ def _default_end() -> str:
     return (datetime.now(KST) - timedelta(days=1)).strftime("%Y%m%d")
 
 
-def universe(px: Any, n: int = DEFAULT_N, start: str = DEFAULT_START) -> list[str]:
+def universe(px: Any, n: int = DEFAULT_N, start: str = DEFAULT_START,
+             end: str | None = None) -> list[str]:
     """전 거래일 시총 상위 n 합집합 (정렬).
 
     px는 load_px() DataFrame (date/ticker/market_cap 사용).
-    start 이후 각 거래일 d마다 전 거래일 market_cap 상위 n을 모아 합친다.
+    start~end 각 거래일 d마다 전 거래일 market_cap 상위 n을 모아 합친다.
     당일 자신의 시총은 쓰지 않는다 (d의 편입 여부는 전일 순위 기준).
     """
     df = px.copy()
@@ -126,7 +127,7 @@ def universe(px: Any, n: int = DEFAULT_N, start: str = DEFAULT_START) -> list[st
     groups = {d: g for d, g in df.groupby("date")}
     out: set[str] = set()
     for i, d in enumerate(dates):
-        if d < start or i == 0:
+        if d < start or (end is not None and d > end) or i == 0:
             continue
         prev = groups[dates[i - 1]]
         out.update(prev.nlargest(n, "market_cap")["ticker"].astype(str).tolist())
@@ -134,20 +135,14 @@ def universe(px: Any, n: int = DEFAULT_N, start: str = DEFAULT_START) -> list[st
 
 
 def _extract_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """응답 JSON에서 종목 일별 행 리스트를 꺼낸다."""
+    """응답 JSON에서 종목 일별 행 리스트를 꺼낸다. 키 없거나 리스트 아니면 KiwoomError."""
     for key in _ROW_LIST_KEYS:
-        rows = data.get(key)
-        if isinstance(rows, list):
+        if key in data:
+            rows = data[key]
+            if not isinstance(rows, list):
+                raise KiwoomError(f"예상치 못한 응답 형식: {key}가 리스트가 아님")
             return [r for r in rows if isinstance(r, dict)]
-    for value in data.values():  # 예비 감지: 투자자 필드를 가진 첫 리스트
-        if (
-            isinstance(value, list)
-            and value
-            and isinstance(value[0], dict)
-            and "frgnr_invsr" in value[0]
-        ):
-            return value
-    return []
+    raise KiwoomError(f"예상치 못한 응답 형식: {', '.join(_ROW_LIST_KEYS)} 키 없음")
 
 
 def _close(raw: Any) -> int | None:
@@ -290,8 +285,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.end is None:
         args.end = _default_end()
     for key in ("start", "end"):
-        if len(args.__dict__[key]) != 8 or not args.__dict__[key].isdigit():
+        try:
+            datetime.strptime(args.__dict__[key], "%Y%m%d")
+        except (ValueError, TypeError):
             parser.error(f"--{key}는 YYYYMMDD 형식이어야 함")
+    if args.start > args.end:
+        parser.error("--start는 --end보다 늦을 수 없음")
     if args.n < 1:
         parser.error("--n은 1 이상이어야 함")
     if args.limit is not None and args.limit < 1:
@@ -307,7 +306,7 @@ def run(args: argparse.Namespace, *, db_path: Path | None = None,
         if args.tickers:
             tickers = [t.strip() for t in args.tickers.split(",") if t.strip()]
         else:
-            tickers = universe(load_px(), n=args.n, start=args.start)
+            tickers = universe(load_px(), n=args.n, start=args.start, end=args.end)
     if args.limit is not None:
         tickers = tickers[:args.limit]
     total = len(tickers)
@@ -335,6 +334,12 @@ def run(args: argparse.Namespace, *, db_path: Path | None = None,
                 continue
             rows = [r for r in (parse_row(x, code, fetched_at) for x in raw_rows)
                     if r is not None]
+            if raw_rows and not rows:
+                msg = f"{code}: 잘못된 dt (응답 {len(raw_rows)}행 파싱 불가)"
+                failed.append(msg)
+                _mark_done(con, code, args.start, args.end, 0, "error", fetched_at)
+                print(f"[{i}/{total}] {code} 실패 ({time.time() - t0:.1f}s) — {msg}")
+                continue
             n = save_ticker(con, code, args.start, args.end, rows)
             _mark_done(con, code, args.start, args.end, n,
                        "ok" if n else "empty", fetched_at)
@@ -359,9 +364,9 @@ def run(args: argparse.Namespace, *, db_path: Path | None = None,
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     load_dotenv(ROOT / ".env")
-    run(args)
-    return 0
+    result = run(args)
+    return 1 if result["failed"] else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

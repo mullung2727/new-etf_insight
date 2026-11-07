@@ -130,20 +130,14 @@ def trading_dates(start: str, end: str) -> list[str]:
 
 
 def _extract_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """응답 JSON에서 업종 행 리스트를 꺼낸다."""
+    """응답 JSON에서 업종 행 리스트를 꺼낸다. 키 없거나 리스트 아니면 KiwoomError."""
     for key in _ROW_LIST_KEYS:
-        rows = data.get(key)
-        if isinstance(rows, list):
+        if key in data:
+            rows = data[key]
+            if not isinstance(rows, list):
+                raise KiwoomError(f"예상치 못한 응답 형식: {key}가 리스트가 아님")
             return [r for r in rows if isinstance(r, dict)]
-    for value in data.values():  # 예비 감지: 투자자 필드를 가진 첫 리스트
-        if (
-            isinstance(value, list)
-            and value
-            and isinstance(value[0], dict)
-            and any(k.endswith("_netprps") for k in value[0])
-        ):
-            return value
-    return []
+    raise KiwoomError(f"예상치 못한 응답 형식: {', '.join(_ROW_LIST_KEYS)} 키 없음")
 
 
 def _idx_close(raw: Any) -> float | None:
@@ -256,8 +250,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.end is None:
         args.end = _default_end()
     for key in ("start", "end"):
-        if len(args.__dict__[key]) != 8 or not args.__dict__[key].isdigit():
+        try:
+            datetime.strptime(args.__dict__[key], "%Y%m%d")
+        except (ValueError, TypeError):
             parser.error(f"--{key}는 YYYYMMDD 형식이어야 함")
+    if args.start > args.end:
+        parser.error("--start는 --end보다 늦을 수 없음")
     return args
 
 
@@ -267,6 +265,10 @@ def run(args: argparse.Namespace, *, db_path: Path | None = None,
     db_path = db_path or db_dir() / "investor_flows.duckdb"
     if dates is None:
         dates = trading_dates(args.start, args.end)
+    if not dates:
+        msg = f"{args.start}~{args.end}: 거래일 없음"
+        print(f"에러: {msg}")
+        return {"saved": 0, "skipped": 0, "rows": 0, "empty": [], "failed": [msg]}
     markets = [MARKETS[args.market]] if args.market != "both" else list(MARKETS.values())
 
     con = _connect(db_path)
@@ -310,9 +312,9 @@ def run(args: argparse.Namespace, *, db_path: Path | None = None,
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     load_dotenv(ROOT / ".env")
-    run(args)
-    return 0
+    result = run(args)
+    return 1 if result["failed"] else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

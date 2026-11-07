@@ -165,3 +165,102 @@ class StockInvestorFlowsTest(unittest.TestCase):
                     )
             finally:
                 con.close()
+
+    def test_main_exit_code(self):
+        argv = ["--start", "20240101", "--end", "20240102"]
+        with mock.patch.object(mod, "run", return_value={"failed": ["x"]}):
+            self.assertEqual(mod.main(argv), 1)
+        with mock.patch.object(mod, "run", return_value={"failed": []}):
+            self.assertEqual(mod.main(argv), 0)
+
+    def test_parse_args_rejects_bad_dates(self):
+        with self.assertRaises(SystemExit) as cm:
+            mod.parse_args(["--start", "20240131", "--end", "20240101"])
+        self.assertEqual(cm.exception.code, 2)
+        with self.assertRaises(SystemExit) as cm:
+            mod.parse_args(["--start", "20240230", "--end", "20240301"])
+        self.assertEqual(cm.exception.code, 2)
+        with self.assertRaises(SystemExit) as cm:
+            mod.parse_args(["--start", "20240101", "--end", "notadate"])
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_unknown_response_preserves_existing(self):
+        for bad_data in ({"foo": []}, {"stk_invsr_orgn": "not-a-list"}):
+            with self.subTest(bad_data=bad_data):
+                with tempfile.TemporaryDirectory() as tmp:
+                    db = Path(tmp) / "investor_flows.duckdb"
+                    con = duckdb.connect(str(db))
+                    try:
+                        con.execute(mod._SCHEMA)
+                        con.execute(mod._DONE_SCHEMA)
+                        save_ticker(con, "005930", "20240101", "20240131",
+                                    [parse_row(_raw(dt="20240103"), "005930", "ts")])
+                    finally:
+                        con.close()
+                    page = SimpleNamespace(data=bad_data, cont_yn="N", next_key="")
+                    with mock.patch.object(mod, "request", return_value=page), \
+                            mock.patch.object(mod, "RETRY_WAIT", 0):
+                        res = run(_args(), db_path=db, tickers=["005930"])
+                    self.assertEqual(len(res["failed"]), 1)
+                    con = duckdb.connect(str(db))
+                    try:
+                        self.assertEqual(
+                            con.execute("SELECT count(*) FROM stock_investor_daily"
+                                        ).fetchone()[0], 1)
+                        self.assertEqual(
+                            con.execute("SELECT status FROM stock_investor_done "
+                                        "WHERE ticker='005930'").fetchone()[0],
+                            "error")
+                    finally:
+                        con.close()
+
+    def test_all_invalid_dt_fails_without_delete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "investor_flows.duckdb"
+            con = duckdb.connect(str(db))
+            try:
+                con.execute(mod._SCHEMA)
+                con.execute(mod._DONE_SCHEMA)
+                save_ticker(con, "005930", "20240101", "20240131",
+                            [parse_row(_raw(dt="20240103"), "005930", "ts")])
+            finally:
+                con.close()
+            page = SimpleNamespace(
+                data={"stk_invsr_orgn": [_raw(dt="bad"), _raw(dt="")]},
+                cont_yn="N", next_key="")
+            with mock.patch.object(mod, "request", return_value=page):
+                res = run(_args(), db_path=db, tickers=["005930"])
+            self.assertEqual(len(res["failed"]), 1)
+            con = duckdb.connect(str(db))
+            try:
+                self.assertEqual(
+                    con.execute("SELECT count(*) FROM stock_investor_daily").fetchone()[0], 1)
+                self.assertEqual(
+                    con.execute("SELECT status FROM stock_investor_done "
+                                "WHERE ticker='005930'").fetchone()[0],
+                    "error")
+            finally:
+                con.close()
+
+    def test_universe_end_excludes_late_top(self):
+        rows = [
+            ("20240102", "A", 100), ("20240102", "Z", 1),
+            ("20240103", "A", 100), ("20240103", "Z", 1),
+            ("20240104", "A", 1), ("20240104", "Z", 100),
+            ("20240105", "A", 1), ("20240105", "Z", 1),
+        ]
+        df = pd.DataFrame(rows, columns=["date", "ticker", "market_cap"])
+        self.assertEqual(universe(df, n=1, start="20240103"), ["A", "Z"])
+        self.assertEqual(universe(df, n=1, start="20240103", end="20240103"), ["A"])
+
+    def test_run_passes_end_to_universe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "investor_flows.duckdb"
+            page = SimpleNamespace(data={"stk_invsr_orgn": []}, cont_yn="N", next_key="")
+            with mock.patch.object(mod, "load_px", return_value=_px()), \
+                    mock.patch.object(mod, "universe", wraps=mod.universe) as uni, \
+                    mock.patch.object(mod, "request", return_value=page):
+                run(_args(start="20240103", end="20240103"), db_path=db, tickers=None)
+            uni.assert_called_once()
+            _, kwargs = uni.call_args
+            self.assertEqual(kwargs.get("end"), "20240103")
