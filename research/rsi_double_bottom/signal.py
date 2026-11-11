@@ -57,18 +57,34 @@ def hourly_bars(mb_db=MB, since=FULL_SINCE, minutes=60) -> pd.DataFrame:
 
 
 def _rsi_wilder(close: pd.Series, n: int = RSI_LEN) -> pd.Series:
-    """Wilder RSI. 손실 0 → 100, 완전 횡보 → NaN."""
-    delta = close.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    ag = gain.ewm(alpha=1 / n, min_periods=n, adjust=False).mean()
-    al = loss.ewm(alpha=1 / n, min_periods=n, adjust=False).mean()
-    rsi = pd.Series(np.nan, index=close.index, dtype=float)
-    valid = ag.notna() & al.notna()
-    nz = valid & (al != 0)
-    rsi.loc[nz] = 100 - 100 / (1 + ag.loc[nz] / al.loc[nz])
-    rsi.loc[valid & (al == 0) & (ag != 0)] = 100.0
-    return rsi
+    """표준 Wilder RSI (TradingView ta.rsi/rma 시드).
+
+    첫 평균 이득/손실 = 첫 n개 delta 단순평균, 이후 avg=(prev*(n-1)+cur)/n.
+    위치 n부터 값, 그 전 NaN. 손실 0 → 100, 완전 횡보 → NaN.
+    """
+    vals = close.to_numpy(dtype=float)
+    m = len(vals)
+    rsi = np.full(m, np.nan)
+    if m > n:
+        delta = np.empty(m)
+        delta[0] = np.nan
+        delta[1:] = vals[1:] - vals[:-1]
+        gain = np.where(delta > 0, delta, 0.0)
+        loss = np.where(delta < 0, -delta, 0.0)
+        ag = float(np.mean(gain[1:n + 1]))
+        al = float(np.mean(loss[1:n + 1]))
+        if al == 0:
+            rsi[n] = 100.0 if ag != 0 else np.nan
+        else:
+            rsi[n] = 100 - 100 / (1 + ag / al)
+        for i in range(n + 1, m):
+            ag = (ag * (n - 1) + gain[i]) / n
+            al = (al * (n - 1) + loss[i]) / n
+            if al == 0:
+                rsi[i] = 100.0 if ag != 0 else np.nan
+            else:
+                rsi[i] = 100 - 100 / (1 + ag / al)
+    return pd.Series(rsi, index=close.index, dtype=float)
 
 
 def add_indicators(df: pd.DataFrame, breaks: set | None = None) -> pd.DataFrame:

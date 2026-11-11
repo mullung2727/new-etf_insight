@@ -469,7 +469,7 @@ def main(argv=None):
     ptrades = [r for r in rows_p if _fin(r["ret"])]
     draws, oks = run_placebo(ptrades, allowed, px, mdates, midx, a.placebo)
     p_mean, p_pct = placebo_percentile(sums["pattern"]["mean"], draws)
-    _nm, n_pct = placebo_percentile(sums["naive"]["mean"], draws)
+    n_pct = float("nan")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     all_rows = rows_p + rows_n
