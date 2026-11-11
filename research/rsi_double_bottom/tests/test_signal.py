@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import pandas as pd
 
 from research.rsi_double_bottom.signal import (
-    add_indicators, find_entries, find_naive,
+    _rsi_wilder, add_indicators, find_entries, find_naive,
 )
 
 
@@ -221,6 +221,21 @@ class TestNaive(unittest.TestCase):
             self.assertEqual(s["sig_date"], df["date"].iloc[i])
             self.assertEqual(s["sig_hb"], df["hb"].iloc[i])
             self.assertEqual(s["sl"], df["low"].iloc[i])
+
+
+class TestRsiWilder(unittest.TestCase):
+    def test_seed_is_simple_mean_then_recursive(self):
+        # delta: +2, -1, +2, +2 (n=3)
+        close = pd.Series([10.0, 12.0, 11.0, 13.0, 15.0],
+                          index=[10, 20, 30, 40, 50])
+        rsi = _rsi_wilder(close, n=3)
+        self.assertEqual(list(rsi.index), [10, 20, 30, 40, 50])
+        for i in range(3):
+            self.assertTrue(pd.isna(rsi.iloc[i]))
+        # 시드: gain [2,0,2] 평균 4/3, loss [0,1,0] 평균 1/3 → RS=4 → 80.0
+        self.assertAlmostEqual(rsi.iloc[3], 80.0)
+        # 재귀: ag=(4/3*2+2)/3=14/9, al=(1/3*2+0)/3=2/9 → RS=7 → 87.5
+        self.assertAlmostEqual(rsi.iloc[4], 87.5)
 
 
 if __name__ == "__main__":
