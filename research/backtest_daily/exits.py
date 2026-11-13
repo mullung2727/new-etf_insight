@@ -80,6 +80,8 @@ def bracket_exit(ms, O, H, L, C, entry_pos, p_entry, stop_px, tp_px,
             if prev and Cv[i] / Cv[i - 1] - 1.0 <= -0.295:
                 if i + 1 < n:
                     return (i + 1, float(Ov[i + 1]), "sl_limit_down")
+                if ms_max is not None and int(m[i]) >= int(ms_max):
+                    return (None, None, "open")
                 break
             return (i, float(Cv[i]), "sl")
         if t_row is not None and i == t_row and Cv[i] <= p_entry:

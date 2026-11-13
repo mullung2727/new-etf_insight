@@ -143,6 +143,28 @@ class TestBracketExit(unittest.TestCase):
         C = [100.0, 95.0, 60.0]
         self.assertEqual(self._run(ms, O, H, C), (2, 60.0, "sl"))
 
+    def test_sl_limit_down_last_row_open(self):
+        # 마지막 행 하한가 + ms가 ms_max 도달 → 내일 시가 미확정 open
+        ms = [0, 1]
+        O = [100.0, 70.0]
+        H = [100.0, 70.0]
+        C = [100.0, 70.0]
+        self.assertEqual(
+            self._run(ms, O, H, C, stop_px=90.0, tp_px=float("inf"),
+                      max_hold=1, ms_max=1),
+            (None, None, "open"))
+
+    def test_sl_limit_down_last_row_delisted(self):
+        # 마지막 행 하한가 + ms_max 전 종료(상폐) → last
+        ms = [0, 1]
+        O = [100.0, 70.0]
+        H = [100.0, 70.0]
+        C = [100.0, 70.0]
+        self.assertEqual(
+            self._run(ms, O, H, C, stop_px=90.0, tp_px=float("inf"),
+                      max_hold=1, ms_max=5),
+            (1, 70.0, "last"))
+
     def test_time_rule_exit(self):
         ms, O, H, C = self._flat(30)
         C[26] = 95.0
