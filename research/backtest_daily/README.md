@@ -13,7 +13,7 @@
 | `guards.py` | `limit_up_close`, `limit_up_open`, `liquidity`, `halt_ok`, `jump_ok`, `fin_flags`, `AVAIL`, `FIN_DB` |
 | `bench.py` (구방식 — 신규 리서치는 bench_daily) | `size_index`, `cap_bucket`, `entry_cap`, `bench_return`, `CAP_EDGES`, `CAP_LABELS` |
 | `bench_daily.py` | `build`, `ensure`, `load`, `bench_id`, `bench_return`, `bench_returns`, `BenchCache`, `BENCH_DB` |
-| `exits.py` | `hold_exit`, `trailing_exit` |
+| `exits.py` | `hold_exit`, `trailing_exit`, `bracket_exit` (종가 손절·장중 지정가 익절·시간 청산) |
 | `paths.py` | `event_paths` |
 | `stats.py` | `weighted`, `day_key`, `month_key`, `cost_table`, `COSTS`, `day_daily_means`, `day_weighted_mean`, `day_median`, `day_win_rate`, `day_tstat` |
 | `validate.py` | `wf_train`, `select_best`, `walk_forward`, `placebo_percentile` |
