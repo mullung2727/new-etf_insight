@@ -4,7 +4,7 @@ $etlDir = Join-Path $projectRoot "etl"
 $logDir = Join-Path $etlDir "logs"
 New-Item -Force -ItemType Directory $logDir | Out-Null
 
-# 스케줄: 평일 22:00(당일분) · 화~토 07:00/08:00/08:30(전일분). 매 실행은 최근 7일 중 빠진 날만 받는다(이미 받은 날·확정 휴장일은 건너뜀).
+# 스케줄: 화~토 07:00/08:00/08:30(전일분). 매 실행은 최근 7일 중 빠진 날만 받는다(이미 받은 날·확정 휴장일은 건너뜀). (22:00 재시도는 2026-11-18 삭제)
 # 2026-09-29: 08:00 단발 KRX read timeout 으로 전일분이 빠졌는데, 기존엔 "어제 하루"만 받아 다음날에도 재시도되지 않았다.
 $now = Get-Date
 $today = $now.ToString("yyyyMMdd")
@@ -107,7 +107,9 @@ print(
       $tail = ($build -split "`n" | Where-Object { $_ -match "fetch failed|KRX empty|retry" }) -join "`n"
       Send-Report "[KRX OHLCV] $yday 일봉 없음 (08:30 마지막 시도) — 휴장이 아니면 수동 적재 필요`n최신 적재일 $latest`n$tail`nlog: $log"
     } elseif ($isProv -eq "1") {
-      Send-Report "⚠ [KRX OHLCV] $yday KRX 미도착 — 분봉 일봉으로 운영 중, 22:00·내일 재시도"
+      $next = $null; try { $next = (Get-ScheduledTaskInfo -TaskPath "\new-etf_insight\" -TaskName "daily-etf-watchlist-krx-ohlcv" -ErrorAction Stop).NextRunTime } catch {}
+      $retryMsg = if ($next) { "다음 재시도 " + $next.ToString("yyyy-MM-dd(ddd) HH:mm") } else { "다음 예약 실행 때 재시도" }
+      Send-Report "⚠ [KRX OHLCV] $yday KRX 미도착 — 분봉 일봉으로 운영 중, $retryMsg"
     }
   }
   exit 0
