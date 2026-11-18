@@ -695,7 +695,7 @@
       "id": "b88ef3fd-b90d-4e91-ab99-b5ba5d77d271",
       "name": "swing-order",
       "description": "Mon-Fri 08:40 start; private swing strategy pre-open buy batch on the existing account broker :8001",
-      "enabled": true,
+      "enabled": false,
       "schedule": {
         "kind": "cron",
         "expr": "40 8 * * 1-5",
@@ -703,9 +703,9 @@
       },
       "instructionFile": "ops/batches/swing-order.md",
       "timeoutSeconds": 3600,
-      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-10-24).",
+      "runNote": "Windows Task Scheduler is authoritative. Live orders from the start (user decision 2026-10-24). Disabled 2026-11-18 (user): strategy stopped after 19 live trades -3.1%/trade (-12.8% of 700k budget); open positions exit by rule via swing-exit, which stays enabled until they close.",
       "windowsTask": {
-        "enabled": true,
+        "enabled": false,
         "taskPath": "\\new-etf_insight\\",
         "taskName": "swing-order",
         "xmlFile": "ops/scheduled-tasks/swing-order.xml",
