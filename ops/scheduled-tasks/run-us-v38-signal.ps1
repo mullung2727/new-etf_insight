@@ -9,7 +9,7 @@ $env:PYTHONUTF8 = "1"
 # research.private.* lives at the repo root; scripts.* resolves from etl (cwd).
 $env:PYTHONPATH = ".."
 
-# US v38 signal 07:40 KST, after the 07:30 us-early load. Appends one row per
+# US v38 signal 11:30 KST, after the 11:00 us-daily load. Appends one row per
 # US session to the private signal log; a rerun appends a duplicate row.
 # No Korean trading-day guard (independent of KRX holidays); US holidays exit
 # quietly. Exit 2 on stale data.

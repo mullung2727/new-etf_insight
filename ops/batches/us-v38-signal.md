@@ -15,8 +15,10 @@ this file with host-default shell decoding, especially Windows PowerShell 5.1
 
 ## Purpose
 
-10:25 KST Tue-Sat signal batch for the US private strategy, running after the
-10:15 `us-early` load (after US after-hours ends, so the bars are final).
+11:30 KST Tue-Sat signal batch for the US private strategy, running after the
+11:00 `us-daily` load (Yahoo regular-session close, done by ~11:07). The 10:15
+`us-early` Kiwoom bar is not the regular-session close (after-hours/overnight
+trades), so the signal must not run before us-daily (moved 2026-11-18).
 
 - Computes the daily signal from the freshly loaded US session data and
   appends one row per US session to the private signal log (read by

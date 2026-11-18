@@ -1261,16 +1261,16 @@
     {
       "id": "b4d7a2c1-5e6f-4a8b-9c3d-7f1e2a5b8d0e",
       "name": "us-v38-signal",
-      "description": "Tue-Sat 10:25 KST; US private-strategy signal batch after us-early, appends one row per US session to the private signal log",
+      "description": "Tue-Sat 11:30 KST; US private-strategy signal batch after us-daily (Yahoo regular-session close), appends one row per US session to the private signal log",
       "enabled": true,
       "schedule": {
         "kind": "cron",
-        "expr": "25 10 * * 2-6",
+        "expr": "30 11 * * 2-6",
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/us-v38-signal.md",
       "timeoutSeconds": 600,
-      "runNote": "Windows Task Scheduler is authoritative. Appends one row per US session to the private signal log; rerun appends a duplicate row for the same date (order reads the last row).",
+      "runNote": "Windows Task Scheduler is authoritative. Appends one row per US session to the private signal log; rerun appends a duplicate row for the same date (order reads the last row). Moved 10:25→11:30 on 2026-11-18: the 10:15 Kiwoom bar close is not the regular-session close (after-hours/overnight trades, up to -2.2%); 11:00 us-daily overwrites with Yahoo regular close by ~11:07.",
       "windowsTask": {
         "enabled": true,
         "taskPath": "\\new-etf_insight\\",
