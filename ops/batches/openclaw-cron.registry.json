@@ -106,7 +106,7 @@
     {
       "id": "decbbe13-7b6a-455c-acaa-b4f988766b44",
       "name": "daily-etf-watchlist-krx-ohlcv",
-      "description": "Tue-Sat 08:00 fetch previous-day KRX full-market OHLCV only; no watchlist build or LLM scoring",
+      "description": "Tue-Sat 07:00 provisional daily from minute bars, 08:00/08:30 fetch previous-day KRX full-market OHLCV and reconcile; no watchlist build or LLM scoring (22:00 retry removed 2026-11-18)",
       "enabled": false,
       "schedule": {
         "kind": "cron",
