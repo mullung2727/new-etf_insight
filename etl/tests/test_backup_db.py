@@ -590,3 +590,26 @@ class DiskLinesTest(_BackupCase):
         self.assertEqual(rc, 0)
         m_notify.assert_called_once()
         self.assertIn("저장공간 외장", m_notify.call_args[0][0])
+
+    def test_partial_failure_long_details_keeps_disk(self):
+        failed = [(f"f{i}.db", "x" * 150) for i in range(20)]
+        result = {"copied": [], "skipped": 0, "failed": failed, "bytes": 0}
+        fixed = self._usage()
+        with mock.patch(
+            "scripts.backup_db.find_backup_root", return_value=self.dest
+        ):
+            with mock.patch(
+                "scripts.backup_db.notify", return_value=True
+            ) as m_notify:
+                with mock.patch("scripts.backup_db.PROJECT_ROOT", self.root):
+                    with mock.patch("scripts.backup_db.run", return_value=result):
+                        with mock.patch(
+                            "scripts.backup_db.shutil.disk_usage",
+                            return_value=fixed,
+                        ):
+                            with mock.patch.dict(os.environ):
+                                os.environ.pop("NEW_ETF_DATA_ROOT", None)
+                                rc = main()
+        self.assertEqual(rc, 1)
+        m_notify.assert_called_once()
+        self.assertIn("저장공간 외장", m_notify.call_args[0][0][:1900])
