@@ -1,6 +1,6 @@
 # PLAN — 실매매 공용 매매 엔진 (모든 전략: broker 호출 → 주문 실행 엔진 → 전략)
 
-한 줄: 실매매 전략 7개가 각자 짠 broker 호출·추격 지정가·마감 시장가·시작 절차를 git 관리 공용 3층
+한 줄: 실매매 전략(시작 당시 7개, 2026-11-19 운영 중 4개 — 현황 표)이 각자 짠 broker 호출·추격 지정가·마감 시장가·시작 절차를 git 관리 공용 3층
 (`BrokerClient` → `chase_engine` → 전략)으로 모은다. 전략 차이는 공용 함수의 파라미터·콜백으로 넘기고,
 종목 선정·금액·시각 값·원장 기록만 `research/private` 에 남긴다.
 (2026-10-13 `PLAN_LIVE_BATCH_COMMON` 을 이 문서로 합치고 삭제)
@@ -15,6 +15,19 @@
 > - 한 번 반영에 전략 하나. 다음 거래일 실로그 확인 후 다음 전략.
 
 ## 진행
+
+### 현황 (2026-11-19, 전략 중지 반영 — D18)
+
+| 전략 | 운영 | 엔진 사용 | 남은 일 |
+|---|---|---|---|
+| 무상·유상(rights) | 운영 | 추격·시장가 엔진(P3), 취소 원장 TP(P8) | **P5c** Jev `buy_ah` import 제거 — Jev 는 중지됐지만 이 의존 때문에 Jev 폴더 삭제 금지 |
+| 되돌림(rebound) | 운영 | 마감 시장가 엔진(P4 1차), 취소 공용(P8) | P4b(목표가 유지·15:15 매수 취소·KRX 재시도 이전, 급하지 않음) |
+| high52 | 운영 | 없음 (`run_pullback_*`·`trading_batch_common` 함수) | **P6** |
+| 초소형(msig) | 운영 (10-15~, 이 PLAN 뒤에 생김) | 처음부터 `BrokerClient`·`chase_engine.ClientEngineApi`·`run_sliced` | 이전 불필요 |
+| Jev(jevq) | ⛔ 11-04 중지 (작업 7개 Disabled) | P5·P5b 이전 완료 | 없음 (재개 시 그대로) |
+| 엔벌로프 | ⛔ 11-06 중지 | 없음 | P6·P8 에서 제외 — 재개 때 다시 |
+| 스윙 | ⛔ 11-18 중지 (주문 Disabled, 보유분 청산 중) | `BrokerClient` 일부 | 없음 |
+| 종가베팅·눌림목(`etl/scripts`) | ⛔ 실주문 작업 없음 (종가베팅 보고서 작업도 Disabled) | — | P7 해당 없음. 단 `run_pullback_exit`·`run_pullback_order`·`run_close_bet_exit` 는 rights·rebound·high52·msig·swing 이 함수 라이브러리로 import → 지우지 말 것 |
 
 ### P0 백업
 - [x] 구현·테스트 머지 (PR #) — 해당 없음 (파일 복사만, `research/private/_backup_20261013`·`_backup_20261013_apply`)
@@ -62,22 +75,22 @@
 - [ ] 첫 실가동 확인 (날짜)
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
-### P6 high52 · 엔벌로프 이전
+### P6 high52 이전 (엔벌로프는 11-06 중지로 제외 — D18)
 - [ ] 구현·테스트 머지 (PR #)
 - [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
 - [ ] 첫 실가동 확인 (날짜)
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
-### P7 종가베팅·눌림목(`etl/scripts`) 이전
-- [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
-- [ ] 첫 실가동 확인 (날짜)
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+### P7 종가베팅·눌림목(`etl/scripts`) 이전 — 해당 없음 (D18: 두 전략 실주문 작업 없음)
+- [x] 구현·테스트 머지 (PR #) — 해당 없음
+- [x] 운영 등록 (스케줄 작업·config) — 해당 없음
+- [x] 첫 실가동 확인 (날짜) — 해당 없음
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P8 취소 → 원장 기록 공용화 (2026-11-04 추가, 순서: 공용 함수 → rebound → rights → envelope)
 - [x] 구현·테스트 머지 (PR #150) — 공용 `cancel_confirmed`. 전략 반영: rebound 2026-11-06 20:05 (백업 `_backup_20261106_rebound_cancel`), rights TP 만 2026-11-06 20:26 (백업 `_backup_20261106_rights_tpcancel`), envelope 는 2026-11-06 전략 중지(config off·작업 Disabled)로 보류 — 재개 시 `expire.cancel_tp`·`order.cancel_rest` 에 적용
 - [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
-- [ ] 첫 실가동 확인 (날짜) — rebound: 2·3단 취소 뒤 `st2`·`st3`=`cancelled` / rights: 정리일 TP 취소 뒤 `tp_status`=`cancelled`
+- [ ] 첫 실가동 확인 (날짜) — rights: 정리일 TP 취소 뒤 `tp_status`=`cancelled` 만 남음. rebound 는 해당 없음: 2026-11-18 약한 날 3단 분할 폐지(`WEAK_SPLIT=False`, 비공개 PLAN_FILL_UPDAY R7)로 2·3단 주문 자체가 없어 `st2`·`st3` 취소가 생기지 않음
 - [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ## 1. 왜
@@ -272,6 +285,7 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | D12 | P5 Jev 는 매수·매도 추격 함께 이전(같은 루프라 쪼개지 않음), 추가 매수는 범위 밖 | 사용자 (2026-10-14) |
 | D13 | Jev 매도 `auction` 모드 채택 (하한·시각 값과 근거는 비공개 문서) | 사용자 (2026-10-14) |
 | D14 | P5 체결 확정은 Jev `_finalize` 유지, 원장 기록은 `on_event`, 이어받기는 엔진 첫 주문 가드 | Claude 판단 (동작 변경 없음) |
+| D18 | 중지된 전략은 이전 대상에서 뺀다: 엔벌로프(11-06)는 P6·P8 제외(재개 때 다시), 종가베팅·눌림목은 P7 해당 없음(실주문 작업 없음), Jev(11-04)·스윙(11-18)은 추가 작업 없음. msig 는 처음부터 공용 엔진 사용이라 이전 불필요. 남은 일 = P5c(rights 의 Jev import 제거 — Jev 폴더를 지우려면 선행)·P6 high52·P4b rebound. `run_pullback_*`·`run_close_bet_exit` 은 다른 전략이 함수로 쓰므로 유지 | 사용자 지시 "중단된 전략에 맞게" · Claude 정리 (2026-11-19) |
 | D17 | P8 rights 는 TP 취소만 원장 기록, 매수 취소 기록은 보류. 왜: 매수 주문 행을 `cancelled` 로 바꾸면 (1) verify `confirm_buys` 가 `submitted·unconfirmed` 행만 대조해 부분 체결 뒤 취소분이 원장에서 빠지고 (2) `strategy_cash`·`strategy_main_cash` 의 미체결 매수금(pend)에서 빠져 같은 날 가용 현금이 늘어 15:18 무상 sizer 금액이 바뀜. 매수까지 하려면 verify 필터·예산 변화를 함께 설계해야 함. 버린 안: A(TP·매수 둘 다, verify·예산 함께 수정) | Claude 추천 · 사용자 선택 B (2026-11-06) |
 | D16 | P8 추가: 취소는 공용 `cancel_confirmed` 로만, 확인된 취소는 `on_event("cancelled")` → 전략 원장에 `cancelled`. 순서 rebound → rights → envelope. 버린 안: rebound 만 원장 한 줄 수정 | 사용자 지시 · Claude 설계 (2026-11-04) |
 | D15 | 시세 날짜 검증(3-5절) 구현 안 함. 왜: envelope 는 시세로 보유를 갱신하지 않고, high52 의 사고 경로는 거래일 가드 2중으로 막힘. 남은 위험은 수동 `--date` 재실행·거래일 오판뿐인데 `/quotes` 날짜 필드 실측부터 필요해 비용이 더 큼. 버린 안: 3-5절 그대로 구현, `--date` 가 오늘이 아니면 갱신 건너뛰기 | Claude 추천 · 사용자 승인 (2026-11-02) |
