@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts import funding_engine as fe
-from scripts.wl_sqlite import connect_ro
+from scripts.wl_sqlite import connect_ro, connect_rw
 
 
 class FundingEngineTest(unittest.TestCase):
@@ -945,6 +945,105 @@ class FundingEngineMainTest(unittest.TestCase):
                         mock.patch.object(fe, "send_strategy_alert", **kw):
                     rc = fe.main([])
                 self.assertEqual(rc, 2)
+
+
+class MemberEtfFlagTest(unittest.TestCase):
+    """members.etf 플래그 — sweep 에서만 제외, 예약·요청은 전 회원 합 (D13)."""
+    DATE = "20260105"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self._tmp.name) / "funding.sqlite3"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _two_members(self):
+        fe.ensure(self.db)
+        fe.add_member(self.db, "rights_dip", "20260101")
+        fe.add_member(self.db, "rebound", "20260101", etf=False)
+        fe.set_unused(self.db, "rights_dip", 2000000, f"{self.DATE}T150000")
+        fe.set_unused(self.db, "rebound", 6000000, f"{self.DATE}T150000")
+
+    def test_old_members_table_gets_etf_default_1(self):
+        with connect_rw(self.db) as con:
+            con.execute(
+                "CREATE TABLE members(strategy TEXT PRIMARY KEY,"
+                " joined TEXT NOT NULL,"
+                " unused INTEGER NOT NULL DEFAULT 0,"
+                " unused_at TEXT NOT NULL DEFAULT '')"
+            )
+            con.execute(
+                "INSERT INTO members(strategy, joined) VALUES (?, ?)",
+                ("rights_dip", "20260101"),
+            )
+        fe.ensure(self.db)
+        self.assertTrue(fe.member_etf(self.db, "rights_dip"))
+
+    def test_member_etf_old_table_without_ensure(self):
+        with connect_rw(self.db) as con:
+            con.execute(
+                "CREATE TABLE members(strategy TEXT PRIMARY KEY,"
+                " joined TEXT NOT NULL,"
+                " unused INTEGER NOT NULL DEFAULT 0,"
+                " unused_at TEXT NOT NULL DEFAULT '')"
+            )
+            con.execute(
+                "INSERT INTO members(strategy, joined) VALUES (?, ?)",
+                ("rights_dip", "20260101"),
+            )
+        self.assertTrue(fe.member_etf(self.db, "rights_dip"))
+        with self.assertRaises(KeyError):
+            fe.member_etf(self.db, "nope")
+        with connect_ro(self.db) as con:
+            cols = [r[1]
+                    for r in con.execute(
+                        "PRAGMA table_info(members)").fetchall()]
+        self.assertNotIn("etf", cols)
+
+    def test_add_member_etf_false_keeps_joined(self):
+        fe.ensure(self.db)
+        fe.add_member(self.db, "rebound", "20261101")
+        fe.add_member(self.db, "rebound", "20261120", etf=False)
+        with connect_ro(self.db) as con:
+            row = con.execute(
+                "SELECT joined FROM members WHERE strategy = 'rebound'"
+            ).fetchone()
+        self.assertEqual(row[0], "20261101")
+        self.assertFalse(fe.member_etf(self.db, "rebound"))
+
+    def test_add_member_default_etf_true(self):
+        fe.ensure(self.db)
+        fe.add_member(self.db, "rebound", "20261101")
+        self.assertTrue(fe.member_etf(self.db, "rebound"))
+
+    def test_total_unused_etf_only(self):
+        self._two_members()
+        self.assertEqual(fe.total_unused(self.db), 8000000)
+        self.assertEqual(fe.total_unused(self.db, etf_only=True), 2000000)
+
+    def test_sweep_excludes_etf0_member(self):
+        self._two_members()
+        io = FakeIO(cash=8000000, ask=1070000,
+                    buys=[{"order_no": "B1", "status": "submitted"}])
+        with mock.patch.dict(os.environ, {"MAX_ORDER_AMOUNT": "10000000"}):
+            out = fe.sweep(self.db, io=io, today=self.DATE)
+        # 200만 // 1,070,010 = 1주 — rebound 600만 몫은 안 씀
+        self.assertEqual(out["ordered_qty"], 1)
+        self.assertEqual(io.buy_calls, [(1, 1070010)])
+
+    def test_engine_reserve_includes_etf0_member(self):
+        self._two_members()
+        self.assertEqual(fe.engine_reserve(self.db, self.DATE), 8000000)
+
+    def test_request_funds_etf0_member_cash_enough(self):
+        self._two_members()
+        io = FakeIO(cash=8000000, ref_price=1070000)
+        out = fe.request_funds(self.db, "rebound", 5000000, io=io,
+                               today=self.DATE, preopen=False)
+        self.assertEqual(out["granted"], 5000000)
+        self.assertEqual(out["sold_qty"], 0)
+        self.assertEqual(io.sell_calls, [])
 
 
 if __name__ == "__main__":

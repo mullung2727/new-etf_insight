@@ -489,5 +489,41 @@ class StatusEngineLineTest(unittest.TestCase):
             self.assertIn("[엔진 http://127.0.0.1:8001]", engine_lines[0])
 
 
+class StatusEtfExcludedTest(unittest.TestCase):
+    def test_status_marks_etf_excluded_member(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            funding_db = tmpdir / "funding.sqlite3"
+            fe.ensure(funding_db)
+            fe.add_member(funding_db, "rights_dip", "20261014")
+            fe.add_member(funding_db, "rebound", "20261014", etf=False)
+            fe.set_unused(funding_db, "rights_dip", 3000000,
+                          "2026-10-14T15:00:00+09:00")
+            fe.set_unused(funding_db, "rebound", 6000000,
+                          "2026-10-14T15:00:00+09:00")
+            strategies = {}
+            for name in ("rights_dip", "rebound"):
+                cfg = tmpdir / f"{name}.json"
+                _write_json(cfg, {"capital": 2000000,
+                                  "capital_since": "20261015"})
+                strategies[name] = ("http://127.0.0.1:8001", str(cfg))
+            with patch.object(sb, "read_reservations", return_value={}):
+                lines = status_lines(
+                    strategies=strategies,
+                    balance_fn=lambda url: 10 ** 12,
+                    db_path=str(tmpdir / "watchlist.sqlite3"),
+                    funding_db=str(funding_db),
+                )
+            by_name = {}
+            for line in lines:
+                for name in ("rights_dip", "rebound"):
+                    if line.startswith(f"{name}:"):
+                        by_name[name] = line
+            self.assertIn("엔진 경유", by_name["rebound"])
+            self.assertIn("ETF 제외", by_name["rebound"])
+            self.assertIn("엔진 경유", by_name["rights_dip"])
+            self.assertNotIn("ETF 제외", by_name["rights_dip"])
+
+
 if __name__ == "__main__":
     unittest.main()
