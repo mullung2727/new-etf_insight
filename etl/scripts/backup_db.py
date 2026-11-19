@@ -507,13 +507,13 @@ def main(argv=None) -> int:
             f"건너뜀 {result['skipped']}개, 실패 {len(result['failed'])}개, "
             f"소요 {elapsed // 60:02d}:{elapsed % 60:02d}",
         ]
-        for rel, msg in result["failed"][:20]:
-            lines.append(f"{rel}: {msg}")
         paths = {"외장": backup_root}
         if root is not None:
             paths["데이터"] = root
         paths["시스템"] = PROJECT_ROOT
         lines.extend(disk_lines(paths))
+        for rel, msg in result["failed"][:20]:
+            lines.append(f"{rel}: {msg}")
         _send("\n".join(lines))
         return 1 if result["failed"] else 0
     except Exception as exc:
