@@ -6,6 +6,7 @@ import _bootstrap  # noqa: F401
 import argparse
 import math
 import os
+import sqlite3
 import time
 import traceback
 from datetime import datetime
@@ -53,13 +54,21 @@ _SIDES = ("buy", "sell")
 
 def ensure(db: Path) -> None:
     """원장 테이블 생성 (멱등)."""
+    # PLAN_FUNDING_ENGINE D13 — members.etf: ETF 마감매수(sweep) 참여 여부
     with connect_rw(db) as con:
         con.execute(
             "CREATE TABLE IF NOT EXISTS members("
             "strategy TEXT PRIMARY KEY, joined TEXT NOT NULL, "
             "unused INTEGER NOT NULL DEFAULT 0, "
-            "unused_at TEXT NOT NULL DEFAULT '')"
+            "unused_at TEXT NOT NULL DEFAULT '', "
+            "etf INTEGER NOT NULL DEFAULT 1)"
         )
+        cols = [row[1]
+                for row in con.execute("PRAGMA table_info(members)").fetchall()]
+        if "etf" not in cols:
+            con.execute(
+                "ALTER TABLE members ADD COLUMN etf INTEGER NOT NULL DEFAULT 1"
+            )
         con.execute(
             "CREATE TABLE IF NOT EXISTS etf_orders("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, "
@@ -77,12 +86,19 @@ def ensure(db: Path) -> None:
         )
 
 
-def add_member(db: Path, strategy: str, joined: str) -> None:
-    """참여 전략 등록. 이미 있으면 joined 유지."""
+def add_member(db: Path, strategy: str, joined: str, *,
+               etf: bool = True) -> None:
+    """참여 전략 등록. 이미 있으면 joined 유지, etf 만 갱신."""
+    # PLAN_FUNDING_ENGINE D13 — etf 인자 없이 다시 add 하면 1 로 덮어씀
     with connect_rw(db) as con:
         con.execute(
-            "INSERT OR IGNORE INTO members(strategy, joined) VALUES (?, ?)",
-            (strategy, joined),
+            "INSERT OR IGNORE INTO members(strategy, joined, etf)"
+            " VALUES (?, ?, ?)",
+            (strategy, joined, int(etf)),
+        )
+        con.execute(
+            "UPDATE members SET etf = ? WHERE strategy = ?",
+            (int(etf), strategy),
         )
 
 
@@ -93,6 +109,31 @@ def members(db: Path) -> list[str]:
             "SELECT strategy FROM members ORDER BY strategy"
         ).fetchall()
     return [row[0] for row in rows]
+
+
+def member_etf(db: Path, strategy: str) -> bool:
+    """전략의 ETF 참여 여부. 없는 strategy 면 KeyError."""
+    # PLAN_FUNDING_ENGINE D13
+    with connect_ro(db) as con:
+        try:
+            row = con.execute(
+                "SELECT etf FROM members WHERE strategy = ?", (strategy,)
+            ).fetchone()
+        except sqlite3.OperationalError:
+            cols = [r[1]
+                    for r in con.execute(
+                        "PRAGMA table_info(members)").fetchall()]
+            if "etf" in cols:
+                raise
+            exists = con.execute(
+                "SELECT 1 FROM members WHERE strategy = ?", (strategy,)
+            ).fetchone()
+            if exists is None:
+                raise KeyError(f"없는 strategy: {strategy!r}")
+            return True
+    if row is None:
+        raise KeyError(f"없는 strategy: {strategy!r}")
+    return bool(row[0])
 
 
 def record_order(db: Path, *, date: str, side: str, qty: int, price: int,
@@ -238,12 +279,18 @@ def unused_of(db: Path, strategy: str) -> int:
     return int(row[0])
 
 
-def total_unused(db: Path) -> int:
-    """전 members unused 합. members 없으면 0."""
+def total_unused(db: Path, *, etf_only: bool = False) -> int:
+    """전 members unused 합. etf_only 면 etf=1 회원만. members 없으면 0."""
+    # PLAN_FUNDING_ENGINE D13
     with connect_ro(db) as con:
-        row = con.execute(
-            "SELECT COALESCE(SUM(unused), 0) FROM members"
-        ).fetchone()
+        if etf_only:
+            row = con.execute(
+                "SELECT COALESCE(SUM(unused), 0) FROM members WHERE etf = 1"
+            ).fetchone()
+        else:
+            row = con.execute(
+                "SELECT COALESCE(SUM(unused), 0) FROM members"
+            ).fetchone()
     return int(row[0])
 
 
@@ -593,7 +640,8 @@ def sweep(db: Path, *, io, today: str, enabled: bool = True) -> dict:
     if not enabled:
         sync_reservation(db, io=io, today=today)
         return {"ordered_qty": 0, "notes": notes}
-    idle = (total_unused(db) - etf_position(db)["cost"]
+    # PLAN_FUNDING_ENGINE D13 — sweep 는 etf=1 회원 몫만 쓴다
+    idle = (total_unused(db, etf_only=True) - etf_position(db)["cost"]
             - pending_buy_amount(db, today))
     cash = cash_view(io.cash(), io.reservations(), members(db))
     if cash is None:

@@ -276,6 +276,8 @@ def status_lines(strategies=None, balance_fn=None, db_path=None, funding_db=None
         slot = all_reservations.get(name)
         if name in engine_members:
             line += f" · 엔진 경유 — 안 쓴 몫 {fe.unused_of(funding_db, name):,} (엔진 원장)"
+            if not fe.member_etf(funding_db, name):  # PLAN_FUNDING_ENGINE D13
+                line += " · ETF 제외"
         elif isinstance(slot, dict) and "reserve" in slot:
             line += (
                 f" · 예산 {_fmt_num(slot.get('capital_total'))}"

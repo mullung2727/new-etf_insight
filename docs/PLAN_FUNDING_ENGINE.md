@@ -14,12 +14,18 @@
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P1 엔진 + 유증(유상·무상)
+- [x] 구현·테스트 머지 (PR #141, 2026-10-31)
+- [x] 운영 등록 (스케줄 작업·config) — `funding-sweep` 15:21 등록, 유무상 config `funding_enabled=true` (2026-10-31 22시)
+- [ ] 첫 실가동 확인 (날짜) — 마감 매수 ✅ 11-02(2주)·11-11(1주), 무상 매도 경로 ✅ 11-11 15:00(2주 → 유무상 1,408,371 허가), 수능일 시각 이동 ✅ 11-19 16:31. **유상 장전 매도 경로 미발생**(P0-3 장전 시장가 실측도 이때) → 첫 발생일 확인 후 체크
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
+
+### P2 되돌림 — 예산 창구만 엔진, ETF 매수 대상 제외 (D13)
 - [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (스케줄 작업·config) — `funding-sweep` 작업 등록, 엔진 config
-- [ ] 첫 실가동 확인 (날짜) — 유상 매도 경로·무상 매도 경로·마감 매수 각각
+- [ ] 운영 등록 (스케줄 작업·config) — 해당 없음 (기존 rebound-order·verify 그대로, 엔진 원장 members 에 자동 등록)
+- [ ] 첫 실가동 확인 (날짜)
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
-### P2~P6 나머지 전략 이전 (되돌림 → Jev → 엔벌로프 → 스윙 → 초소형, 순서 검토 필요)
+### P3~P6 나머지 전략 이전 (Jev → 엔벌로프 → 스윙 → 초소형, 순서 검토 필요 — Jev·엔벌로프·스윙은 중지 상태)
 - [ ] 구현·테스트 머지 (PR #)
 - [ ] 운영 등록 (스케줄 작업·config)
 - [ ] 첫 실가동 확인 (날짜)
@@ -61,6 +67,8 @@
 | D10 | 상주 서버 대신 공용 함수 + 파일 잠금 | 전략이 서로 다른 시각에 따로 도는 프로세스, 서버 추가는 운영 부담 | Claude 제안 — 검토 필요 |
 | D11 | 유무상 추가자금(extra, 슬롯 찬 대기 건에 사용자가 입금·배정하는 돈)도 엔진 몫에 포함 → `rights-dip-funds` 스킬의 입금 확인을 "현금 + ETF 평가액" 기준으로 갱신 | 매수는 기존대로 배치가 함, 그 전까지 ETF 이자 | 사용자 (2026-10-30) |
 | D12 | ETF 실현손익은 어느 전략 돈이었든 **전액 되돌림 예산**에 붙인다 (P1 유무상 단독일 때도) | 배분 계산 없이 단순하게 | 사용자 (2026-10-30) |
+| D13 | 되돌림은 엔진 회원(예산 요청·안 쓴 몫·예약 한 줄)이지만 **15:21 ETF 매수 계산에서 제외** (`members.etf = 0`) | 되돌림은 매일 09:01 매수·15:20 전량 청산 → 넣으면 거의 매일 ETF 왕복. 실측(2026-11-11 매도 2주): 수수료 640원 = 편도 0.015%·1주 왕복 약 320원, 보유 이자 하루 약 100원/주(11-02~11 실보유 연 3.4%) → 3~4일 넘게 놀아야 본전 | 사용자 (2026-11-19, 선택지 1) · Claude 제안 |
+| D14 | 되돌림 자금 요청 시점 = 09:00 시가 확보 후 종목당 금액 정한 직후 `request_funds(preopen=False)`(부족하면 장중 시장가 ETF 매도 → 즉시 체결 확인). 늦은 시가 주문도 같은 방식 | 필요액은 시가 가드 뒤 선택 수(nsel)로 정해짐. 되돌림 돈은 ETF 에 없으니 매도는 다른 회원이 현금을 먼저 쓴 날만 생김 | Claude |
 
 ## 4. 구조
 
@@ -121,8 +129,26 @@
 - 되돌림 `ledger.budget` 에 `etf_pnl` 합산 (D12)
 - `rights-dip-funds` 스킬 입금 확인 = 현금 + ETF 평가액 (D11)
 
-### P2~P6 전략 이전
-- 그 전략 `available_cash`·`write_reservation` 호출을 `request_funds`·`budget_status` 로 교체, 엔진 members 에 추가. 한 반영에 하나, 다음 거래일 실로그 확인 후 다음
+### P2 되돌림 (D13·D14)
+
+공용 (`etl/scripts/funding_engine.py`, git):
+- `members` 에 `etf INTEGER NOT NULL DEFAULT 1` 열 (`ensure` 에서 없으면 ALTER — 기존 rights_dip 행은 1).
+- `add_member(db, strategy, joined, *, etf: bool = True)` — 새 행은 etf 값으로, 이미 있으면 joined 유지·etf 만 갱신.
+- `total_unused(db, *, etf_only: bool = False)` — etf_only 면 `etf = 1` 회원만.
+- `sweep` idle = `total_unused(etf_only=True)` − ETF 원가 − 대기 매수 (나머지 동일). `engine_reserve`·`request_funds`·`available` 은 전 회원 그대로 (되돌림 돈도 안 옮긴 전략에서 보호).
+- `etl/scripts/strategy_budget.py` status: 엔진 회원 줄에 `etf=0` 이면 "(ETF 제외)" 표시.
+
+비공개 (`research/private/intraday_rebound/live/`, gitignore — 20시 후 백업·사본 반영):
+- `order.py main`: 시작 시 `fe.ensure` → `fe.add_member(fe.DB, "rebound", today, etf=False)` → 옛 예약 줄 `write_reservation(url, 0, …, "rebound")` 1회(이중 차감 방지, 유무상 `order.py:594` 와 같은 방식).
+- 예약 쓰기 3곳(`order.py` 후보 없음 경로·주문 후, `run_late.refresh_reserve`, `verify.py`) → `fe.set_unused(fe.DB, "rebound", max(0, budget − sent − open_cost), now)` + `fe.sync_reservation(fe.DB, io=fe.LiveIO(url), today=today)`.
+- 주문가능 조회 2곳(`order.py main` 의 `available_cash(url, strategy="rebound")`, `run_late.settle`) → `set_unused` 최신화 후 `fe.request_funds(fe.DB, "rebound", need, io=fe.LiveIO(url, dry_run=…), today=today, preopen=False)["granted"]`, notes 는 알림에 붙임. `need` = 종목당 금액 × 주문할 종목 수 — 종목당 금액 계산은 `size_orders` 와 같은 함수(`slot_amount(capital, nsel)`)로 뽑아 공유.
+- `ledger.budget` 은 그대로(D12 etf_pnl 이미 합산).
+- 순서: 오늘 밤(11-19) 반영하는 `live_candfile`(후보 파일·예산 중간안) 이 live 가 된 뒤, 그 live 에서 새 사본을 떠 작업.
+
+중단 스위치: 되돌림 config `funding_enabled`(기본 false) — false 면 기존 `available_cash`·`write_reservation` 경로 그대로 (유무상과 같은 방식).
+
+### P3~P6 전략 이전
+- 그 전략 `available_cash`·`write_reservation` 호출을 `request_funds`·`budget_status` 로 교체, 엔진 members 에 추가. 한 반영에 하나, 다음 거래일 실로그 확인 후 다음. 매일 전량 청산하는 전략은 D13 처럼 `etf=0` 검토
 
 ### P7
 - 모든 전략이 members 면 예약 파일 읽기·쓰기 제거
@@ -155,6 +181,14 @@
 | 결과 불명 재전송 금지 (부정) | 매도 응답 불명 → 재주문 0, ⚠ |
 | enabled=false 면 기존 동작 (부정) | ETF 주문 0, 유증 기존 테스트 전부 통과 |
 | ETF 손익 → 되돌림 | 매도 체결 → 되돌림 예산 += 실현손익, 유무상 capital 불변 |
+| P2 D13 되돌림 몫은 ETF 로 안 감 (부정) | 회원 rights_dip(etf=1) 안 쓴 몫 200만 + rebound(etf=0) 600만, ETF 0 → sweep 매수액 ≤ 200만 |
+| P2 되돌림 돈도 안 옮긴 전략에서 보호 | 위 상태 engine 예약 = 800만 − ETF 원가 |
+| P2 기존 회원 etf 기본 1 | 옛 members 표(etf 열 없음) ensure 후 rights_dip.etf = 1 |
+| P2 add_member etf 갱신·joined 유지 | 이미 있는 rebound 를 etf=False 로 다시 add → joined 그대로, etf 0 |
+| P2 되돌림 요청 = 현금 충분하면 매도 0 | 비공개 테스트: request_funds 목 granted=need → size_orders 그대로 |
+| P2 되돌림 요청 부족 → 비례 축소 | granted < need → 종목당 비례 축소(기존 규칙) |
+| P2 funding_enabled=false 면 기존 경로 (부정) | available_cash·write_reservation 호출, fe 호출 0 |
+| P2 옛 rebound 예약 줄 0 | 시작 시 write_reservation(…, 0, …, "rebound") 1회 |
 
 ## 구현 차이
 - 원래 엔진이 전략 예산 함수를 직접 받음 → 실제 전략이 배치 끝에 안 쓴 몫을 엔진에 알림(`set_unused`) (공용 코드가 비공개 전략 코드를 import 하지 않게)
@@ -165,3 +199,4 @@
 - 원래 15:21 매수·15:31 확인 별개 → 실제 작업 하나(`funding-sweep`)가 매수 후 15:31 까지 기다려 확인
 - 애프터마켓 매수(D8 보완)는 P0-5 실측 전이라 미구현 — 마감 미체결은 다음날로
 - 중단 스위치: 엔진 config 대신 유무상 config `funding_enabled` + `funding-sweep` 작업 끄기
+- 원래 ETF 손익은 수수료·세금 포함 → 실제 체결가 차이만(수수료 빠짐). 2026-11-11 매도: 엔진 +1,810 vs 증권사 실현(`/orders/realized`) +1,170(수수료 640). 되돌림 예산이 그만큼 많게 잡힘 — 별도 수정 필요(P2 와 분리, 미결)
