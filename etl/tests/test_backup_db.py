@@ -27,9 +27,40 @@ from scripts.backup_db import (
     run,
 )
 
+_ENV_FILE_PATCH = mock.patch(
+    "new_etf_insight.data_paths._read_env_file", return_value=None
+)
+# main() 안 load_dotenv 가 저장소 .env 를 os.environ 에 올려 이후 테스트를 오염시켜 차단
+_DOTENV_PATCH = mock.patch("dotenv.load_dotenv", return_value=False)
+_SAVED_NEW_ETF_DATA_ROOT = None
+_SAVED_NEW_ETF_DATA_ROOT_SET = False
+
+
+def setUpModule():
+    # 저장소 .env 의 실제 데이터 루트를 절대 읽지 않게 (2026-11-19 실데이터 47GB 복사 사고)
+    global _SAVED_NEW_ETF_DATA_ROOT, _SAVED_NEW_ETF_DATA_ROOT_SET
+    _ENV_FILE_PATCH.start()
+    _DOTENV_PATCH.start()
+    if "NEW_ETF_DATA_ROOT" in os.environ:
+        _SAVED_NEW_ETF_DATA_ROOT = os.environ.pop("NEW_ETF_DATA_ROOT")
+        _SAVED_NEW_ETF_DATA_ROOT_SET = True
+    else:
+        _SAVED_NEW_ETF_DATA_ROOT = None
+        _SAVED_NEW_ETF_DATA_ROOT_SET = False
+
+
+def tearDownModule():
+    _DOTENV_PATCH.stop()
+    _ENV_FILE_PATCH.stop()
+    if _SAVED_NEW_ETF_DATA_ROOT_SET:
+        os.environ["NEW_ETF_DATA_ROOT"] = _SAVED_NEW_ETF_DATA_ROOT
+
 
 class _BackupCase(unittest.TestCase):
     def setUp(self):
+        p = mock.patch.dict(os.environ)
+        p.start()
+        self.addCleanup(p.stop)
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name) / "proj"
@@ -235,6 +266,12 @@ class TestMainDriveMissing(unittest.TestCase):
         self.assertEqual(rc, 1)
         m_notify.assert_called_once()
         self.assertIn("외장하드", m_notify.call_args[0][0])
+
+    def test_main_does_not_load_repo_env(self):
+        with mock.patch("scripts.backup_db.find_backup_root", return_value=None):
+            with mock.patch("scripts.backup_db.notify", return_value=True):
+                main()
+        self.assertNotIn("NEW_ETF_DATA_ROOT", os.environ)
 
 
 class TestPickSlot(unittest.TestCase):
@@ -613,3 +650,12 @@ class DiskLinesTest(_BackupCase):
         self.assertEqual(rc, 1)
         m_notify.assert_called_once()
         self.assertIn("저장공간 외장", m_notify.call_args[0][0][:1900])
+
+
+class TestRepoEnvIsolation(unittest.TestCase):
+    def test_isolated_from_repo_env(self):
+        from new_etf_insight.data_paths import data_root
+
+        with mock.patch.dict(os.environ):
+            os.environ.pop("NEW_ETF_DATA_ROOT", None)
+            self.assertIsNone(data_root())
