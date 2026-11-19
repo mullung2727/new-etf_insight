@@ -3,6 +3,7 @@
 Usage (from etl/):
     PYTHONPATH=. uv run python -m unittest tests.test_backup_db -v
 """
+from collections import namedtuple
 import os
 import sqlite3
 import stat
@@ -16,6 +17,7 @@ from scripts.backup_db import (
     backup_duckdb,
     backup_file,
     backup_sqlite,
+    disk_lines,
     find_backup_root,
     is_fresh,
     iter_code_sources,
@@ -528,3 +530,63 @@ class TestMainWithDataRoot(_BackupCase):
         self.assertIn("오류", m_notify.call_args[0][0])
         self.assertFalse((backup_root / "slot_A").exists())
         self.assertFalse((backup_root / "slot_B").exists())
+
+
+class DiskLinesTest(_BackupCase):
+    def _usage(self, total=1000, used=400, free=600):
+        GB = 1024**3
+        Usage = namedtuple("Usage", "total used free")
+        return Usage(total=total * GB, used=used * GB, free=free * GB)
+
+    def _fake_usage(self, **kw):
+        u = self._usage(**kw)
+
+        def fake(path):
+            return u
+
+        return fake
+
+    def test_disk_lines_format(self):
+        path = Path("E:/backup")
+        lines = disk_lines({"외장": path}, usage_fn=self._fake_usage())
+        self.assertEqual(len(lines), 1)
+        self.assertIn("남은 600 GB / 전체 1000 GB (사용 40%)", lines[0])
+        self.assertIn(f"저장공간 외장 {path.anchor}:", lines[0])
+
+    def test_disk_lines_same_drive_once(self):
+        lines = disk_lines(
+            {"외장": Path("E:/a"), "데이터": Path("e:/b")},
+            usage_fn=self._fake_usage(),
+        )
+        self.assertEqual(len(lines), 1)
+        self.assertIn("외장", lines[0])
+        self.assertNotIn("데이터", lines[0])
+
+    def test_disk_lines_error(self):
+        def boom(path):
+            raise OSError("nope")
+
+        lines = disk_lines({"외장": Path("E:/x")}, usage_fn=boom)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("저장공간 외장: 조회 실패 (nope)", lines[0])
+
+    def test_main_message_includes_disk(self):
+        self._write("research/private/a/b.json", '{"k": 1}')
+        fixed = self._usage()
+        with mock.patch(
+            "scripts.backup_db.find_backup_root", return_value=self.dest
+        ):
+            with mock.patch(
+                "scripts.backup_db.notify", return_value=True
+            ) as m_notify:
+                with mock.patch("scripts.backup_db.PROJECT_ROOT", self.root):
+                    with mock.patch(
+                        "scripts.backup_db.shutil.disk_usage",
+                        return_value=fixed,
+                    ):
+                        with mock.patch.dict(os.environ):
+                            os.environ.pop("NEW_ETF_DATA_ROOT", None)
+                            rc = main()
+        self.assertEqual(rc, 0)
+        m_notify.assert_called_once()
+        self.assertIn("저장공간 외장", m_notify.call_args[0][0])

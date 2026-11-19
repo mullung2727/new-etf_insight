@@ -389,6 +389,38 @@ def sync_code_backup(project_root: Path, code_root: Path) -> dict:
     return run(project_root, code_root, iter_code_sources(project_root))
 
 
+def disk_lines(
+    paths: dict[str, Path], usage_fn=shutil.disk_usage
+) -> list[str]:
+    """라벨→경로 마다 '저장공간 {라벨} {드라이브}: 남은 {free:.0f} GB / 전체 {total:.0f} GB (사용 {pct:.0f}%)' 한 줄.
+
+    드라이브 = Path(path).anchor (예 'E:\\'). 같은 드라이브(anchor 대소문자 무시)는 처음 라벨 한 줄만.
+    usage_fn 예외면 '저장공간 {라벨}: 조회 실패 ({exc})'. GB = 1024**3.
+    """
+    GB = 1024**3
+    lines: list[str] = []
+    seen: set[str] = set()
+    for label, path in paths.items():
+        anchor = Path(path).anchor
+        key = anchor.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            u = usage_fn(path)
+        except Exception as exc:
+            lines.append(f"저장공간 {label}: 조회 실패 ({exc})")
+            continue
+        free = u.free / GB
+        total = u.total / GB
+        pct = u.used / u.total * 100
+        lines.append(
+            f"저장공간 {label} {anchor}: 남은 {free:.0f} GB / "
+            f"전체 {total:.0f} GB (사용 {pct:.0f}%)"
+        )
+    return lines
+
+
 def _send(message: str) -> None:
     try:
         notify(message, channel="batch")
@@ -477,6 +509,11 @@ def main(argv=None) -> int:
         ]
         for rel, msg in result["failed"][:20]:
             lines.append(f"{rel}: {msg}")
+        paths = {"외장": backup_root}
+        if root is not None:
+            paths["데이터"] = root
+        paths["시스템"] = PROJECT_ROOT
+        lines.extend(disk_lines(paths))
         _send("\n".join(lines))
         return 1 if result["failed"] else 0
     except Exception as exc:
