@@ -24,10 +24,13 @@ from scripts.run_orderbook_research_recorder import (
     disk_ok,
     fresh_token,
     load_token,
+    open_day_db,
     parse_real,
     pick_codes,
+    read_rebound_cand,
     rotate_if_short,
     run_recording,
+    start_tags,
     with_etfs,
     _wait_backoff,
 )
@@ -133,7 +136,18 @@ class FakeWs:
                 return get_task.result()
             raise StopAsyncIteration
         if self.hang:
-            await self._release.wait()
+            get_task = asyncio.ensure_future(self._queue.get())
+            rel_task = asyncio.ensure_future(self._release.wait())
+            done, pending = await asyncio.wait(
+                [get_task, rel_task],
+                return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+            if get_task in done and not get_task.cancelled():
+                try:
+                    return get_task.result()
+                except asyncio.CancelledError:
+                    pass
         raise StopAsyncIteration
 
 
@@ -174,6 +188,19 @@ def _reg_frames(wss):
             except ValueError:
                 continue
             if isinstance(m, dict) and m.get("trnm") == "REG":
+                out.append(m)
+    return out
+
+
+def _remove_frames(wss):
+    out = []
+    for ws in wss:
+        for raw in ws.sent:
+            try:
+                m = json.loads(raw)
+            except ValueError:
+                continue
+            if isinstance(m, dict) and m.get("trnm") == "REMOVE":
                 out.append(m)
     return out
 
@@ -754,6 +781,288 @@ class BrokerWatchCase(unittest.TestCase):
     def test_stream_end_marks_lost(self):
         w = self._start([], lambda: {"connected": True})
         self.assertTrue(w.sse_lost())
+
+
+class CodesTableCase(_TmpCase):
+    def test_codes_table_created(self):
+        db = self.tmp / "day.sqlite3"
+        con = open_day_db(db)
+        try:
+            cols = [r[1] for r in con.execute('PRAGMA table_info("codes")')]
+        finally:
+            con.close()
+        self.assertEqual(cols, ["code", "tag", "added_rt"])
+
+
+class StartTagsCase(unittest.TestCase):
+    def test_start_tags_vol30_etf_overlap(self):
+        self.assertEqual(
+            start_tags(["069500", "005930"]),
+            [("069500", "vol30"), ("005930", "vol30"), ("069500", "etf"),
+             ("122630", "etf"), ("114800", "etf"), ("229200", "etf"),
+             ("233740", "etf"), ("251340", "etf")],
+        )
+
+
+class ReadReboundCandCase(_TmpCase):
+    def test_read_rebound_cand(self):
+        p = self.tmp / "c.csv"
+        p.write_text("code,src\n005930,H\n000660,F\n035720,V3\n", encoding="utf-8")
+        self.assertEqual(
+            read_rebound_cand(p),
+            [("005930", "rebound_H"), ("000660", "rebound_F"), ("035720", "rebound_V3")],
+        )
+        self.assertEqual(read_rebound_cand(self.tmp / "nope.csv"), [])
+        bad_h = self.tmp / "bad_h.csv"
+        bad_h.write_text("ticker,src\n005930,H\n", encoding="utf-8")
+        self.assertEqual(read_rebound_cand(bad_h), [])
+        bad_r = self.tmp / "bad_r.csv"
+        bad_r.write_text(
+            "code,src\nABC,H\n00593,H\nabc123,H\n005930,X\n005930,Z\n005930,H\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(read_rebound_cand(bad_r), [("005930", "rebound_H")])
+        bom = self.tmp / "bom.csv"
+        bom.write_bytes(b"\xef\xbb\xbfcode,src\n005930,H\n")
+        self.assertEqual(read_rebound_cand(bom), [("005930", "rebound_H")])
+        dup = self.tmp / "dup.csv"
+        dup.write_text(
+            "code,src\n005930,H\n005930,H\n000660,F\n005930,H\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(
+            read_rebound_cand(dup),
+            [("005930", "rebound_H"), ("000660", "rebound_F")],
+        )
+
+
+class CandLoopCase(_TmpCase):
+    def _run(self, **kw):
+        kw.setdefault("sleep_fn", _no_sleep)
+        kw.setdefault("now_fn", _fixed_now)
+        kw.setdefault("token_expired_fn", lambda: False)
+        with mock.patch("asyncio.sleep", _no_sleep):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                return asyncio.run(run_recording(**kw))
+
+    def _codes_rows(self, db):
+        con = sqlite3.connect(db)
+        try:
+            return sorted(con.execute("SELECT code, tag FROM codes").fetchall())
+        finally:
+            con.close()
+
+    def test_cand_added_without_duplicate_reg(self):
+        a, b = "005930", "000660"
+        db = self.tmp / "day.sqlite3"
+        cand = self.tmp / "rebound_cand_20261013.csv"
+        cand.write_text(f"code,src\n{a},V3\n{b},F\n", encoding="utf-8")
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            wss.append(ws)
+            return ws
+
+        watch = FakeWatch(connected=True)
+        res = self._run(
+            date="20261013", codes=[a], db_path=db, watch=watch,
+            connect_fn=_connect,
+            load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+            notify_fn=mock.Mock(), out_dir=self.tmp,
+            now_fn=_ticking_now(5),
+            tags=[(a, "vol30")], cand_file=cand, cand_check_sec=0,
+        )
+        self.assertEqual(res["reason"], "window_end")
+        regs = _reg_frames(wss)
+        self.assertGreaterEqual(len(regs), 2)
+        self.assertEqual(regs[0]["data"][0]["item"], [a])
+        self.assertEqual(regs[1]["data"][0]["item"], [b])
+        self.assertEqual(
+            self._codes_rows(db),
+            sorted([(a, "vol30"), (a, "rebound_V3"), (b, "rebound_F")]),
+        )
+        self.assertEqual(res["added"], 1)
+
+    def test_cand_reread_idempotent(self):
+        a, b = "005930", "000660"
+        db = self.tmp / "day.sqlite3"
+        cand = self.tmp / "rebound_cand_20261013.csv"
+        cand.write_text(f"code,src\n{a},V3\n{b},F\n", encoding="utf-8")
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            wss.append(ws)
+            return ws
+
+        watch = FakeWatch(connected=True)
+        res = self._run(
+            date="20261013", codes=[a], db_path=db, watch=watch,
+            connect_fn=_connect,
+            load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+            notify_fn=mock.Mock(), out_dir=self.tmp,
+            now_fn=_ticking_now(10),
+            tags=[(a, "vol30")], cand_file=cand, cand_check_sec=0,
+        )
+        self.assertEqual(res["reason"], "window_end")
+        self.assertEqual(len(_reg_frames(wss)), 2)
+        self.assertEqual(
+            self._codes_rows(db),
+            sorted([(a, "vol30"), (a, "rebound_V3"), (b, "rebound_F")]),
+        )
+        self.assertEqual(res["added"], 1)
+
+    def test_reconnect_reregisters_added(self):
+        a, b = "005930", "000660"
+        db = self.tmp / "day.sqlite3"
+        cand = self.tmp / "rebound_cand_20261013.csv"
+        cand.write_text(f"code,src\n{b},F\n", encoding="utf-8")
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            wss.append(ws)
+            return ws
+
+        real_sleep = asyncio.sleep  # _run 이 asyncio.sleep 을 _no_sleep 으로 가리므로 미리 보관
+
+        async def _sleep(sec):
+            await real_sleep(0)  # recv task 가 닫힘을 처리할 차례를 준다
+            if len(wss) == 1 and not wss[0].close_called and len(_reg_frames(wss)) >= 2:
+                # 추가 REG([b])가 첫 ws 에 나간 뒤 서버 종료 흉내 → recv 끝·close_code 1006
+                await wss[0].close()
+                await real_sleep(0)
+            return None
+
+        watch = FakeWatch(connected=True)
+        res = self._run(
+            date="20261013", codes=[a], db_path=db, watch=watch,
+            connect_fn=_connect,
+            load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+            notify_fn=mock.Mock(), out_dir=self.tmp,
+            now_fn=_ticking_now(30), sleep_fn=_sleep,
+            tags=[(a, "vol30")], cand_file=cand, cand_check_sec=0,
+        )
+        self.assertGreaterEqual(len(wss), 2)
+        regs = _reg_frames(wss)
+        self.assertGreaterEqual(len(regs), 3)
+        last_items = regs[-1]["data"][0]["item"]
+        self.assertIn(a, last_items)
+        self.assertIn(b, last_items)
+        self.assertIn((b, "rebound_F"), self._codes_rows(db))
+
+    def test_cap_100(self):
+        base = [f"{i:06d}" for i in range(1, 100)]
+        db = self.tmp / "day.sqlite3"
+        cand = self.tmp / "rebound_cand_20261013.csv"
+        cand.write_text(
+            "code,src\n900001,F\n900002,F\n900003,F\n", encoding="utf-8"
+        )
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            wss.append(ws)
+            return ws
+
+        watch = FakeWatch(connected=True)
+        res = self._run(
+            date="20261013", codes=list(base), db_path=db, watch=watch,
+            connect_fn=_connect,
+            load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+            notify_fn=mock.Mock(), out_dir=self.tmp,
+            now_fn=_ticking_now(5),
+            tags=[(c, "vol30") for c in base],
+            cand_file=cand, cand_check_sec=0,
+        )
+        regs = _reg_frames(wss)
+        self.assertEqual(len(regs), 2)
+        self.assertEqual(len(regs[0]["data"][0]["item"]), 99)
+        self.assertEqual(regs[1]["data"][0]["item"], ["900001"])
+        rows = self._codes_rows(db)
+        self.assertEqual(len(rows), 100)
+        self.assertIn(("900001", "rebound_F"), rows)
+        self.assertNotIn(("900002", "rebound_F"), rows)
+        self.assertNotIn(("900003", "rebound_F"), rows)
+        self.assertEqual(res["added"], 1)
+
+    def test_bad_cand_file_ignored(self):
+        a = "005930"
+        db = self.tmp / "day.sqlite3"
+
+        def _boom(p):
+            raise RuntimeError("bad file")
+
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            wss.append(ws)
+            return ws
+
+        watch = FakeWatch(connected=True)
+        res = self._run(
+            date="20261013", codes=[a], db_path=db, watch=watch,
+            connect_fn=_connect,
+            load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+            notify_fn=mock.Mock(), out_dir=self.tmp,
+            now_fn=_ticking_now(5),
+            tags=[(a, "vol30")], cand_file=self.tmp / "bad.csv",
+            cand_check_sec=0, read_cand_fn=_boom,
+        )
+        self.assertEqual(res["reason"], "window_end")
+        self.assertEqual(res["added"], 0)
+        self.assertEqual(self._codes_rows(db), [(a, "vol30")])
+
+    def test_add_reg_failure_continues(self):
+        a, b = "005930", "000660"
+        db = self.tmp / "day.sqlite3"
+        cand = self.tmp / "rebound_cand_20261013.csv"
+        cand.write_text(f"code,src\n{b},F\n", encoding="utf-8")
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            orig_send = ws.send
+            cnt = {"n": 0}
+
+            async def _send(data):
+                try:
+                    m = json.loads(data) if isinstance(data, str) else {}
+                except ValueError:
+                    m = {}
+                if isinstance(m, dict) and m.get("trnm") == "REG":
+                    cnt["n"] += 1
+                    if cnt["n"] >= 2:
+                        ws.sent.append(data)
+                        ws._queue.put_nowait(json.dumps(
+                            {"trnm": "REG", "return_code": 1, "return_msg": "fail"}))
+                        ws._reg_answered = True
+                        return
+                await orig_send(data)
+
+            ws.send = _send
+            wss.append(ws)
+            return ws
+
+        watch = FakeWatch(connected=True)
+        res = self._run(
+            date="20261013", codes=[a], db_path=db, watch=watch,
+            connect_fn=_connect,
+            load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+            notify_fn=mock.Mock(), out_dir=self.tmp,
+            now_fn=_ticking_now(5),
+            tags=[(a, "vol30")], cand_file=cand, cand_check_sec=0,
+        )
+        self.assertEqual(res["reason"], "window_end")
+        self.assertEqual(res["added"], 0)
+        self.assertEqual(self._codes_rows(db), [(a, "vol30")])
+        self.assertGreaterEqual(len(_reg_frames(wss)), 2)
+        rems = _remove_frames(wss)
+        self.assertTrue(rems)
+        self.assertEqual(rems[-1]["data"][0]["item"], [a])
 
 
 class NoTokenEndpointCase(unittest.TestCase):
