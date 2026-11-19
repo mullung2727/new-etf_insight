@@ -21,7 +21,7 @@
 
 ### P2 되돌림(예산 창구만, ETF 제외 D13) + 초소형 msig (D15 — 한 번에 반영)
 - [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (스케줄 작업·config) — 해당 없음 (기존 rebound-order·verify 그대로, 엔진 원장 members 에 자동 등록)
+- [ ] 운영 등록 (스케줄 작업·config) — 스케줄 작업은 그대로. 반영 후 되돌림·msig live config 에 `funding_enabled: true` (사용자 11-19 "켜둬"), 다음 거래일 엔진 원장 members 에 rebound(etf=0)·msig(etf=1) 등록 확인
 - [ ] 첫 실가동 확인 (날짜)
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
@@ -68,7 +68,7 @@
 | D11 | 유무상 추가자금(extra, 슬롯 찬 대기 건에 사용자가 입금·배정하는 돈)도 엔진 몫에 포함 → `rights-dip-funds` 스킬의 입금 확인을 "현금 + ETF 평가액" 기준으로 갱신 | 매수는 기존대로 배치가 함, 그 전까지 ETF 이자 | 사용자 (2026-10-30) |
 | D12 | ETF 실현손익은 어느 전략 돈이었든 **전액 되돌림 예산**에 붙인다 (P1 유무상 단독일 때도) | 배분 계산 없이 단순하게 | 사용자 (2026-10-30) |
 | D13 | 되돌림은 엔진 회원(예산 요청·안 쓴 몫·예약 한 줄)이지만 **15:21 ETF 매수 계산에서 제외** (`members.etf = 0`) | 되돌림은 매일 09:01 매수·15:20 전량 청산 → 넣으면 거의 매일 ETF 왕복. 실측(2026-11-11 매도 2주): 수수료 640원 = 편도 0.015%·1주 왕복 약 320원, 보유 이자 하루 약 100원/주(11-02~11 실보유 연 3.4%) → 3~4일 넘게 놀아야 본전 | 사용자 (2026-11-19, 선택지 1) · Claude 제안 |
-| D15 | 초소형(msig)도 P2 에 함께 넣어 되돌림과 **같은 날 반영** (D2 "한 반영에 하나" 의 예외). msig 는 `etf=1` | msig 안 쓴 몫은 남는 현금을 매달 되돌림에 대여(LIVE_DESIGN L3c)하고 남은 약 20만뿐 → ETF 1주(약 107만)도 안 돼 실제 매매 영향 없음, 목적은 예산 창구 통일(P7) | 사용자 (2026-11-19 "영향없으니 한번에") · etf=1 은 Claude |
+| D15 | 초소형(msig)도 P2 에 함께 넣어 되돌림과 **같은 날 반영** (D2 "한 반영에 하나" 의 예외). msig 는 `etf=1` | msig 안 쓴 몫은 남는 현금을 매달 되돌림에 대여(LIVE_DESIGN L3c)하고 남은 약 20만뿐 → 혼자서는 ETF 1주(약 107만)도 안 됨. 단 sweep 은 etf=1 회원 몫을 **합친 뒤** 주 수를 정하므로 유무상 몫과 합쳐 1주를 넘기면 주문 수량이 바뀔 수 있다(그 1주 매도·매수는 엔진이 처리, 위험 작음). 목적은 예산 창구 통일(P7) | 사용자 (2026-11-19 "영향없으니 한번에") · etf=1 은 Claude |
 | D14 | 되돌림 자금 요청 시점 = 09:00 시가 확보 후 종목당 금액 정한 직후 `request_funds(preopen=False)`(부족하면 장중 시장가 ETF 매도 → 즉시 체결 확인). 늦은 시가 주문도 같은 방식 | 필요액은 시가 가드 뒤 선택 수(nsel)로 정해짐. 되돌림 돈은 ETF 에 없으니 매도는 다른 회원이 현금을 먼저 쓴 날만 생김 | Claude |
 
 ## 4. 구조
@@ -151,8 +151,10 @@
 비공개 msig (`research/private/afa/live/`, D15):
 - `monitor.py main` 16:00: `write_reservation(url, scash, ev, "msig")` → `fe.add_member(fe.DB, "msig", today)`(etf 기본 1) · 옛 줄 `write_reservation(url, 0, ev, "msig")` · `fe.set_unused(fe.DB, "msig", max(0, round(scash)), now)` · `fe.sync_reservation(...)`.
 - `exec_batch.py cash()`(교체 기간 분할 매수 회차마다): `available_cash(url, strategy="msig")` → `set_unused(msig, max(0, strategy_cash − open_cost))` 후 `fe.request_funds(fe.DB, "msig", max(0, strategy_cash − open_cost), io=fe.LiveIO(url, dry_run=cfg["dry_run"]), today=today, preopen=False)["granted"]` 를 `limit_buy_cash` 의 첫 인자로. notes 는 exec 알림에 붙임.
-- 되돌림 대여(`apply_loan`)·정산(`settle`)은 config capital 이동이라 변경 없음.
+- 되돌림 대여(`apply_loan`)는 16:00 게시 **전**에 돌아 게시값이 대여 후 값 — 변경 없음. 정산(`settle_if_due`, 손익 20% 이체)은 게시 **뒤**라, 정산이 일어난 날은 정산 후 capital 로 `strategy_cash` 를 다시 계산해 한 번 더 게시한다(다음날 15:21 sweep 이 이체된 돈을 msig 몫으로 세지 않게, CodeRabbit #168).
 - 중단 스위치: msig config `funding_enabled`(기본 false).
+
+끄는 절차(되돌림·msig 공통, true → false): config 만 false 로 바꾸면 엔진 원장에 회원·안 쓴 몫이 남아 ① sweep 이 옛 몫으로 ETF 를 사고 ② `cash_view` 가 그 전략을 회원으로 보고 다시 쓰기 시작한 옛 예약 줄을 빼지 않는다. 그래서 끌 때는 ① 그 전략 `unused` 0 + engine 줄 재계산(`set_unused`·`sync_reservation`) ② members 에서 그 전략 행 삭제(지금은 함수 없음 — 수동 SQL 또는 그때 `remove_member` 추가) ③ config false ④ 다음 배치가 옛 예약 줄을 다시 씀 — 순서로. ETF 보유분은 엔진 원장에 남고 남은 회원(유무상) 몫으로 처리하되, 남은 회원 몫보다 많으면 초과분 매도 여부를 그때 사용자가 정한다.
 - 반영: 되돌림과 같은 날 20시 후, 각각 백업(`_bak_YYYYMMDD_funding`) 후 사본 복사.
 
 ### P3~P6 전략 이전
@@ -200,6 +202,7 @@
 | P2 msig 16:00 안 쓴 몫 게시 | monitor: set_unused(msig, scash)·sync_reservation, 옛 msig 줄 0 |
 | P2 msig 분할 매수 회차 자금 요청 | exec cash(): request_funds(msig, strategy_cash − open_cost) granted → limit_buy_cash |
 | P2 msig funding_enabled=false 면 기존 경로 (부정) | available_cash·write_reservation 호출, fe 호출 0 |
+| P2 msig 정산 뒤 다시 게시 | 정산으로 capital 바뀐 날 publish_unused 2회, 두 번째는 정산 후 capital 기준 |
 
 ## 구현 차이
 - 원래 엔진이 전략 예산 함수를 직접 받음 → 실제 전략이 배치 끝에 안 쓴 몫을 엔진에 알림(`set_unused`) (공용 코드가 비공개 전략 코드를 import 하지 않게)
