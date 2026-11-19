@@ -1173,6 +1173,61 @@ class CandLoopCase(_TmpCase):
             con.close()
         self.assertEqual(n, 1)
 
+    def test_start_tags_write_failure_retried(self):
+        import scripts.run_orderbook_research_recorder as rec
+
+        a, b = "005930", "000660"
+        db = self.tmp / "day.sqlite3"
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            wss.append(ws)
+            return ws
+
+        class _FailFirstStartWrite:
+            """첫 codes 쓰기(시작 tags)만 OperationalError, 이후는 그대로 위임."""
+
+            def __init__(self, real):
+                self._real = real
+                self._failed_once = False
+
+            def executemany(self, sql, seq=()):
+                rows = list(seq)
+                if (
+                    not self._failed_once
+                    and isinstance(sql, str)
+                    and "INTO codes" in sql
+                ):
+                    self._failed_once = True
+                    raise sqlite3.OperationalError("injected start tags write failure")
+                return self._real.executemany(sql, rows)
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+        real_open = rec.open_day_db
+
+        def _open_once(path):
+            return _FailFirstStartWrite(real_open(path))
+
+        tags = [(a, "vol30"), (b, "etf")]
+        watch = FakeWatch(connected=True)
+        with mock.patch.object(rec, "open_day_db", side_effect=_open_once):
+            res = self._run(
+                date="20261013", codes=[a, b], db_path=db, watch=watch,
+                connect_fn=_connect,
+                load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+                notify_fn=mock.Mock(), out_dir=self.tmp,
+                now_fn=_ticking_now(5),
+                tags=tags, cand_file=None, cand_check_sec=0,
+            )
+        self.assertEqual(res["reason"], "window_end")
+        self.assertEqual(self._codes_rows(db), sorted(tags))
+        regs = _reg_frames(wss)
+        self.assertEqual(len(regs), 1)  # 시작 REG만, 재시도는 REG 없음
+        self.assertEqual(regs[0]["data"][0]["item"], [a, b])
+
 
 class NoTokenEndpointCase(unittest.TestCase):
     def test_no_token_issuance_string(self):
