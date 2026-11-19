@@ -716,6 +716,7 @@ async def run_recording(
                 seen.add((_r[0], _r[1]))
         except Exception:
             pass
+        pending_tags: list[tuple[str, str]] = []
         if tags:
             try:
                 _rt0 = now_ns()
@@ -730,6 +731,7 @@ async def run_recording(
                 except Exception:
                     pass
                 print(f"[orderbook_research] {date} 시작 codes 기록 실패: {exc!r}")
+                pending_tags = [p for p in tags if p not in seen]
             else:
                 for _p in tags:
                     seen.add(_p)
@@ -871,12 +873,32 @@ async def run_recording(
                 if time.monotonic() - last_flush >= flush_sec:
                     _flush()
                     last_flush = time.monotonic()
-                if cand_file is not None and time.monotonic() - last_cand >= cand_check_sec:
+                if (cand_file is not None or pending_tags) and time.monotonic() - last_cand >= cand_check_sec:
                     last_cand = time.monotonic()
-                    try:
-                        pairs = read_cand(cand_file) or []
-                    except Exception:
-                        pairs = []
+                    if pending_tags:
+                        try:
+                            _rt = now_ns()
+                            con.executemany(
+                                "INSERT OR IGNORE INTO codes VALUES (?,?,?)",
+                                [(_c, _t, _rt) for _c, _t in pending_tags],
+                            )
+                            con.commit()
+                        except Exception as exc:
+                            try:
+                                con.rollback()
+                            except Exception:
+                                pass
+                            print(f"[orderbook_research] {date} 시작 codes 기록 실패 — 다음 확인 때 재시도: {exc!r}")
+                        else:
+                            for _p in pending_tags:
+                                seen.add(_p)
+                            pending_tags = []
+                    pairs = []
+                    if cand_file is not None:
+                        try:
+                            pairs = read_cand(cand_file) or []
+                        except Exception:
+                            pairs = []
                     if pairs:
                         _clean: list[tuple[str, str]] = []
                         for _p in pairs:
