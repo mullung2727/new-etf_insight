@@ -63,8 +63,14 @@ GAPS_ROWS = (
     ("wss://localhost:8001", 1759882000000000000, 1759882030000000000),
 )
 
+CODES_ROWS = (
+    ("005930", "vol30", 1759881000000000000),
+    ("005930", "rebound_V3", 1759882000000000000),
+    ("000660", "rebound_F", 1759882000000000000),
+)
 
-def _make_sqlite(path, trade_rows=TRADE_ROWS, book_rows=BOOK_ROWS, gaps_rows=None):
+
+def _make_sqlite(path, trade_rows=TRADE_ROWS, book_rows=BOOK_ROWS, gaps_rows=None, codes_rows=None):
     """테스트용 일 파일 생성. None 인 테이블은 만들지 않는다."""
     path = Path(path)
     if path.exists():
@@ -84,6 +90,12 @@ def _make_sqlite(path, trade_rows=TRADE_ROWS, book_rows=BOOK_ROWS, gaps_rows=Non
         if gaps_rows is not None:
             con.execute("CREATE TABLE gaps (conn TEXT, start_rt INTEGER, end_rt INTEGER)")
             con.executemany("INSERT INTO gaps VALUES (?,?,?)", gaps_rows)
+        if codes_rows is not None:
+            con.execute(
+                "CREATE TABLE codes (code TEXT, tag TEXT, added_rt INTEGER,"
+                " PRIMARY KEY (code, tag))"
+            )
+            con.executemany("INSERT INTO codes VALUES (?,?,?)", codes_rows)
         con.commit()
     finally:
         con.close()
@@ -502,6 +514,45 @@ class _ArchiveCase(unittest.TestCase):
         conn_entry = next(e for e in stats["columns_check"] if e[0] == "conn")
         self.assertEqual(conn_entry[2], "wss://localhost:8001")
         self.assertEqual(conn_entry[3], "wss://localhost:8001")
+
+
+class CodesArchiveCase(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.src = Path(self._tmp.name) / "src"
+        self.dst = Path(self._tmp.name) / "dst"
+        self.src.mkdir()
+        self.notify = mock.Mock()
+        self.now = datetime(2026, 10, 9, 16, 10, tzinfo=KST)
+
+    def test_codes_table_archived(self):
+        p = _make_sqlite(
+            self.src / "orderbook_raw_20261008.sqlite3",
+            trade_rows=TRADE_ROWS,
+            book_rows=BOOK_ROWS,
+            codes_rows=CODES_ROWS,
+        )
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = run(self.src, self.dst, self.now, self.notify)
+        self.assertEqual(rc, 0)
+        self.notify.assert_not_called()
+        codes_pq = self.dst / "2026" / "10" / "codes_20261008.parquet"
+        self.assertTrue(codes_pq.is_file())
+        self.assertEqual(_parquet_count(codes_pq), len(CODES_ROWS))
+        self.assertFalse(p.exists())
+        self.assertIn("codes=3", buf.getvalue())
+
+    def test_old_file_without_codes(self):
+        p = _make_sqlite(self.src / "orderbook_raw_20261008.sqlite3")
+        rc = run(self.src, self.dst, self.now, self.notify)
+        self.assertEqual(rc, 0)
+        self.notify.assert_not_called()
+        self.assertFalse(
+            (self.dst / "2026" / "10" / "codes_20261008.parquet").exists()
+        )
+        self.assertFalse(p.exists())
 
 
 if __name__ == "__main__":

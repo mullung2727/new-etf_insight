@@ -42,7 +42,7 @@ BACKLOG_WARN = 3  # C: 잔류 파일이 이 개수 이상이면 경고
 READ_CHUNK = 200_000  # sqlite fetchmany 행 수
 
 _FILE_RE = re.compile(r"^orderbook_raw_(\d{8})\.sqlite3$")
-TABLES = ("trade", "book", "gaps")
+TABLES = ("trade", "book", "gaps", "codes")
 
 
 def _file_date(name: str) -> str | None:
@@ -72,10 +72,12 @@ def _iter_day_files(src: Path) -> list[tuple[str, Path]]:
 
 
 def _order_by(cols: list[str]) -> str:
-    if "code" in cols:
+    if "code" in cols and "rt" in cols:
         return ' ORDER BY "code", "rt"'
     if "rt" in cols:
         return ' ORDER BY "rt"'
+    if "code" in cols:
+        return ' ORDER BY "code"'
     return ""
 
 
@@ -407,7 +409,7 @@ def archive_day(sqlite_path: Path, dst_root: Path, now: datetime) -> dict:
             "reason": f"dst free {free} < size*3 {size * SPACE_FACTOR}",
         }
     present = [t for t in TABLES if _table_exists(sqlite_path, t)]
-    if not present:
+    if not any(t in present for t in ("trade", "book", "gaps")):
         return {"status": "failed", "date": ymd, "rows": {}, "reason": "no trade/book/gaps tables"}
     rows: dict[str, int] = {}
     failures: list[str] = []

@@ -15,6 +15,7 @@ import _bootstrap  # noqa: F401  (cp949 가드 + path)
 
 import argparse
 import asyncio
+import csv
 import json
 import msvcrt
 import os
@@ -52,6 +53,10 @@ US_BROKER_URL = "http://127.0.0.1:8003"
 N_CODES = 30
 # 지수 ETF 상시 녹화 — 초단타 리서치용 (2026-11-07 사용자 결정, 252670 은 호가 한 칸 ~1% 라 제외)
 ETF_CODES = ("069500", "122630", "114800", "229200", "233740", "251340")
+MAX_CODES = 100  # 녹화 대상 전체 상한 (키움 WS 등록 여유)
+CAND_CHECK_SEC = 60  # 되돌림 후보 파일 확인 주기
+TAG_VOL30 = "vol30"
+TAG_ETF = "etf"
 MAX_LOOKBACK_DAYS = 5
 BACKOFF = (5, 10, 20, 60)  # 초 — n번째 재접속 대기
 MAX_RECONNECTS = 20  # 하루
@@ -176,6 +181,51 @@ def with_etfs(codes: list[str]) -> list[str]:
     return list(codes) + [c for c in ETF_CODES if c not in codes]
 
 
+def cand_path(out_dir: Path, date: str) -> Path:
+    return Path(out_dir) / f"rebound_cand_{date}.csv"
+
+
+def read_rebound_cand(path) -> list[tuple[str, str]]:
+    """되돌림 후보 csv(헤더 code,src) → [(code, "rebound_<src>")]. 파일 없음·읽기 오류·헤더 불일치 → [].
+    code 가 CODE_RE 불일치이거나 src 가 {"H","F","V3"} 밖인 행은 건너뜀. 순서 유지, (code, tag) 중복 제거."""
+    try:
+        p = Path(path)
+    except Exception:
+        return []
+    try:
+        with p.open(encoding="utf-8-sig", newline="") as f:
+            reader = csv.reader(f)
+            try:
+                header = next(reader)
+            except StopIteration:
+                return []
+            if [h.strip() for h in header] != ["code", "src"]:
+                return []
+            out: list[tuple[str, str]] = []
+            seen_local: set[tuple[str, str]] = set()
+            for row in reader:
+                if len(row) < 2:
+                    continue
+                code = row[0].strip()
+                src = row[1].strip()
+                if not CODE_RE.match(code):
+                    continue
+                if src not in ("H", "F", "V3"):
+                    continue
+                pair = (code, f"rebound_{src}")
+                if pair not in seen_local:
+                    seen_local.add(pair)
+                    out.append(pair)
+            return out
+    except Exception:
+        return []
+
+
+def start_tags(top_codes: list[str]) -> list[tuple[str, str]]:
+    """시작 대상 tag: top_codes 각각 (code,"vol30"), ETF_CODES 각각 (code,"etf"). 둘 다면 두 행. 순서: vol30 먼저."""
+    return [(c, TAG_VOL30) for c in top_codes] + [(c, TAG_ETF) for c in ETF_CODES]
+
+
 def load_token(root: Path, now: float) -> tuple[str | None, str | None, str]:
     """broker 토큰 캐시 읽기만. (ws_url, token, reason). 예외를 밖으로 던지지 않는다."""
     try:
@@ -287,6 +337,9 @@ def open_day_db(path: Path) -> sqlite3.Connection:
     con.execute(f"CREATE TABLE IF NOT EXISTS book ({defs})")
     con.execute(
         "CREATE TABLE IF NOT EXISTS gaps (conn TEXT, start_rt INTEGER, end_rt INTEGER, reason TEXT)"
+    )
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS codes (code TEXT, tag TEXT, added_rt INTEGER, PRIMARY KEY (code, tag))"
     )
     con.commit()
     return con
@@ -607,6 +660,10 @@ async def run_recording(
     token_expired_fn=None,
     flush_sec: float = FLUSH_SEC,
     disk_check_sec: float = DISK_CHECK_SEC,
+    tags: list[tuple[str, str]] | None = None,
+    cand_file=None,
+    cand_check_sec: float = CAND_CHECK_SEC,
+    read_cand_fn=None,
 ) -> dict:
     """녹화 루프. window_end면 조용히, 그 외 종료면 batch 알림 1회."""
     codes = list(codes)
@@ -626,7 +683,8 @@ async def run_recording(
     now_f = now_fn or (lambda: datetime.now(KST))
     now_ns = now_ns_fn or time.time_ns
     sleep = sleep_fn or asyncio.sleep
-    res = {"reason": "", "trade": 0, "book": 0, "reconnects": 0, "broker_drops": 0}
+    read_cand = read_cand_fn or read_rebound_cand
+    res = {"reason": "", "trade": 0, "book": 0, "reconnects": 0, "broker_drops": 0, "added": 0}
 
     def _finish(reason: str) -> dict:
         res["reason"] = reason
@@ -652,6 +710,21 @@ async def run_recording(
 
     con = open_day_db(db_path)
     try:
+        seen: set[tuple[str, str]] = set()
+        try:
+            for _r in con.execute("SELECT code, tag FROM codes"):
+                seen.add((_r[0], _r[1]))
+        except Exception:
+            pass
+        if tags:
+            _rt0 = now_ns()
+            con.executemany(
+                "INSERT OR IGNORE INTO codes VALUES (?,?,?)",
+                [(c, t, _rt0) for c, t in tags],
+            )
+            con.commit()
+            for _p in tags:
+                seen.add(_p)
         tbuf: list[tuple] = []
         bbuf: list[tuple] = []
 
@@ -690,6 +763,7 @@ async def run_recording(
         gap_code = None
         last_flush = time.monotonic()
         last_disk = time.monotonic()
+        last_cand = time.monotonic()
         while True:
             ws_url, token, why = token_f()
             sess = None
@@ -767,6 +841,7 @@ async def run_recording(
                 gap_start, gap_code = None, None
             last_flush = time.monotonic()
             last_disk = time.monotonic()
+            last_cand = time.monotonic() - cand_check_sec
             term = None
             while True:
                 await sleep(1.0)
@@ -788,6 +863,62 @@ async def run_recording(
                 if time.monotonic() - last_flush >= flush_sec:
                     _flush()
                     last_flush = time.monotonic()
+                if cand_file is not None and time.monotonic() - last_cand >= cand_check_sec:
+                    last_cand = time.monotonic()
+                    try:
+                        pairs = read_cand(cand_file) or []
+                    except Exception:
+                        pairs = []
+                    if pairs:
+                        new_pairs: list[tuple[str, str]] = []
+                        for _p in pairs:
+                            try:
+                                _c, _t = _p
+                            except Exception:
+                                continue
+                            if (_c, _t) not in seen and (_c, _t) not in new_pairs:
+                                new_pairs.append((_c, _t))
+                        new_codes: list[str] = []
+                        for _c, _t in new_pairs:
+                            if _c not in codes and _c not in new_codes:
+                                new_codes.append(_c)
+                        if len(codes) + len(new_codes) > MAX_CODES:
+                            _allowed = MAX_CODES - len(codes)
+                            if _allowed < 0:
+                                _allowed = 0
+                            _excluded = new_codes[_allowed:]
+                            new_codes = new_codes[:_allowed]
+                            if _excluded:
+                                print(f"[orderbook_research] {date} 상한 {MAX_CODES} 초과 — 제외: {_excluded}")
+                                _exc_set = set(_excluded)
+                                new_pairs = [_p for _p in new_pairs if _p[0] not in _exc_set]
+                        if new_pairs:
+                            if new_codes:
+                                try:
+                                    _rcode, _ = await sess.reg(new_codes)
+                                except Exception:
+                                    _rcode = None
+                                if _rcode not in (0, "0"):
+                                    print(f"[orderbook_research] {date} 되돌림 후보 추가 등록 실패: {new_codes}")
+                                    _fail_set = set(new_codes)
+                                    new_pairs = [_p for _p in new_pairs if _p[0] not in _fail_set]
+                                    new_codes = []
+                            if new_pairs:
+                                try:
+                                    _rt = now_ns()
+                                    con.executemany(
+                                        "INSERT OR IGNORE INTO codes VALUES (?,?,?)",
+                                        [(_c, _t, _rt) for _c, _t in new_pairs],
+                                    )
+                                    con.commit()
+                                except Exception:
+                                    pass
+                                for _p in new_pairs:
+                                    seen.add(_p)
+                                if new_codes:
+                                    codes.extend(new_codes)
+                                    res["added"] += len(new_codes)
+                                    print(f"[orderbook_research] {date} 되돌림 후보 추가: {new_codes}")
                 if sess.server_closed:
                     _flush()
                     break
@@ -878,6 +1009,7 @@ def _selfcheck() -> int:
     assert close_action(None, 19) == "reconnect"
     assert close_action(1006, 20) == "stop_limit"
     assert [backoff(i) for i in range(6)] == [5, 10, 20, 60, 60, 60]
+    assert start_tags(["069500", "005930"]) == [("069500", "vol30"), ("005930", "vol30"), ("069500", "etf"), ("122630", "etf"), ("114800", "etf"), ("229200", "etf"), ("233740", "etf"), ("251340", "etf")]
     print("selfcheck ok")
     return 0
 
@@ -908,13 +1040,14 @@ def _run(date: str, today: str) -> int:
     if date != today or now.time() >= WINDOW_END:
         print(f"[orderbook_research] {date} 녹화 창 아님 (now={now:%H:%M})")
         return 0
-    src, codes = pick_codes(db_dir() / "watchlist.sqlite3", date)
-    if not codes:
+    src, top = pick_codes(db_dir() / "watchlist.sqlite3", date)
+    if not top:
         # 순위가 없어도 지수 ETF 는 녹화한다 (PR #156 리뷰)
         msg = f"[orderbook_research] {date} 종목 없음(source_date={src}) — ETF만 녹화"
         print(msg)
         notify(msg, channel="batch")
-    codes = with_etfs(codes)
+    codes = with_etfs(top)
+    tags = start_tags(top)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     if not disk_ok(OUT_DIR):
         msg = f"[orderbook_research] {date} 녹화 중단: disk_low"
@@ -961,14 +1094,14 @@ def _run(date: str, today: str) -> int:
             if datetime.now(KST).time() >= WINDOW_END:
                 return _pre_stop(watch, date, "window_end")
     db_path = OUT_DIR / f"orderbook_raw_{date}.sqlite3"
-    res = asyncio.run(run_recording(date=date, codes=codes, db_path=db_path, watch=watch))
+    res = asyncio.run(run_recording(date=date, codes=codes, db_path=db_path, watch=watch, tags=tags, cand_file=cand_path(OUT_DIR, date)))
     try:
         watch.stop()
     except Exception:
         pass
     print(f"[orderbook_research] {date} done reason={res['reason']}"
           f" trade={res['trade']} book={res['book']} reconnects={res['reconnects']}"
-          f" broker_drops={res['broker_drops']}")
+          f" broker_drops={res['broker_drops']} added={res['added']}")
     return 0 if res["reason"] == "window_end" else 3
 
 
