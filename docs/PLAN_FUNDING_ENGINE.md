@@ -20,8 +20,8 @@
 - [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P2 되돌림(예산 창구만, ETF 제외 D13) + 초소형 msig (D15 — 한 번에 반영)
-- [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (스케줄 작업·config) — 스케줄 작업은 그대로. 반영 후 되돌림·msig live config 에 `funding_enabled: true` (사용자 11-19 "켜둬"), 다음 거래일 엔진 원장 members 에 rebound(etf=0)·msig(etf=1) 등록 확인
+- [x] 구현·테스트 머지 (PR #168, 2026-11-19 — 공용 members.etf. 비공개 되돌림·msig 연결은 11-19 20:40 live 반영, 백업 `_bak_20261119_fundp2`, live 테스트 되돌림 129·msig 70 OK)
+- [x] 운영 등록 (스케줄 작업·config) — 스케줄 작업은 그대로. 반영 후 되돌림·msig live config 에 `funding_enabled: true` (사용자 11-19 "켜둬", 11-19 20:45 반영), 다음 거래일 엔진 원장 members 에 rebound(etf=0)·msig(etf=1) 등록 확인
 - [ ] 첫 실가동 확인 (날짜)
 - [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
 
