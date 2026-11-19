@@ -22,7 +22,7 @@
 |---|---|---|---|
 | 무상·유상(rights) | 운영 | 추격·시장가 엔진(P3), 취소 원장 TP(P8) | P5c 반영(11-19, 첫 가동 확인 남음) — 실매매 코드의 Jev import 없음. Jev 폴더는 아직 `strategy_budget.py`(jevq config 경로)·등록표 작업 7개·`test_krx_trading_day_guard`·리서치 `volume_classify` 가 참조 → 지우려면 그것부터 |
 | 되돌림(rebound) | 운영 | 마감 시장가 엔진(P4 1차), 취소 공용(P8) | P4b(목표가 유지·15:15 매수 취소·KRX 재시도 이전, 급하지 않음) |
-| high52 | 운영 | 없음 (`run_pullback_*`·`trading_batch_common` 함수) | **P6** |
+| high52 | 운영 | BrokerClient·run_live_batch (P6, 11-19 반영) | P6 첫 가동 확인 |
 | 초소형(msig) | 운영 (10-15~, 이 PLAN 뒤에 생김) | 처음부터 `BrokerClient`·`chase_engine.ClientEngineApi`·`run_sliced` | 이전 불필요 |
 | Jev(jevq) | ⛔ 11-04 중지 (작업 7개 Disabled) | P5·P5b 이전 완료 | 없음 (재개 시 그대로) |
 | 엔벌로프 | ⛔ 11-06 중지 | 없음 | P6·P8 에서 제외 — 재개 때 다시 |
@@ -76,10 +76,10 @@
 - [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P6 high52 이전 (엔벌로프는 11-06 중지로 제외 — D18)
-- [ ] 구현·테스트 머지 (PR #)
-- [ ] 운영 등록 (스케줄 작업·config) — 해당 없음
-- [ ] 첫 실가동 확인 (날짜)
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [x] 구현·테스트 머지 (PR #) — 해당 없음(비공개 코드). 2026-11-19 22:01 high52 live 반영(백업 `high52_quiet_breakout/_bak_20261119_p6`, 사본 `live_p6`, 테스트 106 통과): order·exit·verify 주문·조회를 BrokerClient(exchange SOR 유지), main 을 run_live_batch(계좌 확인은 기존 자리·문구), unknown 처리 추가
+- [x] 운영 등록 (스케줄 작업·config) — 해당 없음
+- [ ] 첫 실가동 확인 (날짜) — 다음 15:10 주문(매수·교체·만기 매도)·16:00 verify 결과가 평소와 같은지, broker 로그 source high52_order·high52_exit, 거래소 SOR
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P7 종가베팅·눌림목(`etl/scripts`) 이전 — 해당 없음 (D18: 두 전략 실주문 작업 없음)
 - [x] 구현·테스트 머지 (PR #) — 해당 없음
@@ -354,3 +354,4 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P8 rights: 원래 `cancel_tp`·`cancel_buys` 를 `cancel_confirmed` 로 교체하고 TP·매수 둘 다 기록 → 실제 TP 만, `expire._run` 정리 루프에서 `cancel_tp` 가 확인한 취소 뒤 `tp_status=cancelled` 한 줄 (D17). `cancel_tp` 는 이미 재조회로 확인하고, 실패 사유 3종(취소 실패·재조회 실패·잔류) 문구를 테스트가 고정해 교체하면 문구가 합쳐짐. `rights_dip_orders` tp 행 status 는 그대로(verify 체결 대조가 그 행을 봄)
 - P8 envelope: 원래 rights 다음 반영 → 실제 보류. 2026-11-06 전략 중지(`enabled=false`·capital 0·작업 3개 Disabled)로 취소가 안 생겨 확인 불가. 재개할 때 rebound·rights 방식(확인된 취소 뒤 원장 `cancelled`)으로 적용. swing 은 이미 취소 뒤 `status` 를 기록해 교체 안 함
 - P5c 비공개(11-19): 원래 "rights broker 호출을 BrokerClient 로" → 실제 Jev 에 기대던 3곳만(추격 호가 `limit_price`·`buy_price`, 무상 시장가 매수 `buy_market`). 나머지 호출(`place_sell_via_broker`·`pullback_limit_order`·정정·취소·미체결·체결내역)은 그대로 — 동작을 바꾸지 않으려고. 시장가 매수 422 는 `rejected` → `unknown`(재주문 안 함 쪽, 위 줄). 정정 422 는 기존대로 `failed`(파일 안 `_reject_detail`)
+- P6 구현: 원래 3개 main 의 계좌 확인도 run_live_batch 로 → 실제 `broker_url=None, profile=None` 으로 넘겨 거래일·예외 알림만 공용, 계좌 확인은 기존 `require_profile`·`stop()` 문구 그대로(알림 문구 바뀌지 않게). 결과 불명 매수도 성공처럼 주문가능금액에서 뺌(나갔을 수 있어 다음 매수 과다 방지). 거래소는 기존이 broker 기본값 SOR 라 `exchange="SOR"` 명시
