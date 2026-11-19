@@ -20,7 +20,7 @@
 
 | 전략 | 운영 | 엔진 사용 | 남은 일 |
 |---|---|---|---|
-| 무상·유상(rights) | 운영 | 추격·시장가 엔진(P3), 취소 원장 TP(P8) | **P5c** Jev `buy_ah` import 제거 — Jev 는 중지됐지만 이 의존 때문에 Jev 폴더 삭제 금지 |
+| 무상·유상(rights) | 운영 | 추격·시장가 엔진(P3), 취소 원장 TP(P8) | P5c 반영(11-19, 첫 가동 확인 남음) — 실매매 코드의 Jev import 없음. Jev 폴더는 아직 `strategy_budget.py`(jevq config 경로)·등록표 작업 7개·`test_krx_trading_day_guard`·리서치 `volume_classify` 가 참조 → 지우려면 그것부터 |
 | 되돌림(rebound) | 운영 | 마감 시장가 엔진(P4 1차), 취소 공용(P8) | P4b(목표가 유지·15:15 매수 취소·KRX 재시도 이전, 급하지 않음) |
 | high52 | 운영 | 없음 (`run_pullback_*`·`trading_batch_common` 함수) | **P6** |
 | 초소형(msig) | 운영 (10-15~, 이 PLAN 뒤에 생김) | 처음부터 `BrokerClient`·`chase_engine.ClientEngineApi`·`run_sliced` | 이전 불필요 |
@@ -70,10 +70,10 @@
 - [x] 첫 실가동 확인 (2026-10-21 첫 시장가 넘김 1건. 그 전 거래일은 추격 지정가에서 전량 체결)
 
 ### P5c 무상·유상(rights) Jev 의존 제거
-- [ ] 구현·테스트 머지 (PR #)
+- [x] 구현·테스트 머지 (PR #145 공용 `inside_spread`, 2026-11-03) — 비공개 `rights_issue/live/expire.py` 2026-11-19 21:34 반영(백업 `rights_issue/_bak_20261119_p5c`, 테스트 447 통과): Jev `buy_ah` import 4개 제거, 호가·시장가 매수를 `BrokerClient(sources rights_dip, inside_spread=True)` 로, `_reject_detail`·호가 신선도 300초 상수는 파일 안으로
 - [x] 운영 등록 (스케줄 작업·config) — 해당 없음 (import 만 바뀜)
-- [ ] 첫 실가동 확인 (날짜)
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [ ] 첫 실가동 확인 (날짜) — 유증 추격 매수·매도(호가 계산)·무상 시장가 매수가 처음 도는 날: 주문가 = 이전 Jev 계산과 같은지, source rights_dip
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P6 high52 이전 (엔벌로프는 11-06 중지로 제외 — D18)
 - [ ] 구현·테스트 머지 (PR #)
@@ -317,3 +317,4 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 - P8 `_market_step`·`_cancel_only_step`: 원래 `cancel_confirmed` 로 교체 → 실제 그대로 둠 (이벤트 이름·실패 처리(`unknown`)가 달라 교체해도 줄이 안 줄고 기존 시장가 동작 위험만 생김)
 - P8 rights: 원래 `cancel_tp`·`cancel_buys` 를 `cancel_confirmed` 로 교체하고 TP·매수 둘 다 기록 → 실제 TP 만, `expire._run` 정리 루프에서 `cancel_tp` 가 확인한 취소 뒤 `tp_status=cancelled` 한 줄 (D17). `cancel_tp` 는 이미 재조회로 확인하고, 실패 사유 3종(취소 실패·재조회 실패·잔류) 문구를 테스트가 고정해 교체하면 문구가 합쳐짐. `rights_dip_orders` tp 행 status 는 그대로(verify 체결 대조가 그 행을 봄)
 - P8 envelope: 원래 rights 다음 반영 → 실제 보류. 2026-11-06 전략 중지(`enabled=false`·capital 0·작업 3개 Disabled)로 취소가 안 생겨 확인 불가. 재개할 때 rebound·rights 방식(확인된 취소 뒤 원장 `cancelled`)으로 적용. swing 은 이미 취소 뒤 `status` 를 기록해 교체 안 함
+- P5c 비공개(11-19): 원래 "rights broker 호출을 BrokerClient 로" → 실제 Jev 에 기대던 3곳만(추격 호가 `limit_price`·`buy_price`, 무상 시장가 매수 `buy_market`). 나머지 호출(`place_sell_via_broker`·`pullback_limit_order`·정정·취소·미체결·체결내역)은 그대로 — 동작을 바꾸지 않으려고. 시장가 매수 422 는 `rejected` → `unknown`(재주문 안 함 쪽, 위 줄). 정정 422 는 기존대로 `failed`(파일 안 `_reject_detail`)
