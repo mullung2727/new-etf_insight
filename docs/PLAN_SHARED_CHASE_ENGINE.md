@@ -235,6 +235,38 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
   - `cancelled` 를 읽는 쪽(verify·다음날 초기화·리포트)이 새 값을 기존 "끝난 주문"과 같게 다루는지 전략별로 grep 해서 명세에 적음.
 - 동작 변경: 취소 뒤 재조회 1회 추가(rebound·rights·envelope `cancel_rest`). 주문·매도 판단은 그대로.
 
+### P6 high52 이전 (2026-11-19 설계 — 사용자 "통일성을 위해 옮기자")
+
+목적: 동작 이득은 작다(지정가 1회 매수·시장가 매도라 추격·마감 엔진을 안 씀). **주문 경로를 다른 전략과 같은 공용 부품으로 통일**하고, 결과 불명 규칙을 맞춘다. 새 공용 함수 없음.
+
+대응 (비공개 `research/private/high52_quiet_breakout/live/`):
+
+| 지금 | 바꿀 것 | 파일:함수 |
+|---|---|---|
+| `market_order(url, t, qty, "sell", SOURCE, dry_run)` | `BrokerClient.place_market(t, "sell", qty)` | `order.execute`, `exit.cycle` |
+| `pullback_limit_order(url, t, qty, price, SOURCE, dry_run)` | `BrokerClient.place_limit(t, "buy", qty, price)` | `order.buy` |
+| `fetch_unfilled_tickers(url)` | `BrokerClient.unfilled(side)` 매수·매도 결과의 종목 집합 (조회 실패 None 은 기존처럼 실패 취급) | `order._run`, `exit.cycle` |
+| `fetch_order_history(url, day, side)` | `BrokerClient.history(day, side)` | `order.wait_sell_fills`, `exit.step`, `verify` |
+| `fetch_best_bids(url, tickers)` | 종목마다 `BrokerClient.best_quote(t, "sell")` | `exit.cycle` |
+| main 의 거래일 확인·계좌 확인·예외 알림 | `run_live_batch(tag, body, broker_url, profile, notify_fn=high52 채널)` | `order.main`·`exit.main`·`verify.main` |
+| 그대로: `pullback_limit_price`(+0.5% 가격 계산), `batch_quote_snapshots`, `fetch_balance`·`held_quantities`, `available_cash`, `is_exit_window_started`·`is_confirmed_market_day` | — | 주문을 내지 않는 계산·조회, 다른 전략도 씀 |
+
+`BrokerClient(url, sources={"buy": SOURCE, "sell": SOURCE}, exchange=기존 값, dry_run=dry_run, log_tag="high52")` — source 문자열은 기존 값 그대로(체결 매칭 키).
+
+결과 해석 변경 (핵심):
+- 지금 `market_order`·`pullback_limit_order` 는 응답 예외 → `failed`, HTTP 422 → `rejected`. `BrokerClient.place` 는 둘 다 **`unknown`**(접수됐을 수 있음 — 키움 전송 실패도 422 로 옴, P5c 와 같은 규칙).
+- `unknown` 처리 (같은 날 재주문 금지 · ⚠ 알림 · 체결 확인에서 실제 체결로 정리):
+
+| 경로 | unknown 일 때 | 파일:함수 |
+|---|---|---|
+| 매수 | 원장 `status='unknown'`, `buy_order_no=''`. 16:00 verify `confirm_buys` 대상 상태에 `unknown` 추가 → 종목 기준 체결(`by_ticker`)로 확정, 체결 없으면 `expired`(message "결과 불명·체결 없음") — 당일 지정가라 장 마감 뒤엔 살아 있는 주문 없음 | `ledger.record_results`, `verify.confirm_buys` |
+| 교체·만기 매도 (15:10 order) | `sell_status='ordered'`, `sell_order_no=''` (비우지 않음 → 다음 실행이 또 팔지 않음). 교체 매수는 그 매도가 `sent` 에 없으니 지금처럼 "교체 매도 미체결" 로 건너뜀 | `ledger.record_results` |
+| 장중 매도 (exit 워커) | `skip` 에 넣어 그날 다시 안 냄 + `sell_status='ordered'`·`sell_order_no=''` | `exit.cycle` |
+| 매도 정산 | `settle_sells` 가 `sell_order_no` 비면 종목 기준 체결로 정산, 체결 없으면 지금처럼 `release`(다음 날 재판단 — 그때 `held_quantities` 실잔고로 수량을 자르므로 이미 팔렸으면 0) | `verify.settle_sells` |
+| 알림 | `order_headline`·`exit_headline` 은 이미 submitted·dry_run·skipped·dropped 밖을 ⚠ 로 표시 → `unknown` 도 ⚠ (문구에 "결과 불명 — 재주문 안 함") | `order`·`exit` |
+
+반영: 20시 후, 백업 `high52_quiet_breakout/_bak_YYYYMMDD_p6` → 사본 `live_p6` 에서 muse 구현·테스트 → `.py`·tests 만 복사(config 복사 금지) → live 테스트. 첫 실가동: 다음 15:10 주문(매수·교체 매도)·16:00 verify 가 평소와 같은 결과인지, broker 로그 source 동일.
+
 ## 5. 요구사항 → 테스트
 
 | 요구사항 | 테스트 |
@@ -266,6 +298,9 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | P8 rebound 2·3단 취소 → 원장 | 목표 매도 완료 뒤 2·3단 미체결 → `st2`·`st3`=`cancelled`, 15:15 1단만 미체결 → `st1` 기존대로 `expired`·나머지 `cancelled` |
 | P8 취소 미확인이면 `cancelled` 안 씀 | 재조회 잔류 → 원장 `submitted` 유지 |
 | P8 rights·envelope TP 취소 → 원장 | `cancel_tp` 성공 → `tp_status`=`cancelled`, 실패·미확인 → 그대로 + 기존 알림 |
+| P6 high52 매수 unknown → 재주문 없음·verify 종목 기준 확정 | 매수 place 예외 → status unknown, 같은 실행 재주문 0, 16:00 체결 있으면 confirmed·없으면 expired |
+| P6 high52 매도 unknown → 다음 실행이 또 안 팖 | 교체 매도 unknown → sell_status ordered·sell_order_no '', exit 워커 같은 날 재전송 0, settle_sells 종목 기준 정산 |
+| P6 source·가격 불변 (부정) | BrokerClient 로 보낸 json 의 source·exchange·가격이 기존 market_order·pullback_limit_order 와 같음 |
 
 ## 6. 결정
 
@@ -285,6 +320,7 @@ broker 호출   etl/scripts/broker_client.py BrokerClient   호가 · 지정가 
 | D12 | P5 Jev 는 매수·매도 추격 함께 이전(같은 루프라 쪼개지 않음), 추가 매수는 범위 밖 | 사용자 (2026-10-14) |
 | D13 | Jev 매도 `auction` 모드 채택 (하한·시각 값과 근거는 비공개 문서) | 사용자 (2026-10-14) |
 | D14 | P5 체결 확정은 Jev `_finalize` 유지, 원장 기록은 `on_event`, 이어받기는 엔진 첫 주문 가드 | Claude 판단 (동작 변경 없음) |
+| D19 | P6 high52 도 옮긴다(동작 이득은 작지만 주문 경로 통일). 새 공용 함수 없이 BrokerClient·run_live_batch 로. 결과 해석은 BrokerClient 규칙(예외·422 → unknown)으로 바꾸고 high52 원장에 unknown 처리 추가. 버린 안: P6 해당 없음으로 닫기(Claude 추천) | 사용자 결정 "통일성을 위해 옮기는게 좋겠어" (2026-11-19) |
 | D18 | 중지된 전략은 이전 대상에서 뺀다: 엔벌로프(11-06)는 P6·P8 제외(재개 때 다시), 종가베팅·눌림목은 P7 해당 없음(실주문 작업 없음), Jev(11-04)·스윙(11-18)은 추가 작업 없음. msig 는 처음부터 공용 엔진 사용이라 이전 불필요. 남은 일 = P5c(rights 의 Jev import 제거 — Jev 폴더를 지우려면 선행)·P6 high52·P4b rebound. `run_pullback_*`·`run_close_bet_exit` 은 다른 전략이 함수로 쓰므로 유지 | 사용자 지시 "중단된 전략에 맞게" · Claude 정리 (2026-11-19) |
 | D17 | P8 rights 는 TP 취소만 원장 기록, 매수 취소 기록은 보류. 왜: 매수 주문 행을 `cancelled` 로 바꾸면 (1) verify `confirm_buys` 가 `submitted·unconfirmed` 행만 대조해 부분 체결 뒤 취소분이 원장에서 빠지고 (2) `strategy_cash`·`strategy_main_cash` 의 미체결 매수금(pend)에서 빠져 같은 날 가용 현금이 늘어 15:18 무상 sizer 금액이 바뀜. 매수까지 하려면 verify 필터·예산 변화를 함께 설계해야 함. 버린 안: A(TP·매수 둘 다, verify·예산 함께 수정) | Claude 추천 · 사용자 선택 B (2026-11-06) |
 | D16 | P8 추가: 취소는 공용 `cancel_confirmed` 로만, 확인된 취소는 `on_event("cancelled")` → 전략 원장에 `cancelled`. 순서 rebound → rights → envelope. 버린 안: rebound 만 원장 한 줄 수정 | 사용자 지시 · Claude 설계 (2026-11-04) |
