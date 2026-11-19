@@ -1064,6 +1064,115 @@ class CandLoopCase(_TmpCase):
         self.assertTrue(rems)
         self.assertEqual(rems[-1]["data"][0]["item"], [a])
 
+    def test_restart_reregisters_candidates(self):
+        a, b = "005930", "000660"
+        db = self.tmp / "day.sqlite3"
+        con = open_day_db(db)
+        try:
+            con.execute("INSERT INTO codes VALUES (?,?,?)", (b, "rebound_F", 111))
+            con.commit()
+        finally:
+            con.close()
+        cand = self.tmp / "rebound_cand_20261013.csv"
+        cand.write_text(f"code,src\n{b},F\n", encoding="utf-8")
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            wss.append(ws)
+            return ws
+
+        watch = FakeWatch(connected=True)
+        res = self._run(
+            date="20261013", codes=[a], db_path=db, watch=watch,
+            connect_fn=_connect,
+            load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+            notify_fn=mock.Mock(), out_dir=self.tmp,
+            now_fn=_ticking_now(5),
+            tags=[(a, "vol30")], cand_file=cand, cand_check_sec=0,
+        )
+        self.assertEqual(res["reason"], "window_end")
+        regs = _reg_frames(wss)
+        self.assertGreaterEqual(len(regs), 2)
+        self.assertEqual(regs[0]["data"][0]["item"], [a])
+        self.assertEqual(regs[1]["data"][0]["item"], [b])
+        self.assertEqual(res["added"], 1)
+        con = sqlite3.connect(db)
+        try:
+            brows = con.execute(
+                "SELECT added_rt FROM codes WHERE code = ? AND tag = ?",
+                (b, "rebound_F"),
+            ).fetchall()
+        finally:
+            con.close()
+        self.assertEqual(len(brows), 1)
+        self.assertEqual(brows[0][0], 111)
+
+    def test_codes_write_failure_retries(self):
+        import scripts.run_orderbook_research_recorder as rec
+
+        a, b = "005930", "000660"
+        db = self.tmp / "day.sqlite3"
+        cand = self.tmp / "rebound_cand_20261013.csv"
+        cand.write_text(f"code,src\n{b},F\n", encoding="utf-8")
+        wss = []
+
+        async def _connect(url):
+            ws = FakeWs(hang=True)
+            wss.append(ws)
+            return ws
+
+        class _FailFirstCandWrite:
+            """첫 후보 codes 쓰기만 OperationalError, 이후는 그대로 위임."""
+
+            def __init__(self, real):
+                self._real = real
+                self._failed_once = False
+
+            def executemany(self, sql, seq=()):
+                rows = list(seq)
+                if (
+                    not self._failed_once
+                    and isinstance(sql, str)
+                    and "INTO codes" in sql
+                    and any(len(r) > 1 and str(r[1]).startswith("rebound_") for r in rows)
+                ):
+                    self._failed_once = True
+                    raise sqlite3.OperationalError("injected codes write failure")
+                return self._real.executemany(sql, rows)
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+        real_open = rec.open_day_db
+
+        def _open_once(path):
+            return _FailFirstCandWrite(real_open(path))
+
+        watch = FakeWatch(connected=True)
+        with mock.patch.object(rec, "open_day_db", side_effect=_open_once):
+            res = self._run(
+                date="20261013", codes=[a], db_path=db, watch=watch,
+                connect_fn=_connect,
+                load_token_fn=lambda: ("ws://fake", "tok", "ok"),
+                notify_fn=mock.Mock(), out_dir=self.tmp,
+                now_fn=_ticking_now(5),
+                tags=[(a, "vol30")], cand_file=cand, cand_check_sec=0,
+            )
+        self.assertEqual(res["reason"], "window_end")
+        regs = _reg_frames(wss)
+        self.assertEqual(len(regs), 2)  # 초기 [a] + 추가 [b] 1번만
+        self.assertEqual(regs[1]["data"][0]["item"], [b])
+        con = sqlite3.connect(db)
+        try:
+            n = con.execute(
+                "SELECT COUNT(*) FROM codes WHERE code = ? AND tag = ?",
+                (b, "rebound_F"),
+            ).fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(n, 1)
+
 
 class NoTokenEndpointCase(unittest.TestCase):
     def test_no_token_issuance_string(self):
