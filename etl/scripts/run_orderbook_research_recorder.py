@@ -717,14 +717,22 @@ async def run_recording(
         except Exception:
             pass
         if tags:
-            _rt0 = now_ns()
-            con.executemany(
-                "INSERT OR IGNORE INTO codes VALUES (?,?,?)",
-                [(c, t, _rt0) for c, t in tags],
-            )
-            con.commit()
-            for _p in tags:
-                seen.add(_p)
+            try:
+                _rt0 = now_ns()
+                con.executemany(
+                    "INSERT OR IGNORE INTO codes VALUES (?,?,?)",
+                    [(c, t, _rt0) for c, t in tags],
+                )
+                con.commit()
+            except Exception as exc:
+                try:
+                    con.rollback()
+                except Exception:
+                    pass
+                print(f"[orderbook_research] {date} 시작 codes 기록 실패: {exc!r}")
+            else:
+                for _p in tags:
+                    seen.add(_p)
         tbuf: list[tuple] = []
         bbuf: list[tuple] = []
 
@@ -870,16 +878,17 @@ async def run_recording(
                     except Exception:
                         pairs = []
                     if pairs:
-                        new_pairs: list[tuple[str, str]] = []
+                        _clean: list[tuple[str, str]] = []
                         for _p in pairs:
                             try:
                                 _c, _t = _p
                             except Exception:
                                 continue
-                            if (_c, _t) not in seen and (_c, _t) not in new_pairs:
-                                new_pairs.append((_c, _t))
+                            if (_c, _t) not in _clean:
+                                _clean.append((_c, _t))
+                        new_pairs: list[tuple[str, str]] = [_p for _p in _clean if _p not in seen]
                         new_codes: list[str] = []
-                        for _c, _t in new_pairs:
+                        for _c, _t in _clean:
                             if _c not in codes and _c not in new_codes:
                                 new_codes.append(_c)
                         if len(codes) + len(new_codes) > MAX_CODES:
@@ -892,7 +901,7 @@ async def run_recording(
                                 print(f"[orderbook_research] {date} 상한 {MAX_CODES} 초과 — 제외: {_excluded}")
                                 _exc_set = set(_excluded)
                                 new_pairs = [_p for _p in new_pairs if _p[0] not in _exc_set]
-                        if new_pairs:
+                        if new_pairs or new_codes:
                             if new_codes:
                                 try:
                                     _rcode, _ = await sess.reg(new_codes)
@@ -911,14 +920,19 @@ async def run_recording(
                                         [(_c, _t, _rt) for _c, _t in new_pairs],
                                     )
                                     con.commit()
-                                except Exception:
-                                    pass
-                                for _p in new_pairs:
-                                    seen.add(_p)
-                                if new_codes:
-                                    codes.extend(new_codes)
-                                    res["added"] += len(new_codes)
-                                    print(f"[orderbook_research] {date} 되돌림 후보 추가: {new_codes}")
+                                except Exception as exc:
+                                    try:
+                                        con.rollback()
+                                    except Exception:
+                                        pass
+                                    print(f"[orderbook_research] {date} codes 기록 실패 — 다음 확인 때 재시도: {exc!r}")
+                                else:
+                                    for _p in new_pairs:
+                                        seen.add(_p)
+                            if new_codes:
+                                codes.extend(new_codes)
+                                res["added"] += len(new_codes)
+                                print(f"[orderbook_research] {date} 되돌림 후보 추가: {new_codes}")
                 if sess.server_closed:
                     _flush()
                     break
