@@ -127,7 +127,7 @@ def compute(
         equity = capital + ext_capital + realized_cum + unrealized
         pnl = day_real + unrealized - prev_unreal
         if i == 0:
-            flow: float = equity
+            flow: float = equity - pnl
             flow_note = "시작"
         else:
             flow = equity - prev_equity - pnl
@@ -150,11 +150,14 @@ def compute(
 
 
 def twr(rows: list[dict]) -> list[float]:
-    """일별 시간가중 수익률. r_D = (equity − flow)/전날 equity − 1 (첫날 0)."""
+    """일별 시간가중 수익률. r_D = (equity − flow)/전날 equity − 1 (첫날 (equity−flow)/flow)."""
     out: list[float] = []
     prev: float | None = None
     for row in rows:
-        if prev is None or not prev:
+        if prev is None:
+            flow = row["flow"]
+            out.append((row["equity"] - flow) / flow if flow else 0.0)
+        elif not prev:
             out.append(0.0)
         else:
             out.append((row["equity"] - row["flow"]) / prev - 1)
@@ -227,7 +230,7 @@ def rebound_fills(wl_con: sqlite3.Connection, days: list[str]) -> list[dict]:
     def get(row, name: str):
         return row[idx[name]] if name in idx else None
 
-    next_day = {d: days[i + 1] for i, d in enumerate(days) if i + 1 < len(days)}
+    sorted_days = sorted(days)
     fills: list[dict] = []
     for row in db_rows:
         raw_date, raw_ticker = get(row, "date"), get(row, "ticker")
@@ -245,7 +248,17 @@ def rebound_fills(wl_con: sqlite3.Connection, days: list[str]) -> list[dict]:
         sp = _num(get(row, "sell_px"))
         if sq > 0 and sp is not None and sp > 0:
             carried = get(row, "sell_status") == "carried" or get(row, "reason") == "carried"
-            sell_day = next_day.get(day, day) if carried else day
+            if carried:
+                nxt = None
+                for d in sorted_days:
+                    if d > day:
+                        nxt = d
+                        break
+                if nxt is None:
+                    continue  # 아직 보유 — 매도 미반영
+                sell_day = nxt
+            else:
+                sell_day = day
             fills.append({"date": sell_day, "ticker": ticker, "side": "sell",
                           "qty": sq, "price": sp, "ref": ref})
     return fills
@@ -509,19 +522,19 @@ def rights_check(wl_con: sqlite3.Connection) -> list[dict]:
 
 
 def log_seed(perf_db: str | Path, strategy: str, date: str, capital, since: str) -> bool:
-    """config 시드가 전략 마지막 기록과 다르면 strategy_seed 에 남기고 True."""
+    """config 시드가 전략 마지막 기록과 (capital, since) 쌍으로 다르면 남기고 True."""
     ensure(perf_db)
+    new_since = str(since) if since is not None else None
     with connect_rw(perf_db) as con:
         last = con.execute(
-            "SELECT capital FROM strategy_seed WHERE strategy=? ORDER BY date DESC LIMIT 1",
+            "SELECT capital, since FROM strategy_seed WHERE strategy=? ORDER BY date DESC LIMIT 1",
             (strategy,)).fetchone()
-        if last is not None and last[0] == capital:
+        if last is not None and last[0] == capital and last[1] == new_since:
             return False
         con.execute(
             "INSERT OR REPLACE INTO strategy_seed(strategy, date, capital, since, note)"
             " VALUES (?,?,?,?,?)",
-            (strategy, str(date), capital, str(since) if since is not None else None,
-             "config"))
+            (strategy, str(date), capital, new_since, "config"))
         return True
 
 
@@ -551,21 +564,26 @@ def load_config_seed_events(perf_db: str | Path, strategy: str) -> list[dict]:
 
 
 def merge_seed_events(adapter_events: list[dict], config_events: list[dict]) -> list[dict]:
-    """어댑터 이벤트 + config 행 병합. 같은 date 면 어댑터 우선, 중복 capital 은 버림."""
-    by_date = {e["date"] for e in adapter_events}
-    ordered = sorted(adapter_events, key=lambda e: e["date"])
-    merged = list(adapter_events)
-    for cfg in config_events:
-        effective = None
-        for event in ordered:
-            if event["date"] <= cfg["date"]:
-                effective = event
-        if effective is not None and effective["capital"] == cfg["capital"]:
-            continue
-        if cfg["date"] in by_date:
-            continue
-        merged.append(cfg)
-    merged.sort(key=lambda e: e["date"])
+    """어댑터 + config 날짜순 병합. 같은 date 면 어댑터 우선, config 는 유효 상태와
+    (capital, since) 쌍이 같을 때만 버림."""
+    adapter_dates = {e["date"] for e in adapter_events}
+    combined = [(e["date"], 0, e) for e in adapter_events] \
+        + [(e["date"], 1, e) for e in config_events]
+    combined.sort(key=lambda t: (t[0], t[1]))
+    merged: list[dict] = []
+    current: tuple | None = None
+    for date, prio, event in combined:
+        if prio == 0:
+            merged.append(event)
+            current = (event["capital"], event["since"])
+        else:
+            if date in adapter_dates:
+                continue
+            if current is not None and current[0] == event["capital"] \
+                    and current[1] == event["since"]:
+                continue
+            merged.append(event)
+            current = (event["capital"], event["since"])
     return merged
 
 
@@ -634,7 +652,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="realized 대조 표 출력")
     parser.add_argument("--dry-run", action="store_true", help="저장 안 함")
     args = parser.parse_args(argv)
-    end = args.end or now_seoul().strftime("%Y%m%d")
+    obs_date = now_seoul().strftime("%Y%m%d")
+    end = args.end or obs_date
     if not args.dry_run:
         ensure(PERF_DB)
     names = [args.strategy] if args.strategy else sorted(ADAPTERS)
@@ -647,10 +666,12 @@ def main(argv: list[str] | None = None) -> int:
         if base_capital is None:
             print(f"{name}: config capital 없음 — 건너뜀")
             continue
+        capital_since = config.get("capital_since")
         with connect_ro(WL_DB) as wl_con:
             capital = seed_fn(config, wl_con) if seed_fn is not None else base_capital
+            logged = False
             if not args.dry_run:
-                log_seed(PERF_DB, name, end, capital, config.get("capital_since"))
+                logged = log_seed(PERF_DB, name, obs_date, capital, capital_since)
             probe = fills_fn(wl_con, [])
             if not probe:
                 print(f"{name}: 체결 없음")
@@ -665,7 +686,21 @@ def main(argv: list[str] | None = None) -> int:
             check_rows = check_fn(wl_con) if args.check and check_fn is not None else None
         tickers = sorted({fill["ticker"] for fill in fills})
         closes = load_closes(KRX_DB, tickers, first, end)
-        merged = merge_seed_events(events, load_config_seed_events(PERF_DB, name))
+        stored = load_config_seed_events(PERF_DB, name)
+        obs_cap = _num(capital)
+        if obs_cap is None:
+            config_events = stored
+        else:
+            obs_since = str(capital_since) if capital_since is not None else obs_date
+            pre_existing = [e for e in stored if e["date"] != obs_date] if logged else stored
+            if obs_date > end and not events and not pre_existing:
+                mem_date = days[0]
+                mem_since = str(capital_since) if capital_since is not None else mem_date
+            else:
+                mem_date, mem_since = obs_date, obs_since
+            config_events = stored + [{"date": mem_date, "capital": obs_cap,
+                                        "since": mem_since, "note": "config"}]
+        merged = merge_seed_events(events, config_events)
         rows = compute(fills, merged, closes, days)
         if not args.dry_run:
             upsert(PERF_DB, name, "live", rows)
