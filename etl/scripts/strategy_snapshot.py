@@ -69,16 +69,23 @@ def compute(
     prev_equity: float | None = None
     prev_unreal = 0.0
     trades_cum = 0
+    ext_capital = 0.0
     for i, day in enumerate(days):
+        ext_today = False
         for fill in by_date.get(day, []):
             ticker = str(fill["ticker"])
             qty = fill["qty"]
             price = fill["price"]
             if qty is None or price is None or qty <= 0:
                 continue
+            external = bool(fill.get("external", False))
             if fill["side"] == "buy":
-                cost[ticker] = cost.get(ticker, 0.0) + qty * price * (1 + FEE)
+                buy_cost = qty * price * (1 + FEE)
+                cost[ticker] = cost.get(ticker, 0.0) + buy_cost
                 held[ticker] = held.get(ticker, 0) + qty
+                if external:
+                    ext_capital += buy_cost
+                    ext_today = True
             elif fill["side"] == "sell":
                 have = held.get(ticker, 0)
                 if have < qty:
@@ -89,6 +96,9 @@ def compute(
                 cost[ticker] = cost.get(ticker, 0.0) - avg * qty
                 held[ticker] = have - qty
                 trades_cum += 1
+                if external:
+                    ext_capital -= proceeds
+                    ext_today = True
         if events:
             active = events[0]
             for event in events:
@@ -114,7 +124,7 @@ def compute(
             if px is None:
                 continue  # 종가 전무 → 평균원가 평가 (미실현 기여 0)
             unrealized += qty * px - cost.get(ticker, 0.0)
-        equity = capital + realized_cum + unrealized
+        equity = capital + ext_capital + realized_cum + unrealized
         pnl = day_real + unrealized - prev_unreal
         if i == 0:
             flow: float = equity
@@ -125,6 +135,8 @@ def compute(
             for event in events:
                 if event["date"] == day:
                     flow_note = event.get("note", "")
+        if ext_today:
+            flow_note = f"{flow_note} · 추가 자금" if flow_note else "추가 자금"
         if abs(flow) < 0.5:
             flow = 0.0
         rows.append({
@@ -148,6 +160,19 @@ def twr(rows: list[dict]) -> list[float]:
             out.append((row["equity"] - row["flow"]) / prev - 1)
         prev = row["equity"]
     return out
+
+
+def twr_mdd(rows: list[dict]) -> float:
+    """TWR 지수 기준 MDD. idx_D = Π(1+r) (시작 1) 의 고점 대비 최저."""
+    idx = 1.0
+    peak = 1.0
+    mdd = 0.0
+    for r in twr(rows):
+        idx *= 1 + r
+        peak = max(peak, idx)
+        if peak > 0:
+            mdd = min(mdd, idx / peak - 1)
+    return mdd
 
 
 def _table_exists(con: sqlite3.Connection, table: str) -> bool:
@@ -226,17 +251,17 @@ def rebound_fills(wl_con: sqlite3.Connection, days: list[str]) -> list[dict]:
     return fills
 
 
-def rebound_seed_events(wl_con: sqlite3.Connection, first_date: str) -> list[dict]:
-    """strategy_budget_resets(rebound) + msig_settlements → SeedEvent 리스트."""
+def _reset_events(wl_con: sqlite3.Connection, strategy: str,
+                 first_date: str) -> list[dict]:
+    """strategy_budget_resets(strategy) → SeedEvent + 리셋 전 시드."""
     first_date = str(first_date)
-    events: list[dict] = []
     resets: list[tuple[str, float | None, float, str]] = []
     if _table_exists(wl_con, "strategy_budget_resets"):
         try:
             db_rows = wl_con.execute(
                 "SELECT old_capital, new_capital, since, note"
-                " FROM strategy_budget_resets WHERE strategy='rebound'"
-                " ORDER BY date, rowid").fetchall()
+                " FROM strategy_budget_resets WHERE strategy=?"
+                " ORDER BY date, rowid", (strategy,)).fetchall()
         except sqlite3.Error:
             db_rows = []
         for old, new, since, note in db_rows:
@@ -244,12 +269,18 @@ def rebound_seed_events(wl_con: sqlite3.Connection, first_date: str) -> list[dic
             if since is None or new_f is None:
                 continue
             resets.append((str(since), _num(old), new_f, note or ""))
-    for since, _old, new_f, note in resets:
-        events.append({"date": since, "capital": new_f, "since": since, "note": note})
+    events = [{"date": since, "capital": new_f, "since": since, "note": note}
+              for since, _old, new_f, note in resets]
     if resets and resets[0][1] is not None and resets[0][1] > 0 \
             and first_date < resets[0][0]:
         events.insert(0, {"date": first_date, "capital": resets[0][1],
                           "since": first_date, "note": "리셋 전 시드"})
+    return events
+
+
+def rebound_seed_events(wl_con: sqlite3.Connection, first_date: str) -> list[dict]:
+    """strategy_budget_resets(rebound) + msig_settlements → SeedEvent 리스트."""
+    events = _reset_events(wl_con, "rebound", first_date)
     if _table_exists(wl_con, "msig_settlements"):
         cols = _columns(wl_con, "msig_settlements")
         if "date" in cols and "rebound_capital" in cols:
@@ -316,6 +347,163 @@ def realized_check(wl_con: sqlite3.Connection) -> list[dict]:
             continue
         ours = sq * sp * (1 - FEE - SELL_TAX) - buy_cost / buy_qty * sq
         out.append({"date": str(get(row, "date")), "ticker": str(get(row, "ticker")),
+                    "ours": ours, "kiwoom": kiwoom, "diff": ours - kiwoom})
+    return out
+
+
+def _rights_tickers(wl_con: sqlite3.Connection) -> dict[str, str]:
+    """acptno → ticker. rights_dip_positions 우선, 없으면 candidates."""
+    tickers: dict[str, str] = {}
+    for table in ("rights_dip_positions", "rights_dip_candidates"):
+        if not _table_exists(wl_con, table):
+            continue
+        cols = _columns(wl_con, table)
+        if "acptno" not in cols or "ticker" not in cols:
+            continue
+        try:
+            db_rows = wl_con.execute(
+                f"SELECT acptno, ticker FROM {table}").fetchall()
+        except sqlite3.Error:
+            continue
+        for acptno, ticker in db_rows:
+            if acptno is not None and ticker is not None:
+                tickers.setdefault(str(acptno), str(ticker))
+    return tickers
+
+
+def _rights_acptno_fills(wl_con: sqlite3.Connection) -> list[tuple[str, dict]]:
+    """(acptno, Fill) — rights_check 그룹핑용 내부 함수."""
+    if not _table_exists(wl_con, "rights_dip_orders"):
+        return []
+    cols = _columns(wl_con, "rights_dip_orders")
+    if "date" not in cols or "acptno" not in cols:
+        return []
+    wanted = ["id", "date", "acptno", "extra", "leg", "filled_qty", "filled_price"]
+    avail = [c for c in wanted if c in cols]
+    order = "date, id" if "id" in cols else "date, rowid"
+    try:
+        db_rows = wl_con.execute(
+            f"SELECT {','.join(avail)} FROM rights_dip_orders ORDER BY {order}").fetchall()
+    except sqlite3.Error:
+        return []
+    idx = {name: pos for pos, name in enumerate(avail)}
+
+    def get(row, name: str):
+        return row[idx[name]] if name in idx else None
+
+    tickers = _rights_tickers(wl_con)
+    out: list[tuple[str, dict]] = []
+    for row in db_rows:
+        raw_date, raw_acptno = get(row, "date"), get(row, "acptno")
+        if raw_date is None or raw_acptno is None:
+            continue
+        ticker = tickers.get(str(raw_acptno))
+        if ticker is None:
+            continue
+        fq = _qty(get(row, "filled_qty"))
+        fp = _num(get(row, "filled_price"))
+        if fq <= 0 or fp is None:
+            continue
+        leg = get(row, "leg")
+        side = "sell" if leg in ("exit", "tp") else "buy"
+        out.append((str(raw_acptno), {
+            "date": str(raw_date), "ticker": ticker, "side": side,
+            "qty": fq, "price": fp, "external": get(row, "extra") == 1,
+            "ref": f"rights_dip:{raw_acptno}:{leg}:{get(row, 'id')}",
+        }))
+    return out
+
+
+def rights_fills(wl_con: sqlite3.Connection, days: list[str]) -> list[dict]:
+    """rights_dip_orders 체결 → Fill 리스트. days 는 시그니처 통일용(미사용)."""
+    return [fill for _, fill in _rights_acptno_fills(wl_con)]
+
+
+def rights_seed_events(wl_con: sqlite3.Connection, first_date: str) -> list[dict]:
+    """strategy_budget_resets(rights_dip) → SeedEvent 리스트."""
+    return _reset_events(wl_con, "rights_dip", first_date)
+
+
+def rights_seed(config: dict, wl_con: sqlite3.Connection) -> float:
+    """외부 시드 = config capital − rights_dip_capital 의 since 이후 capital 변화 합."""
+    base = config.get("capital")
+    if not _table_exists(wl_con, "rights_dip_capital"):
+        return base
+    cols = _columns(wl_con, "rights_dip_capital")
+    if "capital" not in cols:
+        return base
+    since = config.get("capital_since")
+    since_s = str(since) if since is not None else None
+    wanted = ["date", "capital", "pnl"]
+    avail = [c for c in wanted if c in cols]
+    order = "id" if "id" in cols else "rowid"
+    try:
+        db_rows = wl_con.execute(
+            f"SELECT {','.join(avail)} FROM rights_dip_capital ORDER BY {order}").fetchall()
+    except sqlite3.Error:
+        return base
+    idx = {name: pos for pos, name in enumerate(avail)}
+
+    def get(row, name: str):
+        return row[idx[name]] if name in idx else None
+
+    rows: list[tuple[float, float]] = []
+    for row in db_rows:
+        cap = _num(get(row, "capital"))
+        if cap is None:
+            continue
+        raw_date = get(row, "date")
+        if since_s is not None and (raw_date is None or str(raw_date) < since_s):
+            continue
+        pnl = _num(get(row, "pnl"))
+        rows.append((cap, pnl if pnl is not None else 0.0))
+    if not rows:
+        return base
+    prev = rows[0][0] - rows[0][1]
+    total = 0.0
+    for cap, _pnl in rows:
+        total += cap - prev
+        prev = cap
+    return base - total
+
+
+def rights_check(wl_con: sqlite3.Connection) -> list[dict]:
+    """청산 완료 realized 건: acptno별 엔진 실현 vs 키움 pnl 대조."""
+    if not _table_exists(wl_con, "rights_dip_positions"):
+        return []
+    cols = _columns(wl_con, "rights_dip_positions")
+    need = {"acptno", "ticker", "close_date", "pnl", "pnl_source"}
+    if not need <= cols:
+        return []
+    try:
+        db_rows = wl_con.execute(
+            "SELECT acptno, ticker, close_date, pnl FROM rights_dip_positions"
+            " WHERE close_date IS NOT NULL AND pnl IS NOT NULL"
+            " AND pnl_source='realized'").fetchall()
+    except sqlite3.Error:
+        return []
+    by_acptno: dict[str, list[dict]] = {}
+    for acptno, fill in _rights_acptno_fills(wl_con):
+        by_acptno.setdefault(acptno, []).append(fill)
+    out: list[dict] = []
+    for acptno, ticker, close_date, pnl in db_rows:
+        kiwoom = _num(pnl)
+        if ticker is None or close_date is None or kiwoom is None:
+            continue
+        buy_qty = 0
+        buy_cost = 0.0
+        sell_qty = 0
+        proceeds = 0.0
+        for fill in by_acptno.get(str(acptno), []):
+            if fill["side"] == "buy":
+                buy_qty += fill["qty"]
+                buy_cost += fill["qty"] * fill["price"] * (1 + FEE)
+            else:
+                sell_qty += fill["qty"]
+                proceeds += fill["qty"] * fill["price"] * (1 - FEE - SELL_TAX)
+        avg = buy_cost / buy_qty if buy_qty else 0.0
+        ours = proceeds - avg * sell_qty
+        out.append({"date": str(close_date), "ticker": str(ticker),
                     "ours": ours, "kiwoom": kiwoom, "diff": ours - kiwoom})
     return out
 
@@ -431,7 +619,12 @@ def load_closes(krx_db: str | Path, tickers: list[str],
     return {(row[0], row[1]): row[2] for row in db_rows}
 
 
-ADAPTERS = {"rebound": (rebound_fills, rebound_seed_events)}
+ADAPTERS = {
+    "rebound": {"fills": rebound_fills, "events": rebound_seed_events,
+                "seed": None, "check": realized_check},
+    "rights_dip": {"fills": rights_fills, "events": rights_seed_events,
+                   "seed": rights_seed, "check": rights_check},
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -446,15 +639,18 @@ def main(argv: list[str] | None = None) -> int:
         ensure(PERF_DB)
     names = [args.strategy] if args.strategy else sorted(ADAPTERS)
     for name in names:
-        fills_fn, events_fn = ADAPTERS[name]
+        adapter = ADAPTERS[name]
+        fills_fn, events_fn = adapter["fills"], adapter["events"]
+        seed_fn, check_fn = adapter.get("seed"), adapter.get("check")
         config = json.loads(_resolve_config(STRATEGIES[name][1]).read_text(encoding="utf-8"))
-        capital = config.get("capital")
-        if capital is None:
+        base_capital = config.get("capital")
+        if base_capital is None:
             print(f"{name}: config capital 없음 — 건너뜀")
             continue
-        if not args.dry_run:
-            log_seed(PERF_DB, name, end, capital, config.get("capital_since"))
         with connect_ro(WL_DB) as wl_con:
+            capital = seed_fn(config, wl_con) if seed_fn is not None else base_capital
+            if not args.dry_run:
+                log_seed(PERF_DB, name, end, capital, config.get("capital_since"))
             probe = fills_fn(wl_con, [])
             if not probe:
                 print(f"{name}: 체결 없음")
@@ -466,7 +662,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             fills = fills_fn(wl_con, days)
             events = events_fn(wl_con, first)
-            check_rows = realized_check(wl_con) if args.check and name == "rebound" else None
+            check_rows = check_fn(wl_con) if args.check and check_fn is not None else None
         tickers = sorted({fill["ticker"] for fill in fills})
         closes = load_closes(KRX_DB, tickers, first, end)
         merged = merge_seed_events(events, load_config_seed_events(PERF_DB, name))
@@ -486,12 +682,7 @@ def main(argv: list[str] | None = None) -> int:
         for r in twr(rows):
             cum *= 1 + r
         cum -= 1
-        peak = float("-inf")
-        mdd = 0.0
-        for row in rows:
-            peak = max(peak, row["equity"])
-            if peak > 0:
-                mdd = min(mdd, row["equity"] / peak - 1)
+        mdd = twr_mdd(rows)
         print(f"{name} {last['date']} 평가 {last['equity']:,.0f}"
               f" (시드 {last['seed']:,.0f} · 확정 {last['realized_cum']:+,.0f}"
               f" · 미실현 {last['unrealized']:+,.0f})"

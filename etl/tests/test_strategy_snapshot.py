@@ -1,23 +1,33 @@
-"""strategy_snapshot 엔진·되돌림 어댑터 테스트 (unittest, tempfile sqlite만)."""
+"""strategy_snapshot 엔진·되돌림·유무상 어댑터 테스트 (unittest, tempfile sqlite만)."""
+import json
 import shutil
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import scripts.strategy_snapshot as snap
 from scripts.strategy_snapshot import (
+    ADAPTERS,
     compute,
     ensure,
     log_seed,
+    main,
     merge_seed_events,
     rebound_fills,
     rebound_seed_events,
     realized_check,
+    rights_check,
+    rights_fills,
+    rights_seed,
+    rights_seed_events,
     twr,
     upsert,
 )
 
 D1, D2, D3 = "20261118", "20261119", "20261120"
+D4 = "20261121"
 
 
 def _seed(date, capital, since=None, note=""):
@@ -209,6 +219,244 @@ class SeedLogStoreTest(unittest.TestCase):
                 con.close()
             self.assertEqual(len(db_rows), 1)
             self.assertAlmostEqual(db_rows[0][3], rows[0]["equity"])
+
+
+class ExternalCapitalTest(unittest.TestCase):
+    def test_external_buy_sell_flow_and_twr(self):
+        fills = [
+            {"date": D2, "ticker": "000001", "side": "buy", "qty": 100,
+             "price": 1000.0, "ref": "x", "external": True},
+            {"date": D4, "ticker": "000001", "side": "sell", "qty": 100,
+             "price": 1100.0, "ref": "x", "external": True},
+        ]
+        closes = {(D2, "000001"): 1000.0, (D3, "000001"): 1050.0,
+                  (D4, "000001"): 1100.0}
+        rows = compute(fills, [_seed(D1, 5_000_000)], closes, [D1, D2, D3, D4])
+        buy_cost = 100 * 1000 * 1.00015
+        proceeds = 100 * 1100 * (1 - 0.00215)
+        self.assertAlmostEqual(rows[1]["flow"], buy_cost)
+        self.assertEqual(rows[1]["flow_note"], "추가 자금")
+        self.assertAlmostEqual(rows[3]["flow"], -proceeds)
+        self.assertEqual(rows[3]["flow_note"], "추가 자금")
+        self.assertAlmostEqual(rows[2]["flow"], 0.0)
+        r = twr(rows)
+        self.assertAlmostEqual(r[1], (100 * 1000 - buy_cost) / 5_000_000)
+        self.assertAlmostEqual(r[2], (1050 - 1000) * 100 / rows[1]["equity"])
+
+    def test_external_note_appends_to_event_note(self):
+        fills = [{"date": D2, "ticker": "000001", "side": "buy", "qty": 100,
+                  "price": 1000.0, "ref": "x", "external": True}]
+        events = [_seed(D1, 5_000_000),
+                  {"date": D2, "capital": 6_000_000.0, "since": D1, "note": "증액"}]
+        rows = compute(fills, events, {(D2, "000001"): 1000.0}, [D1, D2])
+        self.assertEqual(rows[1]["flow_note"], "증액 · 추가 자금")
+        self.assertAlmostEqual(rows[1]["flow"], 1_000_000 + 100 * 1000 * 1.00015)
+
+
+class RightsAdapterTest(unittest.TestCase):
+    def _wl(self) -> sqlite3.Connection:
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        con = sqlite3.connect(str(Path(tmp) / "watchlist.sqlite3"))
+        self.addCleanup(con.close)
+        return con
+
+    def _capital_db(self, rows) -> sqlite3.Connection:
+        con = self._wl()
+        con.execute("CREATE TABLE rights_dip_capital(id INTEGER PRIMARY KEY, date TEXT,"
+                    " capital REAL, pnl REAL, note TEXT, created_at TEXT)")
+        con.executemany(
+            "INSERT INTO rights_dip_capital(id, date, capital, pnl) VALUES (?,?,?,?)", rows)
+        return con
+
+    def test_fills_classify_side_and_external(self):
+        con = self._wl()
+        con.execute("CREATE TABLE rights_dip_positions(acptno TEXT, ticker TEXT, extra INTEGER)")
+        con.execute("INSERT INTO rights_dip_positions VALUES (?,?,?)", ("A1", "000001", 0))
+        con.execute("INSERT INTO rights_dip_positions VALUES (?,?,?)", ("A2", "000002", 1))
+        con.execute("CREATE TABLE rights_dip_candidates(acptno TEXT, ticker TEXT)")
+        con.execute("INSERT INTO rights_dip_candidates VALUES (?,?)", ("A3", "000003"))
+        con.execute("CREATE TABLE rights_dip_orders(id INTEGER PRIMARY KEY, date TEXT,"
+                    " acptno TEXT, extra INTEGER, leg TEXT, qty REAL,"
+                    " filled_qty REAL, filled_price REAL)")
+        con.executemany("INSERT INTO rights_dip_orders VALUES (?,?,?,?,?,?,?,?)", [
+            (1, D1, "A1", 0, "b1_1", 10, 10, 1000.0),
+            (2, D1, "A1", 0, "b2", 10, 5, 1100.0),
+            (3, D1, "A1", 0, "b1_2", 10, 0, 1050.0),
+            (4, D1, "A1", 0, "b1_3", 10, 5, None),
+            (5, D2, "A1", 0, "exit", 15, 15, 1200.0),
+            (6, D1, "A2", 1, "fb", 20, 20, 500.0),
+            (7, D2, "A2", 1, "tp", 20, 20, 600.0),
+            (8, D1, "A3", 0, "fw", 7, 7, 700.0),
+            (9, D1, "A9", 0, "b1_1", 3, 3, 100.0),
+        ])
+        fills = rights_fills(con, [D1, D2])
+        got = sorted((f["ticker"], f["side"], f["external"], f["qty"], f["price"])
+                     for f in fills)
+        self.assertEqual(got, [
+            ("000001", "buy", False, 5, 1100.0),
+            ("000001", "buy", False, 10, 1000.0),
+            ("000001", "sell", False, 15, 1200.0),
+            ("000002", "buy", True, 20, 500.0),
+            ("000002", "sell", True, 20, 600.0),
+            ("000003", "buy", False, 7, 700.0),
+        ])
+        by_ref = {f["ref"]: f for f in fills}
+        self.assertIn("rights_dip:A1:exit:5", by_ref)
+        self.assertIs(by_ref["rights_dip:A2:tp:7"]["external"], True)
+        self.assertEqual({f["date"] for f in fills if f["side"] == "sell"}, {D2})
+
+    def test_seed_events_reset_rules(self):
+        con = self._wl()
+        con.execute("CREATE TABLE strategy_budget_resets(id INTEGER PRIMARY KEY,"
+                    " date TEXT, strategy TEXT, old_capital INTEGER,"
+                    " new_capital INTEGER, since TEXT, note TEXT, created_at TEXT)")
+        con.execute("INSERT INTO strategy_budget_resets"
+                    "(date, strategy, old_capital, new_capital, since, note)"
+                    " VALUES (?,?,?,?,?,?)", (D1, "rebound", 1, 2, D2, "무시됨"))
+        con.execute("INSERT INTO strategy_budget_resets"
+                    "(date, strategy, old_capital, new_capital, since, note)"
+                    " VALUES (?,?,?,?,?,?)", (D1, "rights_dip", 8_000_000, 7_000_000, D2, "r1"))
+        events = rights_seed_events(con, D1)
+        self.assertEqual(
+            [(e["date"], e["capital"], e["since"]) for e in events],
+            [(D1, 8_000_000, D1), (D2, 7_000_000, D2)])
+        self.assertEqual(events[0]["note"], "리셋 전 시드")
+
+    def test_seed_sums_capital_changes(self):
+        con = self._capital_db([
+            (1, "20261015", 7_114_040, -885_960),
+            (2, "20261020", 7_114_040, 526_848),
+            (3, "20261101", 6_980_078, -133_962),
+        ])
+        config = {"capital": 6_980_078, "capital_since": "20261015"}
+        self.assertEqual(rights_seed(config, con), 8_000_000)
+
+    def test_seed_ignores_rows_before_since(self):
+        con = self._capital_db([
+            (1, "20261001", 9_000_000, 500_000),
+            (2, "20261015", 7_114_040, -885_960),
+            (3, "20261020", 7_114_040, 526_848),
+            (4, "20261101", 6_980_078, -133_962),
+        ])
+        config = {"capital": 6_980_078, "capital_since": "20261015"}
+        self.assertEqual(rights_seed(config, con), 8_000_000)
+        early = {"capital": 6_980_078, "capital_since": "20261001"}
+        self.assertNotEqual(rights_seed(early, con), 8_000_000)
+
+    def test_seed_no_table_returns_config(self):
+        con = self._wl()
+        self.assertEqual(rights_seed({"capital": 5_000_000}, con), 5_000_000)
+
+    def test_check_matches_engine(self):
+        con = self._wl()
+        con.execute("CREATE TABLE rights_dip_positions(acptno TEXT, ticker TEXT,"
+                    " close_date TEXT, pnl REAL, pnl_source TEXT)")
+        con.execute("INSERT INTO rights_dip_positions VALUES (?,?,?,?,?)",
+                    ("A1", "000001", D2, 9900.0, "realized"))
+        con.execute("INSERT INTO rights_dip_positions VALUES (?,?,?,?,?)",
+                    ("A2", "000002", D2, 100.0, "estimated"))
+        con.execute("INSERT INTO rights_dip_positions VALUES (?,?,?,?,?)",
+                    ("A3", "000003", None, 50.0, "realized"))
+        con.execute("CREATE TABLE rights_dip_orders(id INTEGER PRIMARY KEY, date TEXT,"
+                    " acptno TEXT, extra INTEGER, leg TEXT,"
+                    " filled_qty REAL, filled_price REAL)")
+        con.executemany(
+            "INSERT INTO rights_dip_orders(date, acptno, extra, leg, filled_qty, filled_price)"
+            " VALUES (?,?,?,?,?,?)",
+            [(D1, "A1", 0, "b1_1", 10, 1000.0),
+             (D1, "A1", 0, "b2", 10, 2000.0),
+             (D2, "A1", 0, "exit", 10, 1500.0),
+             (D2, "A1", 0, "tp", 10, 2500.0)])
+        rows = rights_check(con)
+        self.assertEqual(len(rows), 1)
+        buy_cost = (10 * 1000 + 10 * 2000) * 1.00015
+        proceeds = (10 * 1500 + 10 * 2500) * (1 - 0.00215)
+        want = proceeds - buy_cost / 20 * 20
+        self.assertAlmostEqual(rows[0]["ours"], want)
+        self.assertEqual(rows[0]["date"], D2)
+        self.assertEqual(rows[0]["ticker"], "000001")
+        self.assertEqual(rows[0]["kiwoom"], 9900.0)
+        self.assertAlmostEqual(rows[0]["diff"], want - 9900.0)
+
+
+class MainAdapterTest(unittest.TestCase):
+    def test_adapters_registry(self):
+        self.assertEqual(set(ADAPTERS), {"rebound", "rights_dip"})
+        for adapter in ADAPTERS.values():
+            self.assertEqual(set(adapter), {"fills", "events", "seed", "check"})
+
+    def test_main_runs_both_adapters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            wl_path = tmpdir / "watchlist.sqlite3"
+            perf_path = tmpdir / "performance.sqlite3"
+            con = sqlite3.connect(str(wl_path))
+            try:
+                con.execute("CREATE TABLE rebound_positions(date TEXT, ticker TEXT,"
+                            " fq1 REAL, fp1 REAL, fq2 REAL, fp2 REAL, fq3 REAL, fp3 REAL,"
+                            " sell_qty REAL, sell_px REAL, sell_status TEXT, reason TEXT,"
+                            " realized REAL)")
+                con.execute("INSERT INTO rebound_positions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (D1, "000001", 10, 1000, 0, None, 0, None,
+                             10, 1100, "filled", None, 9000.0))
+                con.execute("CREATE TABLE rights_dip_positions(acptno TEXT, ticker TEXT,"
+                            " close_date TEXT, pnl REAL, pnl_source TEXT)")
+                con.execute("INSERT INTO rights_dip_positions VALUES (?,?,?,?,?)",
+                            ("A1", "000002", D1, 100.0, "realized"))
+                con.execute("CREATE TABLE rights_dip_orders(id INTEGER PRIMARY KEY, date TEXT,"
+                            " acptno TEXT, extra INTEGER, leg TEXT,"
+                            " filled_qty REAL, filled_price REAL)")
+                con.execute("INSERT INTO rights_dip_orders"
+                            "(date, acptno, extra, leg, filled_qty, filled_price)"
+                            " VALUES (?,?,?,?,?,?)", (D1, "A1", 0, "b1_1", 10, 1000.0))
+                con.execute("INSERT INTO rights_dip_orders"
+                            "(date, acptno, extra, leg, filled_qty, filled_price)"
+                            " VALUES (?,?,?,?,?,?)", (D1, "A1", 0, "exit", 10, 1100.0))
+                con.commit()
+            finally:
+                con.close()
+            (tmpdir / "rebound.json").write_text(
+                json.dumps({"capital": 5_000_000, "capital_since": D1}), encoding="utf-8")
+            (tmpdir / "rights.json").write_text(
+                json.dumps({"capital": 8_000_000, "capital_since": D1}), encoding="utf-8")
+            strategies = {"rebound": ("http://x", "rebound"),
+                          "rights_dip": ("http://x", "rights")}
+            closes = {(D1, "000001"): 1100.0, (D2, "000001"): 1100.0,
+                      (D1, "000002"): 1100.0, (D2, "000002"): 1100.0}
+            with mock.patch.object(snap, "WL_DB", wl_path), \
+                    mock.patch.object(snap, "PERF_DB", perf_path), \
+                    mock.patch.object(snap, "STRATEGIES", strategies), \
+                    mock.patch.object(snap, "_resolve_config",
+                                       side_effect=lambda rel: tmpdir / f"{rel}.json"), \
+                    mock.patch.object(snap, "load_days", return_value=[D1, D2]), \
+                    mock.patch.object(snap, "load_closes", return_value=closes):
+                self.assertEqual(main(["--end", D2]), 0)
+                self.assertEqual(
+                    main(["--strategy", "rights_dip", "--end", D2, "--check"]), 0)
+            con = sqlite3.connect(str(perf_path))
+            try:
+                got = con.execute("SELECT DISTINCT strategy FROM strategy_daily").fetchall()
+            finally:
+                con.close()
+            self.assertEqual({row[0] for row in got}, {"rebound", "rights_dip"})
+
+
+class TwrMddTest(unittest.TestCase):
+    def test_flow_only_halving_is_zero(self):
+        rows = [
+            {"equity": 100.0, "flow": 100.0},
+            {"equity": 50.0, "flow": -50.0},
+        ]
+        self.assertEqual(snap.twr_mdd(rows), 0)
+
+    def test_ten_percent_drop_and_recovery(self):
+        rows = [
+            {"equity": 100.0, "flow": 100.0},
+            {"equity": 90.0, "flow": 0.0},
+            {"equity": 100.0, "flow": 0.0},
+        ]
+        self.assertAlmostEqual(snap.twr_mdd(rows), -0.10)
 
 
 if __name__ == "__main__":
