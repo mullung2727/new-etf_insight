@@ -59,5 +59,11 @@
   - 되돌림: ~11-18 3단 분할 매수 / 11-19~ 빈자리 F + 상승일 V3 / 11-23~ 목표가 30% 분할 매도(설계 `research/private/intraday_rebound/PLAN_TP_SPLIT.md`).
 - 순서(시뮬레이터 준비된 것부터): 되돌림 → 유무상 → msig → 52주 → 미국 v38.
 
+## P1 진행 메모
+- [x] P1a 공통 엔진 + 되돌림 어댑터 (`etl/scripts/strategy_snapshot.py`, 테스트 11개). 실데이터 dry-run(~11-20): 18건 체결가 계산 vs 키움 실현손익 차이 −7~−297원/건, 평가 6,335,513 (원장 예산 6,336,058), 일별 MDD −5.12% 일치
+- [ ] 유무상 / msig / 52주 / 미국 v38 어댑터
+- [ ] 스케줄 등록 (16:40)
+
 ## 구현 차이
-없음
+- 원래 `strategy_daily` 만 → 실제 `pnl`(그날 손익) 열 추가, 시드 로그 표 `strategy_seed(strategy, date, capital, since, note)` 추가 (config 시드 변경을 이력 테이블 없이도 보존)
+- 원래 "시드 = config capital" → 실제 시드 이벤트 = 리셋 이력(효력일 = since) + msig 정산 이체 + config 변경 로그, 같은 날은 이력 우선
