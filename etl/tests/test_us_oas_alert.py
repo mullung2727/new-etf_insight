@@ -23,6 +23,7 @@ from scripts.us_oas_alert import (
     record,
     regime_events,
     regime_frame,
+    send_regime_alerts,
 )
 
 
@@ -715,6 +716,53 @@ class TestSendRegimeArg(unittest.TestCase):
         self.assertEqual(rc, 0)
         reg.assert_called_once_with("20240103")
         self.assertIn("OAS regime", buf.getvalue())
+
+
+class TestSendRegimeSkip(unittest.TestCase):
+    def _loads(self, days, vix_last=24.0):
+        qqq = pd.DataFrame({"QQQ": pd.Series([0.002] * len(days), index=days)})
+        vix = pd.Series([20.0] * (len(days) - 1) + [vix_last], index=days)
+        dgs = pd.Series([4.0] * len(days), index=days)
+        icnsa = pd.Series([200.0] * len(days), index=days)
+        return qqq, vix, dgs, icnsa
+
+    def test_qqq_missing_date_skips(self):
+        days = _regime_days(400)
+        qqq, vix, dgs, icnsa = self._loads(days)
+        req = "20250101"
+        self.assertGreater(req, days[-1])
+        self.assertNotIn(req, days)
+
+        def _fred(name):
+            return dgs if name == "DGS10" else icnsa
+
+        with (
+            patch("scripts.us_oas_alert.load_etf_tr", return_value=qqq),
+            patch("scripts.us_oas_alert.load_index", return_value=vix),
+            patch("scripts.us_oas_alert.load_fred", side_effect=_fred),
+            patch("scripts.us_oas_alert.send_strategy_alert", return_value=True) as send,
+        ):
+            lines = send_regime_alerts(req)
+        self.assertTrue(any("skipped" in line for line in lines), lines)
+        send.assert_not_called()
+
+    def test_present_date_sends_event(self):
+        days = _regime_days(400)
+        qqq, vix, dgs, icnsa = self._loads(days)
+        req = days[-1]
+
+        def _fred(name):
+            return dgs if name == "DGS10" else icnsa
+
+        with (
+            patch("scripts.us_oas_alert.load_etf_tr", return_value=qqq),
+            patch("scripts.us_oas_alert.load_index", return_value=vix),
+            patch("scripts.us_oas_alert.load_fred", side_effect=_fred),
+            patch("scripts.us_oas_alert.send_strategy_alert", return_value=True) as send,
+        ):
+            lines = send_regime_alerts(req)
+        self.assertGreaterEqual(send.call_count, 1)
+        self.assertTrue(any("sent=True" in line for line in lines), lines)
 
 
 if __name__ == "__main__":
