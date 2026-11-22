@@ -361,6 +361,8 @@ def send_regime_alerts(date) -> list[str]:
     dgs10 = load_fred("DGS10")
     icnsa = load_fred("ICNSA")
     frame = regime_frame(qqq_ret, vix, dgs10, icnsa)
+    if str(date) not in frame.index:
+        return [f"OAS regime {date} skipped: QQQ has no row for this date"]
     events = regime_events(frame, date)
     lines = []
     for ev in events:
