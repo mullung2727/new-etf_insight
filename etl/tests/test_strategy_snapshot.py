@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
+import duckdb
+
 import scripts.strategy_snapshot as snap
 from scripts.strategy_snapshot import (
     ADAPTERS,
@@ -30,6 +32,9 @@ from scripts.strategy_snapshot import (
     rights_seed_events,
     twr,
     upsert,
+    us_fills,
+    us_seed,
+    us_seed_events,
 )
 
 D1, D2, D3 = "20261118", "20261119", "20261120"
@@ -57,6 +62,53 @@ class EngineTest(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["equity"], 5_000_000 + want)
         self.assertEqual(rows[0]["open_n"], 0)
         self.assertEqual(rows[0]["trades_cum"], 1)
+
+    def test_custom_fee_and_sell_tax(self):
+        fills = [
+            {"date": D1, "ticker": "MSFT", "side": "buy", "qty": 2,
+             "price": 500.0, "ref": "t"},
+            {"date": D1, "ticker": "MSFT", "side": "sell", "qty": 2,
+             "price": 510.0, "ref": "t"},
+        ]
+        rows = compute(fills, [_seed(D1, 8000)], {(D1, "MSFT"): 510.0}, [D1],
+                       fee=0.001, sell_tax=0.0)
+        want = 2 * 510.0 * (1 - 0.001) - 2 * 500.0 * (1 + 0.001)
+        self.assertAlmostEqual(rows[0]["realized_cum"], want)
+        self.assertAlmostEqual(rows[0]["equity"], 8000 + want)
+
+    def test_per_fill_fee_override(self):
+        fills = [
+            {"date": D1, "ticker": "MSFT", "side": "buy", "qty": 2,
+             "price": 500.0, "ref": "t", "external": True, "fee": 0.0},
+            {"date": D1, "ticker": "MSFT", "side": "sell", "qty": 2,
+             "price": 510.0, "ref": "t"},
+        ]
+        rows = compute(fills, [_seed(D1, 8000)], {(D1, "MSFT"): 510.0}, [D1],
+                       fee=0.001, sell_tax=0.0)
+        want = 2 * 510.0 * (1 - 0.001) - 2 * 500.0
+        self.assertAlmostEqual(rows[0]["realized_cum"], want)
+        # 매도 쪽 Fill 수수료도 덮어씀
+        fills_sell0 = [
+            {"date": D1, "ticker": "MSFT", "side": "buy", "qty": 2,
+             "price": 500.0, "ref": "t"},
+            {"date": D1, "ticker": "MSFT", "side": "sell", "qty": 2,
+             "price": 510.0, "ref": "t", "fee": 0.0},
+        ]
+        rows_sell0 = compute(fills_sell0, [_seed(D1, 8000)],
+                             {(D1, "MSFT"): 510.0}, [D1],
+                             fee=0.001, sell_tax=0.0)
+        want_sell0 = 2 * 510.0 - 2 * 500.0 * (1 + 0.001)
+        self.assertAlmostEqual(rows_sell0[0]["realized_cum"], want_sell0)
+
+    def test_adopted_external_flow_no_fee(self):
+        fills = [{"date": D2, "ticker": "MSFT", "side": "buy", "qty": 2,
+                  "price": 500.0, "ref": "us_v38:adopted:MSFT",
+                  "external": True, "fee": 0.0}]
+        closes = {(D1, "MSFT"): 500.0, (D2, "MSFT"): 500.0}
+        rows = compute(fills, [_seed(D1, 8000)], closes, [D1, D2],
+                       fee=0.001, sell_tax=0.0)
+        self.assertAlmostEqual(rows[1]["flow"], 2 * 500.0)
+        self.assertEqual(rows[1]["flow_note"], "추가 자금")
 
     def test_missing_close_uses_previous(self):
         fills = [{"date": D1, "ticker": "000001", "side": "buy", "qty": 10,
@@ -551,13 +603,156 @@ class High52AdapterTest(unittest.TestCase):
         self.assertEqual(high52_seed_events(self._wl(), D1), [])
 
 
+class UsMarketDataTest(unittest.TestCase):
+    def test_load_closes_merges_tables(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "us_ohlcv.duckdb"
+            con = duckdb.connect(str(db))
+            try:
+                con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR, close DOUBLE)")
+                con.execute("CREATE TABLE etf_ohlcv(date VARCHAR, ticker VARCHAR, close DOUBLE)")
+                con.execute("INSERT INTO ohlcv VALUES (?,?,?)", [D1, "MSFT", 500.0])
+                con.execute("INSERT INTO etf_ohlcv VALUES (?,?,?)", [D1, "TQQQ", 100.0])
+                con.execute("INSERT INTO etf_ohlcv VALUES (?,?,?)", [D1, "MSFT", 999.0])
+            finally:
+                con.close()
+            got = snap.load_closes(db, ["MSFT", "TQQQ"], D1, D1, ("ohlcv", "etf_ohlcv"))
+            self.assertEqual(got, {(D1, "MSFT"): 500.0, (D1, "TQQQ"): 100.0})
+            self.assertEqual(snap.load_days(db, D1, D1), [D1])
+            self.assertEqual(snap.load_closes(db, ["TQQQ"], D1, D1), {})
+
+
+class UsV38AdapterTest(unittest.TestCase):
+    def _v38(self, tmpdir: Path, rows) -> Path:
+        v38 = tmpdir / "us_v38.sqlite3"
+        con = sqlite3.connect(str(v38))
+        try:
+            con.execute("CREATE TABLE orders(id INTEGER PRIMARY KEY, date TEXT, code TEXT,"
+                        " side TEXT, qty REAL, order_no TEXT, status TEXT, message TEXT,"
+                        " filled_qty REAL, avg_fill_price REAL, created_at TEXT)")
+            con.executemany(
+                "INSERT INTO orders(date, code, side, qty, order_no, filled_qty, avg_fill_price)"
+                " VALUES (?,?,?,?,?,?,?)", rows)
+            con.commit()
+        finally:
+            con.close()
+        return v38
+
+    def _usdb(self, tmpdir: Path, ohlcv_rows, etf_rows=()) -> Path:
+        db = tmpdir / "us_ohlcv.duckdb"
+        con = duckdb.connect(str(db))
+        try:
+            con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR, close DOUBLE)")
+            con.execute("CREATE TABLE etf_ohlcv(date VARCHAR, ticker VARCHAR, close DOUBLE)")
+            for day, ticker, close in ohlcv_rows:
+                con.execute("INSERT INTO ohlcv VALUES (?,?,?)", [day, ticker, close])
+            for day, ticker, close in etf_rows:
+                con.execute("INSERT INTO etf_ohlcv VALUES (?,?,?)", [day, ticker, close])
+        finally:
+            con.close()
+        return db
+
+    def test_fills_orders_and_adopted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            v38 = self._v38(tmpdir, [
+                (D2, "MSFT", "sell", 2, "S1", 2, 510.0),
+                (D2, "AAPL", "buy", 5, "B1", 0, 0.0),
+                (D2, "AAPL", "buy", 3, "B2", 3, 0.0),
+            ])
+            us_db = self._usdb(tmpdir, [(D1, "MSFT", 500.0), (D2, "MSFT", 505.0)])
+            adopted = tmpdir / "adopted.json"
+            adopted.write_text(json.dumps({"adopted": [
+                {"code": "MSFT", "date": D1, "qty": 2},
+                {"code": "NVDA", "date": D1, "qty": 1},
+            ]}), encoding="utf-8")
+            with mock.patch.object(snap, "US_V38_DB", v38), \
+                    mock.patch.object(snap, "US_DB", us_db), \
+                    mock.patch.object(snap, "_resolve_config",
+                                       return_value=adopted) as resolve:
+                fills = us_fills(None, [D1, D2])
+            resolve.assert_called_once_with("research/private/us_oas/live/adopted.json")
+            got = sorted((f["date"], f["ticker"], f["side"], f["qty"],
+                          f["price"], f["ref"]) for f in fills)
+            self.assertEqual(got, [
+                (D1, "MSFT", "buy", 2, 500.0, "us_v38:adopted:MSFT"),
+                (D2, "MSFT", "sell", 2, 510.0, "us_v38:S1"),
+            ])
+            by_ref = {f["ref"]: f for f in fills}
+            adopted_fill = by_ref["us_v38:adopted:MSFT"]
+            self.assertIs(adopted_fill["external"], True)
+            self.assertEqual(adopted_fill["fee"], 0.0)
+            self.assertFalse(by_ref["us_v38:S1"].get("external", False))
+
+    def test_fills_missing_db_and_adopted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            with mock.patch.object(snap, "US_V38_DB", tmpdir / "nope.sqlite3"), \
+                    mock.patch.object(snap, "_resolve_config",
+                                       return_value=tmpdir / "nope.json"):
+                self.assertEqual(us_fills(None, []), [])
+
+    def test_seed(self):
+        self.assertEqual(us_seed({"max_equity_usd": 8000}, None), 8000)
+        self.assertIsNone(us_seed({}, None))
+        self.assertEqual(us_seed_events(None, D1), [])
+
+    def test_main_saves_snapshot_with_adopted_cost(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            wl_path = tmpdir / "watchlist.sqlite3"
+            sqlite3.connect(str(wl_path)).close()
+            perf_path = tmpdir / "performance.sqlite3"
+            v38 = self._v38(tmpdir, [(D2, "MSFT", "sell", 2, "S1", 2, 510.0)])
+            us_db = self._usdb(tmpdir, [(D1, "MSFT", 500.0), (D2, "MSFT", 505.0)])
+            adopted = tmpdir / "adopted.json"
+            adopted.write_text(json.dumps({"adopted": [
+                {"code": "MSFT", "date": D1, "qty": 2}]}), encoding="utf-8")
+            cfg = tmpdir / "us_v38.json"
+            cfg.write_text(json.dumps({"max_equity_usd": 8000}), encoding="utf-8")
+
+            def resolve(rel):
+                return adopted if rel.endswith("adopted.json") else cfg
+
+            with mock.patch.object(snap, "WL_DB", wl_path), \
+                    mock.patch.object(snap, "PERF_DB", perf_path), \
+                    mock.patch.object(snap, "US_V38_DB", v38), \
+                    mock.patch.object(snap, "US_DB", us_db), \
+                    mock.patch.object(snap, "STRATEGIES", {}), \
+                    mock.patch.object(snap, "_resolve_config", side_effect=resolve), \
+                    mock.patch.object(snap, "now_seoul",
+                                       return_value=datetime(2026, 11, 24, 9, 0)):
+                self.assertEqual(main(["--strategy", "us_v38", "--end", D2]), 0)
+            con = sqlite3.connect(str(perf_path))
+            try:
+                got = con.execute("SELECT date, strategy, seed, realized_cum, equity,"
+                                  " flow, flow_note FROM strategy_daily ORDER BY date").fetchall()
+            finally:
+                con.close()
+            self.assertEqual([(r[0], r[1], r[2]) for r in got],
+                             [(D1, "us_v38", 8000), (D2, "us_v38", 8000)])
+            want = 2 * 510.0 * (1 - 0.001) - 2 * 500.0
+            self.assertAlmostEqual(got[0][3], 0.0)
+            self.assertAlmostEqual(got[1][3], want)
+            # 첫날 flow = 시드 + 넘겨받은 평가액(수수료 없음)
+            self.assertAlmostEqual(got[0][5], 8000 + 2 * 500.0)
+            self.assertIn("추가 자금", got[0][6])
+            self.assertAlmostEqual(got[1][5], 0.0)
+
+
 class MainAdapterTest(unittest.TestCase):
     def test_adapters_registry(self):
-        self.assertEqual(set(ADAPTERS), {"rebound", "rights_dip", "msig", "high52"})
+        self.assertEqual(set(ADAPTERS),
+                         {"rebound", "rights_dip", "msig", "high52", "us_v38"})
         for adapter in ADAPTERS.values():
             self.assertTrue({"fills", "events", "seed", "check"} <= set(adapter))
         self.assertEqual(ADAPTERS["high52"]["config"],
                          "research/private/high52_quiet_breakout/live/config.json")
+        self.assertEqual(ADAPTERS["us_v38"]["config"],
+                         "research/private/us_oas/live/config.json")
+        self.assertEqual(ADAPTERS["us_v38"]["market"], "us")
+        self.assertEqual(ADAPTERS["us_v38"]["fee"], 0.001)
+        self.assertEqual(ADAPTERS["us_v38"]["sell_tax"], 0.0)
 
     def test_main_runs_both_adapters(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -599,6 +794,9 @@ class MainAdapterTest(unittest.TestCase):
             high52_cfg.parent.mkdir(parents=True, exist_ok=True)
             high52_cfg.write_text(
                 json.dumps({"slots": 4, "slot_amount": 500000}), encoding="utf-8")
+            us_cfg = tmpdir / (ADAPTERS["us_v38"]["config"] + ".json")
+            us_cfg.parent.mkdir(parents=True, exist_ok=True)
+            us_cfg.write_text(json.dumps({"max_equity_usd": 8000}), encoding="utf-8")
             strategies = {"rebound": ("http://x", "rebound"),
                           "rights_dip": ("http://x", "rights"),
                           "msig": ("http://x", "msig")}
@@ -606,6 +804,7 @@ class MainAdapterTest(unittest.TestCase):
                       (D1, "000002"): 1100.0, (D2, "000002"): 1100.0}
             with mock.patch.object(snap, "WL_DB", wl_path), \
                     mock.patch.object(snap, "PERF_DB", perf_path), \
+                    mock.patch.object(snap, "US_V38_DB", tmpdir / "us_v38.sqlite3"), \
                     mock.patch.object(snap, "STRATEGIES", strategies), \
                     mock.patch.object(snap, "_resolve_config",
                                        side_effect=lambda rel: tmpdir / f"{rel}.json"), \

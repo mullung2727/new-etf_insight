@@ -1744,16 +1744,16 @@
     {
       "id": "ef9fdabc-ef27-4373-9b37-773754de8a73",
       "name": "strategy-snapshot",
-      "description": "Tue-Sat 08:45 KST; per-strategy daily performance snapshot for the previous trading day into performance.sqlite3 (read-only on ledgers, no orders)",
+      "description": "Tue-Sat 11:30 KST; per-strategy daily performance snapshot for the previous trading day into performance.sqlite3 (read-only on ledgers, no orders)",
       "enabled": true,
       "schedule": {
         "kind": "cron",
-        "expr": "45 8 * * 2-6",
+        "expr": "30 11 * * 2-6",
         "tz": "Asia/Seoul"
       },
       "instructionFile": "ops/batches/strategy-snapshot.md",
       "timeoutSeconds": 1800,
-      "runNote": "Windows Task Scheduler is authoritative. Runs after daily-etf-watchlist-krx-ohlcv (07:00/08:30) so krx_ohlcv has the previous day's regular-session close. Idempotent full recompute; failure posts one alert.",
+      "runNote": "Windows Task Scheduler is authoritative. Runs after daily-etf-watchlist-krx-ohlcv (07:00/08:30) and us-early (10:15) so krx_ohlcv and us_ohlcv both have the previous day's close. Idempotent full recompute; failure posts one alert.",
       "windowsTask": {
         "enabled": true,
         "taskPath": "\new-etf_insight\\",
