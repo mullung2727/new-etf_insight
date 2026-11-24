@@ -7,7 +7,7 @@
 ## 진행
 - [x] 구현·테스트 머지 (PR #167, 2026-11-19 — CodeRabbit 3회 지적 반영: 재기동 시 후보 재등록·codes 쓰기 실패 재시도·시작 tags 재시도, archive 정렬 버그. 되돌림 후보 파일 저장은 비공개 order.py `write_cand_file`, 11-19 20:40 live 반영)
 - [x] 운영 등록 (스케줄 작업·config) — 해당 없음 (기존 orderbook-research-recorder·orderbook-archive·rebound-order 그대로)
-- [ ] 첫 실가동 확인 (날짜)
+- [x] 첫 실가동 확인 (11-20 rebound_V3 4행 전부 vol30 겹침→reg 0. 11-23 rebound_H 8·F 9행 후보파일 17줄 일치, 새 11종목 trade·book 행 있음, added_rt 08:41:06, parquet codes 생성)
 - [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ---
