@@ -521,6 +521,136 @@ def rights_check(wl_con: sqlite3.Connection) -> list[dict]:
     return out
 
 
+def msig_fills(wl_con: sqlite3.Connection, days: list[str]) -> list[dict]:
+    """msig_orders 체결 → Fill 리스트. days 는 시그니처 통일용(미사용)."""
+    if not _table_exists(wl_con, "msig_orders"):
+        return []
+    cols = _columns(wl_con, "msig_orders")
+    if "date" not in cols or "ticker" not in cols:
+        return []
+    wanted = ["order_no", "date", "ticker", "side", "filled_qty", "avg_price"]
+    avail = [c for c in wanted if c in cols]
+    order = "date, order_no" if "order_no" in cols else "date, rowid"
+    try:
+        db_rows = wl_con.execute(
+            f"SELECT {','.join(avail)} FROM msig_orders ORDER BY {order}").fetchall()
+    except sqlite3.Error:
+        return []
+    idx = {name: pos for pos, name in enumerate(avail)}
+
+    def get(row, name: str):
+        return row[idx[name]] if name in idx else None
+
+    fills: list[dict] = []
+    for row in db_rows:
+        raw_date, raw_ticker = get(row, "date"), get(row, "ticker")
+        if raw_date is None or raw_ticker is None:
+            continue
+        side = get(row, "side")
+        if side not in ("buy", "sell"):
+            continue
+        fq = _qty(get(row, "filled_qty"))
+        fp = _num(get(row, "avg_price"))
+        if fq <= 0 or fp is None or fp <= 0:
+            continue
+        fills.append({"date": str(raw_date), "ticker": str(raw_ticker), "side": side,
+                      "qty": fq, "price": fp, "ref": f"msig:{get(row, 'order_no')}"})
+    return fills
+
+
+def msig_seed_events(wl_con: sqlite3.Connection, first_date: str) -> list[dict]:
+    """msig_settlements 첫 행 prev_value → 시작 시드 + 행별 정산 이벤트."""
+    first_date = str(first_date)
+    if not _table_exists(wl_con, "msig_settlements"):
+        return []
+    cols = _columns(wl_con, "msig_settlements")
+    if "date" not in cols:
+        return []
+    wanted = ["date", "prev_value", "msig_capital"]
+    avail = [c for c in wanted if c in cols]
+    try:
+        db_rows = wl_con.execute(
+            f"SELECT {','.join(avail)} FROM msig_settlements ORDER BY date").fetchall()
+    except sqlite3.Error:
+        return []
+    idx = {name: pos for pos, name in enumerate(avail)}
+
+    def get(row, name: str):
+        return row[idx[name]] if name in idx else None
+
+    events: list[dict] = []
+    first_prev = _num(get(db_rows[0], "prev_value")) if db_rows else None
+    if first_prev is not None:
+        events.append({"date": first_date, "capital": first_prev,
+                       "since": first_date, "note": "시작 시드"})
+    for row in db_rows:
+        raw_date = get(row, "date")
+        cap = _num(get(row, "msig_capital"))
+        if raw_date is None or cap is None:
+            continue
+        events.append({"date": str(raw_date), "capital": cap,
+                       "since": first_date, "note": "msig 정산 이체"})
+    events.sort(key=lambda e: e["date"])
+    return events
+
+
+def high52_fills(wl_con: sqlite3.Connection, days: list[str]) -> list[dict]:
+    """high52_positions → Fill 리스트. days 는 시그니처 통일용(미사용)."""
+    if not _table_exists(wl_con, "high52_positions"):
+        return []
+    cols = _columns(wl_con, "high52_positions")
+    if "signal_date" not in cols or "ticker" not in cols:
+        return []
+    wanted = ["signal_date", "ticker", "buy_price", "buy_qty",
+              "sell_status", "sell_date", "sell_price", "sell_qty"]
+    avail = [c for c in wanted if c in cols]
+    try:
+        db_rows = wl_con.execute(
+            f"SELECT {','.join(avail)} FROM high52_positions"
+            " ORDER BY signal_date").fetchall()
+    except sqlite3.Error:
+        return []
+    idx = {name: pos for pos, name in enumerate(avail)}
+
+    def get(row, name: str):
+        return row[idx[name]] if name in idx else None
+
+    fills: list[dict] = []
+    for row in db_rows:
+        raw_date, raw_ticker = get(row, "signal_date"), get(row, "ticker")
+        if raw_date is None or raw_ticker is None:
+            continue
+        day, ticker = str(raw_date), str(raw_ticker)
+        ref = f"high52:{day}:{ticker}"
+        bq = _qty(get(row, "buy_qty"))
+        bp = _num(get(row, "buy_price"))
+        if bq > 0 and bp is not None and bp > 0:
+            fills.append({"date": day, "ticker": ticker, "side": "buy",
+                          "qty": bq, "price": bp, "ref": ref})
+        if get(row, "sell_status") == "filled":
+            sq = _qty(get(row, "sell_qty"))
+            sp = _num(get(row, "sell_price"))
+            sell_date = get(row, "sell_date")
+            if sq > 0 and sp is not None and sp > 0 and sell_date is not None:
+                fills.append({"date": str(sell_date), "ticker": ticker, "side": "sell",
+                              "qty": sq, "price": sp, "ref": ref})
+    return fills
+
+
+def high52_seed(config: dict, wl_con: sqlite3.Connection) -> float | None:
+    """슬롯 수 × 슬롯 금액. 둘 중 하나라도 없으면 None."""
+    slots = _num(config.get("slots"))
+    amount = _num(config.get("slot_amount"))
+    if slots is None or amount is None:
+        return None
+    return slots * amount
+
+
+def high52_seed_events(wl_con: sqlite3.Connection, first_date: str) -> list[dict]:
+    """high52 는 정산 이벤트 없음."""
+    return []
+
+
 def log_seed(perf_db: str | Path, strategy: str, date: str, capital, since: str) -> bool:
     """config 시드가 전략 마지막 기록과 (capital, since) 쌍으로 다르면 남기고 True."""
     ensure(perf_db)
@@ -538,8 +668,10 @@ def log_seed(perf_db: str | Path, strategy: str, date: str, capital, since: str)
         return True
 
 
-def load_config_seed_events(perf_db: str | Path, strategy: str) -> list[dict]:
-    """strategy_seed 행 → SeedEvent 리스트 (note 'config')."""
+def load_config_seed_events(perf_db: str | Path, strategy: str,
+                            default_since: str | None = None) -> list[dict]:
+    """strategy_seed 행 → SeedEvent 리스트 (note 'config').
+    DB since NULL 이면 default_since(없으면 행 날짜)."""
     if not Path(perf_db).exists():
         return []
     try:
@@ -557,9 +689,14 @@ def load_config_seed_events(perf_db: str | Path, strategy: str) -> list[dict]:
         if raw_date is None or cap is None:
             continue
         day = str(raw_date)
+        if since is not None:
+            since_s = str(since)
+        elif default_since is not None:
+            since_s = str(default_since)
+        else:
+            since_s = day
         events.append({"date": day, "capital": cap,
-                       "since": str(since) if since is not None else day,
-                       "note": "config"})
+                       "since": since_s, "note": "config"})
     return events
 
 
@@ -642,6 +779,11 @@ ADAPTERS = {
                 "seed": None, "check": realized_check},
     "rights_dip": {"fills": rights_fills, "events": rights_seed_events,
                    "seed": rights_seed, "check": rights_check},
+    "msig": {"fills": msig_fills, "events": msig_seed_events,
+             "seed": None, "check": None},
+    "high52": {"fills": high52_fills, "events": high52_seed_events,
+               "seed": high52_seed, "check": None,
+               "config": "research/private/high52_quiet_breakout/live/config.json"},
 }
 
 
@@ -661,14 +803,20 @@ def main(argv: list[str] | None = None) -> int:
         adapter = ADAPTERS[name]
         fills_fn, events_fn = adapter["fills"], adapter["events"]
         seed_fn, check_fn = adapter.get("seed"), adapter.get("check")
-        config = json.loads(_resolve_config(STRATEGIES[name][1]).read_text(encoding="utf-8"))
+        config = json.loads(_resolve_config(
+            adapter.get("config") or STRATEGIES[name][1]).read_text(encoding="utf-8"))
         base_capital = config.get("capital")
-        if base_capital is None:
+        if seed_fn is None and base_capital is None:
             print(f"{name}: config capital 없음 — 건너뜀")
             continue
         capital_since = config.get("capital_since")
+        if capital_since == "":
+            capital_since = None
         with connect_ro(WL_DB) as wl_con:
             capital = seed_fn(config, wl_con) if seed_fn is not None else base_capital
+            if capital is None:
+                print(f"{name}: 시드 없음 — 건너뜀")
+                continue
             logged = False
             if not args.dry_run:
                 logged = log_seed(PERF_DB, name, obs_date, capital, capital_since)
@@ -686,7 +834,7 @@ def main(argv: list[str] | None = None) -> int:
             check_rows = check_fn(wl_con) if args.check and check_fn is not None else None
         tickers = sorted({fill["ticker"] for fill in fills})
         closes = load_closes(KRX_DB, tickers, first, end)
-        stored = load_config_seed_events(PERF_DB, name)
+        stored = load_config_seed_events(PERF_DB, name, default_since=first)
         obs_cap = _num(capital)
         if obs_cap is None:
             config_events = stored
@@ -694,11 +842,11 @@ def main(argv: list[str] | None = None) -> int:
                 and stored[-1]["capital"] == obs_cap):
             config_events = stored
         else:
-            obs_since = str(capital_since) if capital_since is not None else obs_date
+            obs_since = str(capital_since) if capital_since is not None else first
             pre_existing = [e for e in stored if e["date"] != obs_date] if logged else stored
             if obs_date > end and not events and not pre_existing:
                 mem_date = days[0]
-                mem_since = str(capital_since) if capital_since is not None else mem_date
+                mem_since = str(capital_since) if capital_since is not None else first
             else:
                 mem_date, mem_since = obs_date, obs_since
             config_events = stored + [{"date": mem_date, "capital": obs_cap,
