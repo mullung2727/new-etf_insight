@@ -694,22 +694,27 @@ def us_fills(wl_con: sqlite3.Connection, days: list[str]) -> list[dict]:
                                       "side": side, "qty": fq, "price": fp,
                                       "ref": f"us_v38:{get(row, 'order_no')}"})
     adopted_path = _resolve_config("research/private/us_oas/live/adopted.json")
-    if adopted_path.exists():
-        adopted = json.loads(adopted_path.read_text(encoding="utf-8")).get("adopted", [])
-        for item in adopted:
-            code, day = item.get("code"), item.get("date")
-            qty = _qty(item.get("qty"))
-            if code is None or day is None or qty <= 0:
-                continue
-            closes = load_closes(US_DB, [str(code)], str(day), str(day),
-                                 ("ohlcv", "etf_ohlcv"))
-            px = closes.get((str(day), str(code)))
-            if px is None:
-                print(f"us_v38: adopted 종가 없음 — 건너뜀 {code} {day}")
-                continue
-            fills.append({"date": str(day), "ticker": str(code), "side": "buy",
-                          "qty": qty, "price": px, "external": True, "fee": 0.0,
-                          "ref": f"us_v38:adopted:{code}"})
+    if not adopted_path.exists():
+        print("us_v38: adopted.json 없음 — 넘겨받은 보유분 0으로 계산")
+        return fills
+    adopted = json.loads(adopted_path.read_text(encoding="utf-8")).get("adopted", [])
+    if not isinstance(adopted, list):
+        raise ValueError(f"us_v38: adopted.json 설정 오류 — adopted가 리스트 아님: {adopted!r}")
+    for item in adopted:
+        if not isinstance(item, dict):
+            raise ValueError(f"us_v38: adopted 항목 오류 — code·date·양수 qty 필요: {item!r}")
+        code, day = item.get("code"), item.get("date")
+        qty = _qty(item.get("qty"))
+        if code is None or day is None or qty <= 0:
+            raise ValueError(f"us_v38: adopted 항목 오류 — code·date·양수 qty 필요: {item!r}")
+        closes = load_closes(US_DB, [str(code)], str(day), str(day),
+                             ("ohlcv", "etf_ohlcv"))
+        px = closes.get((str(day), str(code)))
+        if px is None:
+            raise ValueError(f"us_v38: adopted 종가 없음 {code} {day} — 시세 적재 후 재실행")
+        fills.append({"date": str(day), "ticker": str(code), "side": "buy",
+                      "qty": qty, "price": px, "external": True, "fee": 0.0,
+                      "ref": f"us_v38:adopted:{code}"})
     return fills
 
 
@@ -818,16 +823,19 @@ def upsert(perf_db: str | Path, strategy: str, kind: str, rows: list[dict]) -> N
 
 
 def load_days(db: str | Path, start: str, end: str,
-              table: str = "ohlcv") -> list[str]:
-    """거래일 오름차순 (기본 ohlcv 테이블)."""
+              tables: tuple[str, ...] = ("ohlcv",)) -> list[str]:
+    """거래일 오름차순 (tables 날짜 합집합, 기본 ohlcv)."""
+    days: set[str] = set()
     con = duckdb.connect(str(db), read_only=True)
     try:
-        db_rows = con.execute(
-            f"SELECT DISTINCT date FROM {table} WHERE date BETWEEN ? AND ? ORDER BY date",
-            [start, end]).fetchall()
+        for table in tables:
+            db_rows = con.execute(
+                f"SELECT DISTINCT date FROM {table} WHERE date BETWEEN ? AND ?",
+                [start, end]).fetchall()
+            days.update(row[0] for row in db_rows)
     finally:
         con.close()
-    return [row[0] for row in db_rows]
+    return sorted(days)
 
 
 def load_closes(db: str | Path, tickers: list[str],
@@ -909,7 +917,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             first = min(fill["date"] for fill in probe)
             if use_us:
-                days = load_days(US_DB, first, end, "ohlcv")
+                days = load_days(US_DB, first, end, ("ohlcv", "etf_ohlcv"))
             else:
                 days = load_days(KRX_DB, first, end)
             if not days:

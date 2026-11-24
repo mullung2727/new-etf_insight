@@ -621,6 +621,21 @@ class UsMarketDataTest(unittest.TestCase):
             self.assertEqual(snap.load_days(db, D1, D1), [D1])
             self.assertEqual(snap.load_closes(db, ["TQQQ"], D1, D1), {})
 
+    def test_load_days_union_tables(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "us_ohlcv.duckdb"
+            con = duckdb.connect(str(db))
+            try:
+                con.execute("CREATE TABLE ohlcv(date VARCHAR, ticker VARCHAR, close DOUBLE)")
+                con.execute("CREATE TABLE etf_ohlcv(date VARCHAR, ticker VARCHAR, close DOUBLE)")
+                con.execute("INSERT INTO ohlcv VALUES (?,?,?)", [D1, "MSFT", 500.0])
+                con.execute("INSERT INTO etf_ohlcv VALUES (?,?,?)", [D2, "TQQQ", 100.0])
+            finally:
+                con.close()
+            self.assertEqual(snap.load_days(db, D1, D2), [D1])
+            self.assertEqual(snap.load_days(db, D1, D2, ("ohlcv", "etf_ohlcv")),
+                             [D1, D2])
+
 
 class UsV38AdapterTest(unittest.TestCase):
     def _v38(self, tmpdir: Path, rows) -> Path:
@@ -664,7 +679,6 @@ class UsV38AdapterTest(unittest.TestCase):
             adopted = tmpdir / "adopted.json"
             adopted.write_text(json.dumps({"adopted": [
                 {"code": "MSFT", "date": D1, "qty": 2},
-                {"code": "NVDA", "date": D1, "qty": 1},
             ]}), encoding="utf-8")
             with mock.patch.object(snap, "US_V38_DB", v38), \
                     mock.patch.object(snap, "US_DB", us_db), \
@@ -689,8 +703,74 @@ class UsV38AdapterTest(unittest.TestCase):
             tmpdir = Path(tmp)
             with mock.patch.object(snap, "US_V38_DB", tmpdir / "nope.sqlite3"), \
                     mock.patch.object(snap, "_resolve_config",
-                                       return_value=tmpdir / "nope.json"):
+                                       return_value=tmpdir / "nope.json"), \
+                    mock.patch("builtins.print") as pr:
                 self.assertEqual(us_fills(None, []), [])
+            pr.assert_called_once_with(
+                "us_v38: adopted.json 없음 — 넘겨받은 보유분 0으로 계산")
+
+    def test_fills_missing_adopted_returns_orders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            v38 = self._v38(tmpdir, [(D2, "MSFT", "sell", 2, "S1", 2, 510.0)])
+            with mock.patch.object(snap, "US_V38_DB", v38), \
+                    mock.patch.object(snap, "_resolve_config",
+                                       return_value=tmpdir / "nope.json"), \
+                    mock.patch("builtins.print") as pr:
+                fills = us_fills(None, [D1, D2])
+            pr.assert_called_once_with(
+                "us_v38: adopted.json 없음 — 넘겨받은 보유분 0으로 계산")
+            self.assertEqual(
+                [(f["date"], f["ticker"], f["side"], f["qty"], f["price"])
+                 for f in fills],
+                [(D2, "MSFT", "sell", 2, 510.0)])
+
+    def test_fills_adopted_invalid_item_raises(self):
+        bad_items = [
+            {"code": "MSFT", "date": D1, "qty": 0},
+            {"date": D1, "qty": 2},
+        ]
+        for bad in bad_items:
+            with self.subTest(bad=bad):
+                with tempfile.TemporaryDirectory() as tmp:
+                    tmpdir = Path(tmp)
+                    adopted = tmpdir / "adopted.json"
+                    adopted.write_text(json.dumps({"adopted": [bad]}),
+                                       encoding="utf-8")
+                    with mock.patch.object(snap, "US_V38_DB",
+                                            tmpdir / "nope.sqlite3"), \
+                            mock.patch.object(snap, "_resolve_config",
+                                               return_value=adopted):
+                        with self.assertRaises(ValueError) as ctx:
+                            us_fills(None, [D1])
+                    self.assertIn(repr(bad), str(ctx.exception))
+
+    def test_fills_adopted_not_list_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            adopted = tmpdir / "adopted.json"
+            adopted.write_text(json.dumps({"adopted": {"code": "MSFT"}}),
+                               encoding="utf-8")
+            with mock.patch.object(snap, "US_V38_DB", tmpdir / "nope.sqlite3"), \
+                    mock.patch.object(snap, "_resolve_config",
+                                       return_value=adopted):
+                with self.assertRaises(ValueError):
+                    us_fills(None, [D1])
+
+    def test_fills_adopted_missing_close_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            us_db = self._usdb(tmpdir, [(D1, "MSFT", 500.0)])
+            adopted = tmpdir / "adopted.json"
+            adopted.write_text(json.dumps({"adopted": [
+                {"code": "NVDA", "date": D1, "qty": 1},
+            ]}), encoding="utf-8")
+            with mock.patch.object(snap, "US_V38_DB", tmpdir / "nope.sqlite3"), \
+                    mock.patch.object(snap, "US_DB", us_db), \
+                    mock.patch.object(snap, "_resolve_config",
+                                       return_value=adopted):
+                with self.assertRaisesRegex(ValueError, "adopted 종가 없음"):
+                    us_fills(None, [D1])
 
     def test_seed(self):
         self.assertEqual(us_seed({"max_equity_usd": 8000}, None), 8000)
