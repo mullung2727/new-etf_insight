@@ -602,6 +602,51 @@ class MainAdapterTest(unittest.TestCase):
                 con.close()
             self.assertEqual([r[0] for r in got], [D4])
 
+    def test_rerun_without_capital_since_keeps_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            wl_path = tmpdir / "watchlist.sqlite3"
+            sqlite3.connect(str(wl_path)).close()
+            perf_path = tmpdir / "performance.sqlite3"
+            (tmpdir / "fake.json").write_text(
+                json.dumps({"capital": 5_000_000}), encoding="utf-8")
+            fills = [
+                {"date": D1, "ticker": "000001", "side": "buy", "qty": 100,
+                 "price": 1000.0, "ref": "fake"},
+                {"date": D1, "ticker": "000001", "side": "sell", "qty": 100,
+                 "price": 1100.0, "ref": "fake"},
+            ]
+            fake = {"fills": lambda wl, days: list(fills),
+                    "events": lambda wl, first: [],
+                    "seed": None, "check": None}
+            closes = {(D1, "000001"): 1100.0, (D2, "000001"): 1100.0}
+            strategies = {"fake": ("http://x", "fake")}
+
+            def run(obs_now):
+                with mock.patch.dict(snap.ADAPTERS, {"fake": fake}), \
+                        mock.patch.object(snap, "WL_DB", wl_path), \
+                        mock.patch.object(snap, "PERF_DB", perf_path), \
+                        mock.patch.object(snap, "STRATEGIES", strategies), \
+                        mock.patch.object(snap, "_resolve_config",
+                                           side_effect=lambda rel: tmpdir / f"{rel}.json"), \
+                        mock.patch.object(snap, "load_days", return_value=[D1, D2]), \
+                        mock.patch.object(snap, "load_closes", return_value=closes), \
+                        mock.patch.object(snap, "now_seoul", return_value=obs_now):
+                    self.assertEqual(main(["--strategy", "fake", "--end", D2]), 0)
+
+            run(datetime(2026, 11, 18, 15, 30))  # obs_date=D1
+            run(datetime(2026, 11, 19, 15, 30))  # obs_date=D2
+            con = sqlite3.connect(str(perf_path))
+            try:
+                got = con.execute(
+                    "SELECT date, realized_cum, flow FROM strategy_daily"
+                    " WHERE strategy='fake' ORDER BY date").fetchall()
+            finally:
+                con.close()
+            self.assertEqual([r[0] for r in got], [D1, D2])
+            self.assertGreater(abs(got[0][1]), 0.5)
+            self.assertAlmostEqual(got[1][2], 0.0)
+
 
 class TwrMddTest(unittest.TestCase):
     def test_flow_only_halving_is_zero(self):

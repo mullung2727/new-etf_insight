@@ -690,6 +690,9 @@ def main(argv: list[str] | None = None) -> int:
         obs_cap = _num(capital)
         if obs_cap is None:
             config_events = stored
+        elif (not logged and capital_since is None and stored
+                and stored[-1]["capital"] == obs_cap):
+            config_events = stored
         else:
             obs_since = str(capital_since) if capital_since is not None else obs_date
             pre_existing = [e for e in stored if e["date"] != obs_date] if logged else stored
