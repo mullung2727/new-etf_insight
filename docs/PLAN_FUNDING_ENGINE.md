@@ -22,8 +22,8 @@
 ### P2 되돌림(예산 창구만, ETF 제외 D13) + 초소형 msig (D15 — 한 번에 반영)
 - [x] 구현·테스트 머지 (PR #168, 2026-11-19 — 공용 members.etf. 비공개 되돌림·msig 연결은 11-19 20:40 live 반영, 백업 `_bak_20261119_fundp2`, live 테스트 되돌림 129·msig 70 OK)
 - [x] 운영 등록 (스케줄 작업·config) — 스케줄 작업은 그대로. 반영 후 되돌림·msig live config 에 `funding_enabled: true` (사용자 11-19 "켜둬", 11-19 20:45 반영), 다음 거래일 엔진 원장 members 에 rebound(etf=0)·msig(etf=1) 등록 확인
-- [ ] 첫 실가동 확인 (날짜)
-- [ ] 설계와 달라진 점을 "구현 차이" 절에 반영
+- [x] 첫 실가동 확인 (2026-11-20~24 — members rebound etf=0·msig etf=1 11-20 등록, 예약 파일 rebound·msig 0·engine 줄 capital 3,699,808=안 쓴 몫 합계, 되돌림 남은 몫 62,297 원장 반영(11-24), 11-23 sweep 1주 체결, 로그 오류 0)
+- [x] 설계와 달라진 점을 "구현 차이" 절에 반영
 
 ### P3~P6 나머지 전략 (Jev·엔벌로프·스윙) — 셋 다 중지 상태. 시드 0 리셋(예정 11-20)으로 예약 줄 0 이면 이전 불필요 → P7 전 확인만
 - [ ] 구현·테스트 머지 (PR #)
@@ -214,3 +214,5 @@
 - 애프터마켓 매수(D8 보완)는 P0-5 실측 전이라 미구현 — 마감 미체결은 다음날로
 - 중단 스위치: 엔진 config 대신 유무상 config `funding_enabled` + `funding-sweep` 작업 끄기
 - 원래 ETF 손익은 수수료·세금 포함 → 실제 체결가 차이만(수수료 빠짐). 2026-11-11 매도: 엔진 +1,810 vs 증권사 실현(`/orders/realized`) +1,170(수수료 640). 되돌림 예산이 그만큼 많게 잡힘 — 별도 수정 필요(P2 와 분리, 미결)
+- P2: 원래 되돌림 예약 쓰기 3곳(`order.py`·`run_late.refresh_reserve`·`verify.py`)·주문가능 2곳(`order.py`·`run_late.settle`) → 실제 `run_late.py` 없음(이미 폐지된 파일). 예약 쓰기는 `order.py publish_unused` 하나로 묶어 `order.py` 3곳·`verify.py` 가 호출, 주문가능은 `order.py strategy_cash` 1곳. `funding_enabled` 분기는 두 함수 안에
+- P2: 원래 msig `add_member` 는 16:00 `monitor.py` 만 → 실제 `exec_batch.py cash()` 도 매 회차 `ensure`·`add_member` (monitor 전에 exec 가 먼저 돌아도 회원 등록)
