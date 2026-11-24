@@ -13,9 +13,14 @@ from scripts.strategy_snapshot import (
     ADAPTERS,
     compute,
     ensure,
+    high52_fills,
+    high52_seed,
+    high52_seed_events,
     log_seed,
     main,
     merge_seed_events,
+    msig_fills,
+    msig_seed_events,
     rebound_fills,
     rebound_seed_events,
     realized_check,
@@ -454,11 +459,105 @@ class RightsAdapterTest(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["diff"], want - 9900.0)
 
 
+class MsigAdapterTest(unittest.TestCase):
+    def _wl(self) -> sqlite3.Connection:
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        con = sqlite3.connect(str(Path(tmp) / "watchlist.sqlite3"))
+        self.addCleanup(con.close)
+        return con
+
+    def test_fills_skips_unfilled(self):
+        con = self._wl()
+        con.execute("CREATE TABLE msig_orders(order_no TEXT, date TEXT, ticker TEXT,"
+                    " side TEXT, slice_no INTEGER, qty REAL, price REAL,"
+                    " filled_qty REAL, avg_price REAL)")
+        con.executemany("INSERT INTO msig_orders VALUES (?,?,?,?,?,?,?,?,?)", [
+            ("O1", D1, "000001", "buy", 1, 10, 1000.0, 10, 1000.0),
+            ("O2", D1, "000002", "buy", 1, 10, 1000.0, 0, 0.0),
+            ("O3", D1, "000001", "sell", 2, 10, 1100.0, 10, 1100.0),
+            ("O4", D1, "000003", "buy", 1, 5, 2000.0, 5, None),
+        ])
+        fills = msig_fills(con, [D1, D2])
+        self.assertEqual(
+            [(f["date"], f["ticker"], f["side"], f["qty"], f["price"], f["ref"])
+             for f in fills],
+            [(D1, "000001", "buy", 10, 1000.0, "msig:O1"),
+             (D1, "000001", "sell", 10, 1100.0, "msig:O3")])
+
+    def test_fills_no_table(self):
+        self.assertEqual(msig_fills(self._wl(), [D1]), [])
+
+    def test_seed_events_start_and_settlement(self):
+        con = self._wl()
+        con.execute("CREATE TABLE msig_settlements(date TEXT, prev_value REAL,"
+                    " cur_value REAL, pnl REAL, transfer REAL,"
+                    " msig_capital REAL, rebound_capital REAL)")
+        con.execute("INSERT INTO msig_settlements VALUES (?,?,?,?,?,?,?)",
+                    (D2, 5_000_000, 5_100_000, 100_000, 20_000, 5_080_000, 6_000_000))
+        events = msig_seed_events(con, D1)
+        self.assertEqual(
+            [(e["date"], e["capital"], e["since"], e["note"]) for e in events],
+            [(D1, 5_000_000, D1, "시작 시드"),
+             (D2, 5_080_000, D1, "msig 정산 이체")])
+
+    def test_seed_events_no_table(self):
+        self.assertEqual(msig_seed_events(self._wl(), D1), [])
+
+
+class High52AdapterTest(unittest.TestCase):
+    def _wl(self) -> sqlite3.Connection:
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        con = sqlite3.connect(str(Path(tmp) / "watchlist.sqlite3"))
+        self.addCleanup(con.close)
+        return con
+
+    def test_fills_open_and_closed(self):
+        con = self._wl()
+        con.execute("CREATE TABLE high52_positions(signal_date TEXT, ticker TEXT,"
+                    " status TEXT, buy_price REAL, buy_qty REAL, sell_status TEXT,"
+                    " sell_date TEXT, sell_price REAL, sell_qty REAL)")
+        con.executemany("INSERT INTO high52_positions VALUES (?,?,?,?,?,?,?,?,?)", [
+            (D1, "000001", "open", 1000.0, 10, None, None, None, None),
+            (D1, "000002", "closed", 1000.0, 10, "filled", D2, 1100.0, 10),
+            (D1, "000003", "open", 1000.0, 10, "pending", D2, 1100.0, 10),
+        ])
+        fills = high52_fills(con, [D1, D2])
+        by_ticker: dict[str, list[dict]] = {}
+        for fill in fills:
+            by_ticker.setdefault(fill["ticker"], []).append(fill)
+        self.assertEqual([(f["side"], f["date"]) for f in by_ticker["000001"]],
+                         [("buy", D1)])
+        self.assertEqual([(f["side"], f["date"]) for f in by_ticker["000002"]],
+                         [("buy", D1), ("sell", D2)])
+        self.assertEqual([(f["side"], f["date"]) for f in by_ticker["000003"]],
+                         [("buy", D1)])
+        self.assertEqual(by_ticker["000001"][0]["ref"], f"high52:{D1}:000001")
+        self.assertEqual(by_ticker["000002"][0]["qty"], 10)
+        self.assertEqual(by_ticker["000002"][1]["price"], 1100.0)
+
+    def test_fills_no_table(self):
+        self.assertEqual(high52_fills(self._wl(), [D1]), [])
+
+    def test_seed_slots_times_amount(self):
+        con = self._wl()
+        self.assertEqual(high52_seed({"slots": 4, "slot_amount": 500000}, con), 2_000_000)
+        self.assertIsNone(high52_seed({"slots": 4}, con))
+        self.assertIsNone(high52_seed({"slot_amount": 500000}, con))
+        self.assertIsNone(high52_seed({}, con))
+
+    def test_seed_events_empty(self):
+        self.assertEqual(high52_seed_events(self._wl(), D1), [])
+
+
 class MainAdapterTest(unittest.TestCase):
     def test_adapters_registry(self):
-        self.assertEqual(set(ADAPTERS), {"rebound", "rights_dip"})
+        self.assertEqual(set(ADAPTERS), {"rebound", "rights_dip", "msig", "high52"})
         for adapter in ADAPTERS.values():
-            self.assertEqual(set(adapter), {"fills", "events", "seed", "check"})
+            self.assertTrue({"fills", "events", "seed", "check"} <= set(adapter))
+        self.assertEqual(ADAPTERS["high52"]["config"],
+                         "research/private/high52_quiet_breakout/live/config.json")
 
     def test_main_runs_both_adapters(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -494,8 +593,15 @@ class MainAdapterTest(unittest.TestCase):
                 json.dumps({"capital": 5_000_000, "capital_since": D1}), encoding="utf-8")
             (tmpdir / "rights.json").write_text(
                 json.dumps({"capital": 8_000_000, "capital_since": D1}), encoding="utf-8")
+            (tmpdir / "msig.json").write_text(
+                json.dumps({"capital": 5_000_000, "capital_since": ""}), encoding="utf-8")
+            high52_cfg = tmpdir / (ADAPTERS["high52"]["config"] + ".json")
+            high52_cfg.parent.mkdir(parents=True, exist_ok=True)
+            high52_cfg.write_text(
+                json.dumps({"slots": 4, "slot_amount": 500000}), encoding="utf-8")
             strategies = {"rebound": ("http://x", "rebound"),
-                          "rights_dip": ("http://x", "rights")}
+                          "rights_dip": ("http://x", "rights"),
+                          "msig": ("http://x", "msig")}
             closes = {(D1, "000001"): 1100.0, (D2, "000001"): 1100.0,
                       (D1, "000002"): 1100.0, (D2, "000002"): 1100.0}
             with mock.patch.object(snap, "WL_DB", wl_path), \
@@ -646,6 +752,137 @@ class MainAdapterTest(unittest.TestCase):
             self.assertEqual([r[0] for r in got], [D1, D2])
             self.assertGreater(abs(got[0][1]), 0.5)
             self.assertAlmostEqual(got[1][2], 0.0)
+
+    def test_main_high52_without_capital(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            wl_path = tmpdir / "watchlist.sqlite3"
+            perf_path = tmpdir / "performance.sqlite3"
+            con = sqlite3.connect(str(wl_path))
+            try:
+                con.execute("CREATE TABLE high52_positions(signal_date TEXT, ticker TEXT,"
+                            " buy_price REAL, buy_qty REAL, sell_status TEXT,"
+                            " sell_date TEXT, sell_price REAL, sell_qty REAL)")
+                con.execute("INSERT INTO high52_positions VALUES (?,?,?,?,?,?,?,?)",
+                            (D1, "000001", 1000.0, 10, "filled", D1, 1100.0, 10))
+                con.commit()
+            finally:
+                con.close()
+            cfg_path = tmpdir / "high52.json"
+            cfg_path.write_text(
+                json.dumps({"slots": 4, "slot_amount": 500000}), encoding="utf-8")
+            closes = {(D1, "000001"): 1100.0, (D2, "000001"): 1100.0}
+            with mock.patch.object(snap, "WL_DB", wl_path), \
+                    mock.patch.object(snap, "PERF_DB", perf_path), \
+                    mock.patch.object(snap, "STRATEGIES", {}), \
+                    mock.patch.object(snap, "_resolve_config", return_value=cfg_path), \
+                    mock.patch.object(snap, "load_days", return_value=[D1, D2]), \
+                    mock.patch.object(snap, "load_closes", return_value=closes):
+                self.assertEqual(main(["--strategy", "high52", "--end", D2]), 0)
+            con = sqlite3.connect(str(perf_path))
+            try:
+                got = con.execute("SELECT date, strategy, seed, realized_cum"
+                                  " FROM strategy_daily ORDER BY date").fetchall()
+            finally:
+                con.close()
+            self.assertEqual([(r[0], r[1], r[2]) for r in got],
+                             [(D1, "high52", 2_000_000), (D2, "high52", 2_000_000)])
+            self.assertGreater(abs(got[0][3]), 0.5)
+
+    def test_rerun_empty_capital_since_keeps_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            wl_path = tmpdir / "watchlist.sqlite3"
+            sqlite3.connect(str(wl_path)).close()
+            perf_path = tmpdir / "performance.sqlite3"
+            (tmpdir / "fake.json").write_text(
+                json.dumps({"capital": 5_000_000, "capital_since": ""}), encoding="utf-8")
+            fills = [
+                {"date": D1, "ticker": "000001", "side": "buy", "qty": 100,
+                 "price": 1000.0, "ref": "fake"},
+                {"date": D1, "ticker": "000001", "side": "sell", "qty": 100,
+                 "price": 1100.0, "ref": "fake"},
+            ]
+            fake = {"fills": lambda wl, days: list(fills),
+                    "events": lambda wl, first: [],
+                    "seed": None, "check": None}
+            closes = {(D1, "000001"): 1100.0, (D2, "000001"): 1100.0}
+            strategies = {"fake": ("http://x", "fake")}
+
+            def run(obs_now):
+                with mock.patch.dict(snap.ADAPTERS, {"fake": fake}), \
+                        mock.patch.object(snap, "WL_DB", wl_path), \
+                        mock.patch.object(snap, "PERF_DB", perf_path), \
+                        mock.patch.object(snap, "STRATEGIES", strategies), \
+                        mock.patch.object(snap, "_resolve_config",
+                                           side_effect=lambda rel: tmpdir / f"{rel}.json"), \
+                        mock.patch.object(snap, "load_days", return_value=[D1, D2]), \
+                        mock.patch.object(snap, "load_closes", return_value=closes), \
+                        mock.patch.object(snap, "now_seoul", return_value=obs_now):
+                    self.assertEqual(main(["--strategy", "fake", "--end", D2]), 0)
+
+            run(datetime(2026, 11, 18, 15, 30))  # obs_date=D1
+            run(datetime(2026, 11, 19, 15, 30))  # obs_date=D2
+            con = sqlite3.connect(str(perf_path))
+            try:
+                got = con.execute(
+                    "SELECT date, realized_cum, flow FROM strategy_daily"
+                    " WHERE strategy='fake' ORDER BY date").fetchall()
+                seeds = con.execute(
+                    "SELECT DISTINCT since FROM strategy_seed"
+                    " WHERE strategy='fake'").fetchall()
+            finally:
+                con.close()
+            self.assertEqual([r[0] for r in got], [D1, D2])
+            self.assertGreater(abs(got[0][1]), 0.5)
+            self.assertAlmostEqual(got[1][2], 0.0)
+            self.assertEqual(seeds, [(None,)])
+
+    def test_no_capital_since_counts_from_first_fill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            wl_path = tmpdir / "watchlist.sqlite3"
+            sqlite3.connect(str(wl_path)).close()
+            perf_path = tmpdir / "performance.sqlite3"
+            (tmpdir / "fake.json").write_text(
+                json.dumps({"capital": 5_000_000}), encoding="utf-8")
+            fills = [
+                {"date": D1, "ticker": "000001", "side": "buy", "qty": 100,
+                 "price": 1000.0, "ref": "fake"},
+                {"date": D2, "ticker": "000001", "side": "sell", "qty": 100,
+                 "price": 900.0, "ref": "fake"},
+            ]
+            fake = {"fills": lambda wl, days: list(fills),
+                    "events": lambda wl, first: [],
+                    "seed": None, "check": None}
+            closes = {(D1, "000001"): 1000.0, (D2, "000001"): 900.0,
+                      (D3, "000001"): 900.0}
+            strategies = {"fake": ("http://x", "fake")}
+            with mock.patch.dict(snap.ADAPTERS, {"fake": fake}), \
+                    mock.patch.object(snap, "WL_DB", wl_path), \
+                    mock.patch.object(snap, "PERF_DB", perf_path), \
+                    mock.patch.object(snap, "STRATEGIES", strategies), \
+                    mock.patch.object(snap, "_resolve_config",
+                                       side_effect=lambda rel: tmpdir / f"{rel}.json"), \
+                    mock.patch.object(snap, "load_days",
+                                       return_value=[D1, D2, D3]), \
+                    mock.patch.object(snap, "load_closes", return_value=closes), \
+                    mock.patch.object(snap, "now_seoul",
+                                       return_value=datetime(2026, 11, 20, 15, 30)):
+                self.assertEqual(main(["--strategy", "fake", "--end", D3]), 0)
+            con = sqlite3.connect(str(perf_path))
+            try:
+                got = con.execute(
+                    "SELECT date, realized_cum, flow FROM strategy_daily"
+                    " WHERE strategy='fake' ORDER BY date").fetchall()
+            finally:
+                con.close()
+            loss = 100 * 900 * (1 - 0.00215) - 100 * 1000 * 1.00015
+            self.assertEqual([r[0] for r in got], [D1, D2, D3])
+            self.assertAlmostEqual(got[2][1], loss)
+            self.assertNotAlmostEqual(got[2][1], 0.0)
+            self.assertAlmostEqual(got[1][2], 0.0)
+            self.assertAlmostEqual(got[2][2], 0.0)
 
 
 class TwrMddTest(unittest.TestCase):
