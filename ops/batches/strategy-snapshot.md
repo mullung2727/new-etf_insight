@@ -13,7 +13,7 @@ ledger fills + KRX regular-session closes → `strategy_daily` rows in
 `<data root>/db/performance.sqlite3`. Design: `docs/PLAN_STRATEGY_PERFORMANCE.md` (P1).
 
 Runs the morning after each trading day because `krx_ohlcv` only receives the
-previous day's regular-session close in the 07:00 / 08:30 KRX OHLCV batch.
+previous day's regular-session close in the 07:00 / 08:30 KRX OHLCV batch, and `us_ohlcv` gets the previous US day in us-early (10:15).
 
 ## Guardrails
 

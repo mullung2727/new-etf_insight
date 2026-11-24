@@ -27,6 +27,8 @@ SELL_TAX = 0.0020
 PERF_DB = db_dir() / "performance.sqlite3"
 WL_DB = db_dir() / "watchlist.sqlite3"
 KRX_DB = db_dir() / "krx_ohlcv.duckdb"
+US_DB = db_dir() / "us_ohlcv.duckdb"
+US_V38_DB = db_dir() / "us_v38.sqlite3"
 
 _SCHEMA_DAILY = """CREATE TABLE IF NOT EXISTS strategy_daily(
   date TEXT, strategy TEXT, kind TEXT,
@@ -52,6 +54,8 @@ def compute(
     seed_events: list[dict],
     closes: dict[tuple[str, str], float],
     days: list[str],
+    fee: float = FEE,
+    sell_tax: float = SELL_TAX,
 ) -> list[dict]:
     """공통 평가 엔진. fills/seed_events/closes 주입 → 일별 행 리스트."""
     by_date: dict[str, list[dict]] = {}
@@ -79,8 +83,9 @@ def compute(
             if qty is None or price is None or qty <= 0:
                 continue
             external = bool(fill.get("external", False))
+            f_fee = fill.get("fee", fee)
             if fill["side"] == "buy":
-                buy_cost = qty * price * (1 + FEE)
+                buy_cost = qty * price * (1 + f_fee)
                 cost[ticker] = cost.get(ticker, 0.0) + buy_cost
                 held[ticker] = held.get(ticker, 0) + qty
                 if external:
@@ -91,7 +96,7 @@ def compute(
                 if have < qty:
                     raise ValueError(f"보유 부족 매도: {day} {ticker} 보유 {have} < 매도 {qty}")
                 avg = cost.get(ticker, 0.0) / have if have else 0.0
-                proceeds = qty * price * (1 - FEE - SELL_TAX)
+                proceeds = qty * price * (1 - f_fee - sell_tax)
                 realized.append((day, proceeds - avg * qty))
                 cost[ticker] = cost.get(ticker, 0.0) - avg * qty
                 held[ticker] = have - qty
@@ -651,6 +656,73 @@ def high52_seed_events(wl_con: sqlite3.Connection, first_date: str) -> list[dict
     return []
 
 
+def us_fills(wl_con: sqlite3.Connection, days: list[str]) -> list[dict]:
+    """us_v38 orders 체결 + adopted 보유분 → Fill 리스트. wl_con·days 미사용."""
+    fills: list[dict] = []
+    if Path(US_V38_DB).exists():
+        with connect_ro(US_V38_DB) as con:
+            if _table_exists(con, "orders"):
+                cols = _columns(con, "orders")
+                if "date" in cols and "code" in cols:
+                    wanted = ["order_no", "date", "code", "side",
+                              "filled_qty", "avg_fill_price"]
+                    avail = [c for c in wanted if c in cols]
+                    order = "date, order_no" if "order_no" in cols else "date, rowid"
+                    try:
+                        db_rows = con.execute(
+                            f"SELECT {','.join(avail)} FROM orders ORDER BY {order}"
+                        ).fetchall()
+                    except sqlite3.Error:
+                        db_rows = []
+                    idx = {name: pos for pos, name in enumerate(avail)}
+
+                    def get(row, name: str):
+                        return row[idx[name]] if name in idx else None
+
+                    for row in db_rows:
+                        raw_date, raw_code = get(row, "date"), get(row, "code")
+                        if raw_date is None or raw_code is None:
+                            continue
+                        side = get(row, "side")
+                        if side not in ("buy", "sell"):
+                            continue
+                        fq = _qty(get(row, "filled_qty"))
+                        fp = _num(get(row, "avg_fill_price"))
+                        if fq <= 0 or fp is None or fp <= 0:
+                            continue
+                        fills.append({"date": str(raw_date), "ticker": str(raw_code),
+                                      "side": side, "qty": fq, "price": fp,
+                                      "ref": f"us_v38:{get(row, 'order_no')}"})
+    adopted_path = _resolve_config("research/private/us_oas/live/adopted.json")
+    if adopted_path.exists():
+        adopted = json.loads(adopted_path.read_text(encoding="utf-8")).get("adopted", [])
+        for item in adopted:
+            code, day = item.get("code"), item.get("date")
+            qty = _qty(item.get("qty"))
+            if code is None or day is None or qty <= 0:
+                continue
+            closes = load_closes(US_DB, [str(code)], str(day), str(day),
+                                 ("ohlcv", "etf_ohlcv"))
+            px = closes.get((str(day), str(code)))
+            if px is None:
+                print(f"us_v38: adopted 종가 없음 — 건너뜀 {code} {day}")
+                continue
+            fills.append({"date": str(day), "ticker": str(code), "side": "buy",
+                          "qty": qty, "price": px, "external": True, "fee": 0.0,
+                          "ref": f"us_v38:adopted:{code}"})
+    return fills
+
+
+def us_seed(config: dict, wl_con: sqlite3.Connection) -> float | None:
+    """max_equity_usd (미화 시드). 없으면 None."""
+    return _num(config.get("max_equity_usd"))
+
+
+def us_seed_events(wl_con: sqlite3.Connection, first_date: str) -> list[dict]:
+    """us_v38 은 정산 이벤트 없음."""
+    return []
+
+
 def log_seed(perf_db: str | Path, strategy: str, date: str, capital, since: str) -> bool:
     """config 시드가 전략 마지막 기록과 (capital, since) 쌍으로 다르면 남기고 True."""
     ensure(perf_db)
@@ -745,33 +817,39 @@ def upsert(perf_db: str | Path, strategy: str, kind: str, rows: list[dict]) -> N
               row["open_n"], row["trades_cum"], now) for row in rows])
 
 
-def load_days(krx_db: str | Path, start: str, end: str) -> list[str]:
-    """krx_ohlcv 거래일 오름차순."""
-    con = duckdb.connect(str(krx_db), read_only=True)
+def load_days(db: str | Path, start: str, end: str,
+              table: str = "ohlcv") -> list[str]:
+    """거래일 오름차순 (기본 ohlcv 테이블)."""
+    con = duckdb.connect(str(db), read_only=True)
     try:
         db_rows = con.execute(
-            "SELECT DISTINCT date FROM ohlcv WHERE date BETWEEN ? AND ? ORDER BY date",
+            f"SELECT DISTINCT date FROM {table} WHERE date BETWEEN ? AND ? ORDER BY date",
             [start, end]).fetchall()
     finally:
         con.close()
     return [row[0] for row in db_rows]
 
 
-def load_closes(krx_db: str | Path, tickers: list[str],
-               start: str, end: str) -> dict[tuple[str, str], float]:
-    """{(date, ticker): close}."""
+def load_closes(db: str | Path, tickers: list[str],
+               start: str, end: str,
+               tables: tuple[str, ...] = ("ohlcv",)) -> dict[tuple[str, str], float]:
+    """{(date, ticker): close}. tables 순서대로 합침(먼저 나온 값 우선)."""
     if not tickers:
         return {}
     placeholders = ",".join("?" for _ in tickers)
-    con = duckdb.connect(str(krx_db), read_only=True)
+    out: dict[tuple[str, str], float] = {}
+    con = duckdb.connect(str(db), read_only=True)
     try:
-        db_rows = con.execute(
-            "SELECT date, ticker, close FROM ohlcv"
-            f" WHERE date BETWEEN ? AND ? AND ticker IN ({placeholders})",
-            [start, end, *tickers]).fetchall()
+        for table in tables:
+            db_rows = con.execute(
+                f"SELECT date, ticker, close FROM {table}"
+                f" WHERE date BETWEEN ? AND ? AND ticker IN ({placeholders})",
+                [start, end, *tickers]).fetchall()
+            for row in db_rows:
+                out.setdefault((row[0], row[1]), row[2])
     finally:
         con.close()
-    return {(row[0], row[1]): row[2] for row in db_rows}
+    return out
 
 
 ADAPTERS = {
@@ -784,6 +862,10 @@ ADAPTERS = {
     "high52": {"fills": high52_fills, "events": high52_seed_events,
                "seed": high52_seed, "check": None,
                "config": "research/private/high52_quiet_breakout/live/config.json"},
+    "us_v38": {"fills": us_fills, "events": us_seed_events,
+               "seed": us_seed, "check": None,
+               "config": "research/private/us_oas/live/config.json",
+               "market": "us", "fee": 0.001, "sell_tax": 0.0},
 }
 
 
@@ -801,6 +883,7 @@ def main(argv: list[str] | None = None) -> int:
     names = [args.strategy] if args.strategy else sorted(ADAPTERS)
     for name in names:
         adapter = ADAPTERS[name]
+        use_us = adapter.get("market") == "us"
         fills_fn, events_fn = adapter["fills"], adapter["events"]
         seed_fn, check_fn = adapter.get("seed"), adapter.get("check")
         config = json.loads(_resolve_config(
@@ -825,7 +908,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{name}: 체결 없음")
                 continue
             first = min(fill["date"] for fill in probe)
-            days = load_days(KRX_DB, first, end)
+            if use_us:
+                days = load_days(US_DB, first, end, "ohlcv")
+            else:
+                days = load_days(KRX_DB, first, end)
             if not days:
                 print(f"{name}: 거래일 없음 ({first}~{end})")
                 continue
@@ -833,7 +919,10 @@ def main(argv: list[str] | None = None) -> int:
             events = events_fn(wl_con, first)
             check_rows = check_fn(wl_con) if args.check and check_fn is not None else None
         tickers = sorted({fill["ticker"] for fill in fills})
-        closes = load_closes(KRX_DB, tickers, first, end)
+        if use_us:
+            closes = load_closes(US_DB, tickers, first, end, ("ohlcv", "etf_ohlcv"))
+        else:
+            closes = load_closes(KRX_DB, tickers, first, end)
         stored = load_config_seed_events(PERF_DB, name, default_since=first)
         obs_cap = _num(capital)
         if obs_cap is None:
@@ -852,7 +941,9 @@ def main(argv: list[str] | None = None) -> int:
             config_events = stored + [{"date": mem_date, "capital": obs_cap,
                                         "since": mem_since, "note": "config"}]
         merged = merge_seed_events(events, config_events)
-        rows = compute(fills, merged, closes, days)
+        rows = compute(fills, merged, closes, days,
+                       fee=adapter.get("fee", FEE),
+                       sell_tax=adapter.get("sell_tax", SELL_TAX))
         if not args.dry_run:
             upsert(PERF_DB, name, "live", rows)
         if check_rows is not None:
