@@ -17,6 +17,8 @@ After a successful snapshot the runner also runs the rebound shadow backtest
 Then, independently, the rights-issue shadow backtest
 (`research.private.rights_issue.shadow_bt`, private, reuses the 17:00 monitor's
 shadow functions); log `strategy-snapshot-bt-rights-<date>.log`.
+Then the US v38 shadow backtest (`research.private.us_oas.shadow_bt`, private,
+replays the live signal log); log `strategy-snapshot-bt-us-<date>.log`.
 
 Runs the morning after each trading day because `krx_ohlcv` only receives the
 previous day's regular-session close in the 07:00 / 08:30 KRX OHLCV batch, and `us_ohlcv` gets the previous US day in us-early (10:15).
