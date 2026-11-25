@@ -40,6 +40,7 @@ export interface StrategySummary {
   mdd: number | null;
   tradesCum: number | null;
   openN: number | null;
+  bt: { start: string; end: string; liveRet: number; btRet: number; diffPp: number } | null;
 }
 
 type TwrInput = { equity: number; flow: number };
@@ -85,21 +86,70 @@ export function twrMdd(rows: TwrInput[]): number {
   return mdd;
 }
 
+// 같은 구간 실매매·백테스트 수익률 비교. bt 가 비었거나 겹치는 날짜가 없으면 null.
+// liveRet 는 live 전체 twrIndex 기준 idx(end) / idx(start 전날) − 1 (start 전날 행이 없으면 분모 1).
+export function compareWindow(
+  live: (TwrInput & { date: string })[],
+  bt: (TwrInput & { date: string })[]
+): { start: string; end: string; liveRet: number; btRet: number; diffPp: number } | null {
+  if (bt.length === 0) return null;
+  const start = bt[0].date;
+  const liveDates = new Set(live.map((r) => r.date));
+  const common = bt.filter((r) => liveDates.has(r.date));
+  if (common.length === 0) return null;
+  const end = common[common.length - 1].date;
+  const btIdx = twrIndex(bt.filter((r) => r.date <= end));
+  const btRet = btIdx[btIdx.length - 1] - 1;
+  const liveIdx = twrIndex(live);
+  const endPos = live.findIndex((r) => r.date === end);
+  let base = 1;
+  for (let i = 0; i < live.length; i++) {
+    if (live[i].date < start) base = liveIdx[i];
+  }
+  const liveRet = liveIdx[endPos] / base - 1;
+  return { start, end, liveRet, btRet, diffPp: (liveRet - btRet) * 100 };
+}
+
+// 차트 겹침용 시리즈. bt 곡선을 실매매 곡선의 bt 시작 전날 값에 붙인다.
+export function overlaySeries(
+  live: (TwrInput & { date: string })[],
+  bt: (TwrInput & { date: string })[]
+): { date: string; livePct: number; btPct: number | null }[] {
+  const liveIdx = twrIndex(live);
+  const btIdx = twrIndex(bt);
+  const btMap = new Map<string, number>(bt.map((r, i) => [r.date, btIdx[i]]));
+  let base = 1;
+  if (bt.length > 0) {
+    const start = bt[0].date;
+    for (let i = 0; i < live.length; i++) {
+      if (live[i].date < start) base = liveIdx[i];
+    }
+  }
+  return live.map((r, i) => {
+    const b = btMap.get(r.date);
+    return {
+      date: r.date,
+      livePct: (liveIdx[i] - 1) * 100,
+      btPct: b === undefined ? null : (base * b - 1) * 100,
+    };
+  });
+}
+
 function getDbPath(): string {
   const path = process.env.PERFORMANCE_DB;
   if (!path) throw new Error("PERFORMANCE_DB 환경변수가 설정되지 않았습니다.");
   return path;
 }
 
-export function getDaily(strategy: string): DailyRow[] {
+export function getDaily(strategy: string, kind: "live" | "bt" = "live"): DailyRow[] {
   const db = new DatabaseSync(getDbPath(), { readOnly: true });
   try {
     return db
       .prepare(
         "SELECT date, strategy, seed, flow, flow_note, equity, realized_cum, unrealized, open_n, trades_cum" +
-          " FROM strategy_daily WHERE kind = 'live' AND strategy = ? ORDER BY date ASC"
+          " FROM strategy_daily WHERE kind = ? AND strategy = ? ORDER BY date ASC"
       )
-      .all(strategy) as unknown as DailyRow[];
+      .all(kind, strategy) as unknown as DailyRow[];
   } finally {
     db.close();
   }
@@ -108,11 +158,12 @@ export function getDaily(strategy: string): DailyRow[] {
 export function getSummaries(): StrategySummary[] {
   return STRATEGIES.map(({ key, label, currency }) => {
     const rows = getDaily(key);
+    const bt = compareWindow(rows, getDaily(key, "bt"));
     if (rows.length === 0) {
       return {
         key, label, currency,
         lastDate: null, seed: null, equity: null, cumTwr: null,
-        mdd: null, tradesCum: null, openN: null,
+        mdd: null, tradesCum: null, openN: null, bt,
       };
     }
     const last = rows[rows.length - 1];
@@ -128,6 +179,7 @@ export function getSummaries(): StrategySummary[] {
       mdd: twrMdd(rows),
       tradesCum: last.trades_cum,
       openN: last.open_n,
+      bt,
     };
   });
 }
