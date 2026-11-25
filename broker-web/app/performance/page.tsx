@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  getDaily, getSummaries, twr, twrIndex, STRATEGIES,
+  getDaily, getSummaries, twr, overlaySeries, STRATEGIES,
   type DailyRow, type StrategySummary,
 } from "@/lib/performance-db";
 import { TwrChart } from "@/components/performance/twr-chart";
@@ -42,15 +42,17 @@ export default async function PerformancePage({ searchParams }: PageProps) {
 
   let summaries: StrategySummary[] | null = null;
   let rows: DailyRow[] | null = null;
+  let btRows: DailyRow[] | null = null;
   let error: string | null = null;
   try {
     summaries = getSummaries();
     rows = getDaily(selectedKey);
+    btRows = getDaily(selectedKey, "bt");
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
   }
 
-  if (error || !summaries || !rows) {
+  if (error || !summaries || !rows || !btRows) {
     return (
       <div className="mx-auto w-full max-w-6xl px-4 py-8 space-y-4">
         <h1 className="text-2xl font-semibold">전략 성과 (실매매)</h1>
@@ -60,14 +62,16 @@ export default async function PerformancePage({ searchParams }: PageProps) {
     );
   }
 
-  const idx = twrIndex(rows);
   const daily = twr(rows);
+  const overlay = overlaySeries(rows, btRows);
   const chartData = rows.map((r, i) => ({
     date: r.date,
-    twrPct: (idx[i] - 1) * 100,
+    livePct: overlay[i].livePct,
+    btPct: overlay[i].btPct,
     flowNote: r.flow_note || null,
   }));
   const recent = rows.map((r, i) => ({ ...r, dayTwr: daily[i] })).slice(-20).reverse();
+  const bt = summaries.find((s) => s.key === selectedKey)?.bt ?? null;
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 space-y-6">
@@ -85,6 +89,11 @@ export default async function PerformancePage({ searchParams }: PageProps) {
                 <p>시드 {fmtMoney(s.seed, s.currency)}</p>
                 <p>평가액 {fmtMoney(s.equity, s.currency)}</p>
                 <p className={twrColor(s.cumTwr)}>누적 TWR {fmtPct(s.cumTwr)}</p>
+                {s.bt ? (
+                  <p className={twrColor(s.bt.diffPp)}>
+                    vs 백테스트 {s.bt.diffPp >= 0 ? "+" : ""}{s.bt.diffPp.toFixed(2)}%p ({s.bt.start.slice(4, 6)}-{s.bt.start.slice(6, 8)}~)
+                  </p>
+                ) : null}
                 <p>일별 MDD {fmtPct(s.mdd)}</p>
                 <p className="text-xs text-muted-foreground">거래 {s.tradesCum ?? "–"}회 · 보유 {s.openN ?? "–"}종목</p>
               </CardContent>
@@ -93,8 +102,17 @@ export default async function PerformancePage({ searchParams }: PageProps) {
         ))}
       </div>
       <Card>
-        <CardHeader><CardTitle className="text-base">{selectedMeta.label} 누적 TWR</CardTitle></CardHeader>
-        <CardContent><TwrChart data={chartData} /></CardContent>
+        <CardHeader>
+          <CardTitle className="text-base">
+            {bt ? `${selectedMeta.label} 누적 TWR · 백테스트 겹침 (${fmtDate(bt.start)}~)` : `${selectedMeta.label} 누적 TWR`}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TwrChart data={chartData} />
+          {bt ? (
+            <p className="mt-2 text-xs text-muted-foreground">같은 구간: 실매매 {fmtPct(bt.liveRet)} · 백테스트 {fmtPct(bt.btRet)}</p>
+          ) : null}
+        </CardContent>
       </Card>
       <Card>
         <CardHeader><CardTitle className="text-base">최근 20일</CardTitle></CardHeader>
