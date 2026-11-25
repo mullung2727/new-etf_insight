@@ -16,23 +16,19 @@ if ($code -ne 0) {
 }
 # bt 는 live 행(전날 평가액·입출금)에 기대므로 스냅샷 성공 뒤에만
 if ($code -eq 0) {
-  & ".venv\Scripts\python.exe" -m research.private.intraday_rebound.shadow_bt *> (Join-Path $logDir "strategy-snapshot-bt-$date.log")
-  $btCode = $LASTEXITCODE
-  if ($btCode -ne 0) {
-    & ".venv\Scripts\python.exe" scripts\send_report_messages.py --message "❌ strategy-snapshot 그림자 백테스트 실패 (exit $btCode) — etl\logs\strategy-snapshot-bt-$date.log"
-    $code = 1
-  }
-  & ".venv\Scripts\python.exe" -m research.private.rights_issue.shadow_bt *> (Join-Path $logDir "strategy-snapshot-bt-rights-$date.log")
-  $btRightsCode = $LASTEXITCODE
-  if ($btRightsCode -ne 0) {
-    & ".venv\Scripts\python.exe" scripts\send_report_messages.py --message "❌ strategy-snapshot 유무상 그림자 백테스트 실패 (exit $btRightsCode) — etl\logs\strategy-snapshot-bt-rights-$date.log"
-    $code = 1
-  }
-  & ".venv\Scripts\python.exe" -m research.private.us_oas.shadow_bt *> (Join-Path $logDir "strategy-snapshot-bt-us-$date.log")
-  $btUsCode = $LASTEXITCODE
-  if ($btUsCode -ne 0) {
-    & ".venv\Scripts\python.exe" scripts\send_report_messages.py --message "❌ strategy-snapshot 미국 v38 그림자 백테스트 실패 (exit $btUsCode) — etl\logs\strategy-snapshot-bt-us-$date.log"
-    $code = 1
+  # 새 전략은 이 배열에 한 줄 추가
+  $bts = @(
+    @{ Module = "research.private.intraday_rebound.shadow_bt"; Log = "strategy-snapshot-bt-$date.log"; Label = "그림자 백테스트" },
+    @{ Module = "research.private.rights_issue.shadow_bt"; Log = "strategy-snapshot-bt-rights-$date.log"; Label = "유무상 그림자 백테스트" },
+    @{ Module = "research.private.us_oas.shadow_bt"; Log = "strategy-snapshot-bt-us-$date.log"; Label = "미국 v38 그림자 백테스트" }
+  )
+  foreach ($bt in $bts) {
+    & ".venv\Scripts\python.exe" -m $bt.Module *> (Join-Path $logDir $bt.Log)
+    $btCode = $LASTEXITCODE
+    if ($btCode -ne 0) {
+      & ".venv\Scripts\python.exe" scripts\send_report_messages.py --message "❌ strategy-snapshot $($bt.Label) 실패 (exit $btCode) — etl\logs\$($bt.Log)"
+      $code = 1
+    }
   }
 }
 $ErrorActionPreference = "Stop"
