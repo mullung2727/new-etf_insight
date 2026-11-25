@@ -67,6 +67,30 @@ def close_bet_checks() -> None:
     )
 
 
+def plan_progress_done(text: str) -> bool:
+    lines = text.splitlines()
+    found = False
+    total = 0
+    unchecked = 0
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s == "## 진행" or s.startswith("## 진행 ") or s.startswith("## 진행\t"):
+            found = True
+            start = i + 1
+            end = len(lines)
+            for j in range(start, len(lines)):
+                if lines[j].strip().startswith("## "):
+                    end = j
+                    break
+            for body in lines[start:end]:
+                m = re.match(r"\s*- \[([ xX])\]", body)
+                if m:
+                    total += 1
+                    if m.group(1) == " ":
+                        unchecked += 1
+    return found and total >= 1 and unchecked == 0
+
+
 def plan_done_check(changed: set[str]) -> list[str]:
     result: list[str] = []
     for path in sorted(changed):
@@ -76,29 +100,7 @@ def plan_done_check(changed: set[str]) -> list[str]:
             text = (ROOT / path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        lines = text.splitlines()
-        start = None
-        for i, line in enumerate(lines):
-            s = line.strip()
-            if s == "## 진행" or s.startswith("## 진행 ") or s.startswith("## 진행\t"):
-                start = i + 1
-                break
-        if start is None:
-            continue
-        end = len(lines)
-        for j in range(start, len(lines)):
-            if lines[j].strip().startswith("## "):
-                end = j
-                break
-        total = 0
-        unchecked = 0
-        for line in lines[start:end]:
-            m = re.match(r"\s*- \[([ xX])\]", line)
-            if m:
-                total += 1
-                if m.group(1) == " ":
-                    unchecked += 1
-        if total >= 1 and unchecked == 0:
+        if plan_progress_done(text):
             result.append(path)
     return result
 
