@@ -11,6 +11,9 @@ Do not duplicate them here.
 Daily per-strategy performance snapshot (`etl/scripts/strategy_snapshot.py`):
 ledger fills + KRX regular-session closes → `strategy_daily` rows in
 `<data root>/db/performance.sqlite3`. Design: `docs/PLAN_STRATEGY_PERFORMANCE.md` (P1).
+After a successful snapshot the runner also runs the rebound shadow backtest
+(`research.private.intraday_rebound.shadow_bt`, private) → `kind='bt'` rows +
+`strategy_bt_trades`; log `strategy-snapshot-bt-<date>.log`, failure alerts once (P3).
 
 Runs the morning after each trading day because `krx_ohlcv` only receives the
 previous day's regular-session close in the 07:00 / 08:30 KRX OHLCV batch, and `us_ohlcv` gets the previous US day in us-early (10:15).

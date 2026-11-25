@@ -14,6 +14,15 @@ $code = $LASTEXITCODE
 if ($code -ne 0) {
   & ".venv\Scripts\python.exe" scripts\send_report_messages.py --message "❌ strategy-snapshot 실패 (exit $code) — etl\logs\strategy-snapshot-$date.log"
 }
+# bt 는 live 행(전날 평가액·입출금)에 기대므로 스냅샷 성공 뒤에만
+if ($code -eq 0) {
+  & ".venv\Scripts\python.exe" -m research.private.intraday_rebound.shadow_bt *> (Join-Path $logDir "strategy-snapshot-bt-$date.log")
+  $btCode = $LASTEXITCODE
+  if ($btCode -ne 0) {
+    & ".venv\Scripts\python.exe" scripts\send_report_messages.py --message "❌ strategy-snapshot 그림자 백테스트 실패 (exit $btCode) — etl\logs\strategy-snapshot-bt-$date.log"
+    $code = 1
+  }
+}
 $ErrorActionPreference = "Stop"
 
 if ($code -ne 0) { exit 1 }
