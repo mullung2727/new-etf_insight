@@ -9,6 +9,7 @@ const links = [
   { href: "/etfs", label: "ETF 분석" },
   { href: "/holdings", label: "ETF 추적" },
   { href: "/trading", label: "트레이딩" },
+  { href: "/performance", label: "전략 성과" },
   { href: "/notes", label: "투자노트" },
   { href: "/stock", label: "종목 분석" },
   { href: "/rankings", label: "지표랭킹" },
