@@ -22,6 +22,12 @@ if ($code -eq 0) {
     & ".venv\Scripts\python.exe" scripts\send_report_messages.py --message "❌ strategy-snapshot 그림자 백테스트 실패 (exit $btCode) — etl\logs\strategy-snapshot-bt-$date.log"
     $code = 1
   }
+  & ".venv\Scripts\python.exe" -m research.private.rights_issue.shadow_bt *> (Join-Path $logDir "strategy-snapshot-bt-rights-$date.log")
+  $btRightsCode = $LASTEXITCODE
+  if ($btRightsCode -ne 0) {
+    & ".venv\Scripts\python.exe" scripts\send_report_messages.py --message "❌ strategy-snapshot 유무상 그림자 백테스트 실패 (exit $btRightsCode) — etl\logs\strategy-snapshot-bt-rights-$date.log"
+    $code = 1
+  }
 }
 $ErrorActionPreference = "Stop"
 

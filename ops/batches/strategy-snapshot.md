@@ -14,6 +14,9 @@ ledger fills + KRX regular-session closes → `strategy_daily` rows in
 After a successful snapshot the runner also runs the rebound shadow backtest
 (`research.private.intraday_rebound.shadow_bt`, private) → `kind='bt'` rows +
 `strategy_bt_trades`; log `strategy-snapshot-bt-<date>.log`, failure alerts once (P3).
+Then, independently, the rights-issue shadow backtest
+(`research.private.rights_issue.shadow_bt`, private, reuses the 17:00 monitor's
+shadow functions); log `strategy-snapshot-bt-rights-<date>.log`.
 
 Runs the morning after each trading day because `krx_ohlcv` only receives the
 previous day's regular-session close in the 07:00 / 08:30 KRX OHLCV batch, and `us_ohlcv` gets the previous US day in us-early (10:15).
