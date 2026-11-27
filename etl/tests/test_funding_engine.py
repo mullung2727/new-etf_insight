@@ -1046,5 +1046,261 @@ class MemberEtfFlagTest(unittest.TestCase):
         self.assertEqual(io.sell_calls, [])
 
 
+class LendingP8Test(unittest.TestCase):
+    """P8 전략 간 대여 — 남는 돈 배분."""
+    DATE = "20260105"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self._tmp.name) / "funding.sqlite3"
+        fe.ensure(self.db)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _add(self, strat, unused, etf=True):
+        fe.add_member(self.db, strat, "20260101", etf=etf)
+        fe.set_unused(self.db, strat, unused, f"{self.DATE}T090000")
+
+    def _loans(self, date=None):
+        d = date or self.DATE
+        with connect_ro(self.db) as con:
+            return con.execute(
+                "SELECT lender, borrower, amount, settled, lender_pnl"
+                " FROM loans WHERE date = ? ORDER BY id",
+                (d,),
+            ).fetchall()
+
+    def _buy_filled(self, order_no, qty, price):
+        fe.record_order(self.db, date=self.DATE, side="buy", qty=qty, price=0,
+                        order_no=order_no, status="submitted",
+                        created=f"{self.DATE}T090000")
+        fe.update_fill(self.db, order_no, status="filled",
+                       filled_qty=qty, filled_price=price)
+
+    def test_no_borrow_same_as_before(self):
+        self._add("lender", 5000000)
+        self._add("borrower", 2000000)
+        fe.set_lendable(self.db, "lender", 5000000, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        io = FakeIO(cash=10000000, ref_price=1073485)
+        out = fe.request_funds(self.db, "borrower", 5000000, io=io,
+                               today=self.DATE, preopen=False,
+                               borrow_max=None)
+        self.assertEqual(out["granted"], 2000000)
+        self.assertEqual(out["sold_qty"], 0)
+        self.assertEqual(out["notes"], ["전략 안 쓴 몫 2,000,000 로 줄임"])
+        self.assertEqual(self._loans(), [])
+        io2 = FakeIO(cash=10000000, ref_price=1073485)
+        out2 = fe.request_funds(self.db, "borrower", 5000000, io=io2,
+                                today=self.DATE, preopen=False, borrow_max=0)
+        self.assertEqual(out2["granted"], 2000000)
+        self.assertEqual(self._loans(), [])
+
+    def test_zero_lendable_only_own(self):
+        self._add("lender", 5000000)
+        self._add("borrower", 2000000)
+        fe.set_lendable(self.db, "lender", 0, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        io = FakeIO(cash=10000000, ref_price=1073485)
+        out = fe.request_funds(self.db, "borrower", 5000000, io=io,
+                               today=self.DATE, preopen=False,
+                               borrow_max=5000000)
+        self.assertEqual(out["granted"], 2000000)
+        self.assertEqual(self._loans(), [])
+
+    def test_borrow_capped_by_borrow_max(self):
+        self._add("lender", 10000000)
+        self._add("borrower", 2000000)
+        fe.set_lendable(self.db, "lender", 10000000, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        io = FakeIO(cash=10000000, ref_price=1073485)
+        out = fe.request_funds(self.db, "borrower", 10000000, io=io,
+                               today=self.DATE, preopen=False,
+                               borrow_max=1000000)
+        self.assertEqual(out["granted"], 3000000)
+        loans = self._loans()
+        self.assertEqual(len(loans), 1)
+        self.assertEqual(loans[0][2], 1000000)
+        self.assertTrue(any("대여 1,000,000" in n for n in out["notes"]))
+
+    def test_two_requests_do_not_exceed_lendable(self):
+        self._add("lender", 5000000)
+        self._add("borrower", 1000000)
+        fe.set_lendable(self.db, "lender", 2000000, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        io1 = FakeIO(cash=10000000, ref_price=1073485)
+        out1 = fe.request_funds(self.db, "borrower", 3000000, io=io1,
+                                today=self.DATE, preopen=False,
+                                borrow_max=5000000)
+        self.assertEqual(out1["granted"], 3000000)
+        io2 = FakeIO(cash=10000000, ref_price=1073485)
+        out2 = fe.request_funds(self.db, "borrower", 3000000, io=io2,
+                                today=self.DATE, preopen=False,
+                                borrow_max=5000000)
+        self.assertEqual(out2["granted"], 1000000)
+        total = sum(r[2] for r in self._loans())
+        self.assertEqual(total, 2000000)
+
+    def test_own_first_no_loans(self):
+        self._add("lender", 10000000)
+        self._add("borrower", 5000000)
+        fe.set_lendable(self.db, "lender", 10000000, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        io = FakeIO(cash=10000000, ref_price=1073485)
+        out = fe.request_funds(self.db, "borrower", 3000000, io=io,
+                               today=self.DATE, preopen=False,
+                               borrow_max=5000000)
+        self.assertEqual(out["granted"], 3000000)
+        self.assertEqual(self._loans(), [])
+
+    def test_two_lenders_proportional(self):
+        self._add("a_lender", 5000000)
+        self._add("b_lender", 5000000)
+        self._add("borrower", 0)
+        fe.set_lendable(self.db, "a_lender", 1000000, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        fe.set_lendable(self.db, "b_lender", 3000000, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        io = FakeIO(cash=10000000, ref_price=1073485)
+        out = fe.request_funds(self.db, "borrower", 2000000, io=io,
+                               today=self.DATE, preopen=False,
+                               borrow_max=5000000)
+        self.assertEqual(out["granted"], 2000000)
+        loans = self._loans()
+        self.assertEqual(len(loans), 2)
+        by_lender = {r[0]: r[2] for r in loans}
+        self.assertEqual(by_lender["a_lender"], 500000)
+        self.assertEqual(by_lender["b_lender"], 1500000)
+        self.assertEqual(sum(by_lender.values()), 2000000)
+
+    def test_set_lendable_caps_and_errors(self):
+        self._add("a", 2000000)
+        got = fe.set_lendable(self.db, "a", 5000000, today=self.DATE,
+                              at=f"{self.DATE}T084000")
+        self.assertEqual(got, 2000000)
+        self.assertEqual(fe.lendable_of(self.db, "a", self.DATE), 2000000)
+        got2 = fe.set_lendable(self.db, "a", -500, today=self.DATE,
+                               at=f"{self.DATE}T084100")
+        self.assertEqual(got2, 0)
+        self.assertEqual(fe.lendable_of(self.db, "a", self.DATE), 0)
+        with self.assertRaises(KeyError):
+            fe.set_lendable(self.db, "nope", 100, today=self.DATE,
+                            at=f"{self.DATE}T084000")
+        for bad in (True, False):
+            with self.assertRaises(ValueError, msg=f"amount={bad!r}"):
+                fe.set_lendable(self.db, "a", bad, today=self.DATE,
+                                at=f"{self.DATE}T084000")
+
+    def test_settle_loans(self):
+        self._add("lender", 5000000)
+        self._add("borrower", 2000000)
+        fe.set_lendable(self.db, "lender", 2000000, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        io = FakeIO(cash=10000000, ref_price=1073485)
+        out = fe.request_funds(self.db, "borrower", 3000000, io=io,
+                               today=self.DATE, preopen=False,
+                               borrow_max=5000000)
+        self.assertEqual(out["granted"], 3000000)
+        loans = self._loans()
+        self.assertEqual(len(loans), 1)
+        amt = loans[0][2]
+        P, D = 90000, 3000000
+        res = fe.settle_loans(self.db, "borrower", self.DATE,
+                              borrower_pnl=P, deployed=D)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["lender_pnl"], round(P * amt / D))
+        res2 = fe.settle_loans(self.db, "borrower", self.DATE,
+                               borrower_pnl=P, deployed=D)
+        self.assertEqual(res2, [])
+        loans2 = self._loans()
+        self.assertEqual(loans2[0][4], round(P * amt / D))
+        self.assertEqual(loans2[0][3], 1)
+        fe.set_lendable(self.db, "lender", 1000000, today="20260106",
+                        at="20260106T084000")
+        io3 = FakeIO(cash=10000000, ref_price=1073485)
+        fe.request_funds(self.db, "borrower", 3000000, io=io3,
+                         today="20260106", preopen=False, borrow_max=5000000)
+        res3 = fe.settle_loans(self.db, "borrower", "20260106",
+                               borrower_pnl=50000, deployed=0)
+        self.assertEqual(len(res3), 1)
+        self.assertEqual(res3[0]["lender_pnl"], 0)
+
+    def test_loan_pnl_since(self):
+        self._add("lender", 5000000)
+        self._add("borrower", 2000000)
+        fe.set_lendable(self.db, "lender", 2000000, today="20260105",
+                        at="20260105T084000")
+        io1 = FakeIO(cash=10000000, ref_price=1073485)
+        fe.request_funds(self.db, "borrower", 3000000, io=io1,
+                         today="20260105", preopen=False, borrow_max=5000000)
+        fe.settle_loans(self.db, "borrower", "20260105",
+                        borrower_pnl=90000, deployed=3000000)
+        fe.set_lendable(self.db, "lender", 1000000, today="20260106",
+                        at="20260106T084000")
+        io2 = FakeIO(cash=10000000, ref_price=1073485)
+        fe.request_funds(self.db, "borrower", 3000000, io=io2,
+                         today="20260106", preopen=False, borrow_max=5000000)
+        fe.settle_loans(self.db, "borrower", "20260106",
+                        borrower_pnl=60000, deployed=3000000)
+        self.assertEqual(fe.loan_pnl_since(self.db, "lender", ""), 50000)
+        self.assertEqual(fe.loan_pnl_since(self.db, "lender", "20260106"),
+                         20000)
+        self.assertEqual(fe.loan_pnl_paid_since(self.db, "borrower", ""),
+                         50000)
+        self.assertEqual(fe.loan_pnl_paid_since(self.db, "borrower",
+                                                "20260106"), 20000)
+        self.assertEqual(fe.loan_pnl_since(self.db, "other", ""), 0)
+
+    def test_sweep_hold_back(self):
+        ASK = 1073485
+        self._add("a", 5000000)
+        self._add("b", 2000000)
+        io0 = FakeIO(cash=8000000, ask=ASK,
+                     buys=[{"order_no": "B0", "status": "submitted"},
+                           {"order_no": "B1", "status": "submitted"}])
+        with mock.patch.dict(os.environ, {"MAX_ORDER_AMOUNT": "5000000"}):
+            out0 = fe.sweep(self.db, io=io0, today=self.DATE)
+        self.assertEqual(out0["ordered_qty"], 6)
+        with tempfile.TemporaryDirectory() as tmp:
+            db2 = Path(tmp) / "funding.sqlite3"
+            fe.ensure(db2)
+            fe.add_member(db2, "a", "20260101")
+            fe.add_member(db2, "b", "20260101")
+            fe.set_unused(db2, "a", 5000000, f"{self.DATE}T090000")
+            fe.set_unused(db2, "b", 2000000, f"{self.DATE}T090000")
+            fe.set_lendable(db2, "a", 3000000, today=self.DATE,
+                            at=f"{self.DATE}T084000")
+            io_req = FakeIO(cash=8000000, ref_price=1073485)
+            fe.request_funds(db2, "b", 1000000, io=io_req, today=self.DATE,
+                             preopen=False, borrow_max=2000000)
+            io2 = FakeIO(cash=8000000, ask=ASK,
+                         buys=[{"order_no": "B1", "status": "submitted"},
+                               {"order_no": "B2", "status": "submitted"}])
+            with mock.patch.dict(os.environ, {"MAX_ORDER_AMOUNT": "5000000"}):
+                out2 = fe.sweep(db2, io=io2, today=self.DATE)
+            self.assertEqual(out2["ordered_qty"], 4)
+            self.assertTrue(any("대여 대기 현금 2,000,000" in n
+                                for n in out2["notes"]))
+
+    def test_cash_short_sells_etf(self):
+        self._add("lender", 10000000)
+        self._add("borrower", 2000000)
+        fe.set_lendable(self.db, "lender", 8000000, today=self.DATE,
+                        at=f"{self.DATE}T084000")
+        self._buy_filled("b1", 8, 1070000)
+        io = FakeIO(cash=[1000000, 9000000], balance_qty=8,
+                    ref_price=1070000,
+                    sells=[{"order_no": "S1", "status": "submitted"}],
+                    fills_plan=[{"S1": {"qty": 8, "price": 1070000}}])
+        out = fe.request_funds(self.db, "borrower", 10000000, io=io,
+                               today=self.DATE, preopen=False,
+                               borrow_max=8000000)
+        self.assertEqual(out["sold_qty"], 8)
+        self.assertEqual(out["granted"], 9000000)
+        total_loan = sum(r[2] for r in self._loans())
+        self.assertEqual(total_loan, 7000000)
+
+
 if __name__ == "__main__":
     unittest.main()
