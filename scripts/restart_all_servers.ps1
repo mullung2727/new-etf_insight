@@ -40,7 +40,7 @@ Start-DetachedServer -Name "broker" -WorkDir (Join-Path $root "broker") -Title "
 # 프로세스 env 가 .env 보다 우선이라(load_dotenv override=False) 공용 .env 값을 이 인스턴스만 덮는다.
 # MAX_ORDER_AMOUNT(주문 1건 상한)는 :8001 과 같은 루트 .env 값을 공유한다. 전략 예산은 전략 config 에 둔다.
 $high52Env = 'set "KIWOOM_PROFILE=HIGH52" & set "TOKEN_CACHE_PATH=.token_cache.high52.json" & ' +
-    'set "NOTES_DB_PATH=notes.high52.db" & set "ALLOWED_ORDER_SOURCES=high52_order,high52_exit" & '
+    'set "NOTES_DB_PATH=notes.high52.db" & set "ALLOWED_ORDER_SOURCES=high52_order,high52_exit,msig" & '
 Start-DetachedServer -Name "broker-high52" -WorkDir (Join-Path $root "broker") -Title "broker-high52 :8002" `
     -CommandLine ($high52Env + ".\.venv\Scripts\python.exe -m uvicorn main:app --port 8002 --host 127.0.0.1")
 
