@@ -84,6 +84,24 @@ def ensure(db: Path) -> None:
             "strategy TEXT NOT NULL, amount INTEGER NOT NULL, "
             "order_no TEXT NOT NULL UNIQUE)"
         )
+        # PLAN_FUNDING_ENGINE P8 — 전략 간 대여 원장
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS lendable("
+            "date TEXT, strategy TEXT, amount INTEGER NOT NULL, "
+            "at TEXT NOT NULL, PRIMARY KEY(date, strategy))"
+        )
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS borrow_caps("
+            "date TEXT, borrower TEXT, max_amount INTEGER NOT NULL, "
+            "at TEXT NOT NULL, PRIMARY KEY(date, borrower))"
+        )
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS loans("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, "
+            "lender TEXT NOT NULL, borrower TEXT NOT NULL, "
+            "amount INTEGER NOT NULL CHECK(amount > 0), at TEXT NOT NULL, "
+            "lender_pnl INTEGER, settled INTEGER NOT NULL DEFAULT 0)"
+        )
 
 
 def add_member(db: Path, strategy: str, joined: str, *,
@@ -291,6 +309,155 @@ def total_unused(db: Path, *, etf_only: bool = False) -> int:
             row = con.execute(
                 "SELECT COALESCE(SUM(unused), 0) FROM members"
             ).fetchone()
+    return int(row[0])
+
+
+def set_lendable(db: Path, strategy: str, amount: int, *, today: str,
+                 at: str) -> int:
+    """오늘 빌려줄 수 있는 돈 보고 (안 쓴 몫 초과분은 줄임). 저장값 반환."""
+    # PLAN_FUNDING_ENGINE P8
+    if isinstance(amount, bool) or not isinstance(amount, int):
+        raise ValueError(f"amount는 int: {amount!r}")
+    unused = unused_of(db, strategy)
+    capped = min(max(0, amount), unused)
+    with connect_rw(db) as con:
+        con.execute(
+            "INSERT INTO lendable(date, strategy, amount, at)"
+            " VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(date, strategy) DO UPDATE SET"
+            " amount=excluded.amount, at=excluded.at",
+            (today, strategy, capped, at),
+        )
+    return capped
+
+
+def lendable_of(db: Path, strategy: str, today: str) -> int:
+    """그날 빌려줄 수 있는 돈. 없으면 0."""
+    # PLAN_FUNDING_ENGINE P8
+    with connect_ro(db) as con:
+        row = con.execute(
+            "SELECT amount FROM lendable WHERE date = ? AND strategy = ?",
+            (today, strategy),
+        ).fetchone()
+    if row is None:
+        return 0
+    return int(row[0])
+
+
+def loaned_today(db: Path, lender: str, today: str) -> int:
+    """그날 그 lender 가 빌려준 합."""
+    # PLAN_FUNDING_ENGINE P8
+    with connect_ro(db) as con:
+        row = con.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM loans"
+            " WHERE date = ? AND lender = ?",
+            (today, lender),
+        ).fetchone()
+    return int(row[0])
+
+
+def lendable_left(db: Path, today: str, *,
+                  exclude: str = "") -> dict[str, int]:
+    """전략별 남은 대여 여유 (lendable − loaned). 0 이하는 빼고 strategy 정렬."""
+    # PLAN_FUNDING_ENGINE P8
+    with connect_ro(db) as con:
+        rows = con.execute(
+            "SELECT strategy, amount FROM lendable WHERE date = ?"
+            " ORDER BY strategy",
+            (today,),
+        ).fetchall()
+        loan_rows = con.execute(
+            "SELECT lender, COALESCE(SUM(amount), 0) FROM loans"
+            " WHERE date = ? GROUP BY lender",
+            (today,),
+        ).fetchall()
+    loaned = {l: int(s) for l, s in loan_rows}
+    out: dict[str, int] = {}
+    for strat, amt in rows:
+        if strat == exclude:
+            continue
+        left = int(amt) - loaned.get(strat, 0)
+        if left > 0:
+            out[strat] = left
+    return out
+
+
+def settle_loans(db: Path, borrower: str, today: str, *, borrower_pnl: int,
+                 deployed: int) -> list[dict]:
+    """그날 borrower 미정산 loans 정산 (Q1: 빌린 몫 손익 전부 lender). 정산 행 반환."""
+    # PLAN_FUNDING_ENGINE P8
+    with connect_rw(db) as con:
+        rows = con.execute(
+            "SELECT id, lender, borrower, amount FROM loans"
+            " WHERE date = ? AND borrower = ? AND settled = 0 ORDER BY id",
+            (today, borrower),
+        ).fetchall()
+        if not rows:
+            return []
+        total = sum(int(r[3]) for r in rows)
+        eff = 0 if deployed <= 0 else max(deployed, total)
+        out: list[dict] = []
+        for lid, lender, borr, amt in rows:
+            amt_i = int(amt)
+            pnl = 0 if eff <= 0 else round(borrower_pnl * amt_i / eff)
+            con.execute(
+                "UPDATE loans SET lender_pnl = ?, settled = 1 WHERE id = ?",
+                (pnl, lid),
+            )
+            out.append({"id": lid, "lender": lender, "borrower": borr,
+                        "amount": amt_i, "lender_pnl": pnl})
+        return out
+
+
+def loan_pnl_since(db: Path, strategy: str, since: str) -> int:
+    """since 이후 빌려준 몫 손익 합 (lender 기준). DB 없으면 0."""
+    # PLAN_FUNDING_ENGINE P8
+    if not Path(db).exists():
+        return 0
+    try:
+        with connect_ro(db) as con:
+            if since:
+                row = con.execute(
+                    "SELECT COALESCE(SUM(lender_pnl), 0) FROM loans"
+                    " WHERE lender = ? AND settled = 1 AND date >= ?",
+                    (strategy, since),
+                ).fetchone()
+            else:
+                row = con.execute(
+                    "SELECT COALESCE(SUM(lender_pnl), 0) FROM loans"
+                    " WHERE lender = ? AND settled = 1",
+                    (strategy,),
+                ).fetchone()
+    except sqlite3.OperationalError as e:
+        if "no such table" not in str(e):
+            raise
+        return 0
+    return int(row[0])
+
+
+def loan_pnl_paid_since(db: Path, strategy: str, since: str) -> int:
+    """since 이후 빌린 몫 손익 합 (borrower 기준, 예산에서 뺄 몫). DB 없으면 0."""
+    # PLAN_FUNDING_ENGINE P8
+    if not Path(db).exists():
+        return 0
+    try:
+        with connect_ro(db) as con:
+            if since:
+                row = con.execute(
+                    "SELECT COALESCE(SUM(lender_pnl), 0) FROM loans"
+                    " WHERE borrower = ? AND settled = 1 AND date >= ?",
+                    (strategy, since),
+                ).fetchone()
+            else:
+                row = con.execute(
+                    "SELECT COALESCE(SUM(lender_pnl), 0) FROM loans"
+                    " WHERE borrower = ? AND settled = 1",
+                    (strategy,),
+                ).fetchone()
+    except sqlite3.OperationalError as e:
+        if "no such table" not in str(e):
+            raise
+        return 0
     return int(row[0])
 
 
@@ -535,13 +702,20 @@ def _sell_and_confirm(db: Path, qty: int, *, io, today: str,
 
 
 def request_funds(db: Path, strategy: str, amount: int, *, io, today: str,
-                  preopen: bool, enabled: bool = True) -> dict:
+                  preopen: bool, enabled: bool = True,
+                  borrow_max: int | None = None) -> dict:
     """자금 요청 — 현금이 모자랄 때만 ETF 매도로 확보 후 허가.
 
     {"granted", "sold_qty"(체결 합), "notes"}.
     notes 는 호출 전략이 알림에 붙일 한국어 줄(⚠ 로 시작하면 경고).
     """
     ensure(db)
+    # PLAN_FUNDING_ENGINE P8 — borrow_max 검증 (None 이면 대여 없음, 기존과 동일)
+    if borrow_max is not None:
+        if isinstance(borrow_max, bool) or not isinstance(borrow_max, int):
+            raise ValueError(f"borrow_max는 int: {borrow_max!r}")
+        if borrow_max < 0:
+            raise ValueError(f"borrow_max는 0 이상: {borrow_max!r}")
     notes: list[str] = []
     rec = reconcile(db, io=io, today=today)
     notes.extend(rec.get("notes", []))
@@ -552,24 +726,92 @@ def request_funds(db: Path, strategy: str, amount: int, *, io, today: str,
                   reservations=io.reservations(),
                   balance_qty=io.balance_qty(), etf_price=px)
     cash = a["cash"]
-    want = min(amount, a["unused"])
-    if want < amount:
-        notes.append(f"전략 안 쓴 몫 {a['unused']:,} 로 줄임")
+    unused = a["unused"]
+    # PLAN_FUNDING_ENGINE P8 — 대여 한도 계산
+    left: dict[str, int] = {}
+    can_borrow = 0
+    if borrow_max is not None:
+        with connect_rw(db) as con:
+            con.execute(
+                "INSERT INTO borrow_caps(date, borrower, max_amount, at)"
+                " VALUES (?, ?, ?, ?)"
+                " ON CONFLICT(date, borrower) DO UPDATE SET"
+                " max_amount=excluded.max_amount, at=excluded.at",
+                (today, strategy, borrow_max, io.now().isoformat()),
+            )
+        left = lendable_left(db, today, exclude=strategy)
+        with connect_ro(db) as con:
+            brow = con.execute(
+                "SELECT COALESCE(SUM(amount), 0) FROM loans"
+                " WHERE date = ? AND borrower = ?",
+                (today, strategy),
+            ).fetchone()
+        loaned_by = int(brow[0])
+        can_borrow = min(borrow_max - loaned_by, sum(left.values()))
+        if can_borrow < 0:
+            can_borrow = 0
+    if borrow_max is None:
+        want = min(amount, unused)
+        if want < amount:
+            notes.append(f"전략 안 쓴 몫 {unused:,} 로 줄임")
+    else:
+        cap = unused + can_borrow
+        want = min(amount, cap)
+        if want < amount:
+            notes.append(f"전략 안 쓴 몫 + 대여 {cap:,} 로 줄임")
+
+    def _record_borrow(granted_amt: int) -> None:
+        # PLAN_FUNDING_ENGINE P8 — 빌린 몫 loans 기록 + notes 한 줄
+        if borrow_max is None:
+            return
+        borrowed = max(0, granted_amt - unused)
+        if borrowed <= 0 or not left:
+            return
+        total = sum(left.values())
+        if total <= 0:
+            return
+        lenders = sorted(left.keys())
+        shares: dict[str, int] = {}
+        acc = 0
+        for lender in lenders:
+            s = borrowed * left[lender] // total
+            shares[lender] = s
+            acc += s
+        rest = borrowed - acc
+        if rest > 0:
+            shares[lenders[0]] += rest
+        at = io.now().isoformat()
+        with connect_rw(db) as con:
+            for lender in lenders:
+                amt = shares[lender]
+                if amt > 0:
+                    con.execute(
+                        "INSERT INTO loans(date, lender, borrower, amount, at)"
+                        " VALUES (?, ?, ?, ?, ?)",
+                        (today, lender, strategy, amt, at),
+                    )
+        parts = ", ".join(f"{l} {shares[l]:,}" for l in lenders
+                          if shares[l] > 0)
+        notes.append(f"대여 {borrowed:,} ({parts})")
     if cash is None:
         notes.append("⚠ 주문가능 조회 실패")
         return {"granted": 0, "sold_qty": 0, "notes": notes}
     if cash >= want:
+        _record_borrow(want)
         return {"granted": want, "sold_qty": 0, "notes": notes}
     if not enabled:
+        _record_borrow(min(want, cash))
         return {"granted": min(want, cash), "sold_qty": 0, "notes": notes}
     short = want - cash
     if (px is None or isinstance(px, bool)
             or not isinstance(px, (int, float)) or px <= 0):
         notes.append(f"⚠ ETF 기준가 조회 실패 — 현금 {cash:,} 만")
+        _record_borrow(cash)
         return {"granted": cash, "sold_qty": 0, "notes": notes}
     k = min(math.ceil(short / (px * (1 - SELL_SLIP))), a["etf_qty"])
     if k <= 0:
         notes.append(f"⚠ 팔 ETF 없음 — 부족 {short:,}")
+        _record_borrow(cash)
         return {"granted": cash, "sold_qty": 0, "notes": notes}
     first = _sell_and_confirm(db, k, io=io, today=today, preopen=preopen,
                               reason=f"{strategy} {short:,}")
@@ -625,6 +867,7 @@ def request_funds(db: Path, strategy: str, amount: int, *, io, today: str,
     granted = min(want, cash)
     if granted < want:
         notes.append(f"⚠ 부족 {want - granted:,} — 있는 만큼만")
+    _record_borrow(granted)
     if sold_qty >= 1:
         sync_reservation(db, io=io, today=today)
     return {"granted": granted, "sold_qty": sold_qty, "notes": notes}
@@ -643,6 +886,23 @@ def sweep(db: Path, *, io, today: str, enabled: bool = True) -> dict:
     # PLAN_FUNDING_ENGINE D13 — sweep 는 etf=1 회원 몫만 쓴다
     idle = (total_unused(db, etf_only=True) - etf_position(db)["cost"]
             - pending_buy_amount(db, today))
+    # PLAN_FUNDING_ENGINE P8 — 빌려줄 돈은 ETF 에 안 넣고 현금 대기 (Q3)
+    with connect_ro(db) as con:
+        row_l = con.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM lendable WHERE date = ?",
+            (today,),
+        ).fetchone()
+        row_c = con.execute(
+            "SELECT COALESCE(SUM(max_amount), 0) FROM borrow_caps"
+            " WHERE date = ?",
+            (today,),
+        ).fetchone()
+    hold_back = min(int(row_l[0]), int(row_c[0]))
+    if hold_back < 0:
+        hold_back = 0
+    idle = max(0, idle - hold_back)
+    if hold_back > 0:
+        notes.append(f"대여 대기 현금 {hold_back:,} (ETF 제외)")
     cash = cash_view(io.cash(), io.reservations(), members(db))
     if cash is None:
         notes.append("⚠ 주문가능 조회 실패")
