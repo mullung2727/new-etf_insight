@@ -3,6 +3,7 @@
 ## 세션 역할
 
 - 세션 이름이 전략명(예: envelope)이면 시작 직후 `research/private/<이름>/CLAUDE.md` 를 먼저 읽고, 그 전략 폴더와 관련 코드만 다룬다. 이름 없는 세션은 총괄이다.
+- 모든 세션은 시작 때 `research/private/STRATEGY_STATUS.md`(전략·계좌·상태 현황표)를 읽는다. 전략 중지·재개·계좌 이전·예산 변경을 하면 같은 턴에 그 표를 고친다.
 
 ## Skills
 
